@@ -3,19 +3,26 @@ use std::sync::Arc;
 
 /// Manages multiple selection providers and tries them in priority order.
 /// Falls back from higher-priority to lower-priority providers automatically.
+/// Lower priority number = higher priority (tried first).
 pub struct SelectionProviderManager {
     providers: Vec<Arc<dyn SelectionProvider>>,
 }
 
 impl SelectionProviderManager {
-    /// Create a manager with the default provider chain:
-    /// 1. UiAutomationSelectionProvider (priority 10)
-    /// 2. ClipboardSelectionProvider (priority 100)
+    /// Create a manager with the default provider chain, sorted by priority.
     pub fn with_defaults() -> Self {
-        let providers: Vec<Arc<dyn SelectionProvider>> = vec![
+        let mut providers: Vec<Arc<dyn SelectionProvider>> = vec![
             Arc::new(super::uiautomation::UiAutomationSelectionProvider),
             Arc::new(super::clipboard::ClipboardSelectionProvider),
         ];
+        // Sort by priority: lower number = higher priority (tried first)
+        providers.sort_by_key(|p| p.priority());
+        Self { providers }
+    }
+
+    /// Create a manager with custom providers, sorted by priority.
+    pub fn new(mut providers: Vec<Arc<dyn SelectionProvider>>) -> Self {
+        providers.sort_by_key(|p| p.priority());
         Self { providers }
     }
 

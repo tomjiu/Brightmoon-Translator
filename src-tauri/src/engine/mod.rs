@@ -11,9 +11,11 @@ use crate::config::AppConfig;
 use crate::plugin;
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
+
+// Re-export shared translation types from models
+pub use crate::models::translation::{RoutingStrategy, TranslateResponse, TranslationResult};
 
 /// A translation engine backed by an external plugin HTTP endpoint
 pub struct PluginEngine {
@@ -75,40 +77,6 @@ impl TranslationEngine for PluginEngine {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TranslationResult {
-    pub engine: String,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TranslateResponse {
-    pub results: Vec<TranslationResult>,
-    pub detected_language: Option<String>,
-}
-
-/// Engine routing strategy
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum RoutingStrategy {
-    /// Use primary engine only, fail if it fails
-    PrimaryOnly,
-    /// Try primary, fallback to others on error
-    FallbackOnError,
-    /// Run all engines in parallel, return all results
-    ParallelCompare,
-    /// Prefer free engines, use paid only if all free fail
-    CostAware,
-    /// Use fastest engine based on historical latency
-    LatencyFirst,
-}
-
-impl Default for RoutingStrategy {
-    fn default() -> Self {
-        Self::FallbackOnError
     }
 }
 

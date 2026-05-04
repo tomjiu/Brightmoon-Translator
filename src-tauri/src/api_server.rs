@@ -11,9 +11,10 @@ use tokio::sync::{Mutex, RwLock};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::config::AppConfig;
-use crate::engine::{self, TranslateResponse};
+use crate::engine;
 use crate::glossary::Glossary;
 use crate::memory::HistoryStore;
+use crate::models::error::{ApiError, TranslationError};
 use crate::services::TranslationService;
 use crate::TranslationCache;
 
@@ -59,11 +60,6 @@ fn default_to() -> String {
     "zh".to_string()
 }
 
-#[derive(Serialize)]
-pub struct ApiError {
-    pub error: String,
-}
-
 // POST /translate
 async fn translate(
     AxumState(state): AxumState<ApiState>,
@@ -82,13 +78,15 @@ async fn translate(
     // Use TranslationService for the full pipeline (glossary, blacklist, cache, history, metrics)
     match state.translation_service.translate(&req.text, &req.from, &req.to).await {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                error: format!("Translation failed: {}", e),
-            }),
-        )
-            .into_response(),
+        Err(e) => {
+            let status = match &e {
+                TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => StatusCode::SERVICE_UNAVAILABLE,
+                TranslationError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+                TranslationError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ApiError::from(&e))).into_response()
+        }
     }
 }
 
@@ -123,13 +121,15 @@ async fn translate_primary(
             }),
         )
             .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                error: format!("Translation failed: {}", e),
-            }),
-        )
-            .into_response(),
+        Err(e) => {
+            let status = match &e {
+                TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => StatusCode::SERVICE_UNAVAILABLE,
+                TranslationError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+                TranslationError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ApiError::from(&e))).into_response()
+        }
     }
 }
 

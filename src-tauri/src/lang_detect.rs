@@ -1,11 +1,5 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DetectionResult {
-    pub language: String,
-    pub confidence: f32,
-    pub name: String,
-}
+// Re-export shared type from models
+pub use crate::models::detection::DetectionResult;
 
 /// Detect language based on character patterns
 pub fn detect_language(text: &str) -> DetectionResult {

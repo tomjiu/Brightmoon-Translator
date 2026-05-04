@@ -5,17 +5,11 @@ use crate::engine::{llm::TranslationContext, Router, TranslateResponse, Translat
 use crate::glossary::Glossary;
 use crate::memory::HistoryStore;
 use crate::metrics::MetricsCollector;
+use crate::models::error::TranslationError;
+pub use crate::models::translation::BatchTranslationResult;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
-
-/// Result for a single line in batch translation
-#[derive(Debug, Clone)]
-pub struct BatchTranslationResult {
-    pub index: usize,
-    pub original: String,
-    pub translated: String,
-}
 
 /// Service layer for translation operations
 /// Handles glossary, blacklist, cache, history, and engine orchestration
@@ -53,7 +47,7 @@ impl TranslationService {
         text: &str,
         from: &str,
         to: &str,
-    ) -> Result<TranslateResponse, String> {
+    ) -> Result<TranslateResponse, TranslationError> {
         // Apply glossary
         let glossary = self.glossary.lock().await;
         let mut processed_text = text.to_string();
@@ -109,6 +103,9 @@ impl TranslationService {
         // Record failures for empty results
         if response.results.is_empty() {
             self.metrics.record_failure("all", "No engine returned a result").await;
+            return Err(TranslationError::AllEnginesFailed {
+                errors: vec!["No engine returned a result".to_string()],
+            });
         }
 
         // Restore blacklist words in results
@@ -146,7 +143,7 @@ impl TranslationService {
         from: &str,
         to: &str,
         tx: tokio::sync::mpsc::Sender<String>,
-    ) -> Result<String, String> {
+    ) -> Result<String, TranslationError> {
         // Apply glossary
         let glossary = self.glossary.lock().await;
         let mut processed_text = text.to_string();
@@ -217,7 +214,10 @@ impl TranslationService {
             }
             Err(e) => {
                 self.metrics.record_failure("LLM", &e.to_string()).await;
-                Err(format!("Streaming failed: {}", e))
+                Err(TranslationError::EngineError {
+                    engine: "LLM".to_string(),
+                    message: format!("Streaming failed: {}", e),
+                })
             }
         }
     }
@@ -228,7 +228,7 @@ impl TranslationService {
         text: &str,
         from: &str,
         to: &str,
-    ) -> Result<String, String> {
+    ) -> Result<String, TranslationError> {
         // Apply glossary
         let glossary = self.glossary.lock().await;
         let mut processed_text = text.to_string();
@@ -266,7 +266,7 @@ impl TranslationService {
             }
             Err(e) => {
                 self.metrics.record_failure("primary", &e.to_string()).await;
-                Err(e.to_string())
+                Err(TranslationError::from(e))
             }
         }
     }
@@ -278,12 +278,12 @@ impl TranslationService {
         from: &str,
         to: &str,
         context: &[crate::engine::llm::TranslationContext],
-    ) -> Result<String, String> {
+    ) -> Result<String, TranslationError> {
         let router = self.engine_router.read().await;
         router
             .translate_primary_with_context(text, from, to, context)
             .await
-            .map_err(|e| e.to_string())
+            .map_err(TranslationError::from)
     }
 
     /// Get the engine router for advanced operations

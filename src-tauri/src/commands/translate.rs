@@ -26,7 +26,8 @@ pub async fn translate(
     let response = state
         .translation_service
         .translate(&request.text, &request.from, &request.to)
-        .await?;
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Auto-copy result if enabled
     let config = state.config.lock().await;
@@ -81,7 +82,7 @@ pub async fn translate_stream(
     // Wait for forwarding to complete
     let _full_text = forward_handle.await.map_err(|e| e.to_string())?;
 
-    result
+    result.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -143,7 +144,8 @@ pub async fn translate_selection_with_text(
     let response = state
         .translation_service
         .translate(&text, &from, &to)
-        .await?;
+        .await
+        .map_err(|e| e.to_string())?;
 
     if let Some(first) = response.results.first() {
         // Emit result to frontend for overlay display
@@ -176,7 +178,8 @@ pub async fn replace_translate(
     let response = state
         .translation_service
         .translate_primary(&text, &from, &to)
-        .await?;
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Emit event to frontend to simulate typing
     let _ = app.emit("replace-typing", &response);
@@ -354,6 +357,7 @@ pub async fn back_translate(
         .translation_service
         .translate_primary(&text, &to, &from)
         .await
+        .map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize)]

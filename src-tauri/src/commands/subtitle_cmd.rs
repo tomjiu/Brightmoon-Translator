@@ -98,4 +98,5 @@ pub async fn translate_subtitle_text(
         .translation_service
         .translate_primary(&text, &from_lang, &to_lang)
         .await
+        .map_err(|e| e.to_string())
 }

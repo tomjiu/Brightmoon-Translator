@@ -2,12 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GlossaryEntry {
-    pub source: String,
-    pub target: String,
-    pub context: Option<String>,
-}
+// Re-export shared type from models
+pub use crate::models::glossary::GlossaryEntry;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Glossary {

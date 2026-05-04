@@ -265,7 +265,7 @@ pub async fn translate_selection(
     let dismiss_ms = config.overlay_auto_dismiss_ms;
     drop(config);
 
-    let response = state.translation_service.translate(&text, &from, &to).await?;
+    let response = state.translation_service.translate(&text, &from, &to).await.map_err(|e| e.to_string())?;
 
     if let Some(first) = response.results.first() {
         let (cursor_x, cursor_y) = get_cursor_position().await.unwrap_or((100.0, 100.0));
@@ -307,7 +307,7 @@ pub async fn trigger_selection_translate(
     let dismiss_ms = config.overlay_auto_dismiss_ms;
     drop(config);
 
-    let response = state.translation_service.translate(&selection.text, &from, &to).await?;
+    let response = state.translation_service.translate(&selection.text, &from, &to).await.map_err(|e| e.to_string())?;
 
     if let Some(first) = response.results.first() {
         // Position overlay: prefer selection bounds, fall back to cursor
