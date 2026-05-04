@@ -14,6 +14,7 @@ use crate::config::AppConfig;
 use crate::engine::{self, TranslateResponse};
 use crate::glossary::Glossary;
 use crate::memory::HistoryStore;
+use crate::services::TranslationService;
 use crate::TranslationCache;
 
 #[derive(Clone)]
@@ -23,6 +24,7 @@ pub struct ApiState {
     pub engine_router: Arc<RwLock<engine::Router>>,
     pub cache: Arc<TranslationCache>,
     pub glossary: Arc<Mutex<Glossary>>,
+    pub translation_service: Arc<TranslationService>,
 }
 
 impl From<&crate::AppState> for ApiState {
@@ -33,6 +35,7 @@ impl From<&crate::AppState> for ApiState {
             engine_router: state.engine_router.clone(),
             cache: state.cache.clone(),
             glossary: state.glossary.clone(),
+            translation_service: state.translation_service.clone(),
         }
     }
 }
@@ -76,54 +79,17 @@ async fn translate(
             .into_response();
     }
 
-    // Apply glossary
-    let glossary = state.glossary.lock().await;
-    let mut text = req.text.clone();
-    let lang_pair = format!("{}-{}", req.from, req.to);
-    glossary.apply_glossary(&mut text, &lang_pair);
-    drop(glossary);
-
-    // Check cache
-    if let Some(cached) = state.cache.get(&text, &req.from, &req.to).await {
-        let results = cached
-            .results
-            .into_iter()
-            .map(|(engine, text)| crate::engine::TranslationResult { engine, text })
-            .collect();
-        let response = TranslateResponse {
-            results,
-            detected_language: None,
-        };
-        return (StatusCode::OK, Json(response)).into_response();
+    // Use TranslationService for the full pipeline (glossary, blacklist, cache, history, metrics)
+    match state.translation_service.translate(&req.text, &req.from, &req.to).await {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiError {
+                error: format!("Translation failed: {}", e),
+            }),
+        )
+            .into_response(),
     }
-
-    // Translate
-    let router = state.engine_router.read().await;
-    let response = router
-        .translate_all(&text, &req.from, &req.to)
-        .await;
-    drop(router);
-
-    // Cache results
-    if !response.results.is_empty() {
-        let cache_results: Vec<(String, String)> = response
-            .results
-            .iter()
-            .map(|r| (r.engine.clone(), r.text.clone()))
-            .collect();
-        state
-            .cache
-            .set(&text, &req.from, &req.to, cache_results)
-            .await;
-    }
-
-    // Save to history
-    if let Some(first) = response.results.first() {
-        let history = state.history.lock().await;
-        history.add(&text, &first.text, &req.from, &req.to, &first.engine);
-    }
-
-    (StatusCode::OK, Json(response)).into_response()
 }
 
 // POST /translate/primary - Translate with primary engine only
@@ -141,68 +107,22 @@ async fn translate_primary(
             .into_response();
     }
 
-    // Apply glossary
-    let glossary = state.glossary.lock().await;
-    let mut text = req.text.clone();
-    let lang_pair = format!("{}-{}", req.from, req.to);
-    glossary.apply_glossary(&mut text, &lang_pair);
-    drop(glossary);
-
-    // Check cache
-    if let Some(cached) = state.cache.get(&text, &req.from, &req.to).await {
-        if let Some((engine, translated)) = cached.results.first() {
-            #[derive(Serialize)]
-            struct PrimaryResult {
-                engine: String,
-                text: String,
-            }
-            return (
-                StatusCode::OK,
-                Json(PrimaryResult {
-                    engine: engine.clone(),
-                    text: translated.clone(),
-                }),
-            )
-                .into_response();
-        }
+    #[derive(Serialize)]
+    struct PrimaryResult {
+        engine: String,
+        text: String,
     }
 
-    // Translate with primary engine
-    let router = state.engine_router.read().await;
-    match router
-        .translate_primary(&text, &req.from, &req.to)
-        .await
-    {
-        Ok(translated) => {
-            // Cache
-            state
-                .cache
-                .set(
-                    &text,
-                    &req.from,
-                    &req.to,
-                    vec![("LLM".to_string(), translated.clone())],
-                )
-                .await;
-
-            // Save to history
-            let history = state.history.lock().await;
-            history.add(&text, &translated, &req.from, &req.to, "LLM");
-
-            #[derive(Serialize)]
-            struct PrimaryResult {
-                engine: String,
-                text: String,
-            }
-            (
-                StatusCode::OK,
-                Json(PrimaryResult {
-                    engine: "LLM".to_string(),
-                    text: translated,
-                }),
-            )
-                .into_response()
-        }
+    // Use TranslationService for the full pipeline
+    match state.translation_service.translate_primary(&req.text, &req.from, &req.to).await {
+        Ok(translated) => (
+            StatusCode::OK,
+            Json(PrimaryResult {
+                engine: "primary".to_string(),
+                text: translated,
+            }),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ApiError {

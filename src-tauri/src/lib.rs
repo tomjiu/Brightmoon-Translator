@@ -65,6 +65,7 @@ pub fn run() {
         history_arc.clone(),
         cache.clone(),
         engine_router.clone(),
+        metrics.clone(),
     ));
 
     let state = AppState {

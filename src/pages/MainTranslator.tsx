@@ -680,7 +680,7 @@ function MainTranslator() {
                                 </span>
                                 {def.example && (
                                   <p className="text-xs text-text-secondary mt-0.5 italic">
-                                    "{def.example}"
+                                    &ldquo;{def.example}&rdquo;
                                   </p>
                                 )}
                               </li>

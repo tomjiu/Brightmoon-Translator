@@ -428,18 +428,24 @@ impl Router {
             handles.push(handle);
         }
 
-        // Return first successful result
-        for handle in handles {
-            if let Ok(Some(result)) = handle.await {
+        // Use select to get first completed result (not sequential await)
+        let mut results = Vec::new();
+        let mut remaining = handles;
+
+        while !remaining.is_empty() {
+            let (result, _index, rest) = futures::future::select_all(remaining).await;
+            remaining = rest;
+
+            if let Ok(Some(translation_result)) = result {
                 return TranslateResponse {
-                    results: vec![result],
+                    results: vec![translation_result],
                     detected_language: None,
                 };
             }
         }
 
         TranslateResponse {
-            results: vec![],
+            results,
             detected_language: None,
         }
     }
