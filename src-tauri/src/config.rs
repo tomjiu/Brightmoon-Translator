@@ -191,6 +191,12 @@ pub struct HotkeyConfig {
     pub ocr_translate: String,
     pub show_window: String,
     pub translate_selection: String,
+    #[serde(default = "default_replace_hotkey")]
+    pub replace_translate: String,
+}
+
+fn default_replace_hotkey() -> String {
+    "Ctrl+Shift+R".to_string()
 }
 
 impl Default for HotkeyConfig {
@@ -199,6 +205,7 @@ impl Default for HotkeyConfig {
             ocr_translate: "Ctrl+Shift+T".to_string(),
             show_window: "Ctrl+T".to_string(),
             translate_selection: "Ctrl+Shift+Y".to_string(),
+            replace_translate: "Ctrl+Shift+R".to_string(),
         }
     }
 }

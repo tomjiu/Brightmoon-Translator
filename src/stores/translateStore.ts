@@ -180,59 +180,71 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
     set({ loading: true, error: null, isStreaming: true, streamingText: "" });
 
+    // Listen for streaming chunks
+    let fullText = "";
+    const unlisten = await listen<{ chunk: string; done: boolean }>("stream-chunk", (event) => {
+      if (event.payload.done) {
+        // Streaming complete
+        const newResults = [{ engine: "LLM", text: fullText }];
+        const historyEntry: HistoryEntry = {
+          sourceText: sourceText.trim(),
+          results: newResults,
+          fromLang,
+          toLang,
+        };
+        const newHistory = [...translationHistory, historyEntry];
+        if (newHistory.length > 100) newHistory.shift();
+
+        if (incrementalMode) {
+          const entry: IncrementalEntry = {
+            id: Date.now().toString(),
+            sourceText: sourceText.trim(),
+            results: newResults,
+            timestamp: Date.now(),
+          };
+          set({
+            results: newResults,
+            incrementalEntries: [...incrementalEntries, entry],
+            loading: false,
+            isStreaming: false,
+            streamingText: "",
+            translationHistory: newHistory,
+            historyIndex: newHistory.length - 1,
+          });
+        } else {
+          set({
+            results: newResults,
+            loading: false,
+            isStreaming: false,
+            streamingText: "",
+            translationHistory: newHistory,
+            historyIndex: newHistory.length - 1,
+          });
+        }
+      } else {
+        // Accumulate chunks
+        fullText += event.payload.chunk;
+        set({ streamingText: fullText });
+      }
+    });
+
     try {
-      const result = await invoke<string>("translate_stream", {
+      // Invoke backend streaming (returns when complete)
+      await invoke<string>("translate_stream", {
         request: {
           text: sourceText.trim(),
           from: fromLang,
           to: toLang,
         },
       });
-
-      const newResults = [{ engine: "LLM", text: result }];
-
-      // Add to translation history
-      const historyEntry: HistoryEntry = {
-        sourceText: sourceText.trim(),
-        results: newResults,
-        fromLang,
-        toLang,
-      };
-      const newHistory = [...translationHistory, historyEntry];
-      if (newHistory.length > 100) newHistory.shift();
-
-      if (incrementalMode) {
-        const entry: IncrementalEntry = {
-          id: Date.now().toString(),
-          sourceText: sourceText.trim(),
-          results: newResults,
-          timestamp: Date.now(),
-        };
-        set({
-          results: newResults,
-          incrementalEntries: [...incrementalEntries, entry],
-          loading: false,
-          isStreaming: false,
-          streamingText: "",
-          translationHistory: newHistory,
-          historyIndex: newHistory.length - 1,
-        });
-      } else {
-        set({
-          results: newResults,
-          loading: false,
-          isStreaming: false,
-          streamingText: "",
-          translationHistory: newHistory,
-          historyIndex: newHistory.length - 1,
-        });
-      }
     } catch (err) {
       set({
         error: String(err),
         loading: false,
         isStreaming: false,
       });
+    } finally {
+      unlisten();
     }
   },
 

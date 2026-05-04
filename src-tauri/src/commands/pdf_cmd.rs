@@ -16,34 +16,37 @@ pub async fn translate_pdf(
 ) -> Result<TranslatedPdf, String> {
     let doc = pdf::extract_text_from_pdf(&file_path)?;
 
-    let mut translated_pages = Vec::new();
+    // Collect non-empty pages for batch translation
+    let pages_to_translate: Vec<(usize, &str)> = doc
+        .pages
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| !p.text.trim().is_empty())
+        .map(|(i, p)| (i, p.text.trim()))
+        .collect();
 
-    for page in &doc.pages {
-        if page.text.trim().is_empty() {
-            translated_pages.push(TranslatedPage {
-                page_number: page.page_number,
-                original_text: page.text.clone(),
-                translated_text: String::new(),
-            });
-            continue;
+    // Use batch translation
+    let batch_results = state
+        .translation_service
+        .translate_batch(&pages_to_translate, &from_lang, &to_lang, 2)
+        .await;
+
+    // Build translated pages
+    let mut translated_pages: Vec<TranslatedPage> = doc
+        .pages
+        .iter()
+        .map(|p| TranslatedPage {
+            page_number: p.page_number,
+            original_text: p.text.clone(),
+            translated_text: String::new(),
+        })
+        .collect();
+
+    // Apply results
+    for result in batch_results {
+        if let Some(page) = translated_pages.get_mut(result.index) {
+            page.translated_text = result.translated;
         }
-
-        // Translate using primary engine
-        let router = state.engine_router.read().await;
-        let translated = router
-            .translate_primary(&page.text, &from_lang, &to_lang)
-            .await
-            .unwrap_or_else(|e| {
-                eprintln!("Failed to translate page {}: {}", page.page_number, e);
-                String::new()
-            });
-        drop(router);
-
-        translated_pages.push(TranslatedPage {
-            page_number: page.page_number,
-            original_text: page.text.clone(),
-            translated_text: translated,
-        });
     }
 
     Ok(TranslatedPdf {

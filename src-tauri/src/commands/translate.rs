@@ -1,4 +1,3 @@
-use crate::blacklist::BlacklistProcessor;
 use crate::dictionary::{self, DictionaryResult};
 use crate::engine::TranslateResponse;
 use crate::lang_detect::{self, DetectionResult};
@@ -23,87 +22,19 @@ pub async fn translate(
     state: State<'_, AppState>,
     request: TranslateRequest,
 ) -> Result<TranslateResponse, String> {
-    // Apply glossary to source text
-    let glossary = state.glossary.lock().await;
-    let mut text = request.text.clone();
-    let lang_pair = format!("{}-{}", request.from, request.to);
-    glossary.apply_glossary(&mut text, &lang_pair);
-    drop(glossary);
-
-    // Apply blacklist protection
-    let config = state.config.lock().await;
-    let blacklist_processor = BlacklistProcessor::new(config.translation_blacklist.clone());
-    drop(config);
-
-    let (protected_text, placeholder_map) = blacklist_processor.protect(&text);
-    let has_blacklist = !placeholder_map.is_empty();
-
-    // Check cache first
-    if let Some(cached) = state.cache.get(&protected_text, &request.from, &request.to).await {
-        let results = cached
-            .results
-            .into_iter()
-            .map(|(engine, text)| {
-                let final_text = if has_blacklist {
-                    blacklist_processor.restore(&text, &placeholder_map)
-                } else {
-                    text
-                };
-                crate::engine::TranslationResult { engine, text: final_text }
-            })
-            .collect();
-        return Ok(TranslateResponse {
-            results,
-            detected_language: None,
-        });
-    }
-
-    // Call translation engines
-    let router = state.engine_router.read().await;
-    let mut response = router
-        .translate_all(&protected_text, &request.from, &request.to)
-        .await;
-    drop(router);
-
-    // Restore blacklist words in results
-    if has_blacklist {
-        for result in &mut response.results {
-            result.text = blacklist_processor.restore(&result.text, &placeholder_map);
-        }
-    }
-
-    // Cache the results (use protected_text as key to match cache lookup)
-    if !response.results.is_empty() {
-        let cache_results: Vec<(String, String)> = response
-            .results
-            .iter()
-            .map(|r| (r.engine.clone(), r.text.clone()))
-            .collect();
-        state
-            .cache
-            .set(&protected_text, &request.from, &request.to, cache_results)
-            .await;
-    }
-
-    // Save to history
-    if let Some(first) = response.results.first() {
-        let history = state.history.lock().await;
-        history.add(
-            &text,
-            &first.text,
-            &request.from,
-            &request.to,
-            &first.engine,
-        );
-    }
+    // Use TranslationService for the full pipeline
+    let response = state
+        .translation_service
+        .translate(&request.text, &request.from, &request.to)
+        .await?;
 
     // Auto-copy result if enabled
     let config = state.config.lock().await;
     if config.auto_copy_result {
         if let Some(first) = response.results.first() {
             let copy_text = match config.auto_copy_mode.as_str() {
-                "source" => text.clone(),
-                "both" => format!("{}\n{}", text, first.text),
+                "source" => request.text.clone(),
+                "both" => format!("{}\n{}", request.text, first.text),
                 _ => first.text.clone(), // "translated" or default
             };
             let _ = app.emit("auto-copy", &copy_text);
@@ -115,62 +46,42 @@ pub async fn translate(
 
 #[tauri::command]
 pub async fn translate_stream(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: TranslateRequest,
 ) -> Result<String, String> {
-    // Apply glossary
-    let glossary = state.glossary.lock().await;
-    let mut text = request.text.clone();
-    let lang_pair = format!("{}-{}", request.from, request.to);
-    glossary.apply_glossary(&mut text, &lang_pair);
-    drop(glossary);
+    // Create channel for streaming tokens
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(100);
 
-    // Check cache first
-    if let Some(cached) = state.cache.get(&text, &request.from, &request.to).await {
-        if let Some((_, text)) = cached.results.first() {
-            return Ok(text.clone());
+    // Spawn task to forward tokens to Tauri event
+    let app_handle = app.clone();
+    let forward_handle = tokio::spawn(async move {
+        let mut full_text = String::new();
+        while let Some(chunk) = rx.recv().await {
+            full_text.push_str(&chunk);
+            let _ = app_handle.emit("stream-chunk", serde_json::json!({
+                "chunk": chunk,
+                "done": false,
+            }));
         }
-    }
+        // Emit completion
+        let _ = app_handle.emit("stream-chunk", serde_json::json!({
+            "chunk": "",
+            "done": true,
+        }));
+        full_text
+    });
 
-    // Try primary engine, fallback to others on failure
-    let mut last_error = String::new();
-    let router = state.engine_router.read().await;
+    // Stream translation using TranslationService
+    let result = state
+        .translation_service
+        .translate_stream(&request.text, &request.from, &request.to, tx)
+        .await;
 
-    for engine in router.engines_iter() {
-        match engine.translate(&text, &request.from, &request.to).await {
-            Ok(result) => {
-                // Cache the result
-                state
-                    .cache
-                    .set(
-                        &text,
-                        &request.from,
-                        &request.to,
-                        vec![(engine.name().to_string(), result.clone())],
-                    )
-                    .await;
+    // Wait for forwarding to complete
+    let _full_text = forward_handle.await.map_err(|e| e.to_string())?;
 
-                // Save to history
-                let history = state.history.lock().await;
-                history.add(
-                    &text,
-                    &result,
-                    &request.from,
-                    &request.to,
-                    engine.name(),
-                );
-
-                return Ok(result);
-            }
-            Err(e) => {
-                eprintln!("Engine {} failed: {}", engine.name(), e);
-                last_error = format!("{}: {}", engine.name(), e);
-                continue;
-            }
-        }
-    }
-
-    Err(format!("All engines failed. Last error: {}", last_error))
+    result
 }
 
 #[tauri::command]
@@ -228,19 +139,11 @@ pub async fn translate_selection_with_text(
     let to = config.default_to.clone();
     drop(config);
 
-    // Apply glossary
-    let glossary = state.glossary.lock().await;
-    let mut processed_text = text.clone();
-    let lang_pair = format!("{}-{}", from, to);
-    glossary.apply_glossary(&mut processed_text, &lang_pair);
-    drop(glossary);
-
-    // Translate
-    let router = state.engine_router.read().await;
-    let response = router
-        .translate_all(&processed_text, &from, &to)
-        .await;
-    drop(router);
+    // Translate using service
+    let response = state
+        .translation_service
+        .translate(&text, &from, &to)
+        .await?;
 
     if let Some(first) = response.results.first() {
         // Emit result to frontend for overlay display
@@ -249,10 +152,6 @@ pub async fn translate_selection_with_text(
             "translated": first.text,
             "engine": first.engine,
         }));
-
-        // Save to history
-        let history = state.history.lock().await;
-        history.add(&text, &first.text, &from, &to, &first.engine);
     }
 
     Ok(())
@@ -273,19 +172,14 @@ pub async fn replace_translate(
     let to = config.default_to.clone();
     drop(config);
 
-    let router = state.engine_router.read().await;
-    let response = router
+    // Use service for translation
+    let response = state
+        .translation_service
         .translate_primary(&text, &from, &to)
-        .await
-        .map_err(|e| e.to_string())?;
-    drop(router);
+        .await?;
 
     // Emit event to frontend to simulate typing
     let _ = app.emit("replace-typing", &response);
-
-    // Save to history
-    let history = state.history.lock().await;
-    history.add(&text, &response, &from, &to, "LLM");
 
     Ok(response)
 }
@@ -456,14 +350,10 @@ pub async fn back_translate(
     }
 
     // Translate back: swap from and to languages
-    let router = state.engine_router.read().await;
-    let response = router
+    state
+        .translation_service
         .translate_primary(&text, &to, &from)
         .await
-        .map_err(|e| e.to_string())?;
-    drop(router);
-
-    Ok(response)
 }
 
 #[derive(serde::Serialize)]
@@ -481,39 +371,34 @@ pub async fn translate_embedded(
     from: String,
     to: String,
 ) -> Result<Vec<EmbeddedLine>, String> {
-    let lines: Vec<&str> = text.lines().collect();
-    if lines.is_empty() {
+    if text.trim().is_empty() {
         return Ok(vec![]);
     }
 
-    // Filter out empty lines but keep track of line numbers
-    let non_empty: Vec<(usize, &str)> = lines
-        .iter()
-        .enumerate()
-        .filter(|(_, l)| !l.trim().is_empty())
-        .map(|(i, l)| (i, l.trim()))
+    // Use batch translation with concurrency of 3
+    let batch_results = state
+        .translation_service
+        .translate_batch(
+            &text.lines()
+                .enumerate()
+                .filter(|(_, l)| !l.trim().is_empty())
+                .map(|(i, l)| (i, l.trim()))
+                .collect::<Vec<_>>(),
+            &from,
+            &to,
+            3, // concurrency
+        )
+        .await;
+
+    // Convert to EmbeddedLine format
+    let results = batch_results
+        .into_iter()
+        .map(|r| EmbeddedLine {
+            line_number: r.index + 1,
+            original: r.original,
+            translated: r.translated,
+        })
         .collect();
-
-    if non_empty.is_empty() {
-        return Ok(vec![]);
-    }
-
-    // Translate each line individually
-    let mut results = Vec::new();
-    let router = state.engine_router.read().await;
-
-    for (idx, line) in &non_empty {
-        let translated = router
-            .translate_primary(line, &from, &to)
-            .await
-            .unwrap_or_else(|_| String::new());
-
-        results.push(EmbeddedLine {
-            line_number: idx + 1,
-            original: line.to_string(),
-            translated,
-        });
-    }
 
     Ok(results)
 }
@@ -555,6 +440,7 @@ impl Clone for AppState {
             engine_router: self.engine_router.clone(),
             cache: self.cache.clone(),
             glossary: self.glossary.clone(),
+            translation_service: self.translation_service.clone(),
         }
     }
 }
@@ -607,13 +493,10 @@ pub async fn polish_translation(
         translated_text
     );
 
-    // Use LLM engine to polish
-    let router = state.engine_router.read().await;
-    let response = router
+    // Use service to polish
+    state
+        .translation_service
         .translate_primary(&prompt, &from_lang, &to_lang)
         .await
-        .map_err(|e| format!("Polish failed: {}", e))?;
-    drop(router);
-
-    Ok(response)
+        .map_err(|e| format!("Polish failed: {}", e))
 }

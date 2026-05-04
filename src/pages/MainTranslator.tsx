@@ -105,36 +105,8 @@ function MainTranslator() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   const [maskRevealed, setMaskRevealed] = useState(false);
-  const [displayedStreamText, setDisplayedStreamText] = useState("");
   const [deleteNewlines, setDeleteNewlines] = useState(false);
   const [bilingualMode, setBilingualMode] = useState(false);
-  const typewriterTimer = useRef<ReturnType<typeof setTimeout>>();
-
-  // Typewriter effect for streaming text
-  useEffect(() => {
-    if (isStreaming && streamingText) {
-      let idx = 0;
-      const chars = streamingText.split("");
-      setDisplayedStreamText("");
-
-      const typeNext = () => {
-        if (idx < chars.length) {
-          setDisplayedStreamText((prev) => prev + chars[idx]);
-          idx++;
-          typewriterTimer.current = setTimeout(typeNext, 20);
-        }
-      };
-      typeNext();
-    } else if (!isStreaming) {
-      setDisplayedStreamText("");
-    }
-
-    return () => {
-      if (typewriterTimer.current) {
-        clearTimeout(typewriterTimer.current);
-      }
-    };
-  }, [isStreaming, streamingText]);
 
   const handleInput = useCallback(
     (value: string) => {
@@ -503,7 +475,7 @@ function MainTranslator() {
             {/* Current Results */}
             {!embeddedMode && (
               loading || isStreaming ? (
-                isStreaming && displayedStreamText ? (
+                isStreaming && streamingText ? (
                   <div className="p-4">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-xs text-primary font-semibold uppercase">
@@ -511,7 +483,7 @@ function MainTranslator() {
                       </span>
                     </div>
                     <div className="text-sm leading-relaxed text-text-primary select-text">
-                      {displayedStreamText}
+                      {streamingText}
                       <span className="animate-pulse text-primary">|</span>
                     </div>
                   </div>
