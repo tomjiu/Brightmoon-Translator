@@ -22,10 +22,15 @@ pub mod subtitle;
 pub mod tts;
 
 use cache::TranslationCache;
+use capabilities::{
+    DefaultInputReplacement, DefaultSelectionTranslation, InputReplacement,
+    SelectionTranslation, TargetAppDetector, WindowsTargetAppDetector,
+};
 use config::AppConfig;
 use glossary::Glossary;
 use memory::{HistoryStore, WordBookStore};
 use metrics::MetricsCollector;
+use overlay::FollowController;
 use post_process::PostProcessor;
 use services::TranslationService;
 use std::sync::Arc;
@@ -34,7 +39,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, OnceCell as TokioOnceCell, RwLock};
 
 pub struct AppState {
     pub config: Arc<Mutex<AppConfig>>,
@@ -47,6 +52,13 @@ pub struct AppState {
     pub translation_service: Arc<TranslationService>,
     pub metrics: Arc<MetricsCollector>,
     pub selection_manager: Arc<selection::SelectionProviderManager>,
+    pub app_detector: Arc<dyn TargetAppDetector>,
+    /// Manages overlay position following (cursor / target bounds)
+    pub follow_controller: Arc<FollowController>,
+    /// Initialized in setup() after AppHandle is available
+    pub selection_translation: TokioOnceCell<Arc<dyn SelectionTranslation>>,
+    /// Initialized in setup() after AppHandle is available
+    pub input_replacement: TokioOnceCell<Arc<dyn InputReplacement>>,
 }
 
 pub fn run() {
@@ -74,6 +86,8 @@ pub fn run() {
     ));
 
     let selection_manager = Arc::new(selection::SelectionProviderManager::with_defaults());
+    let app_detector: Arc<dyn TargetAppDetector> = Arc::new(WindowsTargetAppDetector::new());
+    let follow_controller = Arc::new(FollowController::new());
 
     let state = AppState {
         config: config_arc,
@@ -86,6 +100,10 @@ pub fn run() {
         translation_service,
         metrics,
         selection_manager,
+        app_detector,
+        follow_controller,
+        selection_translation: TokioOnceCell::new(),
+        input_replacement: TokioOnceCell::new(),
     };
 
     tauri::Builder::default()
@@ -102,6 +120,34 @@ pub fn run() {
                     let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x as i32, y as i32)));
                     let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(w as u32, h as u32)));
                 }
+            }
+
+            // Initialize capability implementations (needs AppHandle)
+            {
+                let app_state = app.state::<AppState>();
+                let app_handle = app.handle().clone();
+
+                // Initialize the follow controller with the AppHandle
+                app_state.follow_controller.init(app_handle.clone());
+
+                let sel_translation: Arc<dyn SelectionTranslation> = Arc::new(
+                    DefaultSelectionTranslation::new(
+                        app_state.selection_manager.clone(),
+                        app_state.translation_service.clone(),
+                        app_state.config.clone(),
+                        app_handle,
+                        app_state.app_detector.clone(),
+                        app_state.follow_controller.clone(),
+                    ),
+                );
+                let inp_replacement: Arc<dyn InputReplacement> = Arc::new(
+                    DefaultInputReplacement::new(
+                        app_state.selection_manager.clone(),
+                        app_state.translation_service.clone(),
+                    ),
+                );
+                let _ = app_state.selection_translation.set(sel_translation);
+                let _ = app_state.input_replacement.set(inp_replacement);
             }
 
             // Create system tray menu
@@ -367,6 +413,10 @@ pub fn run() {
             commands::window::pin_overlay,
             commands::window::move_overlay,
             commands::window::resize_overlay,
+            commands::window::detect_foreground_app,
+            commands::window::set_overlay_follow_mode,
+            commands::window::refresh_overlay_position,
+            commands::window::stop_overlay_follow,
             commands::config_cmd::get_config,
             commands::config_cmd::save_config,
             commands::config_cmd::save_window_position,

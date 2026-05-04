@@ -242,7 +242,12 @@ pub async fn create_overlay(
 }
 
 #[command]
-pub async fn close_overlay(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn close_overlay(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    // Stop following before closing
+    state.follow_controller.stop().await;
     crate::overlay::window_manager::close_overlay_window(&app);
     Ok(())
 }
@@ -288,49 +293,24 @@ pub async fn translate_selection(
 }
 
 /// Unified selection-translate entry point.
-/// Uses SelectionProviderManager (UIA → clipboard fallback) to get text,
-/// translates via TranslationService, and shows overlay.
+/// Delegates to the SelectionTranslation capability which composes
+/// SelectionProviderManager -> TranslationService -> overlay.
 #[command]
 pub async fn trigger_selection_translate(
-    app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
     overlay_level: Option<u8>,
 ) -> Result<(), String> {
-    // Get selection via provider manager (UIA first, clipboard fallback)
-    let selection = state.selection_manager.get_selection().await
-        .ok_or_else(|| "No text selected".to_string())?;
+    let cap = state.selection_translation.get()
+        .ok_or_else(|| "SelectionTranslation capability not initialized".to_string())?;
 
-    let config = state.config.lock().await;
-    let from = config.default_from.clone();
-    let to = config.default_to.clone();
-    let config_level = config.overlay_level;
-    let dismiss_ms = config.overlay_auto_dismiss_ms;
-    drop(config);
+    let options = crate::capabilities::SelectionTranslateOptions {
+        from: None,
+        to: None,
+        overlay_level,
+        show_overlay: true,
+    };
 
-    let response = state.translation_service.translate(&selection.text, &from, &to).await.map_err(|e| e.to_string())?;
-
-    if let Some(first) = response.results.first() {
-        // Position overlay: prefer selection bounds, fall back to cursor
-        let (cursor_x, cursor_y) = get_cursor_position().await.unwrap_or((100.0, 100.0));
-        let pos = crate::overlay::positioner::calculate_position(
-            selection.bounds.as_ref(),
-            cursor_x,
-            cursor_y,
-        );
-
-        let level: crate::overlay::OverlayLevel = overlay_level.unwrap_or(config_level).into();
-        let content = crate::overlay::OverlayContent {
-            source: selection.text,
-            translated: first.text.clone(),
-            source_app: Some(selection.source_app),
-            window_title: Some(selection.window_title),
-        };
-        let html = crate::overlay::html_builder::build_html(&content, level, dismiss_ms);
-        crate::overlay::window_manager::create_overlay_window(
-            &app, &html, pos.x, pos.y, pos.width, pos.height, true,
-        )?;
-    }
-
+    cap.translate_selection(options).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -429,5 +409,49 @@ pub async fn move_window_to_cursor(app: tauri::AppHandle) -> Result<(), String> 
         let _ = window.show();
         let _ = window.set_focus();
     }
+    Ok(())
+}
+
+/// Detect the foreground application and return its context.
+/// Used by the frontend to understand what app the user is interacting with.
+#[command]
+pub async fn detect_foreground_app(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<Option<crate::capabilities::AppContext>, String> {
+    Ok(state.app_detector.detect().await)
+}
+
+/// Set the overlay follow mode.
+/// Modes: "cursor", "target_bounds", "none"
+#[command]
+pub async fn set_overlay_follow_mode(
+    state: tauri::State<'_, crate::AppState>,
+    mode: String,
+) -> Result<(), String> {
+    use crate::overlay::FollowMode;
+    let follow_mode = match mode.as_str() {
+        "cursor" => FollowMode::Cursor,
+        "target_bounds" | "target" => FollowMode::TargetBounds,
+        _ => FollowMode::None,
+    };
+    state.follow_controller.set_mode(follow_mode).await;
+    Ok(())
+}
+
+/// Refresh overlay position once (without starting continuous following).
+#[command]
+pub async fn refresh_overlay_position(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    state.follow_controller.refresh_once().await;
+    Ok(())
+}
+
+/// Stop overlay following (does not close the overlay).
+#[command]
+pub async fn stop_overlay_follow(
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    state.follow_controller.stop().await;
     Ok(())
 }

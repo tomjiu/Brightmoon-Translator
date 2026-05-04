@@ -1,9 +1,9 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Unified translation error type
 /// Replaces ad-hoc String errors with a structured enum
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "detail")]
 pub enum TranslationError {
     /// No translation engine available

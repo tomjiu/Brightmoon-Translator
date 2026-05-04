@@ -39,6 +39,22 @@ impl SelectionProviderManager {
         None
     }
 
+    /// Get the current selection, skipping providers whose names are in `exclude`.
+    /// Used for strategy dispatch: e.g., skip UIA for embedded apps where it won't work.
+    pub async fn get_selection_excluding(&self, exclude: &[&str]) -> Option<SelectionResult> {
+        for provider in &self.providers {
+            if exclude.contains(&provider.name()) {
+                continue;
+            }
+            if let Some(result) = provider.get_selection().await {
+                if !result.text.trim().is_empty() {
+                    return Some(result);
+                }
+            }
+        }
+        None
+    }
+
     /// List all registered providers (for diagnostics)
     pub fn list_providers(&self) -> Vec<(&'static str, u32)> {
         self.providers
