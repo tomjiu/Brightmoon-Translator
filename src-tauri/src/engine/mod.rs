@@ -13,6 +13,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Instant;
 
 /// A translation engine backed by an external plugin HTTP endpoint
 pub struct PluginEngine {
@@ -89,6 +90,28 @@ pub struct TranslateResponse {
     pub detected_language: Option<String>,
 }
 
+/// Engine routing strategy
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutingStrategy {
+    /// Use primary engine only, fail if it fails
+    PrimaryOnly,
+    /// Try primary, fallback to others on error
+    FallbackOnError,
+    /// Run all engines in parallel, return all results
+    ParallelCompare,
+    /// Prefer free engines, use paid only if all free fail
+    CostAware,
+    /// Use fastest engine based on historical latency
+    LatencyFirst,
+}
+
+impl Default for RoutingStrategy {
+    fn default() -> Self {
+        Self::FallbackOnError
+    }
+}
+
 #[async_trait]
 pub trait TranslationEngine: Send + Sync {
     async fn translate(&self, text: &str, from: &str, to: &str) -> anyhow::Result<String>;
@@ -98,6 +121,7 @@ pub trait TranslationEngine: Send + Sync {
 
 pub struct Router {
     engines: Vec<Arc<dyn TranslationEngine>>,
+    strategy: RoutingStrategy,
 }
 
 impl Router {
@@ -203,7 +227,10 @@ impl Router {
             }
         }
 
-        Self { engines }
+        Self {
+            engines,
+            strategy: config.routing_strategy.clone().unwrap_or_default(),
+        }
     }
 
     /// Rebuild engines list with new config (used when plugins change)
@@ -212,6 +239,72 @@ impl Router {
     }
 
     pub async fn translate_all(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
+        match self.strategy {
+            RoutingStrategy::PrimaryOnly => self.translate_primary_only(text, from, to).await,
+            RoutingStrategy::FallbackOnError => self.translate_with_fallback(text, from, to).await,
+            RoutingStrategy::ParallelCompare => self.translate_parallel_compare(text, from, to).await,
+            RoutingStrategy::CostAware => self.translate_cost_aware(text, from, to).await,
+            RoutingStrategy::LatencyFirst => self.translate_latency_first(text, from, to).await,
+        }
+    }
+
+    /// Strategy: Primary Only - use first engine only
+    async fn translate_primary_only(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
+        if let Some(engine) = self.engines.first() {
+            let name = engine.name().to_string();
+            match engine.translate(text, from, to).await {
+                Ok(translated) => TranslateResponse {
+                    results: vec![TranslationResult {
+                        engine: name,
+                        text: translated,
+                    }],
+                    detected_language: None,
+                },
+                Err(e) => {
+                    eprintln!("Primary engine failed: {}", e);
+                    TranslateResponse {
+                        results: vec![],
+                        detected_language: None,
+                    }
+                }
+            }
+        } else {
+            TranslateResponse {
+                results: vec![],
+                detected_language: None,
+            }
+        }
+    }
+
+    /// Strategy: Fallback on Error - try each engine until one succeeds
+    async fn translate_with_fallback(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
+        for engine in &self.engines {
+            let name = engine.name().to_string();
+            match engine.translate(text, from, to).await {
+                Ok(translated) => {
+                    return TranslateResponse {
+                        results: vec![TranslationResult {
+                            engine: name,
+                            text: translated,
+                        }],
+                        detected_language: None,
+                    };
+                }
+                Err(e) => {
+                    eprintln!("Engine {} failed: {}, trying next...", name, e);
+                    continue;
+                }
+            }
+        }
+
+        TranslateResponse {
+            results: vec![],
+            detected_language: None,
+        }
+    }
+
+    /// Strategy: Parallel Compare - run all engines, return all results
+    async fn translate_parallel_compare(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
         let mut handles = Vec::new();
 
         for engine in &self.engines {
@@ -246,6 +339,107 @@ impl Router {
 
         TranslateResponse {
             results,
+            detected_language: None,
+        }
+    }
+
+    /// Strategy: Cost Aware - prefer free engines (Google, Microsoft, Yandex, DeepLX)
+    async fn translate_cost_aware(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
+        let free_engines: Vec<&str> = vec!["Google", "Microsoft", "Yandex", "DeepLX"];
+
+        // Try free engines first
+        for engine in &self.engines {
+            if free_engines.contains(&engine.name()) {
+                let name = engine.name().to_string();
+                match engine.translate(text, from, to).await {
+                    Ok(translated) => {
+                        return TranslateResponse {
+                            results: vec![TranslationResult {
+                                engine: name,
+                                text: translated,
+                            }],
+                            detected_language: None,
+                        };
+                    }
+                    Err(e) => {
+                        eprintln!("Free engine {} failed: {}", name, e);
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Fallback to paid engines
+        for engine in &self.engines {
+            if !free_engines.contains(&engine.name()) {
+                let name = engine.name().to_string();
+                match engine.translate(text, from, to).await {
+                    Ok(translated) => {
+                        return TranslateResponse {
+                            results: vec![TranslationResult {
+                                engine: name,
+                                text: translated,
+                            }],
+                            detected_language: None,
+                        };
+                    }
+                    Err(e) => {
+                        eprintln!("Paid engine {} failed: {}", name, e);
+                        continue;
+                    }
+                }
+            }
+        }
+
+        TranslateResponse {
+            results: vec![],
+            detected_language: None,
+        }
+    }
+
+    /// Strategy: Latency First - run all in parallel, return first success
+    async fn translate_latency_first(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
+        let mut handles = Vec::new();
+
+        for engine in &self.engines {
+            let text = text.to_string();
+            let from = from.to_string();
+            let to = to.to_string();
+            let engine = Arc::clone(engine);
+
+            let handle = tokio::spawn(async move {
+                let start = Instant::now();
+                let name = engine.name().to_string();
+                match engine.translate(&text, &from, &to).await {
+                    Ok(translated) => {
+                        let elapsed = start.elapsed();
+                        Some(TranslationResult {
+                            engine: format!("{} ({}ms)", name, elapsed.as_millis()),
+                            text: translated,
+                        })
+                    }
+                    Err(e) => {
+                        eprintln!("Engine {} error: {}", name, e);
+                        None
+                    }
+                }
+            });
+
+            handles.push(handle);
+        }
+
+        // Return first successful result
+        for handle in handles {
+            if let Ok(Some(result)) = handle.await {
+                return TranslateResponse {
+                    results: vec![result],
+                    detected_language: None,
+                };
+            }
+        }
+
+        TranslateResponse {
+            results: vec![],
             detected_language: None,
         }
     }
