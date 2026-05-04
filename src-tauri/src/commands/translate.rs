@@ -159,185 +159,39 @@ pub async fn translate_selection_with_text(
     Ok(())
 }
 
+/// Get selected text via SelectionProviderManager, translate, and replace in foreground app.
+/// Uses the InputReplacement capability: selection → translate → clipboard paste.
+/// No frontend clipboard read needed — the capability handles everything.
 #[tauri::command]
 pub async fn replace_translate(
-    app: tauri::AppHandle,
     state: State<'_, AppState>,
-    text: String,
 ) -> Result<String, String> {
-    if text.trim().is_empty() {
-        return Err("Text is empty".to_string());
-    }
-
     let config = state.config.lock().await;
     let from = config.default_from.clone();
     let to = config.default_to.clone();
     drop(config);
 
-    // Use service for translation
-    let response = state
-        .translation_service
-        .translate_primary(&text, &from, &to)
+    let cap = state.input_replacement.get()
+        .ok_or_else(|| "InputReplacement capability not initialized".to_string())?;
+
+    let result = cap
+        .replace_translate(&from, &to)
         .await
         .map_err(|e| e.to_string())?;
 
-    // Emit event to frontend to simulate typing
-    let _ = app.emit("replace-typing", &response);
-
-    Ok(response)
+    Ok(result.replacement)
 }
 
+/// Replace text in the foreground application via the InputReplacement capability.
 #[tauri::command]
 pub async fn replace_text_in_app(
+    state: State<'_, AppState>,
     text: String,
 ) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::ffi::CString;
+    let cap = state.input_replacement.get()
+        .ok_or_else(|| "InputReplacement capability not initialized".to_string())?;
 
-        // Windows API declarations
-        #[repr(C)]
-        struct INPUT {
-            type_: u32,
-            union_data: [u8; 24], // sizeof(union) = max(sizeof(KEYBDINPUT), sizeof(MOUSEINPUT), sizeof(HARDWAREINPUT))
-        }
-
-        #[repr(C)]
-        struct KEYBDINPUT {
-            wVk: u16,
-            wScan: u16,
-            dwFlags: u32,
-            time: u32,
-            dwExtraInfo: usize,
-        }
-
-        const INPUT_KEYBOARD: u32 = 1;
-        const KEYEVENTF_KEYUP: u32 = 0x0002;
-        const KEYEVENTF_CTRL: u32 = 0x0000;
-        const VK_CONTROL: u16 = 0x11;
-        const VK_V: u16 = 0x56;
-
-        extern "system" {
-            fn SendInput(cInputs: u32, pInputs: *const INPUT, cbSize: i32) -> u32;
-            fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
-            fn CloseClipboard() -> i32;
-            fn EmptyClipboard() -> i32;
-            fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
-            fn GetClipboardData(uFormat: u32) -> *mut std::ffi::c_void;
-            fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut std::ffi::c_void;
-            fn GlobalLock(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
-            fn GlobalUnlock(hMem: *mut std::ffi::c_void) -> i32;
-            fn GlobalSize(hMem: *mut std::ffi::c_void) -> usize;
-        }
-
-        const CF_UNICODETEXT: u32 = 13;
-        const GMEM_MOVEABLE: u32 = 0x0002;
-
-        unsafe {
-            // Save current clipboard content
-            let saved_text = if OpenClipboard(std::ptr::null_mut()) != 0 {
-                let h_data = GetClipboardData(CF_UNICODETEXT);
-                let saved = if !h_data.is_null() {
-                    let p_data = GlobalLock(h_data);
-                    if !p_data.is_null() {
-                        let size = GlobalSize(h_data);
-                        let slice = std::slice::from_raw_parts(p_data as *const u8, size);
-                        let saved = slice.to_vec();
-                        GlobalUnlock(h_data);
-                        Some(saved)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-                CloseClipboard();
-                saved
-            } else {
-                None
-            };
-
-            // Set new clipboard content
-            if OpenClipboard(std::ptr::null_mut()) != 0 {
-                EmptyClipboard();
-
-                // Convert text to UTF-16
-                let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
-                let size = wide.len() * 2;
-
-                let h_mem = GlobalAlloc(GMEM_MOVEABLE, size);
-                if !h_mem.is_null() {
-                    let p_mem = GlobalLock(h_mem);
-                    if !p_mem.is_null() {
-                        std::ptr::copy_nonoverlapping(wide.as_ptr(), p_mem as *mut u16, wide.len());
-                        GlobalUnlock(h_mem);
-                        SetClipboardData(CF_UNICODETEXT, h_mem);
-                    }
-                }
-
-                CloseClipboard();
-            }
-
-            // Simulate Ctrl+V
-            fn make_input(vk: u16, flags: u32) -> INPUT {
-                let mut input = INPUT {
-                    type_: INPUT_KEYBOARD,
-                    union_data: [0u8; 24],
-                };
-                let ki = KEYBDINPUT {
-                    wVk: vk,
-                    wScan: 0,
-                    dwFlags: flags,
-                    time: 0,
-                    dwExtraInfo: 0,
-                };
-                unsafe {
-                    std::ptr::copy_nonoverlapping(
-                        &ki as *const _ as *const u8,
-                        input.union_data.as_mut_ptr(),
-                        std::mem::size_of::<KEYBDINPUT>(),
-                    );
-                }
-                input
-            }
-
-            let inputs = [
-                make_input(VK_CONTROL, 0),           // Ctrl down
-                make_input(VK_V, 0),                 // V down
-                make_input(VK_V, KEYEVENTF_KEYUP),   // V up
-                make_input(VK_CONTROL, KEYEVENTF_KEYUP), // Ctrl up
-            ];
-
-            SendInput(
-                inputs.len() as u32,
-                inputs.as_ptr(),
-                std::mem::size_of::<INPUT>() as i32,
-            );
-
-            // Small delay to ensure paste completes
-            std::thread::sleep(std::time::Duration::from_millis(100));
-
-            // Restore original clipboard
-            if let Some(saved) = saved_text {
-                if OpenClipboard(std::ptr::null_mut()) != 0 {
-                    EmptyClipboard();
-
-                    let h_mem = GlobalAlloc(GMEM_MOVEABLE, saved.len());
-                    if !h_mem.is_null() {
-                        let p_mem = GlobalLock(h_mem);
-                        if !p_mem.is_null() {
-                            std::ptr::copy_nonoverlapping(saved.as_ptr(), p_mem as *mut u8, saved.len());
-                            GlobalUnlock(h_mem);
-                            SetClipboardData(CF_UNICODETEXT, h_mem);
-                        }
-                    }
-
-                    CloseClipboard();
-                }
-            }
-        }
-    }
-
+    cap.replace_text(&text).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -447,6 +301,11 @@ impl Clone for AppState {
             translation_service: self.translation_service.clone(),
             metrics: self.metrics.clone(),
             selection_manager: self.selection_manager.clone(),
+            app_detector: self.app_detector.clone(),
+            follow_controller: self.follow_controller.clone(),
+            // OnceCell fields: create new empty cells for clones
+            selection_translation: tokio::sync::OnceCell::new(),
+            input_replacement: tokio::sync::OnceCell::new(),
         }
     }
 }

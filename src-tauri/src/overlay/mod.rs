@@ -1,7 +1,10 @@
+pub mod follow_controller;
 pub mod html_builder;
 pub mod interaction;
 pub mod positioner;
 pub mod window_manager;
+
+pub use follow_controller::{FollowController, FollowMode, TargetBounds};
 
 use serde::{Deserialize, Serialize};
 

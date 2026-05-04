@@ -205,6 +205,10 @@ fn default_overlay_auto_dismiss_ms() -> u64 {
     3000
 }
 
+fn default_overlay_follow_mode() -> String {
+    "none".to_string()
+}
+
 fn default_api_port() -> u16 {
     60828
 }
@@ -254,6 +258,10 @@ pub struct AppConfig {
     pub overlay_level: u8,
     #[serde(default = "default_overlay_auto_dismiss_ms")]
     pub overlay_auto_dismiss_ms: u64,
+    /// Overlay follow mode: "none", "cursor", "target_bounds"
+    /// Separate from window_follow_mode which controls main window behavior.
+    #[serde(default = "default_overlay_follow_mode")]
+    pub overlay_follow_mode: String,
 }
 
 impl Default for AppConfig {
@@ -303,6 +311,7 @@ impl Default for AppConfig {
             routing_strategy: None,
             overlay_level: 2,
             overlay_auto_dismiss_ms: 3000,
+            overlay_follow_mode: "none".to_string(),
         }
     }
 }

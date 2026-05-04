@@ -98,25 +98,11 @@ function App() {
       }
     });
 
-    // Listen for replace-typing events (replace translate feature)
-    const unlistenReplaceTyping = listen<string>("replace-typing", async (event) => {
-      try {
-        // Use the new replace_text_in_app command to paste text into the active application
-        await invoke("replace_text_in_app", { text: event.payload });
-      } catch (err) {
-        console.error("Failed to replace typing:", err);
-      }
-    });
-
     // Listen for replace-translate shortcut (Ctrl+Shift+R)
+    // Backend uses SelectionProviderManager to get selection, no frontend clipboard read needed
     const unlistenReplaceTranslate = listen("trigger-replace-translate", async () => {
       try {
-        // Read clipboard text (the selected text should be copied first)
-        const text = await navigator.clipboard.readText();
-        if (text && text.trim()) {
-          // Call replace_translate command
-          await invoke("replace_translate", { text: text.trim() });
-        }
+        await invoke("replace_translate");
       } catch (err) {
         console.error("Failed to replace translate:", err);
       }
@@ -156,7 +142,6 @@ function App() {
       unlistenNav.then((fn) => fn());
       unlistenTranslateSelection.then((fn) => fn());
       unlistenAutoCopy.then((fn) => fn());
-      unlistenReplaceTyping.then((fn) => fn());
       unlistenReplaceTranslate.then((fn) => fn());
     };
   }, [setSourceText]);
