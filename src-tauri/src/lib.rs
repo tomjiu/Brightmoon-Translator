@@ -338,6 +338,7 @@ pub fn run() {
             commands::window::close_overlay,
             commands::window::hide_main_window,
             commands::window::show_main_window,
+            commands::window::get_selected_text,
             commands::window::translate_selection,
             commands::window::get_cursor_position,
             commands::window::toggle_always_on_top,
