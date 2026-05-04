@@ -442,6 +442,7 @@ impl Clone for AppState {
             glossary: self.glossary.clone(),
             translation_service: self.translation_service.clone(),
             metrics: self.metrics.clone(),
+            selection_manager: self.selection_manager.clone(),
         }
     }
 }

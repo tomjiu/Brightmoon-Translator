@@ -211,228 +211,10 @@ pub async fn get_cursor_position() -> Result<(f64, f64), String> {
     Ok((100.0, 100.0))
 }
 
-/// Overlay display level
-/// L1: Minimal - translated text only, auto-dismiss
-/// L2: Standard - source + translated, copy button
-/// L3: Full - source + translated, all controls (copy, pin, click-through, close)
-fn create_overlay_html(source: &str, translated: &str, level: u8, dismiss_ms: u64) -> String {
-    match level {
-        1 => create_l1_overlay(translated, dismiss_ms),
-        2 => create_l2_overlay(source, translated),
-        _ => create_l3_overlay(source, translated),
-    }
-}
-
-/// L1: Minimal overlay - just translated text, auto-dismiss after dismiss_ms
-fn create_l1_overlay(translated: &str, dismiss_ms: u64) -> String {
-    let escaped = html_escape::encode_text(translated);
-    format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-* {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }}
-.card {{
-  background: rgba(26, 27, 38, 0.92);
-  border: 1px solid rgba(59, 66, 97, 0.6);
-  border-radius: 8px;
-  padding: 10px 14px;
-  color: #c0caf5;
-  font-size: 13px;
-  line-height: 1.5;
-  user-select: text;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-  animation: fadeIn 0.15s ease-out;
-}}
-@keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(-4px); }} to {{ opacity: 1; transform: translateY(0); }} }}
-</style>
-</head>
-<body>
-<div class="card">{escaped}</div>
-<script>
-// Auto-dismiss after configured timeout
-setTimeout(() => window.__TAURI__?.core.invoke('close_overlay'), {dismiss_ms});
-// Click to dismiss
-document.addEventListener('click', () => window.__TAURI__?.core.invoke('close_overlay'));
-document.addEventListener('keydown', e => {{ if (e.key === 'Escape') window.__TAURI__?.core.invoke('close_overlay'); }});
-</script>
-</body>
-</html>"#
-    )
-}
-
-/// L2: Standard overlay - source + translated, copy button
-fn create_l2_overlay(source: &str, translated: &str) -> String {
-    let src_escaped = html_escape::encode_text(source);
-    let trans_escaped = html_escape::encode_text(translated);
-    format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-* {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }}
-.card {{
-  background: rgba(26, 27, 38, 0.95);
-  border: 1px solid rgba(59, 66, 97, 0.8);
-  border-radius: 10px;
-  padding: 10px 14px;
-  color: #c0caf5;
-  font-size: 13px;
-  line-height: 1.5;
-  user-select: text;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
-  animation: fadeIn 0.15s ease-out;
-  max-width: 400px;
-}}
-.source {{ color: #565f89; font-size: 12px; margin-bottom: 6px; max-height: 60px; overflow: hidden; text-overflow: ellipsis; }}
-.translated {{ color: #c0caf5; }}
-.actions {{ display: flex; gap: 4px; margin-top: 8px; justify-content: flex-end; }}
-.btn {{
-  background: rgba(59, 66, 97, 0.5);
-  border: 1px solid rgba(59, 66, 97, 0.8);
-  color: #a9b1d6;
-  border-radius: 6px;
-  padding: 3px 10px;
-  font-size: 11px;
-  cursor: pointer;
-}}
-.btn:hover {{ background: rgba(122, 162, 247, 0.2); border-color: #7aa2f7; }}
-.btn.done {{ background: rgba(158, 206, 106, 0.2); border-color: #9ece6a; color: #9ece6a; }}
-@keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(-4px); }} to {{ opacity: 1; transform: translateY(0); }} }}
-</style>
-</head>
-<body>
-<div class="card">
-  <div class="source">{src_escaped}</div>
-  <div class="translated">{trans_escaped}</div>
-  <div class="actions">
-    <button class="btn" id="copyBtn">Copy</button>
-    <button class="btn" id="closeBtn">Close</button>
-  </div>
-</div>
-<script>
-const trans = document.querySelector('.translated').textContent;
-document.getElementById('copyBtn').onclick = async () => {{
-  await navigator.clipboard.writeText(trans);
-  const btn = document.getElementById('copyBtn');
-  btn.textContent = 'Copied!'; btn.classList.add('done');
-  setTimeout(() => {{ btn.textContent = 'Copy'; btn.classList.remove('done'); }}, 1500);
-}};
-document.getElementById('closeBtn').onclick = () => window.__TAURI__?.core.invoke('close_overlay');
-document.addEventListener('keydown', e => {{ if (e.key === 'Escape') window.__TAURI__?.core.invoke('close_overlay'); }});
-</script>
-</body>
-</html>"#
-    )
-}
-
-/// L3: Full overlay - source + translated, all controls
-fn create_l3_overlay(source: &str, translated: &str) -> String {
-    let src_escaped = html_escape::encode_text(source);
-    let trans_escaped = html_escape::encode_text(translated);
-    format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-* {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }}
-.card {{
-  background: rgba(26, 27, 38, 0.95);
-  border: 1px solid rgba(59, 66, 97, 0.8);
-  border-radius: 10px;
-  padding: 12px 16px;
-  color: #c0caf5;
-  font-size: 14px;
-  line-height: 1.6;
-  user-select: text;
-  pointer-events: auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  animation: fadeIn 0.15s ease-out;
-  max-width: 450px;
-}}
-.header {{
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(59, 66, 97, 0.5);
-}}
-.title {{ font-size: 11px; color: #7aa2f7; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }}
-.actions {{ display: flex; gap: 4px; }}
-.btn {{
-  background: rgba(59, 66, 97, 0.5);
-  border: 1px solid rgba(59, 66, 97, 0.8);
-  color: #a9b1d6;
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}}
-.btn:hover {{ background: rgba(122, 162, 247, 0.2); border-color: #7aa2f7; color: #c0caf5; }}
-.btn-close:hover {{ background: rgba(247, 118, 142, 0.2); border-color: #f7768e; color: #f7768e; }}
-.btn-copy.done {{ background: rgba(158, 206, 106, 0.2); border-color: #9ece6a; color: #9ece6a; }}
-.btn-pin.active {{ background: rgba(249, 226, 175, 0.2); border-color: #f9e2af; color: #f9e2af; }}
-.btn-passthrough.active {{ background: rgba(137, 180, 250, 0.2); border-color: #89b4fa; color: #89b4fa; }}
-.source {{ color: #565f89; font-size: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(59, 66, 97, 0.3); }}
-.translated {{ white-space: pre-wrap; word-break: break-word; }}
-@keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(-4px); }} to {{ opacity: 1; transform: translateY(0); }} }}
-</style>
-</head>
-<body>
-<div class="card">
-  <div class="header">
-    <span class="title">Translation</span>
-    <div class="actions">
-      <button class="btn btn-pin" id="pinBtn" title="Pin">📌</button>
-      <button class="btn btn-passthrough" id="passthroughBtn" title="Click Through">👆</button>
-      <button class="btn btn-copy" id="copyBtn">Copy</button>
-      <button class="btn btn-close" id="closeBtn">Close</button>
-    </div>
-  </div>
-  <div class="source">{src_escaped}</div>
-  <div class="translated">{trans_escaped}</div>
-</div>
-<script>
-const trans = document.querySelector('.translated').textContent;
-document.getElementById('copyBtn').onclick = async () => {{
-  await navigator.clipboard.writeText(trans);
-  const btn = document.getElementById('copyBtn');
-  btn.textContent = 'Copied!'; btn.classList.add('done');
-  setTimeout(() => {{ btn.textContent = 'Copy'; btn.classList.remove('done'); }}, 1500);
-}};
-const pinBtn = document.getElementById('pinBtn');
-pinBtn.classList.add('active'); // starts pinned
-pinBtn.onclick = async () => {{
-  const pinned = await window.__TAURI__?.core.invoke('pin_overlay');
-  if (pinned) {{ pinBtn.classList.add('active'); }}
-  else {{ pinBtn.classList.remove('active'); }}
-}};
-const passthroughBtn = document.getElementById('passthroughBtn');
-passthroughBtn.onclick = async () => {{
-  const active = !passthroughBtn.classList.contains('active');
-  await window.__TAURI__?.core.invoke('set_overlay_click_through', {{ ignore: active }});
-  if (active) {{ passthroughBtn.classList.add('active'); }}
-  else {{ passthroughBtn.classList.remove('active'); }}
-}};
-// Listen for click-through disabled event from global shortcut
-window.__TAURI__?.event.listen('overlay-click-through-off', () => {{
-  passthroughBtn.classList.remove('active');
-}});
-document.getElementById('closeBtn').onclick = () => window.__TAURI__?.core.invoke('close_overlay');
-document.addEventListener('keydown', e => {{ if (e.key === 'Escape') window.__TAURI__?.core.invoke('close_overlay'); }});
-</script>
-</body>
-</html>"#
-    )
-}
+// Overlay HTML generation is now in crate::overlay::html_builder
+// Overlay window management is now in crate::overlay::window_manager
+// Overlay positioning is now in crate::overlay::positioner
+// Overlay interaction (pin, click-through) is now in crate::overlay::interaction
 
 #[command]
 pub async fn create_overlay(
@@ -444,40 +226,24 @@ pub async fn create_overlay(
     text: String,
     show_controls: Option<bool>,
 ) -> Result<(), String> {
-    use tauri::WebviewUrl;
-    use tauri::WebviewWindowBuilder;
-
-    // Close existing overlay if any
-    if let Some(window) = app.get_webview_window("overlay") {
-        let _ = window.close();
-    }
-
-    let level = if show_controls.unwrap_or(false) { 3 } else { 1 };
-    let html = create_overlay_html("", &text, level, 3000);
-    let encoded = urlencoding::encode(&html);
-    let overlay_url = format!("data:text/html,{}", encoded);
-
-    WebviewWindowBuilder::new(&app, "overlay", WebviewUrl::App(overlay_url.into()))
-        .title("Translation")
-        .inner_size(width.max(200.0), height.max(50.0))
-        .position(x, y)
-        .decorations(false)
-        .transparent(true)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .resizable(false)
-        .focused(true)
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
+    let level = if show_controls.unwrap_or(false) {
+        crate::overlay::OverlayLevel::Full
+    } else {
+        crate::overlay::OverlayLevel::Minimal
+    };
+    let content = crate::overlay::OverlayContent {
+        source: String::new(),
+        translated: text,
+        source_app: None,
+        window_title: None,
+    };
+    let html = crate::overlay::html_builder::build_html(&content, level, 3000);
+    crate::overlay::window_manager::create_overlay_window(&app, &html, x, y, width, height, true)
 }
 
 #[command]
 pub async fn close_overlay(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("overlay") {
-        window.close().map_err(|e| e.to_string())?;
-    }
+    crate::overlay::window_manager::close_overlay_window(&app);
     Ok(())
 }
 
@@ -492,7 +258,6 @@ pub async fn translate_selection(
         return Err("Text is empty".to_string());
     }
 
-    // Get config for target language and overlay settings
     let config = state.config.lock().await;
     let from = config.default_from.clone();
     let to = config.default_to.clone();
@@ -500,42 +265,70 @@ pub async fn translate_selection(
     let dismiss_ms = config.overlay_auto_dismiss_ms;
     drop(config);
 
-    // Use TranslationService for the full pipeline (glossary, blacklist, cache, history, metrics)
     let response = state.translation_service.translate(&text, &from, &to).await?;
 
     if let Some(first) = response.results.first() {
-        // Get mouse position for overlay placement
         let (cursor_x, cursor_y) = get_cursor_position().await.unwrap_or((100.0, 100.0));
-        let overlay_x = cursor_x + 10.0;
-        let overlay_y = cursor_y + 10.0;
-        let overlay_width = 350.0_f64;
-        let overlay_height = 200.0_f64;
+        let pos = crate::overlay::OverlayPosition::at_cursor(cursor_x, cursor_y);
 
-        // Close existing overlay
-        if let Some(window) = app.get_webview_window("overlay") {
-            let _ = window.close();
-        }
+        let level: crate::overlay::OverlayLevel = overlay_level.unwrap_or(config_level).into();
+        let content = crate::overlay::OverlayContent {
+            source: text,
+            translated: first.text.clone(),
+            source_app: None,
+            window_title: None,
+        };
+        let html = crate::overlay::html_builder::build_html(&content, level, dismiss_ms);
+        crate::overlay::window_manager::create_overlay_window(
+            &app, &html, pos.x, pos.y, pos.width, pos.height, true,
+        )?;
+    }
 
-        let level = overlay_level.unwrap_or(config_level);
-        let html = create_overlay_html(&text, &first.text, level, dismiss_ms);
-        let encoded = urlencoding::encode(&html);
-        let overlay_url = format!("data:text/html,{}", encoded);
+    Ok(())
+}
 
-        use tauri::WebviewUrl;
-        use tauri::WebviewWindowBuilder;
+/// Unified selection-translate entry point.
+/// Uses SelectionProviderManager (UIA → clipboard fallback) to get text,
+/// translates via TranslationService, and shows overlay.
+#[command]
+pub async fn trigger_selection_translate(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+    overlay_level: Option<u8>,
+) -> Result<(), String> {
+    // Get selection via provider manager (UIA first, clipboard fallback)
+    let selection = state.selection_manager.get_selection().await
+        .ok_or_else(|| "No text selected".to_string())?;
 
-        WebviewWindowBuilder::new(&app, "overlay", WebviewUrl::App(overlay_url.into()))
-            .title("Translation")
-            .inner_size(overlay_width.max(200.0), overlay_height.max(50.0))
-            .position(overlay_x, overlay_y)
-            .decorations(false)
-            .transparent(true)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .resizable(false)
-            .focused(true)
-            .build()
-            .map_err(|e| e.to_string())?;
+    let config = state.config.lock().await;
+    let from = config.default_from.clone();
+    let to = config.default_to.clone();
+    let config_level = config.overlay_level;
+    let dismiss_ms = config.overlay_auto_dismiss_ms;
+    drop(config);
+
+    let response = state.translation_service.translate(&selection.text, &from, &to).await?;
+
+    if let Some(first) = response.results.first() {
+        // Position overlay: prefer selection bounds, fall back to cursor
+        let (cursor_x, cursor_y) = get_cursor_position().await.unwrap_or((100.0, 100.0));
+        let pos = crate::overlay::positioner::calculate_position(
+            selection.bounds.as_ref(),
+            cursor_x,
+            cursor_y,
+        );
+
+        let level: crate::overlay::OverlayLevel = overlay_level.unwrap_or(config_level).into();
+        let content = crate::overlay::OverlayContent {
+            source: selection.text,
+            translated: first.text.clone(),
+            source_app: Some(selection.source_app),
+            window_title: Some(selection.window_title),
+        };
+        let html = crate::overlay::html_builder::build_html(&content, level, dismiss_ms);
+        crate::overlay::window_manager::create_overlay_window(
+            &app, &html, pos.x, pos.y, pos.width, pos.height, true,
+        )?;
     }
 
     Ok(())
@@ -543,41 +336,23 @@ pub async fn translate_selection(
 
 #[command]
 pub async fn set_overlay_click_through(app: tauri::AppHandle, ignore: bool) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("overlay") {
-        window.set_ignore_cursor_events(ignore).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    crate::overlay::interaction::set_click_through(&app, ignore)
 }
 
 #[command]
 pub async fn pin_overlay(app: tauri::AppHandle) -> Result<bool, String> {
-    static OVERLAY_PINNED: AtomicBool = AtomicBool::new(true); // overlay starts pinned (always_on_top)
-    if let Some(window) = app.get_webview_window("overlay") {
-        let current = OVERLAY_PINNED.load(Ordering::Relaxed);
-        let new_value = !current;
-        window.set_always_on_top(new_value).map_err(|e| e.to_string())?;
-        OVERLAY_PINNED.store(new_value, Ordering::Relaxed);
-        Ok(new_value)
-    } else {
-        Err("Overlay not found".to_string())
-    }
+    crate::overlay::interaction::toggle_pin(&app)
 }
 
 #[command]
 pub async fn move_overlay(app: tauri::AppHandle, x: f64, y: f64) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("overlay") {
-        window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x as i32, y as i32)))
-            .map_err(|e| e.to_string())?;
-    }
+    crate::overlay::window_manager::move_overlay_window(&app, x, y);
     Ok(())
 }
 
 #[command]
 pub async fn resize_overlay(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("overlay") {
-        window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(width as u32, height as u32)))
-            .map_err(|e| e.to_string())?;
-    }
+    crate::overlay::window_manager::resize_overlay_window(&app, width, height);
     Ok(())
 }
 

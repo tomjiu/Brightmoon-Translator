@@ -42,6 +42,15 @@ regex = "1"
 md5 = "0.7"
 rand = "0.8"
 
+[dependencies.windows]
+version = "0.58"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_UI_Accessibility",
+    "Win32_UI_WindowsAndMessaging",
+]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
