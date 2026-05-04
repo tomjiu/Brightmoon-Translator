@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <div class="header">
+      <h1>Moon Translator</h1>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="translate">翻译</button>
+      <button class="tab" data-tab="settings">设置</button>
+    </div>
+
+    <div class="tab-content" id="translate-tab">
+      <div class="input-group">
+        <select id="from-lang">
+          <option value="auto">自动检测</option>
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="ko">한국어</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+          <option value="es">Español</option>
+          <option value="ru">Русский</option>
+        </select>
+        <button id="swap-btn" title="交换语言">⇄</button>
+        <select id="to-lang">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="ko">한국어</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+          <option value="es">Español</option>
+          <option value="ru">Русский</option>
+        </select>
+      </div>
+
+      <textarea id="source-text" placeholder="输入要翻译的文本..."></textarea>
+
+      <button id="translate-btn" class="primary-btn">翻译</button>
+
+      <div id="result-container" style="display:none">
+        <div class="result-header">
+          <span id="engine-name"></span>
+          <button id="copy-btn" class="small-btn">复制</button>
+        </div>
+        <div id="result-text"></div>
+      </div>
+
+      <div id="error-container" style="display:none">
+        <div id="error-text"></div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="settings-tab" style="display:none">
+      <div class="setting-group">
+        <label>翻译引擎</label>
+        <select id="engine-select">
+          <option value="llm">LLM (推荐)</option>
+          <option value="google">Google翻译</option>
+        </select>
+      </div>
+
+      <div id="llm-settings">
+        <div class="setting-group">
+          <label>服务商</label>
+          <select id="llm-provider">
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai">OpenAI</option>
+            <option value="custom">自定义</option>
+          </select>
+        </div>
+
+        <div class="setting-group">
+          <label>API Key</label>
+          <input type="password" id="api-key" placeholder="sk-...">
+        </div>
+
+        <div class="setting-group" id="base-url-group" style="display:none">
+          <label>Base URL</label>
+          <input type="text" id="base-url" placeholder="https://api.example.com/v1">
+        </div>
+
+        <div class="setting-group">
+          <label>模型</label>
+          <input type="text" id="model" placeholder="deepseek-chat">
+        </div>
+      </div>
+
+      <button id="save-btn" class="primary-btn">保存设置</button>
+      <div id="save-status"></div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
