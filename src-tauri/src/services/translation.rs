@@ -4,7 +4,9 @@ use crate::config::AppConfig;
 use crate::engine::{llm::TranslationContext, Router, TranslateResponse, TranslationResult};
 use crate::glossary::Glossary;
 use crate::memory::HistoryStore;
+use crate::metrics::MetricsCollector;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
 
 /// Result for a single line in batch translation
@@ -23,6 +25,7 @@ pub struct TranslationService {
     history: Arc<Mutex<HistoryStore>>,
     cache: Arc<TranslationCache>,
     engine_router: Arc<RwLock<Router>>,
+    metrics: Arc<MetricsCollector>,
 }
 
 impl TranslationService {
@@ -32,6 +35,7 @@ impl TranslationService {
         history: Arc<Mutex<HistoryStore>>,
         cache: Arc<TranslationCache>,
         engine_router: Arc<RwLock<Router>>,
+        metrics: Arc<MetricsCollector>,
     ) -> Self {
         Self {
             config,
@@ -39,6 +43,7 @@ impl TranslationService {
             history,
             cache,
             engine_router,
+            metrics,
         }
     }
 
@@ -66,6 +71,7 @@ impl TranslationService {
 
         // Check cache first
         if let Some(cached) = self.cache.get(&protected_text, from, to).await {
+            self.metrics.record_cache_hit().await;
             let results = cached
                 .results
                 .into_iter()
@@ -86,11 +92,24 @@ impl TranslationService {
                 detected_language: None,
             });
         }
+        self.metrics.record_cache_miss().await;
 
-        // Call translation engines
+        // Call translation engines with timing
+        let start = Instant::now();
         let router = self.engine_router.read().await;
         let mut response = router.translate_all(&protected_text, from, to).await;
+        let elapsed_ms = start.elapsed().as_millis() as u64;
         drop(router);
+
+        // Record engine latency for each result
+        for result in &response.results {
+            self.metrics.record_engine_latency(&result.engine, elapsed_ms).await;
+        }
+
+        // Record failures for empty results
+        if response.results.is_empty() {
+            self.metrics.record_failure("all", "No engine returned a result").await;
+        }
 
         // Restore blacklist words in results
         if has_blacklist {
@@ -138,12 +157,15 @@ impl TranslationService {
         // Check cache first
         if let Some(cached) = self.cache.get(&processed_text, from, to).await {
             if let Some((_, cached_text)) = cached.results.first() {
+                self.metrics.record_cache_hit().await;
                 let _ = tx.send(cached_text.clone()).await;
                 return Ok(cached_text.clone());
             }
         }
+        self.metrics.record_cache_miss().await;
 
         // Stream translation using primary engine
+        let start = Instant::now();
         let router = self.engine_router.read().await;
         let result = router
             .translate_stream(&processed_text, from, to, tx)
@@ -152,6 +174,9 @@ impl TranslationService {
 
         match result {
             Ok(full_text) => {
+                let elapsed_ms = start.elapsed().as_millis() as u64;
+                self.metrics.record_engine_latency("LLM", elapsed_ms).await;
+
                 // Cache the result
                 if !full_text.is_empty() {
                     self.cache
@@ -170,7 +195,10 @@ impl TranslationService {
 
                 Ok(full_text)
             }
-            Err(e) => Err(format!("Streaming failed: {}", e)),
+            Err(e) => {
+                self.metrics.record_failure("LLM", &e.to_string()).await;
+                Err(format!("Streaming failed: {}", e))
+            }
         }
     }
 
@@ -188,11 +216,24 @@ impl TranslationService {
         glossary.apply_glossary(&mut processed_text, &lang_pair);
         drop(glossary);
 
+        let start = Instant::now();
         let router = self.engine_router.read().await;
-        router
+        let result = router
             .translate_primary(&processed_text, from, to)
-            .await
-            .map_err(|e| e.to_string())
+            .await;
+        drop(router);
+
+        match result {
+            Ok(translated) => {
+                let elapsed_ms = start.elapsed().as_millis() as u64;
+                self.metrics.record_engine_latency("primary", elapsed_ms).await;
+                Ok(translated)
+            }
+            Err(e) => {
+                self.metrics.record_failure("primary", &e.to_string()).await;
+                Err(e.to_string())
+            }
+        }
     }
 
     /// Translate with context for document consistency

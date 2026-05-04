@@ -250,19 +250,8 @@ pub async fn translate_selection(
     let to = config.default_to.clone();
     drop(config);
 
-    // Apply glossary
-    let glossary = state.glossary.lock().await;
-    let mut processed_text = text.clone();
-    let lang_pair = format!("{}-{}", from, to);
-    glossary.apply_glossary(&mut processed_text, &lang_pair);
-    drop(glossary);
-
-    // Translate
-    let router = state.engine_router.read().await;
-    let response = router
-        .translate_all(&processed_text, &from, &to)
-        .await;
-    drop(router);
+    // Use TranslationService for the full pipeline (glossary, blacklist, cache, history, metrics)
+    let response = state.translation_service.translate(&text, &from, &to).await?;
 
     if let Some(first) = response.results.first() {
         // Get mouse position for overlay placement
@@ -296,10 +285,6 @@ pub async fn translate_selection(
             .focused(true)
             .build()
             .map_err(|e| e.to_string())?;
-
-        // Save to history
-        let history = state.history.lock().await;
-        history.add(&text, &first.text, &from, &to, &first.engine);
     }
 
     Ok(())
