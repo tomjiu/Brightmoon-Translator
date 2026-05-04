@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Icon Generator</title>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+    function generateIcon(size) {
+      const canvas = document.getElementById('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      // Background circle
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#667eea');
+      gradient.addColorStop(1, '#764ba2');
+
+      ctx.beginPath();
+      ctx.arc(size/2, size/2, size*0.46, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      // Main text "译"
+      ctx.fillStyle = 'white';
+      ctx.font = `bold ${size * 0.38}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('译', size/2, size/2 + size*0.04);
+
+      // Small green circle
+      const cx = size * 0.75;
+      const cy = size * 0.25;
+      const r = size * 0.15;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#48bb78';
+      ctx.fill();
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = size * 0.02;
+      ctx.stroke();
+
+      // "M" in small circle
+      ctx.fillStyle = 'white';
+      ctx.font = `bold ${size * 0.13}px Arial`;
+      ctx.fillText('M', cx, cy + size*0.02);
+
+      return canvas.toDataURL('image/png');
+    }
+
+    // Generate icons
+    [16, 48, 96].forEach(size => {
+      const dataUrl = generateIcon(size);
+      const link = document.createElement('a');
+      link.download = `icon-${size}.png`;
+      link.href = dataUrl;
+      link.click();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Moon Translator</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">🌙 Moon Translator</div>
+      <div class="version">v1.0.0</div>
+    </div>
+
+    <!-- Quick Translate -->
+    <div class="section">
+      <div class="input-group">
+        <textarea id="sourceText" placeholder="输入要翻译的文本..." rows="3"></textarea>
+        <div class="input-actions">
+          <select id="sourceLang">
+            <option value="auto">自动检测</option>
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+            <option value="es">Español</option>
+            <option value="ru">Русский</option>
+          </select>
+          <button id="swapLang" class="icon-btn" title="交换语言">⇄</button>
+          <select id="targetLang">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+            <option value="es">Español</option>
+            <option value="ru">Русский</option>
+          </select>
+        </div>
+      </div>
+      <button id="translateBtn" class="btn-primary">翻译</button>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="results" style="display:none">
+      <div id="resultsList"></div>
+      <button id="copyBtn" class="btn-secondary">复制结果</button>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="loading" style="display:none">
+      <div class="spinner"></div>
+      <span>翻译中...</span>
+    </div>
+
+    <!-- Error -->
+    <div id="error" class="error" style="display:none"></div>
+
+    <!-- Divider -->
+    <div class="divider"></div>
+
+    <!-- Settings Toggle -->
+    <button id="toggleSettings" class="btn-text">⚙️ 设置</button>
+
+    <!-- Settings Panel -->
+    <div id="settingsPanel" class="settings" style="display:none">
+      <!-- Engines -->
+      <div class="setting-group">
+        <label class="setting-label">翻译引擎</label>
+        <div class="checkbox-group">
+          <label class="checkbox">
+            <input type="checkbox" id="engineGoogle" checked>
+            <span>Google 翻译</span>
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" id="engineYoudao" checked>
+            <span>有道翻译</span>
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" id="engineMicrosoft">
+            <span>Microsoft 翻译</span>
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" id="engineLlm">
+            <span>LLM 翻译</span>
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" id="engineDeepl">
+            <span>DeepL 翻译</span>
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" id="engineDeeplx">
+            <span>DeepLX (免费)</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- LLM Settings -->
+      <div id="llmSettings" class="setting-group" style="display:none">
+        <label class="setting-label">LLM 设置</label>
+        <div class="input-field">
+          <label>Provider</label>
+          <select id="llmProvider">
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai">OpenAI</option>
+            <option value="custom">自定义</option>
+          </select>
+        </div>
+        <div class="input-field">
+          <label>API Key</label>
+          <input type="password" id="llmApiKey" placeholder="sk-...">
+        </div>
+        <div class="input-field">
+          <label>Base URL</label>
+          <input type="text" id="llmBaseUrl" placeholder="https://api.deepseek.com/v1">
+        </div>
+        <div class="input-field">
+          <label>Model</label>
+          <input type="text" id="llmModel" placeholder="deepseek-chat">
+        </div>
+      </div>
+
+      <!-- DeepL Settings -->
+      <div id="deeplSettings" class="setting-group" style="display:none">
+        <label class="setting-label">DeepL 设置</label>
+        <div class="input-field">
+          <label>API Key</label>
+          <input type="password" id="deeplApiKey" placeholder="DeepL API Key">
+        </div>
+        <label class="checkbox">
+          <input type="checkbox" id="deeplPro">
+          <span>使用 DeepL Pro API</span>
+        </label>
+      </div>
+
+      <!-- DeepLX Settings -->
+      <div id="deeplxSettings" class="setting-group" style="display:none">
+        <label class="setting-label">DeepLX 设置</label>
+        <p class="hint">内置 DeepL 免费接口，无需额外服务</p>
+        <div class="input-field">
+          <label>API Key (可选)</label>
+          <input type="password" id="deeplxApiKey" placeholder="留空使用免费模式">
+        </div>
+        <label class="checkbox">
+          <input type="checkbox" id="deeplxPro">
+          <span>使用 DeepL Pro API</span>
+        </label>
+      </div>
+
+      <button id="saveSettings" class="btn-primary">保存设置</button>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <span>Alt+T 划词翻译</span>
+      <a href="#" id="openFullApp">打开完整应用</a>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

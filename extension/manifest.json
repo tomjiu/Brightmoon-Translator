@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "Moon Translator",
+  "version": "1.0.0",
+  "description": "强大的翻译插件 - 划词翻译 / 整页翻译 / 多引擎支持",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://translate.googleapis.com/*",
+    "https://api.openai.com/*",
+    "https://api.deepseek.com/*",
+    "https://dict-trans.youdao.com/*",
+    "https://fanyi.youdao.com/*",
+    "https://api-free.deepl.com/*",
+    "https://api.deepl.com/*",
+    "https://edge.microsoft.com/*",
+    "https://api.cognitive.microsofttranslator.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "scripts": ["background/service-worker.js"]
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/selector.js", "content/page-translator.js"],
+      "css": ["content/selector.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png"
+  },
+  "commands": {
+    "translate-selection": {
+      "suggested_key": {
+        "default": "Alt+T"
+      },
+      "description": "翻译选中文本"
+    }
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "moontranslator@extension",
+      "strict_min_version": "109.0"
+    }
+  }
+}

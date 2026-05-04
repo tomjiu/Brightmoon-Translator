@@ -1,0 +1,32 @@
+{
+  "manifest_version": 2,
+  "name": "Moon Translator",
+  "version": "0.1.0",
+  "description": "强大的翻译插件 - 划词翻译 + 整页翻译",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "contextMenus"
+  ],
+  "background": {
+    "scripts": ["background/service-worker.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/selector.js", "content/translator.js"],
+      "css": ["content/content.css"]
+    }
+  ],
+  "browser_action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "48": "icons/icon-48.png",
+      "96": "icons/icon-96.png"
+    }
+  },
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png"
+  }
+}

@@ -1,0 +1,16 @@
+pub mod translate;
+pub mod ocr;
+pub mod window;
+pub mod config_cmd;
+pub mod history_cmd;
+pub mod cache_cmd;
+pub mod capture;
+pub mod glossary_cmd;
+pub mod tools_cmd;
+pub mod tts_cmd;
+pub mod wordbook_cmd;
+pub mod pdf_cmd;
+pub mod epub_cmd;
+pub mod subtitle_cmd;
+pub mod post_process_cmd;
+pub mod plugin_cmd;
