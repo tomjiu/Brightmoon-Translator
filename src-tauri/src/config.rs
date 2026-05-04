@@ -210,6 +210,12 @@ pub struct HotkeyConfig {
     pub translate_selection: String,
     #[serde(default = "default_replace_hotkey")]
     pub replace_translate: String,
+    #[serde(default = "default_overlay_click_through_hotkey")]
+    pub toggle_overlay_click_through: String,
+}
+
+fn default_overlay_click_through_hotkey() -> String {
+    "Ctrl+Shift+Escape".to_string()
 }
 
 fn default_replace_hotkey() -> String {
@@ -223,6 +229,7 @@ impl Default for HotkeyConfig {
             show_window: "Ctrl+T".to_string(),
             translate_selection: "Ctrl+Shift+Y".to_string(),
             replace_translate: "Ctrl+Shift+R".to_string(),
+            toggle_overlay_click_through: "Ctrl+Shift+Escape".to_string(),
         }
     }
 }

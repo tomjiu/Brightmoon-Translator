@@ -298,6 +298,22 @@ pub fn run() {
                 });
             }
 
+            // Register overlay click-through toggle hotkey (escape hatch)
+            if let Some(shortcut_ct) = parse_hotkey(&hotkey_config.toggle_overlay_click_through) {
+                let app_handle = app.handle().clone();
+                let _ = app.global_shortcut().on_shortcut(shortcut_ct, move |_app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        if let Some(window) = app_handle.get_webview_window("overlay") {
+                            // Disable click-through and focus the overlay
+                            let _ = window.set_ignore_cursor_events(false);
+                            let _ = window.set_focus();
+                            // Notify JS to update passthrough button state
+                            let _ = window.emit("overlay-click-through-off", ());
+                        }
+                    }
+                });
+            }
+
             // Start API server if enabled
             let api_state = api_server::ApiState::from(&*app.state::<AppState>());
             let api_config = app.state::<AppState>().config.clone();

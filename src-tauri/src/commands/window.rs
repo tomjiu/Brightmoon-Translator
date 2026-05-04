@@ -87,27 +87,26 @@ pub async fn get_selected_text() -> Result<String, String> {
 
         unsafe {
             // Save current clipboard content
-            let saved_text = if OpenClipboard(std::ptr::null_mut()) != 0 {
+            // Track whether we opened clipboard (for restore), and what was in it
+            let mut clipboard_was_opened = false;
+            let mut saved_text: Option<Vec<u8>> = None;
+
+            if OpenClipboard(std::ptr::null_mut()) != 0 {
+                clipboard_was_opened = true;
                 let h_data = GetClipboardData(CF_UNICODETEXT);
-                let saved = if !h_data.is_null() {
+                if !h_data.is_null() {
                     let p_data = GlobalLock(h_data);
                     if !p_data.is_null() {
                         let size = GlobalSize(h_data);
-                        let slice = std::slice::from_raw_parts(p_data as *const u8, size);
-                        let saved = slice.to_vec();
+                        if size > 2 {
+                            let slice = std::slice::from_raw_parts(p_data as *const u8, size);
+                            saved_text = Some(slice.to_vec());
+                        }
                         GlobalUnlock(h_data);
-                        Some(saved)
-                    } else {
-                        None
                     }
-                } else {
-                    None
-                };
+                }
                 CloseClipboard();
-                saved
-            } else {
-                None
-            };
+            }
 
             // Clear clipboard before simulating Ctrl+C
             if OpenClipboard(std::ptr::null_mut()) != 0 {
@@ -160,19 +159,22 @@ pub async fn get_selected_text() -> Result<String, String> {
                 None
             };
 
-            // Restore original clipboard
-            if let Some(saved) = saved_text {
+            // Restore original clipboard (always, even if originally empty)
+            if clipboard_was_opened {
                 if OpenClipboard(std::ptr::null_mut()) != 0 {
                     EmptyClipboard();
-                    let h_mem = GlobalAlloc(GMEM_MOVEABLE, saved.len());
-                    if !h_mem.is_null() {
-                        let p_mem = GlobalLock(h_mem);
-                        if !p_mem.is_null() {
-                            std::ptr::copy_nonoverlapping(saved.as_ptr(), p_mem as *mut u8, saved.len());
-                            GlobalUnlock(h_mem);
-                            SetClipboardData(CF_UNICODETEXT, h_mem);
+                    if let Some(ref saved) = saved_text {
+                        let h_mem = GlobalAlloc(GMEM_MOVEABLE, saved.len());
+                        if !h_mem.is_null() {
+                            let p_mem = GlobalLock(h_mem);
+                            if !p_mem.is_null() {
+                                std::ptr::copy_nonoverlapping(saved.as_ptr(), p_mem as *mut u8, saved.len());
+                                GlobalUnlock(h_mem);
+                                SetClipboardData(CF_UNICODETEXT, h_mem);
+                            }
                         }
                     }
+                    // If saved_text was None, clipboard remains empty (already emptied above)
                     CloseClipboard();
                 }
             }
@@ -210,19 +212,19 @@ pub async fn get_cursor_position() -> Result<(f64, f64), String> {
 }
 
 /// Overlay display level
-/// L1: Minimal - translated text only, auto-dismiss 3s
+/// L1: Minimal - translated text only, auto-dismiss
 /// L2: Standard - source + translated, copy button
 /// L3: Full - source + translated, all controls (copy, pin, click-through, close)
-fn create_overlay_html(source: &str, translated: &str, level: u8) -> String {
+fn create_overlay_html(source: &str, translated: &str, level: u8, dismiss_ms: u64) -> String {
     match level {
-        1 => create_l1_overlay(translated),
+        1 => create_l1_overlay(translated, dismiss_ms),
         2 => create_l2_overlay(source, translated),
         _ => create_l3_overlay(source, translated),
     }
 }
 
-/// L1: Minimal overlay - just translated text, auto-dismiss after 3s
-fn create_l1_overlay(translated: &str) -> String {
+/// L1: Minimal overlay - just translated text, auto-dismiss after dismiss_ms
+fn create_l1_overlay(translated: &str, dismiss_ms: u64) -> String {
     let escaped = html_escape::encode_text(translated);
     format!(
         r#"<!DOCTYPE html>
@@ -250,8 +252,8 @@ body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont,
 <body>
 <div class="card">{escaped}</div>
 <script>
-// Auto-dismiss after 3 seconds
-setTimeout(() => window.__TAURI__?.core.invoke('close_overlay'), 3000);
+// Auto-dismiss after configured timeout
+setTimeout(() => window.__TAURI__?.core.invoke('close_overlay'), {dismiss_ms});
 // Click to dismiss
 document.addEventListener('click', () => window.__TAURI__?.core.invoke('close_overlay'));
 document.addEventListener('keydown', e => {{ if (e.key === 'Escape') window.__TAURI__?.core.invoke('close_overlay'); }});
@@ -407,12 +409,23 @@ document.getElementById('copyBtn').onclick = async () => {{
   setTimeout(() => {{ btn.textContent = 'Copy'; btn.classList.remove('done'); }}, 1500);
 }};
 const pinBtn = document.getElementById('pinBtn');
-pinBtn.onclick = () => {{ pinBtn.classList.toggle('active'); }};
+pinBtn.classList.add('active'); // starts pinned
+pinBtn.onclick = async () => {{
+  const pinned = await window.__TAURI__?.core.invoke('pin_overlay');
+  if (pinned) {{ pinBtn.classList.add('active'); }}
+  else {{ pinBtn.classList.remove('active'); }}
+}};
 const passthroughBtn = document.getElementById('passthroughBtn');
 passthroughBtn.onclick = async () => {{
-  passthroughBtn.classList.toggle('active');
-  await window.__TAURI__?.core.invoke('set_overlay_click_through', {{ ignore: passthroughBtn.classList.contains('active') }});
+  const active = !passthroughBtn.classList.contains('active');
+  await window.__TAURI__?.core.invoke('set_overlay_click_through', {{ ignore: active }});
+  if (active) {{ passthroughBtn.classList.add('active'); }}
+  else {{ passthroughBtn.classList.remove('active'); }}
 }};
+// Listen for click-through disabled event from global shortcut
+window.__TAURI__?.event.listen('overlay-click-through-off', () => {{
+  passthroughBtn.classList.remove('active');
+}});
 document.getElementById('closeBtn').onclick = () => window.__TAURI__?.core.invoke('close_overlay');
 document.addEventListener('keydown', e => {{ if (e.key === 'Escape') window.__TAURI__?.core.invoke('close_overlay'); }});
 </script>
@@ -440,7 +453,7 @@ pub async fn create_overlay(
     }
 
     let level = if show_controls.unwrap_or(false) { 3 } else { 1 };
-    let html = create_overlay_html("", &text, level);
+    let html = create_overlay_html("", &text, level, 3000);
     let encoded = urlencoding::encode(&html);
     let overlay_url = format!("data:text/html,{}", encoded);
 
@@ -484,6 +497,7 @@ pub async fn translate_selection(
     let from = config.default_from.clone();
     let to = config.default_to.clone();
     let config_level = config.overlay_level;
+    let dismiss_ms = config.overlay_auto_dismiss_ms;
     drop(config);
 
     // Use TranslationService for the full pipeline (glossary, blacklist, cache, history, metrics)
@@ -503,7 +517,7 @@ pub async fn translate_selection(
         }
 
         let level = overlay_level.unwrap_or(config_level);
-        let html = create_overlay_html(&text, &first.text, level);
+        let html = create_overlay_html(&text, &first.text, level, dismiss_ms);
         let encoded = urlencoding::encode(&html);
         let overlay_url = format!("data:text/html,{}", encoded);
 
@@ -536,12 +550,17 @@ pub async fn set_overlay_click_through(app: tauri::AppHandle, ignore: bool) -> R
 }
 
 #[command]
-pub async fn pin_overlay(app: tauri::AppHandle) -> Result<(), String> {
-    // Make overlay pinnable - stays on top and can be configured
+pub async fn pin_overlay(app: tauri::AppHandle) -> Result<bool, String> {
+    static OVERLAY_PINNED: AtomicBool = AtomicBool::new(true); // overlay starts pinned (always_on_top)
     if let Some(window) = app.get_webview_window("overlay") {
-        window.set_always_on_top(true).map_err(|e| e.to_string())?;
+        let current = OVERLAY_PINNED.load(Ordering::Relaxed);
+        let new_value = !current;
+        window.set_always_on_top(new_value).map_err(|e| e.to_string())?;
+        OVERLAY_PINNED.store(new_value, Ordering::Relaxed);
+        Ok(new_value)
+    } else {
+        Err("Overlay not found".to_string())
     }
-    Ok(())
 }
 
 #[command]
