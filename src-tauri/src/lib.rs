@@ -10,9 +10,11 @@ pub mod glossary;
 pub mod lang_detect;
 pub mod memory;
 pub mod metrics;
+pub mod overlay;
 pub mod pdf;
 pub mod plugin;
 pub mod post_process;
+pub mod selection;
 pub mod services;
 pub mod subtitle;
 pub mod tts;
@@ -42,6 +44,7 @@ pub struct AppState {
     pub glossary: Arc<Mutex<Glossary>>,
     pub translation_service: Arc<TranslationService>,
     pub metrics: Arc<MetricsCollector>,
+    pub selection_manager: Arc<selection::SelectionProviderManager>,
 }
 
 pub fn run() {
@@ -68,6 +71,8 @@ pub fn run() {
         metrics.clone(),
     ));
 
+    let selection_manager = Arc::new(selection::SelectionProviderManager::with_defaults());
+
     let state = AppState {
         config: config_arc,
         history: history_arc,
@@ -78,6 +83,7 @@ pub fn run() {
         glossary: glossary_arc,
         translation_service,
         metrics,
+        selection_manager,
     };
 
     tauri::Builder::default()
@@ -303,13 +309,7 @@ pub fn run() {
                 let app_handle = app.handle().clone();
                 let _ = app.global_shortcut().on_shortcut(shortcut_ct, move |_app, _shortcut, event| {
                     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        if let Some(window) = app_handle.get_webview_window("overlay") {
-                            // Disable click-through and focus the overlay
-                            let _ = window.set_ignore_cursor_events(false);
-                            let _ = window.set_focus();
-                            // Notify JS to update passthrough button state
-                            let _ = window.emit("overlay-click-through-off", ());
-                        }
+                        overlay::interaction::disable_click_through_and_focus(&app_handle);
                     }
                 });
             }
@@ -356,6 +356,7 @@ pub fn run() {
             commands::window::show_main_window,
             commands::window::get_selected_text,
             commands::window::translate_selection,
+            commands::window::trigger_selection_translate,
             commands::window::get_cursor_position,
             commands::window::toggle_always_on_top,
             commands::window::get_always_on_top,
