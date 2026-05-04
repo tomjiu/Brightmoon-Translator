@@ -82,8 +82,8 @@ function App() {
     // Listen for translate-selection shortcut (Ctrl+Shift+Y)
     const unlistenTranslateSelection = listen("trigger-translate-selection", async () => {
       try {
-        // Read clipboard text
-        const text = await navigator.clipboard.readText();
+        // Get selected text via Ctrl+C simulation (preserves clipboard)
+        const text = await invoke<string>("get_selected_text");
         if (text && text.trim()) {
           // Call translate_selection which creates overlay (window.rs)
           await invoke("translate_selection", { text: text.trim() });

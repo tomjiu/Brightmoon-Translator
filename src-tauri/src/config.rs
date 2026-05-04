@@ -53,6 +53,12 @@ pub struct AppConfig {
     /// Engine routing strategy
     #[serde(default)]
     pub routing_strategy: Option<crate::engine::RoutingStrategy>,
+    /// Selection translation overlay level: 1=minimal, 2=standard, 3=full
+    #[serde(default = "default_overlay_level")]
+    pub overlay_level: u8,
+    /// Auto-dismiss timeout for L1 overlays in milliseconds
+    #[serde(default = "default_overlay_auto_dismiss_ms")]
+    pub overlay_auto_dismiss_ms: u64,
 }
 
 fn default_auto_copy_mode() -> String {
@@ -61,6 +67,14 @@ fn default_auto_copy_mode() -> String {
 
 fn default_follow_mode() -> String {
     "none".to_string()
+}
+
+fn default_overlay_level() -> u8 {
+    2
+}
+
+fn default_overlay_auto_dismiss_ms() -> u64 {
+    3000
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -286,6 +300,8 @@ impl Default for AppConfig {
             window_follow_mode: "none".to_string(),
             translation_blacklist: Vec::new(),
             routing_strategy: None,
+            overlay_level: 2,
+            overlay_auto_dismiss_ms: 3000,
         }
     }
 }
