@@ -377,10 +377,10 @@ pub fn run() {
             if api_enabled {
                 tokio::spawn(async move {
                     if let Err(e) = api_server::start_server(api_port, api_state).await {
-                        eprintln!("API server error: {}", e);
+                        log::error!("API server error: {}", e);
                     }
                 });
-                println!("API server starting on port {}", api_port);
+                log::info!("API server starting on port {}", api_port);
             }
 
             Ok(())

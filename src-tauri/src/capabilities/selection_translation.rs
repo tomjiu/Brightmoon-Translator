@@ -16,6 +16,8 @@ pub struct SelectionTranslationResult {
     pub response: TranslateResponse,
     /// Overlay level used
     pub overlay_level: OverlayLevel,
+    /// Which selection provider produced the source text
+    pub selection_provider: String,
 }
 
 /// Options for selection translation
