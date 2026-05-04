@@ -441,10 +441,17 @@ impl Clone for AppState {
             cache: self.cache.clone(),
             glossary: self.glossary.clone(),
             translation_service: self.translation_service.clone(),
+            metrics: self.metrics.clone(),
         }
     }
 }
 
+
+#[tauri::command]
+pub async fn get_metrics(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let summary = state.metrics.summary().await;
+    serde_json::to_value(&summary).map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 pub async fn polish_translation(

@@ -9,6 +9,7 @@ pub mod epub_reader;
 pub mod glossary;
 pub mod lang_detect;
 pub mod memory;
+pub mod metrics;
 pub mod pdf;
 pub mod plugin;
 pub mod post_process;
@@ -20,6 +21,7 @@ use cache::TranslationCache;
 use config::AppConfig;
 use glossary::Glossary;
 use memory::{HistoryStore, WordBookStore};
+use metrics::MetricsCollector;
 use post_process::PostProcessor;
 use services::TranslationService;
 use std::sync::Arc;
@@ -39,6 +41,7 @@ pub struct AppState {
     pub cache: Arc<TranslationCache>,
     pub glossary: Arc<Mutex<Glossary>>,
     pub translation_service: Arc<TranslationService>,
+    pub metrics: Arc<MetricsCollector>,
 }
 
 pub fn run() {
@@ -49,6 +52,7 @@ pub fn run() {
     let glossary = Glossary::load();
     let engine_router = Arc::new(RwLock::new(engine::Router::new(&config)));
     let cache = Arc::new(TranslationCache::new(1000));
+    let metrics = Arc::new(MetricsCollector::new());
 
     let config_arc = Arc::new(Mutex::new(config));
     let history_arc = Arc::new(Mutex::new(history));
@@ -72,6 +76,7 @@ pub fn run() {
         cache,
         glossary: glossary_arc,
         translation_service,
+        metrics,
     };
 
     tauri::Builder::default()
