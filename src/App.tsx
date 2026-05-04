@@ -85,23 +85,13 @@ function App() {
         // Read clipboard text
         const text = await navigator.clipboard.readText();
         if (text && text.trim()) {
-          // Call translate_selection_with_text command
-          await invoke("translate_selection_with_text", { text: text.trim() });
+          // Call translate_selection which creates overlay (window.rs)
+          await invoke("translate_selection", { text: text.trim() });
         }
       } catch (err) {
         console.error("Failed to translate selection:", err);
       }
     });
-
-    // Listen for selection-translated event to show overlay
-    const unlistenSelectionTranslated = listen<{ source: string; translated: string; engine: string }>(
-      "selection-translated",
-      (event) => {
-        // The overlay is already created by the backend
-        // Optionally update the main window with the result
-        setSourceText(event.payload.source);
-      }
-    );
 
     // Listen for auto-copy events
     const unlistenAutoCopy = listen<string>("auto-copy", async (event) => {
@@ -169,7 +159,6 @@ function App() {
       unlistenResized.then((fn) => fn());
       unlistenNav.then((fn) => fn());
       unlistenTranslateSelection.then((fn) => fn());
-      unlistenSelectionTranslated.then((fn) => fn());
       unlistenAutoCopy.then((fn) => fn());
       unlistenReplaceTyping.then((fn) => fn());
       unlistenReplaceTranslate.then((fn) => fn());

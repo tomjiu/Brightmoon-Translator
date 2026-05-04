@@ -154,12 +154,25 @@ impl TranslationService {
         glossary.apply_glossary(&mut processed_text, &lang_pair);
         drop(glossary);
 
+        // Apply blacklist protection
+        let config = self.config.lock().await;
+        let blacklist_processor = BlacklistProcessor::new(config.translation_blacklist.clone());
+        drop(config);
+
+        let (protected_text, placeholder_map) = blacklist_processor.protect(&processed_text);
+        let has_blacklist = !placeholder_map.is_empty();
+
         // Check cache first
-        if let Some(cached) = self.cache.get(&processed_text, from, to).await {
+        if let Some(cached) = self.cache.get(&protected_text, from, to).await {
             if let Some((_, cached_text)) = cached.results.first() {
                 self.metrics.record_cache_hit().await;
-                let _ = tx.send(cached_text.clone()).await;
-                return Ok(cached_text.clone());
+                let final_text = if has_blacklist {
+                    blacklist_processor.restore(cached_text, &placeholder_map)
+                } else {
+                    cached_text.clone()
+                };
+                let _ = tx.send(final_text.clone()).await;
+                return Ok(final_text);
             }
         }
         self.metrics.record_cache_miss().await;
@@ -168,7 +181,7 @@ impl TranslationService {
         let start = Instant::now();
         let router = self.engine_router.read().await;
         let result = router
-            .translate_stream(&processed_text, from, to, tx)
+            .translate_stream(&protected_text, from, to, tx)
             .await;
         drop(router);
 
@@ -177,23 +190,30 @@ impl TranslationService {
                 let elapsed_ms = start.elapsed().as_millis() as u64;
                 self.metrics.record_engine_latency("LLM", elapsed_ms).await;
 
-                // Cache the result
-                if !full_text.is_empty() {
+                // Restore blacklist words
+                let final_text = if has_blacklist {
+                    blacklist_processor.restore(&full_text, &placeholder_map)
+                } else {
+                    full_text
+                };
+
+                // Cache the result (with blacklist protection applied)
+                if !final_text.is_empty() {
                     self.cache
                         .set(
-                            &processed_text,
+                            &protected_text,
                             from,
                             to,
-                            vec![("LLM".to_string(), full_text.clone())],
+                            vec![("LLM".to_string(), final_text.clone())],
                         )
                         .await;
 
                     // Save to history
                     let history = self.history.lock().await;
-                    history.add(text, &full_text, from, to, "LLM");
+                    history.add(text, &final_text, from, to, "LLM");
                 }
 
-                Ok(full_text)
+                Ok(final_text)
             }
             Err(e) => {
                 self.metrics.record_failure("LLM", &e.to_string()).await;
@@ -216,10 +236,18 @@ impl TranslationService {
         glossary.apply_glossary(&mut processed_text, &lang_pair);
         drop(glossary);
 
+        // Apply blacklist protection
+        let config = self.config.lock().await;
+        let blacklist_processor = BlacklistProcessor::new(config.translation_blacklist.clone());
+        drop(config);
+
+        let (protected_text, placeholder_map) = blacklist_processor.protect(&processed_text);
+        let has_blacklist = !placeholder_map.is_empty();
+
         let start = Instant::now();
         let router = self.engine_router.read().await;
         let result = router
-            .translate_primary(&processed_text, from, to)
+            .translate_primary(&protected_text, from, to)
             .await;
         drop(router);
 
@@ -227,7 +255,14 @@ impl TranslationService {
             Ok(translated) => {
                 let elapsed_ms = start.elapsed().as_millis() as u64;
                 self.metrics.record_engine_latency("primary", elapsed_ms).await;
-                Ok(translated)
+
+                // Restore blacklist words
+                let final_text = if has_blacklist {
+                    blacklist_processor.restore(&translated, &placeholder_map)
+                } else {
+                    translated
+                };
+                Ok(final_text)
             }
             Err(e) => {
                 self.metrics.record_failure("primary", &e.to_string()).await;
@@ -272,6 +307,9 @@ impl TranslationService {
         let concurrency = concurrency.max(1).min(10); // Clamp to 1-10
         let mut results = Vec::with_capacity(lines.len());
         let mut context: Vec<TranslationContext> = Vec::new();
+
+        // Record batch chunk size
+        self.metrics.record_chunk_size(lines.len()).await;
 
         // Process in chunks with concurrency
         for chunk in lines.chunks(concurrency) {
@@ -351,6 +389,9 @@ impl TranslationService {
         let mut results = Vec::with_capacity(total);
         let mut context: Vec<TranslationContext> = Vec::new();
         let mut completed = 0;
+
+        // Record batch chunk size
+        self.metrics.record_chunk_size(total).await;
 
         // Process in chunks with concurrency
         for chunk in lines.chunks(concurrency) {
