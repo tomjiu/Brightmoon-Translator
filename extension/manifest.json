@@ -7,9 +7,11 @@
     "activeTab",
     "storage",
     "contextMenus",
-    "scripting"
+    "scripting",
+    "alarms"
   ],
   "host_permissions": [
+    "http://127.0.0.1:60828/*",
     "https://translate.googleapis.com/*",
     "https://api.openai.com/*",
     "https://api.deepseek.com/*",
