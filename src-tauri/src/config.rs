@@ -50,6 +50,9 @@ pub struct AppConfig {
     /// Translation blacklist - words that should not be translated
     #[serde(default)]
     pub translation_blacklist: Vec<String>,
+    /// Engine routing strategy
+    #[serde(default)]
+    pub routing_strategy: Option<crate::engine::RoutingStrategy>,
 }
 
 fn default_auto_copy_mode() -> String {
@@ -282,6 +285,7 @@ impl Default for AppConfig {
             window_height: None,
             window_follow_mode: "none".to_string(),
             translation_blacklist: Vec::new(),
+            routing_strategy: None,
         }
     }
 }
