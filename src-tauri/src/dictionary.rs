@@ -1,30 +1,8 @@
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DictionaryResult {
-    pub word: String,
-    pub phonetic: Option<String>,
-    pub meanings: Vec<Meaning>,
-    pub source_urls: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Meaning {
-    pub part_of_speech: String,
-    pub definitions: Vec<Definition>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Definition {
-    pub definition: String,
-    pub example: Option<String>,
-    pub synonyms: Vec<String>,
-    pub antonyms: Vec<String>,
-}
+// Re-export shared types from models
+pub use crate::models::dictionary::{Definition, DictionaryResult, Meaning};
 
 // Youdao API response structures
 #[derive(Deserialize)]

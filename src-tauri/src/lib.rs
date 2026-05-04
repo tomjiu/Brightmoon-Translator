@@ -1,6 +1,7 @@
 pub mod api_server;
 pub mod blacklist;
 pub mod cache;
+pub mod capabilities;
 pub mod commands;
 pub mod config;
 pub mod dictionary;
@@ -10,6 +11,7 @@ pub mod glossary;
 pub mod lang_detect;
 pub mod memory;
 pub mod metrics;
+pub mod models;
 pub mod overlay;
 pub mod pdf;
 pub mod plugin;
