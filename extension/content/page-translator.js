@@ -82,6 +82,36 @@
     });
   }
 
+  // Build a CSS selector path from a text node's parent up to body
+  function getCssSelector(node) {
+    const parts = [];
+    let el = node.parentElement;
+    while (el && el !== document.body) {
+      let selector = el.tagName.toLowerCase();
+      if (el.id) {
+        selector = `#${el.id}`;
+        parts.unshift(selector);
+        break;
+      }
+      if (el.className && typeof el.className === "string") {
+        const cls = el.className.trim().split(/\s+/).filter(c => !c.startsWith("moon-")).slice(0, 2).join(".");
+        if (cls) selector += `.${cls}`;
+      }
+      // Add nth-child if needed for uniqueness
+      const parent = el.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
+        if (siblings.length > 1) {
+          const idx = siblings.indexOf(el) + 1;
+          selector += `:nth-child(${idx})`;
+        }
+      }
+      parts.unshift(selector);
+      el = el.parentElement;
+    }
+    return parts.join(" > ") || "body";
+  }
+
   // Translate text in batches
   async function translatePage() {
     if (isProcessing) return;
@@ -95,7 +125,15 @@
       originalTexts.set(node, node.textContent);
     });
 
-    // Group text by parent to maintain context
+    // Try desktop batch translation first
+    const desktopOk = await translatePageDesktop(textNodes);
+    if (desktopOk) {
+      isProcessing = false;
+      hideProgress();
+      return;
+    }
+
+    // Fallback: group text by parent to maintain context, translate per-group
     const groups = new Map();
     textNodes.forEach(node => {
       const parent = node.parentElement;
@@ -105,11 +143,9 @@
       groups.get(parent).push(node);
     });
 
-    // Show progress
     const totalParents = groups.size;
     let processed = 0;
 
-    // Translate in batches
     const parents = Array.from(groups.keys());
     for (let i = 0; i < parents.length; i += batchSize) {
       const batch = parents.slice(i, i + batchSize);
@@ -117,7 +153,7 @@
         const nodes = groups.get(parent);
         const fullText = nodes.map(n => n.textContent).join("").trim();
 
-        if (fullText.length < 2) return; // Skip very short text
+        if (fullText.length < 2) return;
 
         try {
           const response = await sendMessage({
@@ -130,7 +166,6 @@
           if (response.success) {
             const translatedText = response.primary?.text || response.results?.[0]?.text;
             if (translatedText) {
-              // Apply translation to first node, clear others
               if (nodes.length > 0) {
                 nodes[0].textContent = translatedText;
                 for (let j = 1; j < nodes.length; j++) {
@@ -152,6 +187,50 @@
 
     isProcessing = false;
     hideProgress();
+  }
+
+  // Try desktop batch translation. Returns true if successful, false to fall back.
+  async function translatePageDesktop(textNodes) {
+    if (textNodes.length === 0) return false;
+
+    // Build segments with CSS selectors
+    const segments = textNodes.map((node, index) => ({
+      selector: getCssSelector(node),
+      text: node.textContent.trim(),
+      index
+    })).filter(s => s.text.length >= 2);
+
+    if (segments.length === 0) return false;
+
+    try {
+      const response = await sendMessage({
+        type: "translatePageDesktop",
+        segments,
+        from: "auto",
+        to: "zh"
+      });
+
+      if (!response.success) return false;
+
+      const translations = response.translations;
+      if (!translations || translations.length === 0) return false;
+
+      // Apply translations: match by index
+      const nodeByIndex = new Map();
+      textNodes.forEach((node, i) => nodeByIndex.set(i, node));
+
+      for (const t of translations) {
+        const node = nodeByIndex.get(t.index);
+        if (node && t.translated) {
+          node.textContent = t.translated;
+        }
+      }
+
+      return true;
+    } catch (e) {
+      console.warn("Desktop batch translation failed, falling back:", e.message);
+      return false;
+    }
   }
 
   // Restore original text

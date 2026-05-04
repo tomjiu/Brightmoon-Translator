@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadConfig();
   setupEventListeners();
   updateUI();
+  checkDesktopStatus();
 });
 
 // ==================== Config ====================
@@ -114,6 +115,58 @@ function showNotification(message, isError = false) {
   setTimeout(() => {
     errorDiv.style.display = "none";
   }, 2000);
+}
+
+// ==================== Desktop Status ====================
+
+async function checkDesktopStatus() {
+  try {
+    // Use checkDesktopHealth for a real-time probe, not the cached value
+    const response = await chrome.runtime.sendMessage({ type: "checkDesktopHealth" });
+    const dot = document.querySelector("#desktopStatus .status-dot");
+    const syncBtn = document.getElementById("syncGlossary");
+
+    if (response?.reachable) {
+      dot.classList.add("connected");
+      dot.classList.remove("disconnected");
+      if (syncBtn) syncBtn.style.display = "block";
+    } else {
+      dot.classList.add("disconnected");
+      dot.classList.remove("connected");
+      if (syncBtn) syncBtn.style.display = "none";
+    }
+  } catch {
+    const dot = document.querySelector("#desktopStatus .status-dot");
+    if (dot) {
+      dot.classList.add("disconnected");
+      dot.classList.remove("connected");
+    }
+  }
+}
+
+async function syncGlossary() {
+  const DESKTOP_URL = "http://127.0.0.1:60828";
+  try {
+    // Fetch glossary and blacklist from desktop
+    const [glossaryResp, blacklistResp] = await Promise.all([
+      fetch(`${DESKTOP_URL}/glossary`),
+      fetch(`${DESKTOP_URL}/blacklist`)
+    ]);
+
+    if (glossaryResp.ok) {
+      const glossary = await glossaryResp.json();
+      await chrome.storage.local.set({ desktopGlossary: glossary });
+    }
+
+    if (blacklistResp.ok) {
+      const blacklist = await blacklistResp.json();
+      await chrome.storage.local.set({ desktopBlacklist: blacklist.words || [] });
+    }
+
+    showNotification("术语库和黑名单已同步");
+  } catch (e) {
+    showNotification("同步失败: " + e.message, true);
+  }
 }
 
 // ==================== Translation ====================
@@ -281,6 +334,12 @@ function setupEventListeners() {
     // For now, just show a message
     showNotification("请使用桌面版 Moon Translator");
   });
+
+  // Sync glossary from desktop
+  const syncBtn = document.getElementById("syncGlossary");
+  if (syncBtn) {
+    syncBtn.addEventListener("click", syncGlossary);
+  }
 }
 
 // ==================== Helpers ====================

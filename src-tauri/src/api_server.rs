@@ -10,11 +10,14 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tower_http::cors::{Any, CorsLayer};
 
+use crate::capabilities::handle_browser_request;
 use crate::config::AppConfig;
 use crate::engine;
 use crate::glossary::Glossary;
 use crate::memory::HistoryStore;
+use crate::models::browser_protocol::BrowserTranslateRequest;
 use crate::models::error::{ApiError, TranslationError};
+use crate::models::glossary::GlossaryEntry;
 use crate::services::TranslationService;
 use crate::TranslationCache;
 
@@ -232,6 +235,115 @@ async fn health() -> impl IntoResponse {
     })
 }
 
+// POST /browser/translate - Browser extension translation via real TranslationService
+async fn browser_translate(
+    AxumState(state): AxumState<ApiState>,
+    Json(req): Json<BrowserTranslateRequest>,
+) -> impl IntoResponse {
+    let config = state.config.lock().await;
+    match handle_browser_request(&req, &state.translation_service, &config).await {
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err(e) => {
+            let status = match &e.error {
+                TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => {
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
+                TranslationError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+                TranslationError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(e)).into_response()
+        }
+    }
+}
+
+// GET /glossary - List all glossary entries
+async fn get_glossary(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
+    let glossary = state.glossary.lock().await;
+    Json(glossary.get_all_entries().clone()).into_response()
+}
+
+#[derive(Deserialize)]
+struct AddGlossaryRequest {
+    #[serde(rename = "langPair")]
+    lang_pair: String,
+    source: String,
+    target: String,
+    #[serde(default)]
+    context: Option<String>,
+}
+
+// POST /glossary - Add a glossary entry
+async fn add_glossary_entry(
+    AxumState(state): AxumState<ApiState>,
+    Json(req): Json<AddGlossaryRequest>,
+) -> impl IntoResponse {
+    let mut glossary = state.glossary.lock().await;
+    glossary.add_entry(
+        req.lang_pair,
+        GlossaryEntry {
+            source: req.source,
+            target: req.target,
+            context: req.context,
+        },
+    );
+    StatusCode::OK.into_response()
+}
+
+#[derive(Deserialize)]
+struct RemoveGlossaryRequest {
+    #[serde(rename = "langPair")]
+    lang_pair: String,
+    source: String,
+}
+
+// DELETE /glossary - Remove a glossary entry
+async fn remove_glossary_entry(
+    AxumState(state): AxumState<ApiState>,
+    Json(req): Json<RemoveGlossaryRequest>,
+) -> impl IntoResponse {
+    let mut glossary = state.glossary.lock().await;
+    if glossary.remove_entry(&req.lang_pair, &req.source) {
+        StatusCode::OK.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    }
+}
+
+// GET /blacklist - Get current translation blacklist
+async fn get_blacklist(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
+    let config = state.config.lock().await;
+    Json(serde_json::json!({ "words": config.translation_blacklist })).into_response()
+}
+
+#[derive(Deserialize)]
+struct UpdateBlacklistRequest {
+    words: Vec<String>,
+}
+
+// POST /blacklist - Set translation blacklist
+async fn update_blacklist(
+    AxumState(state): AxumState<ApiState>,
+    Json(req): Json<UpdateBlacklistRequest>,
+) -> impl IntoResponse {
+    let mut config = state.config.lock().await;
+    config.translation_blacklist = req.words;
+    config.save();
+    StatusCode::OK.into_response()
+}
+
+// GET /cache/stats - Get cache statistics
+async fn cache_stats(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
+    let stats = state.cache.stats().await;
+    Json(stats).into_response()
+}
+
+// POST /cache/clear - Clear translation cache
+async fn clear_cache(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
+    state.cache.clear().await;
+    StatusCode::OK.into_response()
+}
+
 pub fn create_router(state: ApiState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -245,6 +357,14 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/config", get(get_config).post(update_config))
         .route("/history", get(get_history))
         .route("/engines", get(get_engines))
+        .route("/browser/translate", post(browser_translate))
+        .route(
+            "/glossary",
+            get(get_glossary).post(add_glossary_entry).delete(remove_glossary_entry),
+        )
+        .route("/blacklist", get(get_blacklist).post(update_blacklist))
+        .route("/cache/stats", get(cache_stats))
+        .route("/cache/clear", post(clear_cache))
         .layer(cors)
         .with_state(state)
 }

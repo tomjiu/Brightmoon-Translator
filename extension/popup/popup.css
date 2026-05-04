@@ -38,9 +38,38 @@ body {
   background-clip: text;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .version {
   font-size: 11px;
   color: #999;
+}
+
+.desktop-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #999;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ccc;
+}
+
+.status-dot.connected {
+  background: #48bb78;
+}
+
+.status-dot.disconnected {
+  background: #e2e8f0;
 }
 
 /* Section */
@@ -369,5 +398,9 @@ select:focus {
 
   .divider {
     background: #3a3a4a;
+  }
+
+  .status-dot.disconnected {
+    background: #4a4a5a;
   }
 }

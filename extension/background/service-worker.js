@@ -1,6 +1,113 @@
 // Background service worker for Moon Translator
 // Supports Chrome MV3 and Firefox MV3
 
+// ==================== Desktop Bridge ====================
+// Connects to the Tauri desktop app's local HTTP API for real translation.
+// Falls back to local browser-based engines when desktop is unreachable.
+
+const DESKTOP_URL = "http://127.0.0.1:60828";
+
+const DesktopBridge = {
+  reachable: false,
+
+  async checkHealth() {
+    try {
+      const resp = await fetch(`${DESKTOP_URL}/health`, {
+        method: "GET",
+        signal: AbortSignal.timeout(3000)
+      });
+      this.reachable = resp.ok;
+    } catch {
+      this.reachable = false;
+    }
+    return this.reachable;
+  },
+
+  async translateViaDesktop(text, from, to) {
+    const body = {
+      mode: "selection",
+      payload: {
+        type: "Selection",
+        data: {
+          text,
+          selector: null,
+          bounds: null,
+          url: "",
+          title: ""
+        }
+      },
+      from: from || "auto",
+      to: to || "zh",
+      showOverlay: false,
+      replaceInline: false
+    };
+
+    const resp = await fetch(`${DESKTOP_URL}/browser/translate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000)
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.message || `Desktop API error: ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    // data.response.results = [{ engine, text }, ...]
+    return {
+      results: data.response.results || [],
+      primary: data.response.results?.[0] || null,
+      detectedLanguage: data.response.detectedLanguage
+    };
+  },
+
+  async translatePageViaDesktop(segments, from, to) {
+    const body = {
+      mode: "full_page",
+      payload: {
+        type: "FullPage",
+        data: {
+          url: "",
+          title: "",
+          segments
+        }
+      },
+      from: from || "auto",
+      to: to || "zh",
+      showOverlay: false,
+      replaceInline: true
+    };
+
+    const resp = await fetch(`${DESKTOP_URL}/browser/translate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30000)
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.message || `Desktop API error: ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    return data.segmentTranslations || [];
+  }
+};
+
+// Health check alarm — keeps service worker alive and polls desktop status
+chrome.alarms.create("desktop-health", { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "desktop-health") {
+    DesktopBridge.checkHealth();
+  }
+});
+
+// Initial health check on service worker startup
+DesktopBridge.checkHealth();
+
 const DEFAULT_CONFIG = {
   engines: {
     google: { enabled: true },
@@ -411,14 +518,91 @@ async function md5(message) {
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("").substring(0, 32);
 }
 
+// ==================== Glossary & Blacklist (local fallback) ====================
+
+// Load synced glossary from chrome.storage.local.
+// Format: { "en-zh": [{ source, target, context }, ...], ... }
+async function getLocalGlossary() {
+  try {
+    const result = await chrome.storage.local.get("desktopGlossary");
+    return result.desktopGlossary || {};
+  } catch {
+    return {};
+  }
+}
+
+// Load synced blacklist from chrome.storage.local.
+// Format: ["word1", "word2", ...]
+async function getLocalBlacklist() {
+  try {
+    const result = await chrome.storage.local.get("desktopBlacklist");
+    return result.desktopBlacklist || [];
+  } catch {
+    return [];
+  }
+}
+
+// Check if text matches any blacklisted term (exact match, case-insensitive).
+function isBlacklisted(text, blacklist) {
+  const trimmed = text.trim().toLowerCase();
+  return blacklist.some(word => word.toLowerCase() === trimmed);
+}
+
+// Apply glossary replacements to translated text.
+// For each glossary entry where the source term appears in the original text,
+// replace occurrences of the source term in the translated text with the target term.
+// This handles cases where the translator left a term untranslated.
+function applyGlossary(translatedText, originalText, glossary, from, to) {
+  // Build lang-pair keys to check: exact match first, then wildcard
+  const exactKey = `${from}-${to}`;
+  const entries = glossary[exactKey] || [];
+
+  // Also try entries keyed by auto-detected patterns
+  const allEntries = [...entries];
+  for (const [key, vals] of Object.entries(glossary)) {
+    if (key !== exactKey && key.endsWith(`-${to}`)) {
+      allEntries.push(...vals);
+    }
+  }
+
+  let result = translatedText;
+  for (const entry of allEntries) {
+    // Only apply if the source term appears in the original text
+    if (originalText.includes(entry.source)) {
+      // Replace source term in translation with preferred target term
+      result = result.split(entry.source).join(entry.target);
+    }
+  }
+  return result;
+}
+
 // ==================== Main Translate Function ====================
 
 async function translate(text, from, to) {
+  // Try desktop bridge first if reachable (desktop handles glossary/blacklist/cache internally)
+  if (DesktopBridge.reachable) {
+    try {
+      const result = await DesktopBridge.translateViaDesktop(text, from, to);
+      return result;
+    } catch (e) {
+      DesktopBridge.reachable = false;
+      console.warn("Desktop translation failed, falling back to local engines:", e.message);
+    }
+  }
+
+  // Local fallback path — apply blacklist/glossary from synced desktop data
+  const blacklist = await getLocalBlacklist();
+  if (isBlacklisted(text, blacklist)) {
+    return {
+      results: [{ engine: "blacklist", text: text }],
+      primary: { engine: "blacklist", text: text }
+    };
+  }
+
   const config = await getConfig();
   const results = [];
   const errors = [];
 
-  // Run enabled engines in parallel
   const promises = [];
 
   // Google (always available)
@@ -482,6 +666,12 @@ async function translate(text, from, to) {
     throw new Error(errorMsg || "没有可用的翻译引擎");
   }
 
+  // Apply glossary post-processing to each result
+  const glossary = await getLocalGlossary();
+  for (const r of results) {
+    r.text = applyGlossary(r.text, text, glossary, from, to);
+  }
+
   return {
     results: results,
     primary: results[0]
@@ -519,6 +709,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.tabs.sendMessage(sender.tab.id, { type: "restorePage" });
     sendResponse({ success: true });
     return false;
+  }
+
+  // Desktop batch page translation — content script sends segments, we route to desktop
+  if (message.type === "translatePageDesktop") {
+    if (!DesktopBridge.reachable) {
+      sendResponse({ success: false, error: "Desktop not reachable" });
+      return false;
+    }
+    DesktopBridge.translatePageViaDesktop(
+      message.segments,
+      message.from || "auto",
+      message.to || "zh"
+    )
+      .then(translations => sendResponse({ success: true, translations }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  // Desktop connection status query (for popup)
+  if (message.type === "desktopStatus") {
+    sendResponse({ reachable: DesktopBridge.reachable });
+    return false;
+  }
+
+  // Manual health check trigger (for popup sync button)
+  if (message.type === "checkDesktopHealth") {
+    DesktopBridge.checkHealth().then(ok => sendResponse({ reachable: ok }));
+    return true;
   }
 });
 
