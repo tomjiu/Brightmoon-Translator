@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Translation Overlay</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+    }
+
+    .overlay-container {
+      padding: 8px;
+      width: 100%;
+      height: 100%;
+    }
+
+    .card {
+      background: rgba(26, 27, 38, 0.95);
+      border: 1px solid rgba(59, 66, 97, 0.8);
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: #c0caf5;
+      font-size: 14px;
+      line-height: 1.6;
+      user-select: text;
+      pointer-events: auto;
+      position: relative;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(8px);
+      max-height: 100%;
+      overflow-y: auto;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(59, 66, 97, 0.5);
+    }
+
+    .card-title {
+      font-size: 11px;
+      color: #7aa2f7;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .btn {
+      background: rgba(59, 66, 97, 0.5);
+      border: 1px solid rgba(59, 66, 97, 0.8);
+      color: #a9b1d6;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .btn:hover {
+      background: rgba(122, 162, 247, 0.2);
+      border-color: #7aa2f7;
+      color: #c0caf5;
+    }
+
+    .btn-close:hover {
+      background: rgba(247, 118, 142, 0.2);
+      border-color: #f7768e;
+      color: #f7768e;
+    }
+
+    .btn-copy.copied {
+      background: rgba(158, 206, 106, 0.2);
+      border-color: #9ece6a;
+      color: #9ece6a;
+    }
+
+    .text-content {
+      color: #c0caf5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .text-content::selection {
+      background: rgba(122, 162, 247, 0.3);
+    }
+
+    /* Scrollbar */
+    .card::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .card::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .card::-webkit-scrollbar-thumb {
+      background: rgba(59, 66, 97, 0.5);
+      border-radius: 2px;
+    }
+
+    .card::-webkit-scrollbar-thumb:hover {
+      background: rgba(59, 66, 97, 0.8);
+    }
+
+    /* Fade in animation */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card {
+      animation: fadeIn 0.2s ease-out;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay-container">
+    <div class="card" id="card">
+      <div class="card-header">
+        <span class="card-title">Translation</span>
+        <div class="card-actions">
+          <button class="btn btn-copy" id="copyBtn" onclick="copyText()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span id="copyText">Copy</span>
+          </button>
+          <button class="btn btn-close" onclick="closeOverlay()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="text-content" id="textContent"></div>
+    </div>
+  </div>
+
+  <script>
+    // Get text from URL params
+    const params = new URLSearchParams(window.location.search);
+    const text = params.get('text') || 'No text provided';
+    document.getElementById('textContent').textContent = text;
+
+    async function copyText() {
+      try {
+        await navigator.clipboard.writeText(text);
+        const btn = document.getElementById('copyBtn');
+        const btnText = document.getElementById('copyText');
+        btn.classList.add('copied');
+        btnText.textContent = 'Copied!';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btnText.textContent = 'Copy';
+        }, 1500);
+      } catch (err) {
+        console.error('Copy failed:', err);
+      }
+    }
+
+    function closeOverlay() {
+      // Send close message to Tauri
+      window.__TAURI__?.core.invoke('close_overlay');
+    }
+
+    // Also support Escape key to close
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeOverlay();
+      }
+    });
+  </script>
+</body>
+</html>
