@@ -16,9 +16,9 @@ use crate::services::TranslationService;
 /// Default desktop implementation of SelectionTranslation.
 /// Composes: TargetAppDetector -> SelectionProviderManager -> TranslationService -> OverlayPresenter.
 ///
-/// Strategy dispatch based on AppContext:
-/// - Standard apps: full provider chain (UIA → clipboard)
-/// - Embedded apps (Electron/WebView2/CEF): clipboard-first (UIA typically fails)
+/// Uses the full provider chain (UIA → clipboard) for all apps, including embedded apps.
+/// Modern Electron/Chromium apps often support UIA TextPattern, so we try UIA first
+/// and let the provider chain naturally fall back to clipboard if needed.
 pub struct DefaultSelectionTranslation {
     selection_manager: Arc<SelectionProviderManager>,
     translation_service: Arc<TranslationService>,
@@ -127,20 +127,18 @@ impl SelectionTranslation for DefaultSelectionTranslation {
         // Step 1: Detect foreground app for strategy dispatch
         let app_ctx = self.app_detector.detect().await;
 
-        // Step 2: Get selection using strategy based on app type
-        // Embedded apps (Electron/WebView2/CEF): skip UIA, use clipboard directly
-        // Standard apps: full provider chain (UIA → clipboard)
-        let selection = if app_ctx.as_ref().map_or(false, |ctx| ctx.is_embedded) {
-            self.selection_manager
-                .get_selection_excluding(&["uiautomation"])
-                .await
-        } else {
-            self.selection_manager.get_selection().await
-        };
+        // Step 2: Get selection using the full provider chain (UIA → clipboard)
+        // All apps, including embedded (Electron/WebView2/CEF), go through the same chain.
+        let selection = self.selection_manager.get_selection().await;
 
         let selection = selection.ok_or(TranslationError::InvalidInput(
             "No text selected".to_string(),
         ))?;
+
+        log::info!(
+            "[selection_translate] Got selection via '{}': {} chars, app='{}'",
+            selection.provider, selection.text.len(), selection.source_app
+        );
 
         let config = self.config.lock().await;
         let from = options.from.clone().unwrap_or_else(|| config.default_from.clone());
@@ -188,6 +186,7 @@ impl SelectionTranslation for DefaultSelectionTranslation {
                 .unwrap_or_else(|| selection.source_app),
             response,
             overlay_level: level,
+            selection_provider: selection.provider.to_string(),
         })
     }
 
@@ -231,6 +230,7 @@ impl SelectionTranslation for DefaultSelectionTranslation {
             source_app: "direct".to_string(),
             response,
             overlay_level: level,
+            selection_provider: "direct".to_string(),
         })
     }
 }

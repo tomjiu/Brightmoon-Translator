@@ -1,3 +1,54 @@
+/// Set clipboard text content. Returns Err on any critical failure.
+unsafe fn set_clipboard_text(text: &str) -> Result<(), String> {
+    extern "system" {
+        fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
+        fn CloseClipboard() -> i32;
+        fn EmptyClipboard() -> i32;
+        fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+        fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut std::ffi::c_void;
+        fn GlobalLock(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+        fn GlobalUnlock(hMem: *mut std::ffi::c_void) -> i32;
+    }
+
+    const CF_UNICODETEXT: u32 = 13;
+    const GMEM_MOVEABLE: u32 = 0x0002;
+
+    if OpenClipboard(std::ptr::null_mut()) == 0 {
+        return Err("Failed to open clipboard for writing".to_string());
+    }
+
+    EmptyClipboard();
+
+    let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    let size = wide.len() * 2;
+
+    let h_mem = GlobalAlloc(GMEM_MOVEABLE, size);
+    if h_mem.is_null() {
+        CloseClipboard();
+        return Err(format!("GlobalAlloc failed for {} bytes", size));
+    }
+
+    let p_mem = GlobalLock(h_mem);
+    if p_mem.is_null() {
+        GlobalUnlock(h_mem);
+        CloseClipboard();
+        return Err("GlobalLock failed when setting clipboard".to_string());
+    }
+
+    std::ptr::copy_nonoverlapping(wide.as_ptr(), p_mem as *mut u16, wide.len());
+    GlobalUnlock(h_mem);
+
+    let h_result = SetClipboardData(CF_UNICODETEXT, h_mem);
+    if h_result.is_null() {
+        // SetClipboardData returns NULL on failure; the handle is freed by the system on failure
+        CloseClipboard();
+        return Err("SetClipboardData failed".to_string());
+    }
+
+    CloseClipboard();
+    Ok(())
+}
+
 /// Replace text in the foreground application via clipboard + Ctrl+V simulation.
 /// Saves and restores the original clipboard content.
 pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
@@ -21,7 +72,6 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
     const VK_CONTROL: u16 = 0x11;
     const VK_V: u16 = 0x56;
     const CF_UNICODETEXT: u32 = 13;
-    const GMEM_MOVEABLE: u32 = 0x0002;
 
     extern "system" {
         fn SendInput(cInputs: u32, pInputs: *const INPUT, cbSize: i32) -> u32;
@@ -49,6 +99,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                     GlobalUnlock(h_data);
                     Some(saved)
                 } else {
+                    log::warn!("[replace] save clipboard: GlobalLock failed");
                     None
                 }
             } else {
@@ -57,28 +108,15 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             CloseClipboard();
             saved
         } else {
+            log::warn!("[replace] save clipboard: OpenClipboard failed");
             None
         };
 
-        // Set new clipboard content
-        if OpenClipboard(std::ptr::null_mut()) != 0 {
-            EmptyClipboard();
-
-            let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
-            let size = wide.len() * 2;
-
-            let h_mem = GlobalAlloc(GMEM_MOVEABLE, size);
-            if !h_mem.is_null() {
-                let p_mem = GlobalLock(h_mem);
-                if !p_mem.is_null() {
-                    std::ptr::copy_nonoverlapping(wide.as_ptr(), p_mem as *mut u16, wide.len());
-                    GlobalUnlock(h_mem);
-                    SetClipboardData(CF_UNICODETEXT, h_mem);
-                }
-            }
-
-            CloseClipboard();
-        }
+        // Set translated text to clipboard — this is the critical path
+        set_clipboard_text(text).map_err(|e| {
+            log::error!("[replace] set translated clipboard failed: {}", e);
+            format!("set translated clipboard failed: {}", e)
+        })?;
 
         // Simulate Ctrl+V
         fn make_input(vk: u16, flags: u32) -> INPUT {
@@ -110,20 +148,50 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             make_input(VK_CONTROL, KEYEVENTF_KEYUP),
         ];
 
-        SendInput(
+        let sent = SendInput(
             inputs.len() as u32,
             inputs.as_ptr(),
             std::mem::size_of::<INPUT>() as i32,
         );
+        if sent == 0 {
+            log::warn!("[replace] paste delivery uncertain: SendInput returned 0");
+        }
 
-        // Small delay to ensure paste completes
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        // Adaptive wait: poll clipboard to confirm paste completed, 30ms intervals, max 300ms
+        let paste_confirmed = {
+            let mut confirmed = false;
+            for _ in 0..10 {
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                if OpenClipboard(std::ptr::null_mut()) != 0 {
+                    let h_data = GetClipboardData(CF_UNICODETEXT);
+                    let has_content = if !h_data.is_null() {
+                        let p_data = GlobalLock(h_data);
+                        let size = if !p_data.is_null() { GlobalSize(h_data) } else { 0 };
+                        if !p_data.is_null() { GlobalUnlock(h_data); }
+                        size > 2
+                    } else {
+                        false
+                    };
+                    CloseClipboard();
+                    if has_content {
+                        confirmed = true;
+                        break;
+                    }
+                }
+            }
+            confirmed
+        };
+        if !paste_confirmed {
+            log::debug!("[replace] paste delivery uncertain: not confirmed after 300ms");
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
 
-        // Restore original clipboard (or clear if it was empty)
+        // Restore original clipboard (or clear if it was empty) — warn on failure, not fatal
         if OpenClipboard(std::ptr::null_mut()) != 0 {
             EmptyClipboard();
 
             if let Some(saved) = saved_text {
+                const GMEM_MOVEABLE: u32 = 0x0002;
                 let h_mem = GlobalAlloc(GMEM_MOVEABLE, saved.len());
                 if !h_mem.is_null() {
                     let p_mem = GlobalLock(h_mem);
@@ -131,14 +199,21 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                         std::ptr::copy_nonoverlapping(saved.as_ptr(), p_mem as *mut u8, saved.len());
                         GlobalUnlock(h_mem);
                         SetClipboardData(CF_UNICODETEXT, h_mem);
+                    } else {
+                        log::warn!("[replace] restore clipboard: GlobalLock failed");
                     }
+                } else {
+                    log::warn!("[replace] restore clipboard: GlobalAlloc failed");
                 }
             }
 
             CloseClipboard();
+        } else {
+            log::warn!("[replace] restore clipboard: OpenClipboard failed");
         }
     }
 
+    log::info!("[replace] Replace-via-clipboard completed for {} chars", text.len());
     Ok(())
 }
 
