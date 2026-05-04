@@ -1,4 +1,3 @@
-use crate::engine::llm::TranslationContext;
 use crate::subtitle::{self, SubtitleDocument, TranslatedSubtitle};
 use crate::AppState;
 use tauri::{Emitter, State, Window};
@@ -17,46 +16,45 @@ pub async fn translate_subtitle(
     to_lang: String,
 ) -> Result<TranslatedSubtitle, String> {
     let mut doc = subtitle::extract_text_from_subtitle(&file_path)?;
+
+    // Collect non-empty entries for batch translation
+    let entries_to_translate: Vec<(usize, &str)> = doc
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| !e.original_text.trim().is_empty())
+        .map(|(i, e)| (i, e.original_text.trim()))
+        .collect();
+
     let total = doc.entries.len();
-    let mut context: Vec<TranslationContext> = Vec::new();
 
-    for (i, entry) in doc.entries.iter_mut().enumerate() {
-        if entry.original_text.trim().is_empty() {
-            continue;
-        }
+    // Use batch translation with progress
+    let window_clone = window.clone();
+    let batch_results = state
+        .translation_service
+        .translate_embedded_batch(
+            &entries_to_translate
+                .iter()
+                .map(|(_, text)| *text)
+                .collect::<Vec<_>>()
+                .join("\n"),
+            &from_lang,
+            &to_lang,
+            3, // concurrency
+            |completed, _total| {
+                let _ = window_clone.emit("subtitle-progress", serde_json::json!({
+                    "current": completed,
+                    "total": total,
+                    "text": format!("Translating... {}/{}", completed, total),
+                }));
+            },
+        )
+        .await;
 
-        // Emit progress event
-        let _ = window.emit("subtitle-progress", serde_json::json!({
-            "current": i + 1,
-            "total": total,
-            "text": &entry.original_text,
-        }));
-
-        // Translate using primary engine with context
-        let router = state.engine_router.read().await;
-        let translated = router
-            .translate_primary_with_context(
-                &entry.original_text,
-                &from_lang,
-                &to_lang,
-                &context,
-            )
-            .await
-            .unwrap_or_else(|e| {
-                eprintln!("Failed to translate subtitle {}: {}", entry.index, e);
-                String::new()
-            });
-        drop(router);
-
-        entry.translated_text = translated.clone();
-
-        // Add to context for next translation (keep last 5)
-        context.push(TranslationContext {
-            source: entry.original_text.clone(),
-            translation: translated,
-        });
-        if context.len() > 5 {
-            context.remove(0);
+    // Apply results back to entries
+    for result in batch_results {
+        if let Some(entry) = doc.entries.get_mut(result.index) {
+            entry.translated_text = result.translated;
         }
     }
 
@@ -96,9 +94,8 @@ pub async fn translate_subtitle_text(
     from_lang: String,
     to_lang: String,
 ) -> Result<String, String> {
-    let router = state.engine_router.read().await;
-    router
+    state
+        .translation_service
         .translate_primary(&text, &from_lang, &to_lang)
         .await
-        .map_err(|e| format!("Translation failed: {}", e))
 }

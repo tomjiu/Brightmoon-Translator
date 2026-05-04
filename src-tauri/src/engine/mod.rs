@@ -286,4 +286,27 @@ impl Router {
             Err(anyhow::anyhow!("No translation engine available"))
         }
     }
+
+    /// Stream translation using primary engine, sending tokens via channel
+    pub async fn translate_stream(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+        tx: tokio::sync::mpsc::Sender<String>,
+    ) -> anyhow::Result<String> {
+        if let Some(engine) = self.engines.first() {
+            // Try to downcast to LlmEngine for streaming support
+            if let Some(llm_engine) = engine.as_any().downcast_ref::<llm::LlmEngine>() {
+                llm_engine.translate_stream(text, from, to, tx).await
+            } else {
+                // Fallback: translate normally and send complete result
+                let result = engine.translate(text, from, to).await?;
+                let _ = tx.send(result.clone()).await;
+                Ok(result)
+            }
+        } else {
+            Err(anyhow::anyhow!("No translation engine available"))
+        }
+    }
 }
