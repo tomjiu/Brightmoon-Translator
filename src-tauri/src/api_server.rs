@@ -171,6 +171,12 @@ async fn update_config(
         Ok(new_config) => {
             new_config.save();
             *config = new_config.clone();
+
+            // Hot-reload: rebuild engine router with new config
+            let new_router = engine::Router::new(&new_config);
+            let mut router = state.engine_router.write().await;
+            *router = new_router;
+
             Json(new_config).into_response()
         }
         Err(e) => (
