@@ -128,6 +128,7 @@ export function useOcrMonitor() {
   const hwndRef = useRef<number>(0);
   const followTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const userPausedRef = useRef(false);
+  const autoPausedRef = useRef(false);
   const recentTextsRef = useRef<string[]>([]);
   const consecutiveEmptyRef = useRef(0);
   const cycleCountRef = useRef(0);
@@ -234,9 +235,15 @@ export function useOcrMonitor() {
           diag.skipReason = quality.reason;
           skipCountRef.current += 1;
 
+          // Increment no-change counter for adaptive interval (similar/jitter/skip)
+          if (quality.reason === "similar" || quality.reason === "jitter" || quality.reason === "noisy") {
+            noChangeCountRef.current += 1;
+          }
+
           // Track consecutive empty results
           if (quality.reason === "empty" || quality.reason === "too_short") {
             consecutiveEmptyRef.current += 1;
+            noChangeCountRef.current += 1;
           }
 
           // For empty/noisy: keep last good text in overlay (don't clear)
@@ -350,6 +357,7 @@ export function useOcrMonitor() {
     regionRef.current = null;
     hwndRef.current = 0;
     userPausedRef.current = false;
+    autoPausedRef.current = false;
     recentTextsRef.current = [];
     consecutiveEmptyRef.current = 0;
     cycleCountRef.current = 0;
@@ -398,6 +406,7 @@ export function useOcrMonitor() {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    autoPausedRef.current = true;
     setState((prev) => ({ ...prev, autoPaused: true }));
   }, []);
 
@@ -405,6 +414,7 @@ export function useOcrMonitor() {
     if (userPausedRef.current) return;
     const region = regionRef.current;
     if (!region) return;
+    autoPausedRef.current = false;
     setState((prev) => ({ ...prev, autoPaused: false }));
     noChangeCountRef.current = 0;
     consecutiveEmptyRef.current = 0;
@@ -520,7 +530,7 @@ export function useOcrMonitor() {
 
           // Auto-resume if was auto-paused and window is visible again
           if (
-            state.autoPaused &&
+            autoPausedRef.current &&
             !userPausedRef.current &&
             rect.width > 0 &&
             rect.height > 0
@@ -532,7 +542,7 @@ export function useOcrMonitor() {
         }
       }, FOLLOW_POLL_MS);
     },
-    [autoPause, autoResume, state.autoPaused]
+    [autoPause, autoResume]
   );
 
   const unbindWindow = useCallback(() => {
@@ -603,8 +613,11 @@ export function useOcrMonitor() {
         }
       }
 
-      // Bind to foreground window
-      await bindWindow(region);
+      // Bind to foreground window (if enabled in config)
+      const autoBind = config.ocrAutoBindWindow ?? true;
+      if (autoBind) {
+        await bindWindow(region);
+      }
 
       // Initial capture
       captureAndOcr(region);
@@ -618,6 +631,8 @@ export function useOcrMonitor() {
     const newValue = !state.clickThrough;
     await invoke("set_overlay_click_through", { ignore: newValue });
     setState((prev) => ({ ...prev, clickThrough: newValue }));
+    // Persist to config
+    useConfigStore.getState().updateConfig((prev) => ({ ...prev, ocrClickThrough: newValue }));
   }, [state.clickThrough]);
 
   const togglePin = useCallback(async () => {
