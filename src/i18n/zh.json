@@ -134,7 +134,7 @@
     "hotkeys": {
       "title": "快捷键设置",
       "hint": "自定义全局快捷键。修改后需要重启应用生效。",
-      "ocrTranslate": "OCR 截图翻译",
+      "ocrTranslate": "OCR截图翻译",
       "showWindow": "显示主窗口",
       "translateSelection": "翻译选中文本",
       "replaceTranslate": "替换翻译"
@@ -349,7 +349,13 @@
     "hardFail": "替换失败",
     "softFail": "替换失败，已切换为悬浮窗显示",
     "clipboardLocked": "剪贴板被其他程序锁定",
-    "unknownError": "未知错误"
+    "unknownError": "未知错误",
+    "success": "已替换为翻译结果",
+    "noSelection": "未选中文本"
+  },
+  "selection": {
+    "noSelection": "未选中文本",
+    "translateFailed": "翻译失败"
   },
   "common": {
     "loading": "加载中...",

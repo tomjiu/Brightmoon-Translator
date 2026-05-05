@@ -349,7 +349,13 @@
     "hardFail": "Replace failed",
     "softFail": "Replace failed, showing overlay instead",
     "clipboardLocked": "Clipboard is locked by another application",
-    "unknownError": "Unknown error"
+    "unknownError": "Unknown error",
+    "success": "Replaced with translation",
+    "noSelection": "No text selected"
+  },
+  "selection": {
+    "noSelection": "No text selected",
+    "translateFailed": "Translation failed"
   },
   "common": {
     "loading": "Loading...",

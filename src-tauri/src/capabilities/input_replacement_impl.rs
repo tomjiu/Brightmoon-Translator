@@ -75,12 +75,14 @@ impl InputReplacement for DefaultInputReplacement {
                 replacement: translated,
                 success: true,
                 error: None,
+                fallback_to_overlay: false,
             }),
             Err(e) => Ok(ReplacementResult {
                 original,
                 replacement: translated,
                 success: false,
                 error: Some(e),
+                fallback_to_overlay: true,
             }),
         }
     }
@@ -129,12 +131,14 @@ impl InputReplacement for DefaultInputReplacement {
                 replacement: translated,
                 success: true,
                 error: None,
+                fallback_to_overlay: false,
             }),
             Err(e) => Ok(ReplacementResult {
                 original: text.to_string(),
                 replacement: translated,
                 success: false,
                 error: Some(e),
+                fallback_to_overlay: true,
             }),
         }
     }

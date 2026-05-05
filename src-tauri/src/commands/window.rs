@@ -459,23 +459,22 @@ pub async fn update_overlay(
     height: f64,
     text: String,
     show_controls: Option<bool>,
+    source: Option<String>,
 ) -> Result<(), String> {
     let exists = crate::overlay::window_manager::overlay_exists(&app);
+    let source_text = source.unwrap_or_default();
 
     if exists {
-        // Update content in-place (no source text for OCR overlay)
-        crate::overlay::window_manager::update_overlay_content(&app, "", &text)?;
-        // Update position
+        crate::overlay::window_manager::update_overlay_content(&app, &source_text, &text)?;
         crate::overlay::window_manager::update_overlay_position(&app, x, y)?;
     } else {
-        // Create new overlay
         let level = if show_controls.unwrap_or(false) {
             crate::overlay::OverlayLevel::Full
         } else {
             crate::overlay::OverlayLevel::Minimal
         };
         let content = crate::overlay::OverlayContent {
-            source: String::new(),
+            source: source_text,
             translated: text,
             source_app: None,
             window_title: None,

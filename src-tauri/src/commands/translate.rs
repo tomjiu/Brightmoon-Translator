@@ -1,6 +1,7 @@
 use crate::dictionary::{self, DictionaryResult};
 use crate::engine::TranslateResponse;
 use crate::lang_detect::{self, DetectionResult};
+use crate::capabilities::input_replacement::ReplacementResult;
 use crate::AppState;
 use serde::Deserialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -165,7 +166,7 @@ pub async fn translate_selection_with_text(
 #[tauri::command]
 pub async fn replace_translate(
     state: State<'_, AppState>,
-) -> Result<String, String> {
+) -> Result<ReplacementResult, String> {
     let config = state.config.lock().await;
     let from = config.default_from.clone();
     let to = config.default_to.clone();
@@ -179,7 +180,7 @@ pub async fn replace_translate(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(result.replacement)
+    Ok(result)
 }
 
 /// Replace text in the foreground application via the InputReplacement capability.

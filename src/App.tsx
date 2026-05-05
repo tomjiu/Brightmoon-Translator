@@ -15,6 +15,8 @@ import Plugins from "./pages/Plugins";
 import OcrMonitor from "./components/OcrMonitor";
 import { useThemeStore } from "./stores/themeStore";
 import { useTranslateStore } from "./stores/translateStore";
+import { useToastStore } from "./stores/toastStore";
+import ToastContainer from "./components/Toast";
 import { useI18n } from "./i18n";
 import {
   Languages,
@@ -47,6 +49,7 @@ function App() {
   const [pinned, setPinned] = useState(false);
   const { theme, toggleTheme } = useThemeStore();
   const { setSourceText } = useTranslateStore();
+  const addToast = useToastStore((s) => s.addToast);
   const { t } = useI18n();
 
   const togglePin = async () => {
@@ -86,6 +89,12 @@ function App() {
         await invoke("trigger_selection_translate");
       } catch (err) {
         console.error("Failed to translate selection:", err);
+        const msg = String(err);
+        if (msg.includes("No text selected")) {
+          addToast({ type: "warning", message: t("selection.noSelection"), duration: 3000 });
+        } else {
+          addToast({ type: "error", message: t("selection.translateFailed"), detail: msg, duration: 5000 });
+        }
       }
     });
 
@@ -102,9 +111,51 @@ function App() {
     // Backend uses SelectionProviderManager to get selection, no frontend clipboard read needed
     const unlistenReplaceTranslate = listen("trigger-replace-translate", async () => {
       try {
-        await invoke("replace_translate");
+        const result = await invoke<{
+          original: string;
+          replacement: string;
+          success: boolean;
+          error: string | null;
+          fallbackToOverlay: boolean;
+        }>("replace_translate");
+        if (result.success) {
+          addToast({ type: "success", message: t("replace.success"), duration: 2000 });
+        } else {
+          // Soft failure: clipboard paste failed but translation exists
+          const errMsg = result.error || t("replace.unknownError");
+          const isClipboardLocked = errMsg.includes("OpenClipboard") || errMsg.includes("clipboard");
+          addToast({
+            type: "warning",
+            message: isClipboardLocked ? t("replace.clipboardLocked") : t("replace.softFail"),
+            detail: result.replacement,
+            duration: 5000,
+          });
+          // Show overlay fallback so the user can still see the translation
+          if (result.fallbackToOverlay && result.replacement) {
+            try {
+              const [cx, cy] = await invoke<[number, number]>("get_cursor_position");
+              await invoke("update_overlay", {
+                x: cx + 20,
+                y: cy + 20,
+                width: 350,
+                height: 200,
+                text: result.replacement,
+                source: result.original,
+                showControls: true,
+              });
+            } catch (overlayErr) {
+              console.error("Failed to show fallback overlay:", overlayErr);
+            }
+          }
+        }
       } catch (err) {
         console.error("Failed to replace translate:", err);
+        const msg = String(err);
+        if (msg.includes("No text selected")) {
+          addToast({ type: "warning", message: t("replace.noSelection"), duration: 3000 });
+        } else {
+          addToast({ type: "error", message: t("replace.hardFail"), detail: msg, duration: 5000 });
+        }
       }
     });
 
@@ -260,6 +311,9 @@ function App() {
         {page === "tools" && <Tools />}
         {page === "plugins" && <Plugins />}
       </main>
+
+      {/* Toast Notifications */}
+      <ToastContainer />
     </div>
   );
 }
