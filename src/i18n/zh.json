@@ -339,7 +339,11 @@
     "qualityScore": "质量分",
     "textLen": "文本长度",
     "skipReason": "跳过原因",
-    "noDiagData": "暂无诊断数据"
+    "noDiagData": "暂无诊断数据",
+    "autoBindWindow": "自动绑定前台窗口",
+    "autoBindWindowHint": "启动 OCR 时自动绑定当前前台窗口，监控区域会跟随窗口移动",
+    "clickThroughSetting": "穿透点击",
+    "clickThroughSettingHint": "允许点击穿透翻译悬浮窗，直接操作下方窗口"
   },
   "replace": {
     "hardFail": "替换失败",

@@ -444,6 +444,52 @@ function OcrMonitor() {
               </div>
             </div>
 
+            {/* OCR Settings */}
+            <div className="bg-bg-tertiary rounded-lg p-3 space-y-2.5">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.ocrAutoBindWindow ?? true}
+                  onChange={(e) =>
+                    updateConfig((prev) => ({
+                      ...prev,
+                      ocrAutoBindWindow: e.target.checked,
+                    }))
+                  }
+                  className="mt-0.5 accent-primary"
+                />
+                <div>
+                  <div className="text-xs text-text-primary">
+                    {t("ocr.autoBindWindow")}
+                  </div>
+                  <div className="text-[11px] text-text-secondary mt-0.5">
+                    {t("ocr.autoBindWindowHint")}
+                  </div>
+                </div>
+              </label>
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.ocrClickThrough ?? false}
+                  onChange={(e) =>
+                    updateConfig((prev) => ({
+                      ...prev,
+                      ocrClickThrough: e.target.checked,
+                    }))
+                  }
+                  className="mt-0.5 accent-primary"
+                />
+                <div>
+                  <div className="text-xs text-text-primary">
+                    {t("ocr.clickThroughSetting")}
+                  </div>
+                  <div className="text-[11px] text-text-secondary mt-0.5">
+                    {t("ocr.clickThroughSettingHint")}
+                  </div>
+                </div>
+              </label>
+            </div>
+
             {/* Info Text */}
             <div className="text-xs text-text-secondary bg-bg-tertiary/50 rounded-lg p-3">
               <p className="mb-1">{t("ocr.description")}</p>

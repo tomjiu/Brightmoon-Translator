@@ -339,7 +339,11 @@
     "qualityScore": "Quality",
     "textLen": "Text Length",
     "skipReason": "Skip Reason",
-    "noDiagData": "No diagnostics data yet"
+    "noDiagData": "No diagnostics data yet",
+    "autoBindWindow": "Auto-bind foreground window",
+    "autoBindWindowHint": "Automatically bind to the foreground window when starting OCR, so the monitor region follows window movement",
+    "clickThroughSetting": "Click-through overlay",
+    "clickThroughSettingHint": "Allow clicking through the translation overlay to interact with the window below"
   },
   "replace": {
     "hardFail": "Replace failed",
