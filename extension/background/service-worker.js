@@ -126,7 +126,13 @@ const DEFAULT_CONFIG = {
   targetLang: "zh",
   sourceLang: "auto",
   autoTranslate: false,
-  showButton: true
+  showButton: true,
+  hover: {
+    enabled: true,
+    delay: 300,
+    minTextLength: 2,
+    modifierKey: "none"
+  }
 };
 
 // ==================== Config Management ====================
