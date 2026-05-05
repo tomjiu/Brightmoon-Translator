@@ -302,16 +302,25 @@
   "ocr": {
     "title": "OCR Region Monitor",
     "monitoring": "Monitoring",
+    "autoPaused": "Auto-paused",
     "region": "Monitor Region",
     "x": "X",
     "y": "Y",
     "width": "Width",
     "height": "Height",
     "lastText": "Last Recognized Text",
+    "lastGoodText": "Last Good Text",
+    "boundTo": "Bound to",
+    "rebind": "Rebind",
+    "unbind": "Unbind",
     "clickThrough": "Click Through",
     "clickThroughOn": "Click Through On",
     "pin": "Pin Popup",
     "pinned": "Pinned",
+    "pause": "Pause",
+    "paused": "Paused",
+    "resume": "Resume",
+    "reselect": "Reselect Region",
     "stop": "Stop Monitoring",
     "interval": "Check Interval",
     "seconds": "sec",
@@ -323,6 +332,12 @@
     "feature3": "Support click-through and pinned popups",
     "start": "Select Monitor Region",
     "selectHint": "Drag to select monitor region, press ESC to cancel"
+  },
+  "replace": {
+    "hardFail": "Replace failed",
+    "softFail": "Replace failed, showing overlay instead",
+    "clipboardLocked": "Clipboard is locked by another application",
+    "unknownError": "Unknown error"
   },
   "common": {
     "loading": "Loading...",

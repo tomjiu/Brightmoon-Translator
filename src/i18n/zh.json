@@ -302,16 +302,25 @@
   "ocr": {
     "title": "OCR区域监控",
     "monitoring": "监控中",
+    "autoPaused": "自动暂停",
     "region": "监控区域",
     "x": "X",
     "y": "Y",
     "width": "宽",
     "height": "高",
     "lastText": "最近识别文本",
+    "lastGoodText": "上次有效文本",
+    "boundTo": "绑定窗口",
+    "rebind": "重新绑定",
+    "unbind": "解绑",
     "clickThrough": "穿透点击",
     "clickThroughOn": "穿透点击已开",
     "pin": "固定弹窗",
     "pinned": "已固定",
+    "pause": "暂停监控",
+    "paused": "已暂停",
+    "resume": "恢复监控",
+    "reselect": "重新选区",
     "stop": "停止监控",
     "interval": "检测间隔",
     "seconds": "秒",
@@ -323,6 +332,12 @@
     "feature3": "支持穿透点击和固定弹窗",
     "start": "选择监控区域",
     "selectHint": "拖拽选择监控区域，按 ESC 取消"
+  },
+  "replace": {
+    "hardFail": "替换失败",
+    "softFail": "替换失败，已切换为悬浮窗显示",
+    "clipboardLocked": "剪贴板被其他程序锁定",
+    "unknownError": "未知错误"
   },
   "common": {
     "loading": "加载中...",
