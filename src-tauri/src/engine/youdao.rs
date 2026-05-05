@@ -69,6 +69,7 @@ fn load_keys() -> HashMap<String, KeyEntry> {
     keys
 }
 
+#[allow(dead_code)]
 fn save_keys(keys: &HashMap<String, KeyEntry>) {
     let path = keys_cache_path();
     if let Ok(data) = serde_json::to_string_pretty(keys) {
@@ -86,6 +87,7 @@ fn md5_hex(input: &str) -> String {
 }
 
 /// simple_sign: only signs client, mysticTime, product + key
+#[allow(dead_code)]
 fn simple_sign(params: &mut HashMap<String, String>, key: &str) {
     let point_params = ["client", "mysticTime", "product"];
     let mut parts = Vec::new();
@@ -127,6 +129,7 @@ fn v3_sign(params: &mut HashMap<String, String>, key: &str) {
 // Youdao Engine
 // ============================================================
 
+#[allow(dead_code)]
 pub struct YoudaoEngine {
     client: Client,
     keys: RwLock<HashMap<String, KeyEntry>>,
@@ -135,6 +138,7 @@ pub struct YoudaoEngine {
     cdn_synced: Mutex<bool>,
 }
 
+#[allow(dead_code)]
 impl YoudaoEngine {
     pub fn new() -> Self {
         Self {

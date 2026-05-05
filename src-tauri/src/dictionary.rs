@@ -20,6 +20,7 @@ struct EcDict {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct EcWord {
     #[serde(default)]
     trs: Vec<EcTr>,

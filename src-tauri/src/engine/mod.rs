@@ -397,7 +397,7 @@ impl Router {
         }
 
         // Use select to get first completed result (not sequential await)
-        let mut results = Vec::new();
+        let results = Vec::new();
         let mut remaining = handles;
 
         while !remaining.is_empty() {

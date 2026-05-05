@@ -45,6 +45,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
         }
 
         #[repr(C)]
+        #[allow(non_snake_case)]
         struct KEYBDINPUT {
             wVk: u16,
             wScan: u16,

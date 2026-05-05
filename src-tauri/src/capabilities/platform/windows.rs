@@ -59,6 +59,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
     }
 
     #[repr(C)]
+    #[allow(non_snake_case)]
     struct KEYBDINPUT {
         wVk: u16,
         wScan: u16,

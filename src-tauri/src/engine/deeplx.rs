@@ -16,6 +16,7 @@ pub struct DeepLXEngine {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct JsonRpcRequest {
     jsonrpc: String,
     method: String,
@@ -24,6 +25,7 @@ struct JsonRpcRequest {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct JsonRpcResponse {
     #[serde(default)]
     id: Option<u64>,
@@ -34,6 +36,7 @@ struct JsonRpcResponse {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct TranslateResult {
     #[serde(default)]
     translations: Option<Vec<Translation>>,

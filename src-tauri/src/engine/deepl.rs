@@ -23,6 +23,7 @@ struct DeepLResponse {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct DeepLTranslation {
     text: String,
     #[serde(default)]

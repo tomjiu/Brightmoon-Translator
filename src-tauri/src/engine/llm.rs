@@ -98,6 +98,7 @@ impl LlmEngine {
     }
 
     /// Get next API key using round-robin rotation
+    #[allow(dead_code)]
     fn next_key(&self) -> Option<&str> {
         if self.api_keys.is_empty() {
             return None;

@@ -34,7 +34,7 @@ impl MicrosoftEngine {
 impl TranslationEngine for MicrosoftEngine {
     async fn translate(&self, text: &str, from: &str, to: &str) -> anyhow::Result<String> {
         // Use Bing Translator API (free, no key required)
-        let from_code = if from == "auto" { "" } else { from };
+        let _from_code = if from == "auto" { "" } else { from };
         let to_code = match to {
             "zh" => "zh-Hans",
             "ja" => "ja",

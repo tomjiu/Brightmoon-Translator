@@ -34,6 +34,7 @@ pub async fn get_selected_text() -> Result<String, String> {
         }
 
         #[repr(C)]
+        #[allow(non_snake_case)]
         struct KEYBDINPUT {
             wVk: u16,
             wScan: u16,
@@ -368,16 +369,6 @@ pub async fn move_window_to_cursor(app: tauri::AppHandle) -> Result<(), String> 
         // Get screen size to keep window in bounds
         #[cfg(target_os = "windows")]
         {
-            #[repr(C)]
-            struct RECT {
-                left: i32,
-                top: i32,
-                right: i32,
-                bottom: i32,
-            }
-            extern "system" {
-                fn GetWindowRect(hwnd: *mut std::ffi::c_void, rect: *mut RECT) -> i32;
-            }
             extern "system" {
                 fn GetSystemMetrics(nIndex: i32) -> i32;
             }

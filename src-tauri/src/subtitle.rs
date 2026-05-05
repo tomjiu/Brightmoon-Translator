@@ -385,7 +385,7 @@ pub fn generate_lrc_bilingual(entries: &[SubtitleEntry]) -> String {
 }
 
 /// Export translated subtitle in the original format
-pub fn export_subtitle(document: &SubtitleDocument, bilingual: bool) -> String {
+pub fn export_subtitle(document: &SubtitleDocument, _bilingual: bool) -> String {
     match document.format.as_str() {
         "srt" => generate_srt(&document.entries),
         "vtt" => generate_vtt(&document.entries),
