@@ -116,7 +116,8 @@ export function useOcrMonitor() {
     (region: OcrRegion) => {
       const delay = getAdaptiveDelay();
       timerRef.current = setTimeout(() => {
-        captureAndOcr(region);
+        // Always use regionRef.current to get the latest region (window may have moved)
+        captureAndOcr(regionRef.current || region);
       }, delay);
     },
     [getAdaptiveDelay]
@@ -127,6 +128,8 @@ export function useOcrMonitor() {
   const captureAndOcr = useCallback(
     async (region: OcrRegion) => {
       if (busyRef.current) return;
+      // Use the latest region from ref in case window moved during the cycle
+      const currentRegion = regionRef.current || region;
       busyRef.current = true;
       cycleCountRef.current += 1;
 
@@ -145,10 +148,10 @@ export function useOcrMonitor() {
         // 1. Capture
         const t0 = performance.now();
         const image = await captureScreen(
-          region.x,
-          region.y,
-          region.width,
-          region.height
+          currentRegion.x,
+          currentRegion.y,
+          currentRegion.width,
+          currentRegion.height
         );
         diag.captureMs = performance.now() - t0;
 
@@ -214,7 +217,7 @@ export function useOcrMonitor() {
           // 5. Update overlay (delegated to ocrOverlaySync module)
           const result = useTranslateStore.getState().results[0];
           if (result) {
-            await overlayRef.current.update(region, result.text);
+            await overlayRef.current.update(currentRegion, result.text);
           }
         }
 
@@ -236,7 +239,7 @@ export function useOcrMonitor() {
           lastDiag: diag,
         }));
         if (regionRef.current && !userPausedRef.current) {
-          scheduleNext(region);
+          scheduleNext(regionRef.current);
         }
       }
     },
