@@ -9,6 +9,12 @@ import {
   Pin,
   MousePointerClick,
   Clock,
+  Pause,
+  Play,
+  RefreshCw,
+  Link,
+  Unlink,
+  Activity,
 } from "lucide-react";
 
 interface Selection {
@@ -30,14 +36,24 @@ function OcrMonitor() {
 
   const {
     isMonitoring,
+    paused,
+    autoPaused,
     region,
     lastText,
+    lastGoodText,
     clickThrough,
     pinned,
+    boundWindow,
+    cycleCount,
+    skipCount,
     startMonitoring,
     stopMonitoring,
+    pauseMonitoring,
+    resumeMonitoring,
     toggleClickThrough,
     togglePin,
+    rebindWindow,
+    unbindWindow,
   } = useOcrMonitor();
 
   const handleMouseDown = useCallback(
@@ -95,6 +111,22 @@ function OcrMonitor() {
     setIsSelecting(true);
   };
 
+  const handleReselect = () => {
+    stopMonitoring();
+    setIsSelecting(true);
+  };
+
+  const handleRebind = async () => {
+    if (region) {
+      await invoke("show_main_window");
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await invoke("hide_main_window");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await rebindWindow(region);
+      await invoke("show_main_window");
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -120,9 +152,44 @@ function OcrMonitor() {
             </h3>
           </div>
           {isMonitoring && (
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-              <span className="text-xs text-success">{t("ocr.monitoring")}</span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <Activity size={12} className="text-text-secondary" />
+                <span className="text-xs text-text-secondary">
+                  {cycleCount}
+                </span>
+              </div>
+              {skipCount > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-warning">
+                    skip:{skipCount}
+                  </span>
+                </div>
+              )}
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  autoPaused
+                    ? "bg-text-secondary"
+                    : paused
+                      ? "bg-warning"
+                      : "bg-success animate-pulse"
+                }`}
+              />
+              <span
+                className={`text-xs ${
+                  autoPaused
+                    ? "text-text-secondary"
+                    : paused
+                      ? "text-warning"
+                      : "text-success"
+                }`}
+              >
+                {autoPaused
+                  ? t("ocr.autoPaused")
+                  : paused
+                    ? t("ocr.paused")
+                    : t("ocr.monitoring")}
+              </span>
             </div>
           )}
         </div>
@@ -130,38 +197,86 @@ function OcrMonitor() {
         {isMonitoring && region ? (
           /* Monitoring Active View */
           <div className="space-y-3">
+            {/* Bound Window Info */}
+            {boundWindow && (
+              <div className="bg-bg-tertiary rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Link size={12} className="text-primary" />
+                    <span className="text-xs text-text-secondary">
+                      {t("ocr.boundTo")}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      className="text-xs text-primary hover:text-primary-hover px-1.5 py-0.5 rounded bg-primary/10 hover:bg-primary/20 transition-colors"
+                      onClick={handleRebind}
+                      title={t("ocr.rebind")}
+                    >
+                      <RefreshCw size={10} />
+                    </button>
+                    <button
+                      className="text-xs text-error hover:text-error/80 px-1.5 py-0.5 rounded bg-error/10 hover:bg-error/20 transition-colors"
+                      onClick={unbindWindow}
+                      title={t("ocr.unbind")}
+                    >
+                      <Unlink size={10} />
+                    </button>
+                  </div>
+                </div>
+                <div className="text-xs text-text-primary truncate">
+                  {boundWindow.title || `HWND ${boundWindow.hwnd}`}
+                </div>
+              </div>
+            )}
+
             {/* Region Info */}
             <div className="bg-bg-tertiary rounded-lg p-3">
-              <div className="text-xs text-text-secondary mb-2">{t("ocr.region")}</div>
+              <div className="text-xs text-text-secondary mb-2">
+                {t("ocr.region")}
+              </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
                   <span className="text-text-secondary">{t("ocr.x")}: </span>
-                  <span className="text-text-primary">{region.x}</span>
+                  <span className="text-text-primary">
+                    {Math.round(region.x)}
+                  </span>
                 </div>
                 <div>
                   <span className="text-text-secondary">{t("ocr.y")}: </span>
-                  <span className="text-text-primary">{region.y}</span>
+                  <span className="text-text-primary">
+                    {Math.round(region.y)}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-text-secondary">{t("ocr.width")}: </span>
+                  <span className="text-text-secondary">
+                    {t("ocr.width")}:{" "}
+                  </span>
                   <span className="text-text-primary">{region.width}</span>
                 </div>
                 <div>
-                  <span className="text-text-secondary">{t("ocr.height")}: </span>
+                  <span className="text-text-secondary">
+                    {t("ocr.height")}:{" "}
+                  </span>
                   <span className="text-text-primary">{region.height}</span>
                 </div>
               </div>
             </div>
 
             {/* Last OCR Text */}
-            {lastText && (
+            {(lastText || lastGoodText) && (
               <div className="bg-bg-tertiary rounded-lg p-3">
                 <div className="text-xs text-text-secondary mb-2">
                   {t("ocr.lastText")}
                 </div>
                 <div className="text-sm text-text-primary line-clamp-3">
-                  {lastText}
+                  {lastText || lastGoodText}
                 </div>
+                {lastText && lastGoodText && lastText !== lastGoodText && (
+                  <div className="text-xs text-text-secondary mt-1 italic">
+                    {t("ocr.lastGoodText")}: {lastGoodText.slice(0, 50)}
+                  </div>
+                )}
               </div>
             )}
 
@@ -176,7 +291,9 @@ function OcrMonitor() {
                 onClick={toggleClickThrough}
               >
                 <MousePointerClick size={14} />
-                {clickThrough ? t("ocr.clickThroughOn") : t("ocr.clickThrough")}
+                {clickThrough
+                  ? t("ocr.clickThroughOn")
+                  : t("ocr.clickThrough")}
               </button>
 
               <button
@@ -189,6 +306,35 @@ function OcrMonitor() {
               >
                 <Pin size={14} />
                 {pinned ? t("ocr.pinned") : t("ocr.pin")}
+              </button>
+            </div>
+
+            {/* Pause/Resume/Stop/Reselect Buttons */}
+            <div className="flex flex-wrap gap-2">
+              {!paused ? (
+                <button
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-warning/20 text-warning hover:bg-warning/30 transition-colors"
+                  onClick={pauseMonitoring}
+                >
+                  <Pause size={14} />
+                  {t("ocr.pause")}
+                </button>
+              ) : (
+                <button
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-success/20 text-success hover:bg-success/30 transition-colors"
+                  onClick={resumeMonitoring}
+                >
+                  <Play size={14} />
+                  {t("ocr.resume")}
+                </button>
+              )}
+
+              <button
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-accent/20 text-accent hover:bg-accent/30 transition-colors"
+                onClick={handleReselect}
+              >
+                <RefreshCw size={14} />
+                {t("ocr.reselect")}
               </button>
 
               <button
@@ -208,10 +354,13 @@ function OcrMonitor() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Clock size={14} className="text-text-secondary" />
-                  <span className="text-xs text-text-secondary">{t("ocr.interval")}</span>
+                  <span className="text-xs text-text-secondary">
+                    {t("ocr.interval")}
+                  </span>
                 </div>
                 <span className="text-xs text-primary font-medium">
-                  {interval / 1000}{t("ocr.seconds")}
+                  {interval / 1000}
+                  {t("ocr.seconds")}
                 </span>
               </div>
               <input
