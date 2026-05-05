@@ -37,8 +37,8 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content/selector.js", "content/page-translator.js"],
-      "css": ["content/selector.css"],
+      "js": ["content/selector.js", "content/page-translator.js", "content/hover-translator.js"],
+      "css": ["content/selector.css", "content/hover-translator.css"],
       "run_at": "document_idle"
     }
   ],
