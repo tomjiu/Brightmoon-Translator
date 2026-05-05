@@ -3,23 +3,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { captureScreen, ocrImage } from "../services/ocr";
 import { useTranslateStore } from "../stores/translateStore";
 import { useConfigStore } from "../stores/configStore";
+import { checkQuality, JITTER_WINDOW, MAX_CONSECUTIVE_EMPTY } from "./ocrQuality";
+import { WindowBindingManager } from "./ocrWindowBinding";
+import type { BoundWindow } from "./ocrWindowBinding";
+import { OverlaySyncManager } from "./ocrOverlaySync";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface OcrRegion {
+export interface OcrRegion {
   x: number;
   y: number;
   width: number;
   height: number;
-}
-
-interface BoundWindow {
-  hwnd: number;
-  title: string;
-  // Region offset relative to window top-left at bind time
-  offset: { dx: number; dy: number; width: number; height: number };
-  // Last known window rect
-  lastRect: { x: number; y: number; width: number; height: number } | null;
 }
 
 interface OcrMonitorState {
@@ -49,56 +44,6 @@ export interface CycleDiag {
   textLen: number;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const SIMILARITY_THRESHOLD = 0.92; // text considered "same" above this
-const MIN_TEXT_LENGTH = 2; // skip very short OCR results
-const JITTER_WINDOW = 5; // number of recent texts to check for jitter
-const MAX_CONSECUTIVE_EMPTY = 3; // after this many empty results, stop updating overlay
-const FOLLOW_POLL_MS = 500;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Simple character-level similarity (0..1). Fast, no allocation-heavy diff. */
-function textSimilarity(a: string, b: string): number {
-  if (a === b) return 1;
-  if (!a || !b) return 0;
-  const maxLen = Math.max(a.length, b.length);
-  if (maxLen === 0) return 1;
-  // Count matching characters in order (simplified LCS approximation)
-  let matches = 0;
-  let bi = 0;
-  for (let ai = 0; ai < a.length && bi < b.length; ai++) {
-    const idx = b.indexOf(a[ai], bi);
-    if (idx !== -1) {
-      matches++;
-      bi = idx + 1;
-    }
-  }
-  return matches / maxLen;
-}
-
-/** Check if text is likely OCR noise (random single chars, symbols). */
-function isNoisyText(text: string): boolean {
-  if (text.length < 3) return true;
-  // High ratio of non-alphanumeric characters
-  const alphanum = text.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, "");
-  if (alphanum.length / text.length < 0.3) return true;
-  return false;
-}
-
-/** Check if recent texts form a jitter pattern (oscillating between similar results). */
-function isJittery(recentTexts: string[]): boolean {
-  if (recentTexts.length < JITTER_WINDOW) return false;
-  const last = recentTexts.slice(-JITTER_WINDOW);
-  // Check if texts alternate between 2-3 similar variants
-  const unique = new Set(last);
-  if (unique.size <= 2 && last.length >= JITTER_WINDOW) {
-    return true;
-  }
-  return false;
-}
-
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useOcrMonitor() {
@@ -118,6 +63,7 @@ export function useOcrMonitor() {
     lastDiag: null,
   });
 
+  // ── Refs ──
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTextRef = useRef<string>("");
   const lastGoodTextRef = useRef<string>("");
@@ -125,18 +71,36 @@ export function useOcrMonitor() {
   const noChangeCountRef = useRef(0);
   const baseIntervalRef = useRef(2000);
   const regionRef = useRef<OcrRegion | null>(null);
-  const hwndRef = useRef<number>(0);
-  const followTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const userPausedRef = useRef(false);
   const autoPausedRef = useRef(false);
   const recentTextsRef = useRef<string[]>([]);
   const consecutiveEmptyRef = useRef(0);
   const cycleCountRef = useRef(0);
   const skipCountRef = useRef(0);
-  const boundWindowRef = useRef<BoundWindow | null>(null);
-  const overlayCreatedRef = useRef(false);
-  const lastOverlayTextRef = useRef<string>("");
+  const overlayRef = useRef<OverlaySyncManager>(new OverlaySyncManager());
   const { setSourceText, translate } = useTranslateStore();
+
+  // Window binding manager — created once, callbacks updated via ref pattern
+  const autoPauseRef = useRef<() => void>(() => {});
+  const autoResumeRef = useRef<() => void>(() => {});
+
+  const windowBindingRef = useRef<WindowBindingManager>(
+    new WindowBindingManager({
+      onRegionUpdate: (newRegion) => {
+        regionRef.current = newRegion;
+        setState((prev) => ({ ...prev, region: newRegion }));
+      },
+      onWindowMinimized: () => {
+        autoPauseRef.current();
+      },
+      onWindowRestored: () => {
+        autoResumeRef.current();
+      },
+      onOverlayPositionSync: (x, y) => {
+        overlayRef.current.updatePosition(x, y);
+      },
+    })
+  );
 
   // ── Adaptive delay ──
 
@@ -156,38 +120,6 @@ export function useOcrMonitor() {
       }, delay);
     },
     [getAdaptiveDelay]
-  );
-
-  // ── Quality check ──
-
-  const checkQuality = useCallback(
-    (text: string): { ok: boolean; reason: string; score: number } => {
-      if (!text || text.trim().length === 0) {
-        return { ok: false, reason: "empty", score: 0 };
-      }
-      const trimmed = text.trim();
-      if (trimmed.length < MIN_TEXT_LENGTH) {
-        return { ok: false, reason: "too_short", score: 0.1 };
-      }
-      if (isNoisyText(trimmed)) {
-        return { ok: false, reason: "noisy", score: 0.2 };
-      }
-      // Check jitter against recent history
-      const recent = recentTextsRef.current;
-      if (isJittery([...recent, trimmed])) {
-        return { ok: false, reason: "jitter", score: 0.3 };
-      }
-      // Check similarity to last text (debounce)
-      const last = lastTextRef.current;
-      if (last) {
-        const sim = textSimilarity(trimmed, last);
-        if (sim >= SIMILARITY_THRESHOLD) {
-          return { ok: false, reason: "similar", score: sim };
-        }
-      }
-      return { ok: true, reason: "", score: 1.0 };
-    },
-    []
   );
 
   // ── Main capture-OCR-translate cycle ──
@@ -226,8 +158,8 @@ export function useOcrMonitor() {
         diag.ocrMs = performance.now() - t1;
         diag.textLen = text.length;
 
-        // 3. Quality check
-        const quality = checkQuality(text);
+        // 3. Quality check (delegated to ocrQuality module)
+        const quality = checkQuality(text, lastTextRef.current, recentTextsRef.current);
         diag.qualityScore = quality.score;
 
         if (!quality.ok) {
@@ -235,23 +167,19 @@ export function useOcrMonitor() {
           diag.skipReason = quality.reason;
           skipCountRef.current += 1;
 
-          // Increment no-change counter for adaptive interval (similar/jitter/skip)
           if (quality.reason === "similar" || quality.reason === "jitter" || quality.reason === "noisy") {
             noChangeCountRef.current += 1;
           }
 
-          // Track consecutive empty results
           if (quality.reason === "empty" || quality.reason === "too_short") {
             consecutiveEmptyRef.current += 1;
             noChangeCountRef.current += 1;
           }
 
-          // For empty/noisy: keep last good text in overlay (don't clear)
           if (
             consecutiveEmptyRef.current >= MAX_CONSECUTIVE_EMPTY &&
-            overlayCreatedRef.current
+            overlayRef.current.isCreated()
           ) {
-            // Too many consecutive failures — log but don't destroy overlay
             console.log(
               `[OCR] ${consecutiveEmptyRef.current} consecutive empty results, keeping last overlay`
             );
@@ -266,12 +194,9 @@ export function useOcrMonitor() {
             recentTextsRef.current = recentTextsRef.current.slice(-JITTER_WINDOW);
           }
 
-          // Update lastText for display
           lastTextRef.current = text.trim();
           noChangeCountRef.current = 0;
           diag.textChanged = true;
-
-          // Store as last good text
           lastGoodTextRef.current = text.trim();
 
           setState((prev) => ({
@@ -286,35 +211,10 @@ export function useOcrMonitor() {
           await translate();
           diag.translateMs = performance.now() - t2;
 
-          // 5. Update overlay incrementally
+          // 5. Update overlay (delegated to ocrOverlaySync module)
           const result = useTranslateStore.getState().results[0];
           if (result) {
-            const translatedText = result.text;
-            const textChanged = translatedText !== lastOverlayTextRef.current;
-            const overlayX = region.x + region.width + 10;
-            const overlayY = region.y;
-
-            if (!overlayCreatedRef.current) {
-              // First creation: create overlay with position and text
-              await invoke("update_overlay", {
-                x: overlayX,
-                y: overlayY,
-                width: 350,
-                height: 200,
-                text: translatedText,
-                showControls: true,
-              });
-              overlayCreatedRef.current = true;
-              lastOverlayTextRef.current = translatedText;
-            } else if (textChanged) {
-              // Text changed but overlay exists: update content only (preserves pin/click-through)
-              await invoke("update_overlay_content", {
-                source: "",
-                translated: translatedText,
-              });
-              lastOverlayTextRef.current = translatedText;
-            }
-            // If neither text changed nor first creation, skip update entirely
+            await overlayRef.current.update(region, result.text);
           }
         }
 
@@ -340,7 +240,7 @@ export function useOcrMonitor() {
         }
       }
     },
-    [setSourceText, translate, scheduleNext, checkQuality]
+    [setSourceText, translate, scheduleNext]
   );
 
   // ── Stop monitoring ──
@@ -350,21 +250,15 @@ export function useOcrMonitor() {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    if (followTimerRef.current) {
-      clearInterval(followTimerRef.current);
-      followTimerRef.current = null;
-    }
+    windowBindingRef.current.unbind();
     regionRef.current = null;
-    hwndRef.current = 0;
     userPausedRef.current = false;
     autoPausedRef.current = false;
     recentTextsRef.current = [];
     consecutiveEmptyRef.current = 0;
     cycleCountRef.current = 0;
     skipCountRef.current = 0;
-    overlayCreatedRef.current = false;
-    lastOverlayTextRef.current = "";
-    boundWindowRef.current = null;
+    overlayRef.current.reset();
     setState((prev) => ({
       ...prev,
       isMonitoring: false,
@@ -421,137 +315,25 @@ export function useOcrMonitor() {
     captureAndOcr(region);
   }, [captureAndOcr]);
 
-  // ── Window binding ──
+  // Keep refs in sync for the WindowBindingManager callbacks
+  autoPauseRef.current = autoPause;
+  autoResumeRef.current = autoResume;
+
+  // ── Window binding (delegated to ocrWindowBinding module) ──
 
   const bindWindow = useCallback(
     async (region: OcrRegion) => {
-      try {
-        const hwnd = await invoke<number>("detect_foreground_hwnd");
-        if (hwnd <= 0) return;
-
-        const rect = await invoke<{
-          x: number;
-          y: number;
-          width: number;
-          height: number;
-        } | null>("get_window_rect_cmd", { hwnd });
-
-        if (!rect) return;
-
-        // Get window title
-        let title = "";
-        try {
-          title = await invoke<string>("get_window_title_cmd", { hwnd });
-        } catch {
-          title = `Window ${hwnd}`;
-        }
-
-        const bound: BoundWindow = {
-          hwnd,
-          title,
-          offset: {
-            dx: region.x - rect.x,
-            dy: region.y - rect.y,
-            width: region.width,
-            height: region.height,
-          },
-          lastRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-        };
-
-        hwndRef.current = hwnd;
-        boundWindowRef.current = bound;
+      const bound = await windowBindingRef.current.bind(region);
+      if (bound) {
+        windowBindingRef.current.setRegionRef(regionRef.current);
         setState((prev) => ({ ...prev, boundWindow: bound }));
-
-        // Start follow loop
-        startFollowLoop(hwnd);
-      } catch (e) {
-        console.warn("[OCR] Failed to bind window:", e);
       }
     },
     []
   );
 
-  const startFollowLoop = useCallback(
-    (hwnd: number) => {
-      if (followTimerRef.current) {
-        clearInterval(followTimerRef.current);
-      }
-
-      followTimerRef.current = setInterval(async () => {
-        try {
-          const rect = await invoke<{
-            x: number;
-            y: number;
-            width: number;
-            height: number;
-          } | null>("get_window_rect_cmd", { hwnd });
-
-          if (!rect || !regionRef.current || !boundWindowRef.current) return;
-
-          const bw = boundWindowRef.current;
-          const lastRect = bw.lastRect;
-
-          // Check if minimized (width/height == 0)
-          if (rect.width === 0 && rect.height === 0) {
-            if (!userPausedRef.current) {
-              autoPause();
-            }
-            return;
-          }
-
-          // Check if window moved
-          const shouldMove =
-            !lastRect ||
-            Math.abs(rect.x - lastRect.x) > 2 ||
-            Math.abs(rect.y - lastRect.y) > 2;
-
-          if (shouldMove) {
-            // Compute new region from offset
-            const newRegion: OcrRegion = {
-              x: rect.x + bw.offset.dx,
-              y: rect.y + bw.offset.dy,
-              width: bw.offset.width,
-              height: bw.offset.height,
-            };
-            regionRef.current = newRegion;
-            boundWindowRef.current = {
-              ...bw,
-              lastRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-            };
-            setState((prev) => ({ ...prev, region: newRegion }));
-
-            // Sync overlay position with window movement
-            if (overlayCreatedRef.current) {
-              const overlayX = newRegion.x + newRegion.width + 10;
-              const overlayY = newRegion.y;
-              invoke("update_overlay_position", { x: overlayX, y: overlayY }).catch(() => {});
-            }
-          }
-
-          // Auto-resume if was auto-paused and window is visible again
-          if (
-            autoPausedRef.current &&
-            !userPausedRef.current &&
-            rect.width > 0 &&
-            rect.height > 0
-          ) {
-            autoResume();
-          }
-        } catch {
-          // Window might be gone
-        }
-      }, FOLLOW_POLL_MS);
-    },
-    [autoPause, autoResume]
-  );
-
   const unbindWindow = useCallback(() => {
-    if (followTimerRef.current) {
-      clearInterval(followTimerRef.current);
-      followTimerRef.current = null;
-    }
-    hwndRef.current = 0;
-    boundWindowRef.current = null;
+    windowBindingRef.current.unbind();
     setState((prev) => ({ ...prev, boundWindow: null }));
   }, []);
 
@@ -569,7 +351,6 @@ export function useOcrMonitor() {
     async (region: OcrRegion, interval?: number) => {
       stopMonitoring();
 
-      // Load settings from config
       const config = useConfigStore.getState().config;
       const resolvedInterval = interval ?? config.ocrInterval ?? 2000;
       const clickThrough = config.ocrClickThrough ?? false;
@@ -582,8 +363,6 @@ export function useOcrMonitor() {
       consecutiveEmptyRef.current = 0;
       cycleCountRef.current = 0;
       skipCountRef.current = 0;
-      overlayCreatedRef.current = false;
-      lastOverlayTextRef.current = "";
 
       setState({
         isMonitoring: true,
@@ -604,7 +383,6 @@ export function useOcrMonitor() {
       lastTextRef.current = "";
       lastGoodTextRef.current = "";
 
-      // Apply click-through from config
       if (clickThrough) {
         try {
           await invoke("set_overlay_click_through", { ignore: true });
@@ -613,13 +391,11 @@ export function useOcrMonitor() {
         }
       }
 
-      // Bind to foreground window (if enabled in config)
       const autoBind = config.ocrAutoBindWindow ?? true;
       if (autoBind) {
         await bindWindow(region);
       }
 
-      // Initial capture
       captureAndOcr(region);
     },
     [captureAndOcr, stopMonitoring, bindWindow]
@@ -631,7 +407,6 @@ export function useOcrMonitor() {
     const newValue = !state.clickThrough;
     await invoke("set_overlay_click_through", { ignore: newValue });
     setState((prev) => ({ ...prev, clickThrough: newValue }));
-    // Persist to config
     useConfigStore.getState().updateConfig((prev) => ({ ...prev, ocrClickThrough: newValue }));
   }, [state.clickThrough]);
 
@@ -687,7 +462,7 @@ export function useOcrMonitor() {
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      if (followTimerRef.current) clearInterval(followTimerRef.current);
+      windowBindingRef.current.dispose();
     };
   }, []);
 
