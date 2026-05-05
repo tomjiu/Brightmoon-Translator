@@ -181,8 +181,8 @@ body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont,
       <button class="btn btn-close" id="closeBtn">Close</button>
     </div>
   </div>
-  <div class="source">{src_escaped}</div>
-  <div class="translated">{trans_escaped}</div>
+  <div class="source" data-role="source">{src_escaped}</div>
+  <div class="translated" data-role="translated">{trans_escaped}</div>
 </div>
 <script>
 const trans = document.querySelector('.translated').textContent;

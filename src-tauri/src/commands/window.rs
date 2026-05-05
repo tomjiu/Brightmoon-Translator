@@ -455,3 +455,65 @@ pub async fn stop_overlay_follow(
     state.follow_controller.stop().await;
     Ok(())
 }
+
+/// Update overlay content in-place without rebuilding.
+/// Preserves pin/click-through/follow state.
+/// If overlay doesn't exist, creates it with the given position and text.
+#[command]
+pub async fn update_overlay(
+    app: tauri::AppHandle,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    text: String,
+    show_controls: Option<bool>,
+) -> Result<(), String> {
+    let exists = crate::overlay::window_manager::overlay_exists(&app);
+
+    if exists {
+        // Update content in-place (no source text for OCR overlay)
+        crate::overlay::window_manager::update_overlay_content(&app, "", &text)?;
+        // Update position
+        crate::overlay::window_manager::update_overlay_position(&app, x, y)?;
+    } else {
+        // Create new overlay
+        let level = if show_controls.unwrap_or(false) {
+            crate::overlay::OverlayLevel::Full
+        } else {
+            crate::overlay::OverlayLevel::Minimal
+        };
+        let content = crate::overlay::OverlayContent {
+            source: String::new(),
+            translated: text,
+            source_app: None,
+            window_title: None,
+        };
+        let html = crate::overlay::html_builder::build_html(&content, level, 3000);
+        crate::overlay::window_manager::create_overlay_window(&app, &html, x, y, width, height, true)?;
+    }
+
+    Ok(())
+}
+
+/// Update only overlay content (text) without changing position.
+/// Returns false if overlay doesn't exist.
+#[command]
+pub async fn update_overlay_content(
+    app: tauri::AppHandle,
+    source: String,
+    translated: String,
+) -> Result<bool, String> {
+    crate::overlay::window_manager::update_overlay_content(&app, &source, &translated)
+}
+
+/// Update only overlay position without changing content.
+/// Returns false if overlay doesn't exist.
+#[command]
+pub async fn update_overlay_position(
+    app: tauri::AppHandle,
+    x: f64,
+    y: f64,
+) -> Result<bool, String> {
+    crate::overlay::window_manager::update_overlay_position(&app, x, y)
+}

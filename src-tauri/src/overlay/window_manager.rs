@@ -56,3 +56,57 @@ pub fn resize_overlay_window(app: &AppHandle, width: f64, height: f64) {
         )));
     }
 }
+
+/// Update overlay content in-place without rebuilding the window.
+/// This preserves pin/click-through state.
+/// Returns true if overlay existed and was updated, false if overlay doesn't exist.
+pub fn update_overlay_content(
+    app: &AppHandle,
+    source: &str,
+    translated: &str,
+) -> Result<bool, String> {
+    let window = match app.get_webview_window("overlay") {
+        Some(w) => w,
+        None => return Ok(false),
+    };
+
+    // Escape for JS string literals
+    let src_escaped = source.replace('\\', "\\\\").replace('`', "\\`").replace('$', "\\$");
+    let trans_escaped = translated.replace('\\', "\\\\").replace('`', "\\`").replace('$', "\\$");
+
+    // Update DOM elements if they exist, using data attributes for reliable selection
+    let js = format!(
+        r#"
+        (function() {{
+            const srcEl = document.querySelector('[data-role="source"]');
+            const transEl = document.querySelector('[data-role="translated"]');
+            if (srcEl) srcEl.textContent = `{src_escaped}`;
+            if (transEl) transEl.textContent = `{trans_escaped}`;
+        }})();
+        "#
+    );
+
+    window.eval(&js).map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// Update overlay position without rebuilding.
+pub fn update_overlay_position(app: &AppHandle, x: f64, y: f64) -> Result<bool, String> {
+    let window = match app.get_webview_window("overlay") {
+        Some(w) => w,
+        None => return Ok(false),
+    };
+
+    window
+        .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+            x as i32, y as i32,
+        )))
+        .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
+/// Check if overlay window exists
+pub fn overlay_exists(app: &AppHandle) -> bool {
+    app.get_webview_window("overlay").is_some()
+}

@@ -276,22 +276,35 @@ export function useOcrMonitor() {
           await translate();
           diag.translateMs = performance.now() - t2;
 
-          // 5. Update overlay (only if translated text changed)
+          // 5. Update overlay incrementally
           const result = useTranslateStore.getState().results[0];
           if (result) {
             const translatedText = result.text;
-            if (translatedText !== lastOverlayTextRef.current || !overlayCreatedRef.current) {
-              lastOverlayTextRef.current = translatedText;
+            const textChanged = translatedText !== lastOverlayTextRef.current;
+            const overlayX = region.x + region.width + 10;
+            const overlayY = region.y;
+
+            if (!overlayCreatedRef.current) {
+              // First creation: create overlay with position and text
               await invoke("update_overlay", {
-                x: region.x + region.width + 10,
-                y: region.y,
+                x: overlayX,
+                y: overlayY,
                 width: 350,
                 height: 200,
                 text: translatedText,
                 showControls: true,
               });
               overlayCreatedRef.current = true;
+              lastOverlayTextRef.current = translatedText;
+            } else if (textChanged) {
+              // Text changed but overlay exists: update content only (preserves pin/click-through)
+              await invoke("update_overlay_content", {
+                source: "",
+                translated: translatedText,
+              });
+              lastOverlayTextRef.current = translatedText;
             }
+            // If neither text changed nor first creation, skip update entirely
           }
         }
 
