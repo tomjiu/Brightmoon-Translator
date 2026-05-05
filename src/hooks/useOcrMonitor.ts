@@ -35,9 +35,10 @@ interface OcrMonitorState {
   boundWindow: BoundWindow | null;
   cycleCount: number;
   skipCount: number;
+  lastDiag: CycleDiag | null;
 }
 
-interface CycleDiag {
+export interface CycleDiag {
   captureMs: number;
   ocrMs: number;
   translateMs: number;
@@ -114,6 +115,7 @@ export function useOcrMonitor() {
     boundWindow: null,
     cycleCount: 0,
     skipCount: 0,
+    lastDiag: null,
   });
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -324,6 +326,7 @@ export function useOcrMonitor() {
           ...prev,
           cycleCount: cycleCountRef.current,
           skipCount: skipCountRef.current,
+          lastDiag: diag,
         }));
         if (regionRef.current && !userPausedRef.current) {
           scheduleNext(region);
@@ -585,6 +588,7 @@ export function useOcrMonitor() {
         boundWindow: null,
         cycleCount: 0,
         skipCount: 0,
+        lastDiag: null,
       });
 
       lastTextRef.current = "";

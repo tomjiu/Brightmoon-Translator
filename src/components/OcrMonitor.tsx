@@ -56,6 +56,7 @@ function OcrMonitor() {
     boundWindow,
     cycleCount,
     skipCount,
+    lastDiag,
     startMonitoring,
     stopMonitoring,
     pauseMonitoring,
@@ -65,6 +66,8 @@ function OcrMonitor() {
     rebindWindow,
     unbindWindow,
   } = useOcrMonitor();
+
+  const [showDiag, setShowDiag] = useState(false);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -289,6 +292,55 @@ function OcrMonitor() {
                 )}
               </div>
             )}
+
+            {/* Diagnostics Panel */}
+            <div className="bg-bg-tertiary rounded-lg overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-3 py-2 text-xs text-text-secondary hover:text-text-primary transition-colors"
+                onClick={() => setShowDiag(!showDiag)}
+              >
+                <span className="flex items-center gap-1.5">
+                  <Activity size={12} />
+                  {t("ocr.diagnostics")}
+                </span>
+                <span className="text-[10px]">{showDiag ? "▲" : "▼"}</span>
+              </button>
+              {showDiag && lastDiag && (
+                <div className="px-3 pb-3 grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.captureMs")}: </span>
+                    <span className="text-text-primary">{lastDiag.captureMs.toFixed(0)}ms</span>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.ocrMs")}: </span>
+                    <span className="text-text-primary">{lastDiag.ocrMs.toFixed(0)}ms</span>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.translateMs")}: </span>
+                    <span className="text-text-primary">{lastDiag.translateMs.toFixed(0)}ms</span>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.qualityScore")}: </span>
+                    <span className="text-text-primary">{lastDiag.qualityScore.toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.textLen")}: </span>
+                    <span className="text-text-primary">{lastDiag.textLen}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.skipReason")}: </span>
+                    <span className={lastDiag.skipped ? "text-warning" : "text-success"}>
+                      {lastDiag.skipped ? lastDiag.skipReason : "none"}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {showDiag && !lastDiag && (
+                <div className="px-3 pb-3 text-xs text-text-secondary">
+                  {t("ocr.noDiagData")}
+                </div>
+              )}
+            </div>
 
             {/* Control Buttons */}
             <div className="flex flex-wrap gap-2">

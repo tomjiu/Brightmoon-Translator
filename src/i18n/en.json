@@ -331,7 +331,15 @@
     "feature2": "Auto-translate and show popup when text changes",
     "feature3": "Support click-through and pinned popups",
     "start": "Select Monitor Region",
-    "selectHint": "Drag to select monitor region, press ESC to cancel"
+    "selectHint": "Drag to select monitor region, press ESC to cancel",
+    "diagnostics": "Diagnostics",
+    "captureMs": "Capture",
+    "ocrMs": "OCR",
+    "translateMs": "Translate",
+    "qualityScore": "Quality",
+    "textLen": "Text Length",
+    "skipReason": "Skip Reason",
+    "noDiagData": "No diagnostics data yet"
   },
   "replace": {
     "hardFail": "Replace failed",

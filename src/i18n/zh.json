@@ -331,7 +331,15 @@
     "feature2": "文字变化时自动翻译并显示悬浮窗",
     "feature3": "支持穿透点击和固定弹窗",
     "start": "选择监控区域",
-    "selectHint": "拖拽选择监控区域，按 ESC 取消"
+    "selectHint": "拖拽选择监控区域，按 ESC 取消",
+    "diagnostics": "诊断信息",
+    "captureMs": "截图",
+    "ocrMs": "OCR",
+    "translateMs": "翻译",
+    "qualityScore": "质量分",
+    "textLen": "文本长度",
+    "skipReason": "跳过原因",
+    "noDiagData": "暂无诊断数据"
   },
   "replace": {
     "hardFail": "替换失败",
