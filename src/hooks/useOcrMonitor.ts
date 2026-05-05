@@ -411,12 +411,13 @@ export function useOcrMonitor() {
   }, [state.clickThrough]);
 
   const togglePin = useCallback(async () => {
-    const newValue = !state.pinned;
-    if (newValue) {
-      await invoke("pin_overlay");
+    try {
+      const result = await invoke<boolean>("pin_overlay");
+      setState((prev) => ({ ...prev, pinned: result }));
+    } catch {
+      // Overlay doesn't exist yet
     }
-    setState((prev) => ({ ...prev, pinned: newValue }));
-  }, [state.pinned]);
+  }, []);
 
   // ── Visibility / Focus listeners ──
 

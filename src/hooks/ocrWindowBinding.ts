@@ -36,6 +36,7 @@ export class WindowBindingManager {
   private regionRef: OcrRegion | null = null;
   private overlayCreatedRef = false;
   private callbacks: WindowBindingCallbacks;
+  private wasMinimized = false;
 
   constructor(callbacks: WindowBindingCallbacks) {
     this.callbacks = callbacks;
@@ -107,6 +108,7 @@ export class WindowBindingManager {
     }
     this.hwnd = 0;
     this.boundWindow = null;
+    this.wasMinimized = false;
   }
 
   /** Unbind then rebind to the current foreground window */
@@ -138,7 +140,10 @@ export class WindowBindingManager {
 
         // Check if minimized (width/height == 0)
         if (rect.width === 0 && rect.height === 0) {
-          this.callbacks.onWindowMinimized();
+          if (!this.wasMinimized) {
+            this.wasMinimized = true;
+            this.callbacks.onWindowMinimized();
+          }
           return;
         }
 
@@ -170,8 +175,9 @@ export class WindowBindingManager {
           }
         }
 
-        // Auto-resume if window is visible again
-        if (rect.width > 0 && rect.height > 0) {
+        // Auto-resume only on minimize→restore transition
+        if (this.wasMinimized && rect.width > 0 && rect.height > 0) {
+          this.wasMinimized = false;
           this.callbacks.onWindowRestored();
         }
       } catch {

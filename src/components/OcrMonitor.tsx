@@ -23,12 +23,16 @@ interface Selection {
   y: number;
   width: number;
   height: number;
+  /** CSS left for overlay display (clientX-based) */
+  cssX: number;
+  /** CSS top for overlay display (clientY-based) */
+  cssY: number;
 }
 
 function OcrMonitor() {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(
+  const [startPos, setStartPos] = useState<{ x: number; y: number; clientX: number; clientY: number } | null>(
     null
   );
   const config = useConfigStore((s) => s.config);
@@ -72,7 +76,12 @@ function OcrMonitor() {
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (!isSelecting) return;
-      setStartPos({ x: e.clientX, y: e.clientY });
+      setStartPos({
+        x: e.screenX,
+        y: e.screenY,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      });
       setSelection(null);
     },
     [isSelecting]
@@ -81,11 +90,15 @@ function OcrMonitor() {
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (!startPos || !isSelecting) return;
-      const x = Math.min(startPos.x, e.clientX);
-      const y = Math.min(startPos.y, e.clientY);
-      const width = Math.abs(e.clientX - startPos.x);
-      const height = Math.abs(e.clientY - startPos.y);
-      setSelection({ x, y, width, height });
+      // Screen coordinates for Rust capture
+      const x = Math.min(startPos.x, e.screenX);
+      const y = Math.min(startPos.y, e.screenY);
+      const width = Math.abs(e.screenX - startPos.x);
+      const height = Math.abs(e.screenY - startPos.y);
+      // Client coordinates for CSS overlay display
+      const cssX = Math.min(startPos.clientX, e.clientX);
+      const cssY = Math.min(startPos.clientY, e.clientY);
+      setSelection({ x, y, width, height, cssX, cssY });
     },
     [startPos, isSelecting]
   );
@@ -98,7 +111,13 @@ function OcrMonitor() {
       return;
     }
 
-    const sel = { ...selection };
+    // Extract screen coordinates for Rust capture
+    const region = {
+      x: selection.x,
+      y: selection.y,
+      width: selection.width,
+      height: selection.height,
+    };
     setIsSelecting(false);
     setStartPos(null);
     setSelection(null);
@@ -107,8 +126,8 @@ function OcrMonitor() {
     await invoke("hide_main_window");
     await new Promise((resolve) => setTimeout(resolve, 200));
 
-    // Start monitoring
-    startMonitoring(sel, interval);
+    // Start monitoring with screen coordinates
+    startMonitoring(region, interval);
 
     // Show window again
     await invoke("show_main_window");
@@ -530,8 +549,8 @@ function OcrMonitor() {
               <div
                 className="absolute border-2 border-accent bg-accent/10"
                 style={{
-                  left: selection.x,
-                  top: selection.y,
+                  left: selection.cssX,
+                  top: selection.cssY,
                   width: selection.width,
                   height: selection.height,
                 }}
@@ -539,8 +558,8 @@ function OcrMonitor() {
               <div
                 className="absolute bg-bg-secondary border border-border rounded px-2 py-1 text-xs text-text-primary"
                 style={{
-                  left: selection.x,
-                  top: selection.y - 28,
+                  left: selection.cssX,
+                  top: selection.cssY - 28,
                 }}
               >
                 {Math.round(selection.width)} x {Math.round(selection.height)}
