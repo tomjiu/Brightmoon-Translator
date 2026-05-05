@@ -13,6 +13,8 @@ import EpubViewer from "./pages/EpubViewer";
 import SubtitleViewer from "./pages/SubtitleViewer";
 import Plugins from "./pages/Plugins";
 import OcrMonitor from "./components/OcrMonitor";
+import OcrScreenshotSelector from "./components/OcrScreenshotSelector";
+import OcrScreenshotTranslator from "./components/OcrScreenshotTranslator";
 import { useThemeStore } from "./stores/themeStore";
 import { useTranslateStore } from "./stores/translateStore";
 import { useToastStore } from "./stores/toastStore";
@@ -45,6 +47,15 @@ interface NavItem {
 }
 
 function App() {
+  const windowMode = new URLSearchParams(window.location.search).get("window");
+  if (windowMode === "ocr-screenshot") {
+    return <OcrScreenshotSelector />;
+  }
+
+  return <MainApp />;
+}
+
+function MainApp() {
   const [page, setPage] = useState<Page>("translator");
   const [pinned, setPinned] = useState(false);
   const { theme, toggleTheme } = useThemeStore();
@@ -297,8 +308,16 @@ function App() {
       <main className="flex-1 overflow-hidden">
         {page === "translator" && <MainTranslator />}
         {page === "ocr" && (
-          <div className="flex flex-col h-full p-4 overflow-y-auto">
-            <OcrMonitor />
+          <div className="flex flex-col h-full gap-4 p-4 overflow-y-auto">
+            <OcrScreenshotTranslator />
+            <details className="rounded-2xl border border-border bg-bg-secondary p-4">
+              <summary className="cursor-pointer text-sm font-medium text-text-primary">
+                旧版连续 OCR 监控（实验功能）
+              </summary>
+              <div className="mt-4">
+                <OcrMonitor />
+              </div>
+            </details>
           </div>
         )}
         {page === "settings" && <Settings />}

@@ -3,6 +3,28 @@ import { createWorker, Worker } from "tesseract.js";
 
 let worker: Worker | null = null;
 
+export interface ScreenshotSnapshotInfo {
+  screenX: number;
+  screenY: number;
+  screenWidth: number;
+  screenHeight: number;
+  scaleFactor: number;
+  imageWidth: number;
+  imageHeight: number;
+}
+
+export interface ScreenshotSnapshot {
+  image: string;
+  info: ScreenshotSnapshotInfo;
+}
+
+export interface ScreenshotRegion {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 async function getWorker(): Promise<Worker> {
   if (!worker) {
     worker = await createWorker("chi_sim+eng", 1, {
@@ -34,12 +56,61 @@ export async function captureFullScreen(): Promise<string> {
   return await invoke<string>("capture_full_screen");
 }
 
+export async function prepareScreenshotSnapshot(): Promise<ScreenshotSnapshotInfo> {
+  return await invoke<ScreenshotSnapshotInfo>("prepare_screenshot_snapshot");
+}
+
+export async function loadScreenshotSnapshot(): Promise<ScreenshotSnapshot> {
+  return await invoke<ScreenshotSnapshot>("load_screenshot_snapshot");
+}
+
+export async function cropScreenshotSnapshot(region: ScreenshotRegion): Promise<string> {
+  return await invoke<string>("crop_screenshot_snapshot", {
+    left: Math.round(region.left),
+    top: Math.round(region.top),
+    width: Math.round(region.width),
+    height: Math.round(region.height),
+  });
+}
+
+export async function captureScreenshotRegion(region: ScreenshotRegion): Promise<string> {
+  return await invoke<string>("capture_screenshot_region", {
+    left: Math.round(region.left),
+    top: Math.round(region.top),
+    width: Math.round(region.width),
+    height: Math.round(region.height),
+  });
+}
+
+export async function systemOcrImage(imageDataUrl: string, lang = "auto"): Promise<string> {
+  return await invoke<string>("system_ocr", {
+    base64Data: imageDataUrl,
+    lang,
+  });
+}
+
 export async function ocrImage(imageDataUrl: string): Promise<string> {
   const w = await getWorker();
   const {
     data: { text },
   } = await w.recognize(imageDataUrl);
   return text.trim();
+}
+
+export async function ocrImagePreferNative(imageDataUrl: string, lang = "auto"): Promise<string> {
+  try {
+    const text = await systemOcrImage(imageDataUrl, lang);
+    if (text.trim()) {
+      console.log("[OCR] Engine: Windows.Media.Ocr (WinRT)");
+      return text.trim();
+    }
+    console.warn("[OCR] WinRT returned empty, falling back to tesseract.js");
+  } catch (err) {
+    console.warn("[OCR] WinRT failed, falling back to tesseract.js:", err);
+  }
+  const text = await ocrImage(imageDataUrl);
+  console.log("[OCR] Engine: tesseract.js");
+  return text;
 }
 
 export async function ocrScreenRegion(

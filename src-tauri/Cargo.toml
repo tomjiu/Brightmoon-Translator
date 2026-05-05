@@ -51,6 +51,11 @@ features = [
     "Win32_System_Com",
     "Win32_UI_Accessibility",
     "Win32_UI_WindowsAndMessaging",
+    "Globalization",
+    "Graphics_Imaging",
+    "Media_Ocr",
+    "Storage",
+    "Storage_Streams",
 ]
 
 [build-dependencies]
