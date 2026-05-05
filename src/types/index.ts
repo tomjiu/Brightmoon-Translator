@@ -96,6 +96,9 @@ export interface AppConfig {
   windowHeight?: number;
   windowFollowMode: WindowFollowMode;
   translationBlacklist: string[];
+  ocrInterval?: number;
+  ocrClickThrough?: boolean;
+  ocrAutoBindWindow?: boolean;
 }
 
 // Language definitions

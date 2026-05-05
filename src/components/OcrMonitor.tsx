@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useOcrMonitor } from "../hooks/useOcrMonitor";
 import { useI18n } from "../i18n";
+import { useConfigStore } from "../stores/configStore";
 import {
   Scan,
   X,
@@ -30,7 +31,16 @@ function OcrMonitor() {
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(
     null
   );
-  const [interval, setInterval_] = useState(2000);
+  const config = useConfigStore((s) => s.config);
+  const updateConfig = useConfigStore((s) => s.updateConfig);
+  const [interval, setInterval_] = useState(config.ocrInterval ?? 2000);
+
+  // Sync interval from config when config loads
+  useEffect(() => {
+    if (config.ocrInterval !== undefined) {
+      setInterval_(config.ocrInterval);
+    }
+  }, [config.ocrInterval]);
 
   const { t } = useI18n();
 
@@ -369,7 +379,11 @@ function OcrMonitor() {
                 max="10000"
                 step="500"
                 value={interval}
-                onChange={(e) => setInterval_(Number(e.target.value))}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setInterval_(val);
+                  updateConfig((prev) => ({ ...prev, ocrInterval: val }));
+                }}
                 className="w-full accent-primary"
               />
               <div className="flex justify-between text-xs text-text-secondary mt-1">

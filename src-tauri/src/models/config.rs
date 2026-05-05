@@ -213,6 +213,10 @@ fn default_api_port() -> u16 {
     60828
 }
 
+fn default_ocr_interval() -> u32 {
+    2000
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -262,6 +266,19 @@ pub struct AppConfig {
     /// Separate from window_follow_mode which controls main window behavior.
     #[serde(default = "default_overlay_follow_mode")]
     pub overlay_follow_mode: String,
+    /// OCR monitor interval in milliseconds
+    #[serde(default = "default_ocr_interval")]
+    pub ocr_interval: u32,
+    /// OCR overlay click-through by default
+    #[serde(default)]
+    pub ocr_click_through: bool,
+    /// Auto-bind to foreground window when starting OCR monitor
+    #[serde(default = "default_true")]
+    pub ocr_auto_bind_window: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for AppConfig {
@@ -312,6 +329,9 @@ impl Default for AppConfig {
             overlay_level: 2,
             overlay_auto_dismiss_ms: 3000,
             overlay_follow_mode: "none".to_string(),
+            ocr_interval: 2000,
+            ocr_click_through: false,
+            ocr_auto_bind_window: true,
         }
     }
 }

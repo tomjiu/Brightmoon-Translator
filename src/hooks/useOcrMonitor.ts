@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { captureScreen, ocrImage } from "../services/ocr";
 import { useTranslateStore } from "../stores/translateStore";
+import { useConfigStore } from "../stores/configStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -552,10 +553,15 @@ export function useOcrMonitor() {
   // ── Start monitoring ──
 
   const startMonitoring = useCallback(
-    async (region: OcrRegion, interval: number = 2000) => {
+    async (region: OcrRegion, interval?: number) => {
       stopMonitoring();
 
-      baseIntervalRef.current = interval;
+      // Load settings from config
+      const config = useConfigStore.getState().config;
+      const resolvedInterval = interval ?? config.ocrInterval ?? 2000;
+      const clickThrough = config.ocrClickThrough ?? false;
+
+      baseIntervalRef.current = resolvedInterval;
       regionRef.current = region;
       noChangeCountRef.current = 0;
       userPausedRef.current = false;
@@ -573,8 +579,8 @@ export function useOcrMonitor() {
         region,
         lastText: "",
         lastGoodText: "",
-        interval,
-        clickThrough: false,
+        interval: resolvedInterval,
+        clickThrough,
         pinned: false,
         boundWindow: null,
         cycleCount: 0,
@@ -583,6 +589,15 @@ export function useOcrMonitor() {
 
       lastTextRef.current = "";
       lastGoodTextRef.current = "";
+
+      // Apply click-through from config
+      if (clickThrough) {
+        try {
+          await invoke("set_overlay_click_through", { ignore: true });
+        } catch (e) {
+          console.warn("[OCR] Failed to set click-through:", e);
+        }
+      }
 
       // Bind to foreground window
       await bindWindow(region);
