@@ -505,6 +505,13 @@ export function useOcrMonitor() {
               lastRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
             };
             setState((prev) => ({ ...prev, region: newRegion }));
+
+            // Sync overlay position with window movement
+            if (overlayCreatedRef.current) {
+              const overlayX = newRegion.x + newRegion.width + 10;
+              const overlayY = newRegion.y;
+              invoke("update_overlay_position", { x: overlayX, y: overlayY }).catch(() => {});
+            }
           }
 
           // Auto-resume if was auto-paused and window is visible again
