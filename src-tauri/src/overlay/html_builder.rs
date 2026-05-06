@@ -138,7 +138,9 @@ body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont,
   pointer-events: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   animation: fadeIn 0.15s ease-out;
-  max-width: 450px;
+  width: 100vw;
+  height: 100vh;
+  overflow: auto;
 }}
 .header {{
   display: flex;

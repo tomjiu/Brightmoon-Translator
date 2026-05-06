@@ -1,5 +1,6 @@
 use tauri::command;
 use tauri::Manager;
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static ALWAYS_ON_TOP: AtomicBool = AtomicBool::new(false);
@@ -467,6 +468,7 @@ pub async fn update_overlay(
     if exists {
         crate::overlay::window_manager::update_overlay_content(&app, &source_text, &text)?;
         crate::overlay::window_manager::update_overlay_position(&app, x, y)?;
+        crate::overlay::window_manager::resize_overlay_window(&app, width, height);
     } else {
         let level = if show_controls.unwrap_or(false) {
             crate::overlay::OverlayLevel::Full
@@ -506,4 +508,49 @@ pub async fn update_overlay_position(
     y: f64,
 ) -> Result<bool, String> {
     crate::overlay::window_manager::update_overlay_position(&app, x, y)
+}
+
+/// Create (or re-create) the OCR region frame window at the specified screen position.
+/// The region frame is a transparent, borderless, always-on-top window that shows a
+/// draggable/resizable selection rectangle with OCR controls.
+#[command]
+pub async fn create_ocr_region_frame(
+    app: tauri::AppHandle,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    // Close existing region frame if any
+    if let Some(existing) = app.get_webview_window("ocr-region-frame") {
+        let _ = existing.close();
+    }
+
+    WebviewWindowBuilder::new(
+        &app,
+        "ocr-region-frame",
+        WebviewUrl::App("/?window=ocr-region-frame".into()),
+    )
+    .title("OCR Region")
+    .inner_size(width.max(80.0), height.max(60.0))
+    .position(x, y)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(true)
+    .focused(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Close the OCR region frame window if it exists.
+#[command]
+pub async fn close_ocr_region_frame(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("ocr-region-frame") {
+        let _ = window.close();
+    }
+    Ok(())
 }

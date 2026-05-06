@@ -15,6 +15,7 @@ import Plugins from "./pages/Plugins";
 import OcrMonitor from "./components/OcrMonitor";
 import OcrScreenshotSelector from "./components/OcrScreenshotSelector";
 import OcrScreenshotTranslator from "./components/OcrScreenshotTranslator";
+import OcrRegionFrame from "./components/OcrRegionFrame";
 import { useThemeStore } from "./stores/themeStore";
 import { useTranslateStore } from "./stores/translateStore";
 import { useToastStore } from "./stores/toastStore";
@@ -50,6 +51,9 @@ function App() {
   const windowMode = new URLSearchParams(window.location.search).get("window");
   if (windowMode === "ocr-screenshot") {
     return <OcrScreenshotSelector />;
+  }
+  if (windowMode === "ocr-region-frame") {
+    return <OcrRegionFrame />;
   }
 
   return <MainApp />;

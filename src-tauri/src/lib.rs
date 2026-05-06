@@ -420,6 +420,8 @@ pub fn run() {
             commands::window::update_overlay,
             commands::window::update_overlay_content,
             commands::window::update_overlay_position,
+            commands::window::create_ocr_region_frame,
+            commands::window::close_ocr_region_frame,
             commands::config_cmd::get_config,
             commands::config_cmd::save_config,
             commands::config_cmd::save_window_position,

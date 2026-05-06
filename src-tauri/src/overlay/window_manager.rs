@@ -24,7 +24,7 @@ pub fn create_overlay_window(
         .transparent(true)
         .always_on_top(always_on_top)
         .skip_taskbar(true)
-        .resizable(false)
+        .resizable(true)
         .focused(true)
         .build()
         .map_err(|e| e.to_string())?;
