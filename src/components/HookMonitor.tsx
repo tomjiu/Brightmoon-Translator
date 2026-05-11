@@ -380,9 +380,11 @@ function HookMonitor() {
                         ? "bg-accent/20 text-accent"
                         : item.source === "ocr"
                         ? "bg-warning/20 text-warning"
+                        : item.source === "hook"
+                        ? "bg-success/20 text-success"
                         : "bg-primary/20 text-primary"
                     }`}>
-                      {item.source === "clipboard" ? "CB" : item.source === "ocr" ? "OCR" : "UIA"}
+                      {item.source === "clipboard" ? "CB" : item.source === "ocr" ? "OCR" : item.source === "hook" ? "HOOK" : "UIA"}
                     </span>
                     <Languages size={10} className="text-primary" />
                     <span className="text-[10px] text-primary font-medium">

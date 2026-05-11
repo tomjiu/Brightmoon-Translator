@@ -2,19 +2,18 @@ use std::sync::Arc;
 use std::io::Cursor;
 use tokio::sync::{mpsc, Mutex};
 use windows::core::Interface;
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
 };
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomationTextPattern,
+    SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK,
     UIA_TextPatternId,
 };
 use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
 use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
-};
+use windows::Win32::UI::WindowsAndMessaging::*;
 
 /// Monitored text from a window
 #[derive(Debug, Clone)]
@@ -23,14 +22,15 @@ pub struct MonitoredText {
     pub process_name: String,
     pub text: String,
     pub timestamp: i64,
-    /// Source: "uia", "clipboard", "ocr"
+    /// Source: "uia", "clipboard", "ocr", "hook"
     pub source: String,
 }
 
-/// Hook monitor with three capture sources:
-/// 1. UI Automation (TextPattern) — best for supported apps
+/// Hook monitor with four capture sources:
+/// 1. UI Automation (TextPattern) — polling, best for supported apps
 /// 2. Clipboard — passive watch for copy events
-/// 3. OCR — screenshot + WinRT OCR fallback for games/unsupported apps
+/// 3. OCR — screenshot + WinRT OCR fallback
+/// 4. Win32 Event Hook — SetWinEventHook for EVENT_OBJECT_TEXTCHANGED
 pub struct HookMonitor {
     running: Arc<Mutex<bool>>,
     sender: Option<mpsc::UnboundedSender<MonitoredText>>,
@@ -67,7 +67,7 @@ impl HookMonitor {
             }
         });
 
-        // Source 1: UI Automation
+        // Source 1: UI Automation polling
         let tx_uia = tx.clone();
         let running_uia = running_clone.clone();
         tokio::spawn(async move {
@@ -86,6 +86,13 @@ impl HookMonitor {
         let running_ocr = running_clone.clone();
         tokio::spawn(async move {
             ocr_monitor_task(running_ocr, tx_ocr).await;
+        });
+
+        // Source 4: Win32 event hook
+        let tx_hook = tx.clone();
+        let running_hook = running_clone.clone();
+        tokio::spawn(async move {
+            win_event_hook_task(running_hook, tx_hook).await;
         });
 
         Ok(())
@@ -210,16 +217,13 @@ fn read_clipboard_text() -> Option<String> {
 
 // ─── Source 3: OCR Fallback ─────────────────────────────────────────────────
 
-/// OCR monitoring task: periodically screenshots the foreground window
-/// and runs WinRT OCR to extract text.
-/// Runs every 5 seconds to avoid excessive CPU usage.
 async fn ocr_monitor_task(
     running: Arc<Mutex<bool>>,
     tx: mpsc::UnboundedSender<MonitoredText>,
 ) {
     let mut last_text = String::new();
 
-    // Wait a bit before starting OCR (give UIA time to work first)
+    // Delay start to let UIA work first
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
     loop {
@@ -228,36 +232,28 @@ async fn ocr_monitor_task(
             if !*r { break; }
         }
 
-        // Capture foreground window rect and screenshot + OCR in blocking task
         let result = tokio::task::spawn_blocking(|| {
             use screenshots::image::ImageFormat;
 
             unsafe {
                 let hwnd = GetForegroundWindow();
                 let mut rect = windows::Win32::Foundation::RECT::default();
-                if GetWindowRect(hwnd, &mut rect).is_err() {
-                    return None;
-                }
+                if GetWindowRect(hwnd, &mut rect).is_err() { return None; }
 
                 let width = (rect.right - rect.left) as u32;
                 let height = (rect.bottom - rect.top) as u32;
-                if width < 100 || height < 100 {
-                    return None;
-                }
+                if width < 100 || height < 100 { return None; }
 
                 let window_title = get_window_title(hwnd);
                 let process_name = get_process_name(hwnd);
 
-                // Capture the window area
                 let img = crate::commands::capture::capture_area_gdi(
                     rect.left, rect.top, width, height,
                 ).ok()?;
 
-                // Convert to PNG bytes
                 let mut buf = Cursor::new(Vec::new());
                 img.write_to(&mut buf, ImageFormat::Png).ok()?;
 
-                // Run WinRT OCR
                 let text = crate::ocr_engine::run_winrt_ocr(&buf.into_inner(), None)
                     .ok()??;
 
@@ -278,8 +274,148 @@ async fn ocr_monitor_task(
             }
         }
 
-        // OCR every 5 seconds (expensive operation)
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    }
+}
+
+// ─── Source 4: Win32 Event Hook ─────────────────────────────────────────────
+
+/// Run SetWinEventHook in a dedicated thread with a message loop.
+/// Listens for EVENT_OBJECT_TEXTCHANGED and EVENT_OBJECT_VALUECHANGED
+/// to detect text changes in any foreground window.
+async fn win_event_hook_task(
+    running: Arc<Mutex<bool>>,
+    tx: mpsc::UnboundedSender<MonitoredText>,
+) {
+    // Channel from the Win32 callback (OS thread) to async runtime
+    let (hook_tx, mut hook_rx) = mpsc::unbounded_channel::<(isize, String, String)>();
+
+    // Spawn the Win32 hook thread (must have a message loop)
+    let hook_thread = std::thread::spawn(move || unsafe {
+        // Store sender in thread-local for the callback
+        HOOK_SENDER.with(|s| *s.borrow_mut() = Some(hook_tx));
+
+        // Install event hooks
+        let hook_text = SetWinEventHook(
+            EVENT_OBJECT_TEXTSELECTIONCHANGED,
+            EVENT_OBJECT_TEXTSELECTIONCHANGED,
+            None,
+            Some(win_event_proc),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+        );
+
+        let hook_value = SetWinEventHook(
+            EVENT_OBJECT_VALUECHANGE,
+            EVENT_OBJECT_VALUECHANGE,
+            None,
+            Some(win_event_proc),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+        );
+
+        // Message loop — required for the hook to receive events
+        let mut msg = MSG::default();
+        loop {
+            // Check if we should stop (non-blocking peek)
+            if PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                if msg.message == WM_QUIT {
+                    break;
+                }
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            } else {
+                // No messages, sleep briefly to avoid busy-wait
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+
+        // Cleanup hooks
+        if !hook_text.is_invalid() {
+            let _ = UnhookWinEvent(hook_text);
+        }
+        if !hook_value.is_invalid() {
+            let _ = UnhookWinEvent(hook_value);
+        }
+    });
+
+    // Process events from the hook thread
+    let mut last_text = String::new();
+    loop {
+        {
+            let r = running.lock().await;
+            if !*r { break; }
+        }
+
+        while let Ok((hwnd_raw, text, window_title)) = hook_rx.try_recv() {
+            let trimmed = text.trim().to_string();
+            if trimmed.is_empty() || trimmed == last_text { continue; }
+            last_text = trimmed.clone();
+
+            let process_name = tokio::task::spawn_blocking(move || unsafe {
+                get_process_name(HWND(hwnd_raw as *mut _))
+            }).await.unwrap_or_default();
+
+            let _ = tx.send(MonitoredText {
+                window_title, process_name,
+                text: trimmed,
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                source: "hook".to_string(),
+            });
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+
+    // Signal the hook thread to quit
+    // (It will exit its message loop when the thread is dropped)
+    drop(hook_thread);
+}
+
+thread_local! {
+    static HOOK_SENDER: std::cell::RefCell<Option<mpsc::UnboundedSender<(isize, String, String)>>> =
+        std::cell::RefCell::new(None);
+}
+
+/// Win32 event callback — runs on the hook thread.
+/// Receives text change events and forwards them via channel.
+unsafe extern "system" fn win_event_proc(
+    _h_hook: HWINEVENTHOOK,
+    _event: u32,
+    hwnd: HWND,
+    id_object: i32,
+    _id_child: i32,
+    _thread: u32,
+    _time: u32,
+) {
+    // Only process client area events (OBJID_CLIENT = -4)
+    if id_object != OBJID_CLIENT.0 { return; }
+    if hwnd.is_invalid() { return; }
+
+    // Try to read text via WM_GETTEXT
+    let text = get_wm_text(hwnd);
+    if text.is_empty() { return; }
+
+    let window_title = get_window_title(hwnd);
+    let hwnd_raw = hwnd.0 as isize;
+
+    HOOK_SENDER.with(|s| {
+        if let Some(tx) = s.borrow().as_ref() {
+            let _ = tx.send((hwnd_raw, text, window_title));
+        }
+    });
+}
+
+/// Read text from a window/control via WM_GETTEXT message.
+unsafe fn get_wm_text(hwnd: HWND) -> String {
+    let mut buffer = [0u16; 4096];
+    let len = SendMessageW(hwnd, WM_GETTEXT, WPARAM(buffer.len()), LPARAM(buffer.as_mut_ptr() as _));
+    if len.0 > 0 {
+        String::from_utf16_lossy(&buffer[..len.0 as usize])
+    } else {
+        String::new()
     }
 }
 
@@ -341,7 +477,7 @@ unsafe fn get_process_name(hwnd: HWND) -> String {
     }
 
     let mut class_name = [0u16; 256];
-    let len = windows::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd, &mut class_name);
+    let len = GetClassNameW(hwnd, &mut class_name);
     if len > 0 {
         String::from_utf16_lossy(&class_name[..len as usize])
     } else {
