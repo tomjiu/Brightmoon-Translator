@@ -1,6 +1,7 @@
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-/// Close existing overlay and create a new one
+/// Close existing overlay and create a new one.
+/// x, y are in physical pixels (from Win32 APIs).
 pub fn create_overlay_window(
     app: &AppHandle,
     html: &str,
@@ -18,18 +19,25 @@ pub fn create_overlay_window(
     let overlay_url = tauri::Url::parse(&overlay_url_str)
         .map_err(|e| format!("Failed to parse overlay URL: {}", e))?;
 
-    WebviewWindowBuilder::new(app, "overlay", WebviewUrl::External(overlay_url))
+    // Create window at origin first (position() expects logical coords).
+    // We use position(0,0) then move to physical coords to avoid DPI mismatch.
+    let window = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::External(overlay_url))
         .title("Translation")
         .inner_size(width.max(200.0), height.max(50.0))
-        .position(x, y)
+        .position(0.0, 0.0)
         .decorations(false)
         .transparent(true)
         .always_on_top(always_on_top)
         .skip_taskbar(true)
         .resizable(true)
-        .focused(true)
+        .focused(false)
         .build()
         .map_err(|e| e.to_string())?;
+
+    // Move to the correct physical position
+    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+        x as i32, y as i32,
+    )));
 
     Ok(())
 }

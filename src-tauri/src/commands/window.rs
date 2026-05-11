@@ -469,6 +469,7 @@ pub async fn stop_overlay_follow(state: tauri::State<'_, crate::AppState>) -> Re
 /// Update overlay content in-place without rebuilding.
 /// Preserves pin/click-through/follow state.
 /// If overlay doesn't exist, creates it with the given position and text.
+/// overlay_level: 1=Minimal, 2=Standard(copy+close), 3=Full(all controls). None=auto from show_controls.
 #[command]
 pub async fn update_overlay(
     app: tauri::AppHandle,
@@ -479,6 +480,7 @@ pub async fn update_overlay(
     text: String,
     show_controls: Option<bool>,
     source: Option<String>,
+    overlay_level: Option<u8>,
 ) -> Result<(), String> {
     let exists = crate::overlay::window_manager::overlay_exists(&app);
     let source_text = source.unwrap_or_default();
@@ -488,10 +490,12 @@ pub async fn update_overlay(
         crate::overlay::window_manager::update_overlay_position(&app, x, y)?;
         crate::overlay::window_manager::resize_overlay_window(&app, width, height);
     } else {
-        let level = if show_controls.unwrap_or(false) {
+        let level = if let Some(lvl) = overlay_level {
+            crate::overlay::OverlayLevel::from(lvl)
+        } else if show_controls.unwrap_or(false) {
             crate::overlay::OverlayLevel::Full
         } else {
-            crate::overlay::OverlayLevel::Minimal
+            crate::overlay::OverlayLevel::Standard
         };
         let content = crate::overlay::OverlayContent {
             source: source_text,

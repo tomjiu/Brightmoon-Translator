@@ -121,7 +121,7 @@ function HookMonitor() {
               height: overlayH,
               text: item.translated,
               source: item.original,
-              showControls: false,
+              overlayLevel: 2,
             }).catch(() => {});
           };
 
@@ -139,7 +139,7 @@ function HookMonitor() {
               height: overlayH,
               text: item.translated,
               source: item.original,
-              showControls: false,
+              overlayLevel: 2,
             }).catch(() => {});
           } else {
             // Fallback: position at bottom of foreground window
