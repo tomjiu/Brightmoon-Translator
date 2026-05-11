@@ -27,6 +27,7 @@ interface HookTranslatedItem {
   engine: string;
   timestamp: number;
   source: string;
+  textRect?: [number, number, number, number]; // [x, y, w, h] screen coords
 }
 
 function HookMonitor() {
@@ -64,6 +65,7 @@ function HookMonitor() {
         engine: string;
         timestamp: number;
         source: string;
+        text_rect?: [number, number, number, number];
       }>("hook-text-translated", (event) => {
         const item: HookTranslatedItem = {
           id: ++idCounter.current,
@@ -74,6 +76,7 @@ function HookMonitor() {
           engine: event.payload.engine,
           timestamp: event.payload.timestamp,
           source: event.payload.source || "uia",
+          textRect: event.payload.text_rect,
         };
 
         setResults((prev) => {
@@ -88,24 +91,44 @@ function HookMonitor() {
 
         // Show in overlay positioned at target window bottom
         if (showOverlay) {
-          invoke<[number, number, number, number]>("get_foreground_window_rect")
-            .then(([wx, wy, ww, _wh]) => {
-              // Position overlay at bottom-center of the target window
-              const overlayW = Math.min(500, ww - 40);
-              const overlayH = 180;
-              const ox = wx + (ww - overlayW) / 2;
-              const oy = wy + _wh - overlayH - 20;
-              invoke("update_overlay", {
-                x: Math.round(ox),
-                y: Math.round(oy),
-                width: Math.round(overlayW),
-                height: overlayH,
-                text: item.translated,
-                source: item.original,
-                showControls: false,
-              }).catch(() => {});
-            })
-            .catch(() => {});
+          const positionOverlay = (x: number, y: number, w: number, h: number) => {
+            const overlayW = Math.min(500, w - 40);
+            const overlayH = 180;
+            const ox = x + (w - overlayW) / 2;
+            const oy = y + h - overlayH - 20;
+            invoke("update_overlay", {
+              x: Math.round(ox),
+              y: Math.round(oy),
+              width: Math.round(overlayW),
+              height: overlayH,
+              text: item.translated,
+              source: item.original,
+              showControls: false,
+            }).catch(() => {});
+          };
+
+          if (item.textRect) {
+            // Use precise text position: overlay below the text element
+            const [tx, ty, tw, th] = item.textRect;
+            const overlayW = Math.min(500, tw + 60);
+            const overlayH = 180;
+            const ox = tx + (tw - overlayW) / 2;
+            const oy = ty + th + 8; // below the text element
+            invoke("update_overlay", {
+              x: Math.round(ox),
+              y: Math.round(oy),
+              width: Math.round(overlayW),
+              height: overlayH,
+              text: item.translated,
+              source: item.original,
+              showControls: false,
+            }).catch(() => {});
+          } else {
+            // Fallback: position at bottom of foreground window
+            invoke<[number, number, number, number]>("get_foreground_window_rect")
+              .then(([wx, wy, ww, wh]) => positionOverlay(wx, wy, ww, wh))
+              .catch(() => {});
+          }
         }
       });
     };

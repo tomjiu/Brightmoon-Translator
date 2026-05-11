@@ -127,6 +127,7 @@ pub async fn start_hook_monitor(
                                     "engine": result.engine,
                                     "timestamp": text.timestamp,
                                     "source": text.source,
+                                    "text_rect": text.text_rect.map(|(x, y, w, h)| [x, y, w, h]),
                                 }),
                             );
                         }

@@ -24,6 +24,8 @@ pub struct MonitoredText {
     pub timestamp: i64,
     /// Source: "uia", "clipboard", "ocr", "hook"
     pub source: String,
+    /// Bounding rectangle of the text element: (x, y, width, height) in screen pixels
+    pub text_rect: Option<(i32, i32, i32, i32)>,
 }
 
 /// Hook monitor with four capture sources:
@@ -126,7 +128,7 @@ async fn uia_monitor_task(
         let result = tokio::task::spawn_blocking(capture_foreground_text)
             .await.ok().flatten();
 
-        if let Some((text, hwnd_raw, window_title, process_name)) = result {
+        if let Some((text, hwnd_raw, window_title, process_name, text_rect)) = result {
             if text != last_text || hwnd_raw != last_hwnd {
                 last_text = text.clone();
                 last_hwnd = hwnd_raw;
@@ -134,6 +136,7 @@ async fn uia_monitor_task(
                     window_title, process_name, text,
                     timestamp: chrono::Utc::now().timestamp_millis(),
                     source: "uia".to_string(),
+                    text_rect,
                 });
             }
         }
@@ -173,6 +176,7 @@ async fn clipboard_monitor_task(
                     text: trimmed,
                     timestamp: chrono::Utc::now().timestamp_millis(),
                     source: "clipboard".to_string(),
+                    text_rect: None,
                 });
             }
         }
@@ -270,6 +274,7 @@ async fn ocr_monitor_task(
                     text: trimmed,
                     timestamp: chrono::Utc::now().timestamp_millis(),
                     source: "ocr".to_string(),
+                    text_rect: None,
                 });
             }
         }
@@ -363,6 +368,7 @@ async fn win_event_hook_task(
                 text: trimmed,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 source: "hook".to_string(),
+                text_rect: None,
             });
         }
 
@@ -421,18 +427,18 @@ unsafe fn get_wm_text(hwnd: HWND) -> String {
 
 // ─── UI Automation Helpers ──────────────────────────────────────────────────
 
-fn capture_foreground_text() -> Option<(String, usize, String, String)> {
+fn capture_foreground_text() -> Option<(String, usize, String, String, Option<(i32, i32, i32, i32)>)> {
     unsafe {
         let hwnd = GetForegroundWindow();
         let hwnd_raw = hwnd.0 as usize;
-        let text = get_window_text_pattern(hwnd)?;
+        let (text, text_rect) = get_window_text_pattern_with_rect(hwnd)?;
         let window_title = get_window_title(hwnd);
         let process_name = get_process_name(hwnd);
-        Some((text, hwnd_raw, window_title, process_name))
+        Some((text, hwnd_raw, window_title, process_name, text_rect))
     }
 }
 
-unsafe fn get_window_text_pattern(hwnd: HWND) -> Option<String> {
+unsafe fn get_window_text_pattern_with_rect(hwnd: HWND) -> Option<(String, Option<(i32, i32, i32, i32)>)> {
     let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
     if hr.is_err() { return None; }
 
@@ -446,7 +452,14 @@ unsafe fn get_window_text_pattern(hwnd: HWND) -> Option<String> {
     let text = range.GetText(-1).ok()?;
     let text_str = text.to_string();
 
-    if text_str.is_empty() { None } else { Some(text_str) }
+    if text_str.is_empty() { return None; }
+
+    // Get bounding rectangle of the UIA element (screen coordinates)
+    let text_rect = element.CurrentBoundingRectangle().ok().map(|r| {
+        (r.left, r.top, r.right - r.left, r.bottom - r.top)
+    });
+
+    Some((text_str, text_rect))
 }
 
 unsafe fn get_window_title(hwnd: HWND) -> String {
