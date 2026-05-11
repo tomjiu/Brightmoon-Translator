@@ -49,6 +49,8 @@ impl HookMonitor {
     pub async fn start(
         &mut self,
         enabled_sources: &[String],
+        uia_interval_ms: u64,
+        ocr_interval_ms: u64,
         callback: impl Fn(MonitoredText) + Send + Sync + 'static,
     ) -> Result<(), String> {
         let mut running = self.running.lock().await;
@@ -75,7 +77,7 @@ impl HookMonitor {
             let tx_uia = tx.clone();
             let running_uia = running_clone.clone();
             tokio::spawn(async move {
-                uia_monitor_task(running_uia, tx_uia).await;
+                uia_monitor_task(running_uia, tx_uia, uia_interval_ms).await;
             });
         }
 
@@ -93,7 +95,7 @@ impl HookMonitor {
             let tx_ocr = tx.clone();
             let running_ocr = running_clone.clone();
             tokio::spawn(async move {
-                ocr_monitor_task(running_ocr, tx_ocr).await;
+                ocr_monitor_task(running_ocr, tx_ocr, ocr_interval_ms).await;
             });
         }
 
@@ -124,6 +126,7 @@ impl HookMonitor {
 async fn uia_monitor_task(
     running: Arc<Mutex<bool>>,
     tx: mpsc::UnboundedSender<MonitoredText>,
+    interval_ms: u64,
 ) {
     let mut last_text = String::new();
     let mut last_hwnd: usize = 0;
@@ -150,7 +153,7 @@ async fn uia_monitor_task(
             }
         }
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(interval_ms)).await;
     }
 }
 
@@ -297,6 +300,7 @@ fn read_clipboard_text() -> Option<String> {
 async fn ocr_monitor_task(
     running: Arc<Mutex<bool>>,
     tx: mpsc::UnboundedSender<MonitoredText>,
+    interval_ms: u64,
 ) {
     let mut last_text = String::new();
 
@@ -352,7 +356,7 @@ async fn ocr_monitor_task(
             }
         }
 
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(interval_ms)).await;
     }
 }
 

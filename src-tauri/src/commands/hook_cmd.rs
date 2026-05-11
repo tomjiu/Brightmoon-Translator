@@ -18,11 +18,34 @@ fn is_translatable(text: &str, recent: &VecDeque<String>) -> bool {
         return false;
     }
 
+    // Skip URLs
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") || trimmed.starts_with("ftp://") {
+        return false;
+    }
+
+    // Skip file paths
+    if trimmed.starts_with("C:\\") || trimmed.starts_with("D:\\") || trimmed.starts_with("/") || trimmed.starts_with("\\\\") {
+        return false;
+    }
+
+    // Skip code-like content (too many special chars)
+    let special_count = trimmed.chars().filter(|c| matches!(c, '{' | '}' | '(' | ')' | ';' | '=' | '<' | '>' | '&' | '|' | '!' | '#' | '$' | '@' | '`')).count();
+    if special_count > 0 && special_count * 3 > char_count {
+        return false;
+    }
+
+    // Skip pure numbers / hex / UUIDs
+    let hex_like = trimmed.chars().filter(|c| c.is_ascii_hexdigit() || *c == '-' || *c == '_').count();
+    if hex_like == char_count {
+        return false;
+    }
+
     let meaningful = trimmed
         .chars()
         .filter(|c| c.is_alphabetic() || is_cjk(*c))
         .count();
 
+    // At least 30% meaningful characters
     if meaningful * 10 < char_count * 3 {
         return false;
     }
@@ -80,13 +103,15 @@ pub async fn start_hook_monitor(
     let target_lang = config.default_to.clone();
     let source_lang = config.default_from.clone();
     let enabled_sources = config.hook.enabled_sources.clone();
+    let uia_interval = config.hook.uia_interval_ms;
+    let ocr_interval = config.hook.ocr_interval_ms;
     drop(config);
 
     let translation_service = state.translation_service.clone();
     let recent_texts: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
 
     monitor
-        .start(&enabled_sources, move |text: MonitoredText| {
+        .start(&enabled_sources, uia_interval, ocr_interval, move |text: MonitoredText| {
             let translation_service = translation_service.clone();
             let target_lang = target_lang.clone();
             let source_lang = source_lang.clone();

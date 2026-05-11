@@ -49,6 +49,8 @@ const defaultConfig: AppConfig = {
     showOverlay: true,
     autoCopy: false,
     enabled: true,
+    uiaIntervalMs: 500,
+    ocrIntervalMs: 5000,
   },
 };
 

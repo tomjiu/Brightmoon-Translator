@@ -109,6 +109,8 @@ export interface HookConfig {
   showOverlay: boolean;
   autoCopy: boolean;
   enabled: boolean;
+  uiaIntervalMs: number;
+  ocrIntervalMs: number;
 }
 
 // Language definitions

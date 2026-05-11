@@ -221,6 +221,14 @@ fn default_hook_enabled_sources() -> Vec<String> {
     vec!["uia".into(), "clipboard".into(), "ocr".into(), "hook".into()]
 }
 
+fn default_uia_interval_ms() -> u64 {
+    500
+}
+
+fn default_ocr_hook_interval_ms() -> u64 {
+    5000
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookConfig {
@@ -232,6 +240,12 @@ pub struct HookConfig {
     pub auto_copy: bool,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// UIA polling interval in milliseconds (default: 500ms)
+    #[serde(default = "default_uia_interval_ms")]
+    pub uia_interval_ms: u64,
+    /// OCR polling interval in milliseconds (default: 5000ms)
+    #[serde(default = "default_ocr_hook_interval_ms")]
+    pub ocr_interval_ms: u64,
 }
 
 impl Default for HookConfig {
@@ -241,6 +255,8 @@ impl Default for HookConfig {
             show_overlay: true,
             auto_copy: false,
             enabled: true,
+            uia_interval_ms: 500,
+            ocr_interval_ms: 5000,
         }
     }
 }

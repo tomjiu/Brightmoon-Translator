@@ -30,6 +30,15 @@ interface HookTranslatedItem {
   textRect?: [number, number, number, number]; // [x, y, w, h] screen coords
 }
 
+const DEFAULT_HOOK_CONFIG = {
+  enabledSources: ["uia", "clipboard", "ocr", "hook"] as string[],
+  showOverlay: true,
+  autoCopy: false,
+  enabled: true,
+  uiaIntervalMs: 500,
+  ocrIntervalMs: 5000,
+};
+
 function HookMonitor() {
   const { t } = useI18n();
   const { config, updateConfig, saveConfig } = useConfigStore();
@@ -39,12 +48,7 @@ function HookMonitor() {
   const [speakingId, setSpeakingId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
-  const hookConfig = config.hook ?? {
-    enabledSources: ["uia", "clipboard", "ocr", "hook"],
-    showOverlay: true,
-    autoCopy: false,
-    enabled: true,
-  };
+  const hookConfig = config.hook ?? DEFAULT_HOOK_CONFIG;
   const [showOverlay, setShowOverlay] = useState(hookConfig.showOverlay);
   const [autoCopy, setAutoCopy] = useState(hookConfig.autoCopy);
   const [enabledSources, setEnabledSources] = useState<string[]>(hookConfig.enabledSources);
@@ -235,7 +239,7 @@ function HookMonitor() {
     updateConfig((prev) => ({
       ...prev,
       hookShowOverlay: next,
-      hook: { ...(prev.hook ?? { enabledSources: ["uia", "clipboard", "ocr", "hook"], showOverlay: true, autoCopy: false, enabled: true }), showOverlay: next },
+      hook: { ...(prev.hook ?? DEFAULT_HOOK_CONFIG), showOverlay: next },
     }));
   }, [showOverlay, updateConfig]);
 
@@ -245,7 +249,7 @@ function HookMonitor() {
     updateConfig((prev) => ({
       ...prev,
       hookAutoCopy: next,
-      hook: { ...(prev.hook ?? { enabledSources: ["uia", "clipboard", "ocr", "hook"], showOverlay: true, autoCopy: false, enabled: true }), autoCopy: next },
+      hook: { ...(prev.hook ?? DEFAULT_HOOK_CONFIG), autoCopy: next },
     }));
   }, [autoCopy, updateConfig]);
 
@@ -256,7 +260,7 @@ function HookMonitor() {
         : [...prev, source];
       updateConfig((cfg) => ({
         ...cfg,
-        hook: { ...(cfg.hook ?? { enabledSources: ["uia", "clipboard", "ocr", "hook"], showOverlay: true, autoCopy: false, enabled: true }), enabledSources: next },
+        hook: { ...(cfg.hook ?? DEFAULT_HOOK_CONFIG), enabledSources: next },
       }));
       // Persist source config since it's read at monitor start
       setTimeout(() => saveConfig(), 0);
