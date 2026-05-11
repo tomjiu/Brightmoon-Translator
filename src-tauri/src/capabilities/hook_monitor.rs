@@ -145,44 +145,108 @@ async fn uia_monitor_task(
     }
 }
 
-// ─── Source 2: Clipboard ────────────────────────────────────────────────────
+// ─── Source 2: Clipboard (event-driven via AddClipboardFormatListener) ──────
 
 async fn clipboard_monitor_task(
     running: Arc<Mutex<bool>>,
     tx: mpsc::UnboundedSender<MonitoredText>,
 ) {
-    let mut last_clip = String::new();
+    // Channel from the clipboard listener thread to async runtime
+    let (clip_tx, mut clip_rx) = mpsc::unbounded_channel::<String>();
 
+    // Spawn a dedicated thread with hidden window for clipboard notifications
+    let listener_thread = std::thread::spawn(move || unsafe {
+        use windows::Win32::System::DataExchange::{
+            AddClipboardFormatListener, RemoveClipboardFormatListener,
+        };
+
+        CLIP_SENDER.with(|s| *s.borrow_mut() = Some(clip_tx));
+
+        // Create a message-only window
+        let hwnd = CreateWindowExW(
+            WINDOW_EX_STYLE::default(),
+            windows::core::w!("STATIC"),
+            windows::core::w!("MoonClipListener"),
+            WINDOW_STYLE::default(),
+            0, 0, 0, 0,
+            None, None, None, None,
+        );
+
+        let hwnd = match hwnd {
+            Ok(h) => h,
+            Err(_) => return,
+        };
+
+        // Register for clipboard notifications
+        let _ = AddClipboardFormatListener(hwnd);
+
+        // Message loop
+        let mut msg = MSG::default();
+        loop {
+            let result = GetMessageW(&mut msg, None, 0, 0);
+            if result.as_bool() {
+                if msg.message == WM_CLIPBOARDUPDATE {
+                    // Read clipboard text and forward via channel
+                    if let Some(text) = read_clipboard_text() {
+                        let trimmed = text.trim().to_string();
+                        if !trimmed.is_empty() && trimmed.len() >= 2 {
+                            CLIP_SENDER.with(|s| {
+                                if let Some(tx) = s.borrow().as_ref() {
+                                    let _ = tx.send(trimmed);
+                                }
+                            });
+                        }
+                    }
+                }
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            } else {
+                break;
+            }
+        }
+
+        // Cleanup
+        let _ = RemoveClipboardFormatListener(hwnd);
+        let _ = DestroyWindow(hwnd);
+    });
+
+    // Process clipboard events from the listener thread
+    let mut last_clip = String::new();
     loop {
         {
             let r = running.lock().await;
             if !*r { break; }
         }
 
-        let clip_text = tokio::task::spawn_blocking(read_clipboard_text)
-            .await.ok().flatten();
+        while let Ok(trimmed) = clip_rx.try_recv() {
+            if trimmed == last_clip { continue; }
+            last_clip = trimmed.clone();
 
-        if let Some(text) = clip_text {
-            let trimmed = text.trim().to_string();
-            if !trimmed.is_empty() && trimmed != last_clip {
-                last_clip = trimmed.clone();
-                let (window_title, process_name) = tokio::task::spawn_blocking(|| unsafe {
-                    let hwnd = GetForegroundWindow();
-                    (get_window_title(hwnd), get_process_name(hwnd))
-                }).await.unwrap_or_default();
+            let (window_title, process_name) = tokio::task::spawn_blocking(|| unsafe {
+                let hwnd = GetForegroundWindow();
+                (get_window_title(hwnd), get_process_name(hwnd))
+            }).await.unwrap_or_default();
 
-                let _ = tx.send(MonitoredText {
-                    window_title, process_name,
-                    text: trimmed,
-                    timestamp: chrono::Utc::now().timestamp_millis(),
-                    source: "clipboard".to_string(),
-                    text_rect: None,
-                });
-            }
+            let _ = tx.send(MonitoredText {
+                window_title, process_name,
+                text: trimmed,
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                source: "clipboard".to_string(),
+                text_rect: None,
+            });
         }
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
+
+    // Signal the listener thread to quit by posting WM_QUIT
+    // The thread will exit its message loop
+    drop(listener_thread);
+}
+
+thread_local! {
+    static CLIP_SENDER: std::cell::RefCell<Option<mpsc::UnboundedSender<String>>> =
+        std::cell::RefCell::new(None);
 }
 
 fn read_clipboard_text() -> Option<String> {
