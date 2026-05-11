@@ -12,6 +12,7 @@ pub mod lang_detect;
 pub mod memory;
 pub mod metrics;
 pub mod models;
+pub mod ocr_engine;
 pub mod overlay;
 pub mod pdf;
 pub mod plugin;

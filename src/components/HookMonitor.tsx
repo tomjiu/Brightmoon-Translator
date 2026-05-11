@@ -378,9 +378,11 @@ function HookMonitor() {
                     <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${
                       item.source === "clipboard"
                         ? "bg-accent/20 text-accent"
+                        : item.source === "ocr"
+                        ? "bg-warning/20 text-warning"
                         : "bg-primary/20 text-primary"
                     }`}>
-                      {item.source === "clipboard" ? "CB" : "UIA"}
+                      {item.source === "clipboard" ? "CB" : item.source === "ocr" ? "OCR" : "UIA"}
                     </span>
                     <Languages size={10} className="text-primary" />
                     <span className="text-[10px] text-primary font-medium">

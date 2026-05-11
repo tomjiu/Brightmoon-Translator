@@ -73,7 +73,7 @@ fn read_cached_snapshot() -> Option<ScreenshotSnapshot> {
 }
 
 #[cfg(target_os = "windows")]
-fn capture_area_gdi(
+pub fn capture_area_gdi(
     left: i32,
     top: i32,
     width: u32,
