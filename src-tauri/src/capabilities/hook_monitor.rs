@@ -48,6 +48,7 @@ impl HookMonitor {
 
     pub async fn start(
         &mut self,
+        enabled_sources: &[String],
         callback: impl Fn(MonitoredText) + Send + Sync + 'static,
     ) -> Result<(), String> {
         let mut running = self.running.lock().await;
@@ -70,32 +71,40 @@ impl HookMonitor {
         });
 
         // Source 1: UI Automation polling
-        let tx_uia = tx.clone();
-        let running_uia = running_clone.clone();
-        tokio::spawn(async move {
-            uia_monitor_task(running_uia, tx_uia).await;
-        });
+        if enabled_sources.contains(&"uia".to_string()) {
+            let tx_uia = tx.clone();
+            let running_uia = running_clone.clone();
+            tokio::spawn(async move {
+                uia_monitor_task(running_uia, tx_uia).await;
+            });
+        }
 
         // Source 2: Clipboard
-        let tx_clip = tx.clone();
-        let running_clip = running_clone.clone();
-        tokio::spawn(async move {
-            clipboard_monitor_task(running_clip, tx_clip).await;
-        });
+        if enabled_sources.contains(&"clipboard".to_string()) {
+            let tx_clip = tx.clone();
+            let running_clip = running_clone.clone();
+            tokio::spawn(async move {
+                clipboard_monitor_task(running_clip, tx_clip).await;
+            });
+        }
 
         // Source 3: OCR fallback
-        let tx_ocr = tx.clone();
-        let running_ocr = running_clone.clone();
-        tokio::spawn(async move {
-            ocr_monitor_task(running_ocr, tx_ocr).await;
-        });
+        if enabled_sources.contains(&"ocr".to_string()) {
+            let tx_ocr = tx.clone();
+            let running_ocr = running_clone.clone();
+            tokio::spawn(async move {
+                ocr_monitor_task(running_ocr, tx_ocr).await;
+            });
+        }
 
         // Source 4: Win32 event hook
-        let tx_hook = tx.clone();
-        let running_hook = running_clone.clone();
-        tokio::spawn(async move {
-            win_event_hook_task(running_hook, tx_hook).await;
-        });
+        if enabled_sources.contains(&"hook".to_string()) {
+            let tx_hook = tx.clone();
+            let running_hook = running_clone.clone();
+            tokio::spawn(async move {
+                win_event_hook_task(running_hook, tx_hook).await;
+            });
+        }
 
         Ok(())
     }

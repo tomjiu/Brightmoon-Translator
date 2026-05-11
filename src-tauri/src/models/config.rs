@@ -217,6 +217,34 @@ fn default_ocr_interval() -> u32 {
     2000
 }
 
+fn default_hook_enabled_sources() -> Vec<String> {
+    vec!["uia".into(), "clipboard".into(), "ocr".into(), "hook".into()]
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookConfig {
+    #[serde(default = "default_hook_enabled_sources")]
+    pub enabled_sources: Vec<String>,
+    #[serde(default = "default_true")]
+    pub show_overlay: bool,
+    #[serde(default)]
+    pub auto_copy: bool,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for HookConfig {
+    fn default() -> Self {
+        Self {
+            enabled_sources: default_hook_enabled_sources(),
+            show_overlay: true,
+            auto_copy: false,
+            enabled: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
@@ -275,6 +303,9 @@ pub struct AppConfig {
     /// Auto-bind to foreground window when starting OCR monitor
     #[serde(default = "default_true")]
     pub ocr_auto_bind_window: bool,
+    /// Hook monitor configuration
+    #[serde(default)]
+    pub hook: HookConfig,
 }
 
 fn default_true() -> bool {
@@ -332,6 +363,7 @@ impl Default for AppConfig {
             ocr_interval: 2000,
             ocr_click_through: false,
             ocr_auto_bind_window: true,
+            hook: HookConfig::default(),
         }
     }
 }

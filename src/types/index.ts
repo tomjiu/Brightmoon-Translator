@@ -101,6 +101,14 @@ export interface AppConfig {
   ocrAutoBindWindow?: boolean;
   hookShowOverlay?: boolean;
   hookAutoCopy?: boolean;
+  hook?: HookConfig;
+}
+
+export interface HookConfig {
+  enabledSources: string[];
+  showOverlay: boolean;
+  autoCopy: boolean;
+  enabled: boolean;
 }
 
 // Language definitions

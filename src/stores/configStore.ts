@@ -44,6 +44,12 @@ const defaultConfig: AppConfig = {
   },
   windowFollowMode: "none",
   translationBlacklist: [],
+  hook: {
+    enabledSources: ["uia", "clipboard", "ocr", "hook"],
+    showOverlay: true,
+    autoCopy: false,
+    enabled: true,
+  },
 };
 
 interface ConfigState {

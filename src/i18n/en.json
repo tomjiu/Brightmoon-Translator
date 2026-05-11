@@ -362,7 +362,13 @@
     "noMatch": "No matching records",
     "export": "Export records",
     "showOverlay": "Show overlay",
-    "autoCopy": "Auto copy"
+    "autoCopy": "Auto copy",
+    "sources": "Sources",
+    "sourcesStopToChange": "(stop to change)",
+    "source.uia": "UI Automation - for apps with text pattern support",
+    "source.clipboard": "Clipboard - detect copy operations",
+    "source.ocr": "OCR Screenshot - universal fallback",
+    "source.hook": "Win32 Event Hook - system-level text change monitor"
   },
   "replace": {
     "hardFail": "Replace failed",

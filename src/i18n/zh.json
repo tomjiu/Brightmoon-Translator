@@ -362,7 +362,13 @@
     "noMatch": "没有匹配的记录",
     "export": "导出记录",
     "showOverlay": "悬浮窗显示",
-    "autoCopy": "自动复制"
+    "autoCopy": "自动复制",
+    "sources": "捕获源",
+    "sourcesStopToChange": "（停止后可更改）",
+    "source.uia": "UI Automation - 适用于支持文本模式的应用",
+    "source.clipboard": "剪贴板监听 - 检测复制操作",
+    "source.ocr": "OCR截图识别 - 通用后备方案",
+    "source.hook": "Win32事件钩子 - 系统级文本变化监听"
   },
   "replace": {
     "hardFail": "替换失败",

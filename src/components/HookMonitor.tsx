@@ -32,18 +32,32 @@ interface HookTranslatedItem {
 
 function HookMonitor() {
   const { t } = useI18n();
-  const { config, updateConfig } = useConfigStore();
+  const { config, updateConfig, saveConfig } = useConfigStore();
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<HookTranslatedItem[]>([]);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [speakingId, setSpeakingId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
-  const [showOverlay, setShowOverlay] = useState(config.hookShowOverlay ?? true);
-  const [autoCopy, setAutoCopy] = useState(config.hookAutoCopy ?? false);
+  const hookConfig = config.hook ?? {
+    enabledSources: ["uia", "clipboard", "ocr", "hook"],
+    showOverlay: true,
+    autoCopy: false,
+    enabled: true,
+  };
+  const [showOverlay, setShowOverlay] = useState(hookConfig.showOverlay);
+  const [autoCopy, setAutoCopy] = useState(hookConfig.autoCopy);
+  const [enabledSources, setEnabledSources] = useState<string[]>(hookConfig.enabledSources);
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const idCounter = useRef(0);
+
+  const ALL_SOURCES = [
+    { key: "uia", label: "UIA", desc: t("hook.source.uia") },
+    { key: "clipboard", label: "CB", desc: t("hook.source.clipboard") },
+    { key: "ocr", label: "OCR", desc: t("hook.source.ocr") },
+    { key: "hook", label: "HOOK", desc: t("hook.source.hook") },
+  ];
 
   // Check initial status
   useEffect(() => {
@@ -218,14 +232,37 @@ function HookMonitor() {
   const toggleOverlay = useCallback(() => {
     const next = !showOverlay;
     setShowOverlay(next);
-    updateConfig((prev) => ({ ...prev, hookShowOverlay: next }));
+    updateConfig((prev) => ({
+      ...prev,
+      hookShowOverlay: next,
+      hook: { ...(prev.hook ?? { enabledSources: ["uia", "clipboard", "ocr", "hook"], showOverlay: true, autoCopy: false, enabled: true }), showOverlay: next },
+    }));
   }, [showOverlay, updateConfig]);
 
   const toggleAutoCopy = useCallback(() => {
     const next = !autoCopy;
     setAutoCopy(next);
-    updateConfig((prev) => ({ ...prev, hookAutoCopy: next }));
+    updateConfig((prev) => ({
+      ...prev,
+      hookAutoCopy: next,
+      hook: { ...(prev.hook ?? { enabledSources: ["uia", "clipboard", "ocr", "hook"], showOverlay: true, autoCopy: false, enabled: true }), autoCopy: next },
+    }));
   }, [autoCopy, updateConfig]);
+
+  const toggleSource = useCallback((source: string) => {
+    setEnabledSources((prev) => {
+      const next = prev.includes(source)
+        ? prev.filter((s) => s !== source)
+        : [...prev, source];
+      updateConfig((cfg) => ({
+        ...cfg,
+        hook: { ...(cfg.hook ?? { enabledSources: ["uia", "clipboard", "ocr", "hook"], showOverlay: true, autoCopy: false, enabled: true }), enabledSources: next },
+      }));
+      // Persist source config since it's read at monitor start
+      setTimeout(() => saveConfig(), 0);
+      return next;
+    });
+  }, [updateConfig, saveConfig]);
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -275,6 +312,34 @@ function HookMonitor() {
         <p className="text-xs text-text-secondary mb-3">
           {t("hook.description")}
         </p>
+
+        {/* Source Toggles */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="text-xs text-text-secondary mr-1">{t("hook.sources")}:</span>
+          {ALL_SOURCES.map((src) => (
+            <label
+              key={src.key}
+              className={`flex items-center gap-1.5 cursor-pointer px-2 py-1 rounded-md text-xs transition-colors ${
+                enabledSources.includes(src.key)
+                  ? "bg-primary/15 text-primary border border-primary/30"
+                  : "bg-bg-tertiary text-text-secondary border border-transparent opacity-60"
+              }`}
+              title={src.desc}
+            >
+              <input
+                type="checkbox"
+                checked={enabledSources.includes(src.key)}
+                onChange={() => toggleSource(src.key)}
+                className="accent-primary w-3 h-3"
+                disabled={isRunning}
+              />
+              {src.label}
+            </label>
+          ))}
+          {isRunning && (
+            <span className="text-[10px] text-text-secondary/60 ml-1">{t("hook.sourcesStopToChange")}</span>
+          )}
+        </div>
 
         {/* Options */}
         <div className="flex items-center gap-3 mb-3">

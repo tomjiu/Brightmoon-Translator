@@ -79,13 +79,14 @@ pub async fn start_hook_monitor(
     let config = state.config.lock().await;
     let target_lang = config.default_to.clone();
     let source_lang = config.default_from.clone();
+    let enabled_sources = config.hook.enabled_sources.clone();
     drop(config);
 
     let translation_service = state.translation_service.clone();
     let recent_texts: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
 
     monitor
-        .start(move |text: MonitoredText| {
+        .start(&enabled_sources, move |text: MonitoredText| {
             let translation_service = translation_service.clone();
             let target_lang = target_lang.clone();
             let source_lang = source_lang.clone();
