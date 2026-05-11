@@ -198,6 +198,7 @@ async fn clipboard_monitor_task(
 /// Returns None if clipboard is empty, locked, or contains non-text data.
 fn read_clipboard_text() -> Option<String> {
     unsafe {
+        use windows::Win32::Foundation::HGLOBAL;
         use windows::Win32::System::DataExchange::{
             CloseClipboard, GetClipboardData, OpenClipboard,
         };
@@ -205,28 +206,27 @@ fn read_clipboard_text() -> Option<String> {
 
         const CF_UNICODETEXT: u32 = 13;
 
-        if OpenClipboard(HWND::default()).is_err() {
+        if OpenClipboard(None).is_err() {
             return None;
         }
 
         let result = (|| -> Option<String> {
-            let h_data = GetClipboardData(CF_UNICODETEXT).ok()?;
-            if h_data.is_null() {
-                return None;
-            }
-            let p_data = GlobalLock(h_data);
+            let handle = GetClipboardData(CF_UNICODETEXT).ok()?;
+            // GetClipboardData returns HANDLE, cast to HGLOBAL for memory APIs
+            let h_global = HGLOBAL(handle.0);
+            let p_data = GlobalLock(h_global);
             if p_data.is_null() {
                 return None;
             }
-            let size = GlobalSize(h_data);
+            let size = GlobalSize(h_global);
             if size <= 2 {
-                GlobalUnlock(h_data).ok();
+                let _ = GlobalUnlock(h_global);
                 return None;
             }
             let slice = std::slice::from_raw_parts(p_data as *const u16, size / 2);
             let text = String::from_utf16_lossy(slice);
             let text = text.trim_end_matches('\0').to_string();
-            GlobalUnlock(h_data).ok();
+            let _ = GlobalUnlock(h_global);
             Some(text)
         })();
 

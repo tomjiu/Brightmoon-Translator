@@ -511,6 +511,7 @@ pub fn run() {
             commands::hook_cmd::start_hook_monitor,
             commands::hook_cmd::stop_hook_monitor,
             commands::hook_cmd::get_hook_monitor_status,
+            commands::hook_cmd::get_foreground_window_rect,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

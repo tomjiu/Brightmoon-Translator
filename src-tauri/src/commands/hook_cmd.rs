@@ -4,9 +4,9 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use tauri::{Emitter, State};
 use tokio::sync::Mutex;
+use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect};
 
 /// Check if text is worth translating.
-/// Filters out noise: too short, mostly symbols/numbers, duplicates.
 fn is_translatable(text: &str, recent: &VecDeque<String>) -> bool {
     let trimmed = text.trim();
     if trimmed.len() < 3 {
@@ -18,18 +18,15 @@ fn is_translatable(text: &str, recent: &VecDeque<String>) -> bool {
         return false;
     }
 
-    // Count meaningful characters (letters, CJK, etc.) vs symbols/digits/whitespace
     let meaningful = trimmed
         .chars()
         .filter(|c| c.is_alphabetic() || is_cjk(*c))
         .count();
 
-    // Require at least 30% meaningful characters
     if meaningful * 10 < char_count * 3 {
         return false;
     }
 
-    // Deduplicate: skip if this exact text was translated recently
     if recent.contains(&trimmed.to_string()) {
         return false;
     }
@@ -37,16 +34,34 @@ fn is_translatable(text: &str, recent: &VecDeque<String>) -> bool {
     true
 }
 
-/// Check if a character is CJK (Chinese/Japanese/Korean)
 fn is_cjk(c: char) -> bool {
     matches!(c,
-        '\u{4E00}'..='\u{9FFF}' |   // CJK Unified Ideographs
-        '\u{3400}'..='\u{4DBF}' |   // CJK Unified Ideographs Extension A
-        '\u{F900}'..='\u{FAFF}' |   // CJK Compatibility Ideographs
-        '\u{3040}'..='\u{309F}' |   // Hiragana
-        '\u{30A0}'..='\u{30FF}' |   // Katakana
-        '\u{AC00}'..='\u{D7AF}'     // Hangul Syllables
+        '\u{4E00}'..='\u{9FFF}' |
+        '\u{3400}'..='\u{4DBF}' |
+        '\u{F900}'..='\u{FAFF}' |
+        '\u{3040}'..='\u{309F}' |
+        '\u{30A0}'..='\u{30FF}' |
+        '\u{AC00}'..='\u{D7AF}'
     )
+}
+
+/// Get the foreground window's bounding rectangle.
+/// Returns [x, y, width, height] in physical pixels.
+#[tauri::command]
+pub async fn get_foreground_window_rect() -> Result<[i32; 4], String> {
+    tokio::task::spawn_blocking(|| unsafe {
+        let hwnd = GetForegroundWindow();
+        let mut rect = windows::Win32::Foundation::RECT::default();
+        GetWindowRect(hwnd, &mut rect).map_err(|e| e.to_string())?;
+        Ok([
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+        ])
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Start hook monitor for foreground window text
@@ -86,24 +101,22 @@ pub async fn start_hook_monitor(
                     }
                 }
 
-                // Add to recent texts for deduplication
+                // Dedup
                 {
                     let mut recent = recent_texts.lock().await;
                     recent.push_back(text.text.trim().to_string());
-                    // Keep only last 20 entries
                     while recent.len() > 20 {
                         recent.pop_front();
                     }
                 }
 
-                // Translate the text
+                // Translate
                 match translation_service
                     .translate(&text.text, &source_lang, &target_lang)
                     .await
                 {
                     Ok(response) => {
                         if let Some(result) = response.results.first() {
-                            // Emit event to frontend
                             let _ = app_handle.emit(
                                 "hook-text-translated",
                                 serde_json::json!({
@@ -113,6 +126,7 @@ pub async fn start_hook_monitor(
                                     "translated": result.text,
                                     "engine": result.engine,
                                     "timestamp": text.timestamp,
+                                    "source": text.source,
                                 }),
                             );
                         }
@@ -128,7 +142,6 @@ pub async fn start_hook_monitor(
     Ok("Monitor started".to_string())
 }
 
-/// Stop hook monitor
 #[tauri::command]
 pub async fn stop_hook_monitor(state: State<'_, AppState>) -> Result<String, String> {
     let monitor = state.hook_monitor.lock().await;
@@ -136,7 +149,6 @@ pub async fn stop_hook_monitor(state: State<'_, AppState>) -> Result<String, Str
     Ok("Monitor stopped".to_string())
 }
 
-/// Get hook monitor status
 #[tauri::command]
 pub async fn get_hook_monitor_status(state: State<'_, AppState>) -> Result<bool, String> {
     let monitor = state.hook_monitor.lock().await;

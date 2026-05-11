@@ -25,6 +25,7 @@ interface HookTranslatedItem {
   translated: string;
   engine: string;
   timestamp: number;
+  source: string;
 }
 
 function HookMonitor() {
@@ -60,6 +61,7 @@ function HookMonitor() {
         translated: string;
         engine: string;
         timestamp: number;
+        source: string;
       }>("hook-text-translated", (event) => {
         const item: HookTranslatedItem = {
           id: ++idCounter.current,
@@ -69,6 +71,7 @@ function HookMonitor() {
           translated: event.payload.translated,
           engine: event.payload.engine,
           timestamp: event.payload.timestamp,
+          source: event.payload.source || "uia",
         };
 
         setResults((prev) => {
@@ -81,18 +84,23 @@ function HookMonitor() {
           navigator.clipboard.writeText(item.translated).catch(() => {});
         }
 
-        // Show in overlay if enabled
+        // Show in overlay positioned at target window bottom
         if (showOverlay) {
-          invoke<[number, number]>("get_cursor_position")
-            .then(([cx, cy]) => {
+          invoke<[number, number, number, number]>("get_foreground_window_rect")
+            .then(([wx, wy, ww, _wh]) => {
+              // Position overlay at bottom-center of the target window
+              const overlayW = Math.min(500, ww - 40);
+              const overlayH = 180;
+              const ox = wx + (ww - overlayW) / 2;
+              const oy = wy + _wh - overlayH - 20;
               invoke("update_overlay", {
-                x: cx + 20,
-                y: cy + 20,
-                width: 380,
-                height: 220,
+                x: Math.round(ox),
+                y: Math.round(oy),
+                width: Math.round(overlayW),
+                height: overlayH,
                 text: item.translated,
                 source: item.original,
-                showControls: true,
+                showControls: false,
               }).catch(() => {});
             })
             .catch(() => {});
@@ -342,6 +350,13 @@ function HookMonitor() {
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${
+                      item.source === "clipboard"
+                        ? "bg-accent/20 text-accent"
+                        : "bg-primary/20 text-primary"
+                    }`}>
+                      {item.source === "clipboard" ? "CB" : "UIA"}
+                    </span>
                     <Languages size={10} className="text-primary" />
                     <span className="text-[10px] text-primary font-medium">
                       {item.engine}
