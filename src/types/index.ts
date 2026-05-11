@@ -99,6 +99,8 @@ export interface AppConfig {
   ocrInterval?: number;
   ocrClickThrough?: boolean;
   ocrAutoBindWindow?: boolean;
+  hookShowOverlay?: boolean;
+  hookAutoCopy?: boolean;
 }
 
 // Language definitions

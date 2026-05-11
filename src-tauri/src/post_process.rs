@@ -186,13 +186,11 @@ fn fix_newlines(text: &str) -> String {
 
 // Add regex crate to dependencies
 pub fn create_default_rules() -> Vec<ReplacementRule> {
-    vec![
-        ReplacementRule {
-            id: "1".to_string(),
-            pattern: "您".to_string(),
-            replacement: "你".to_string(),
-            enabled: false,
-            is_regex: false,
-        },
-    ]
+    vec![ReplacementRule {
+        id: "1".to_string(),
+        pattern: "您".to_string(),
+        replacement: "你".to_string(),
+        enabled: false,
+        is_regex: false,
+    }]
 }

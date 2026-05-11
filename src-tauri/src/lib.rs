@@ -23,7 +23,7 @@ pub mod tts;
 
 use cache::TranslationCache;
 use capabilities::{
-    DefaultInputReplacement, DefaultSelectionTranslation, InputReplacement,
+    DefaultInputReplacement, DefaultSelectionTranslation, HookMonitor, InputReplacement,
     SelectionTranslation, TargetAppDetector, WindowsTargetAppDetector,
 };
 use config::AppConfig;
@@ -55,6 +55,8 @@ pub struct AppState {
     pub app_detector: Arc<dyn TargetAppDetector>,
     /// Manages overlay position following (cursor / target bounds)
     pub follow_controller: Arc<FollowController>,
+    /// Hook monitor for foreground window text
+    pub hook_monitor: Arc<Mutex<HookMonitor>>,
     /// Initialized in setup() after AppHandle is available
     pub selection_translation: TokioOnceCell<Arc<dyn SelectionTranslation>>,
     /// Initialized in setup() after AppHandle is available
@@ -88,6 +90,7 @@ pub fn run() {
     let selection_manager = Arc::new(selection::SelectionProviderManager::with_defaults());
     let app_detector: Arc<dyn TargetAppDetector> = Arc::new(WindowsTargetAppDetector::new());
     let follow_controller = Arc::new(FollowController::new());
+    let hook_monitor = Arc::new(Mutex::new(HookMonitor::new()));
 
     let state = AppState {
         config: config_arc,
@@ -102,6 +105,7 @@ pub fn run() {
         selection_manager,
         app_detector,
         follow_controller,
+        hook_monitor,
         selection_translation: TokioOnceCell::new(),
         input_replacement: TokioOnceCell::new(),
     };
@@ -116,9 +120,18 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let app_state = app.state::<AppState>();
                 let config = app_state.config.blocking_lock();
-                if let (Some(x), Some(y), Some(w), Some(h)) = (config.window_x, config.window_y, config.window_width, config.window_height) {
-                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x as i32, y as i32)));
-                    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(w as u32, h as u32)));
+                if let (Some(x), Some(y), Some(w), Some(h)) = (
+                    config.window_x,
+                    config.window_y,
+                    config.window_width,
+                    config.window_height,
+                ) {
+                    let _ = window.set_position(tauri::Position::Physical(
+                        tauri::PhysicalPosition::new(x as i32, y as i32),
+                    ));
+                    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+                        w as u32, h as u32,
+                    )));
                 }
             }
 
@@ -130,22 +143,20 @@ pub fn run() {
                 // Initialize the follow controller with the AppHandle
                 app_state.follow_controller.init(app_handle.clone());
 
-                let sel_translation: Arc<dyn SelectionTranslation> = Arc::new(
-                    DefaultSelectionTranslation::new(
+                let sel_translation: Arc<dyn SelectionTranslation> =
+                    Arc::new(DefaultSelectionTranslation::new(
                         app_state.selection_manager.clone(),
                         app_state.translation_service.clone(),
                         app_state.config.clone(),
                         app_handle,
                         app_state.app_detector.clone(),
                         app_state.follow_controller.clone(),
-                    ),
-                );
-                let inp_replacement: Arc<dyn InputReplacement> = Arc::new(
-                    DefaultInputReplacement::new(
+                    ));
+                let inp_replacement: Arc<dyn InputReplacement> =
+                    Arc::new(DefaultInputReplacement::new(
                         app_state.selection_manager.clone(),
                         app_state.translation_service.clone(),
-                    ),
-                );
+                    ));
                 let _ = app_state.selection_translation.set(sel_translation);
                 let _ = app_state.input_replacement.set(inp_replacement);
             }
@@ -171,11 +182,10 @@ pub fn run() {
                         }
                     }
                     "ocr" => {
-                        // Trigger OCR via event
+                        // Start the full-screen OCR screenshot flow. Do not show/focus
+                        // the main window first, otherwise the app gets captured.
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                            let _ = window.emit("trigger-ocr", ());
+                            let _ = window.emit("trigger-ocr-screenshot", ());
                         }
                     }
                     "settings" => {
@@ -304,62 +314,75 @@ pub fn run() {
             // Register OCR hotkey
             if let Some(shortcut_ocr) = parse_hotkey(&hotkey_config.ocr_translate) {
                 let app_handle = app.handle().clone();
-                let _ = app.global_shortcut().on_shortcut(shortcut_ocr, move |_app, _shortcut, event| {
-                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                            let _ = window.emit("trigger-ocr", ());
+                let _ = app.global_shortcut().on_shortcut(
+                    shortcut_ocr,
+                    move |_app, _shortcut, event| {
+                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.emit("trigger-ocr-screenshot", ());
+                            }
                         }
-                    }
-                });
+                    },
+                );
             }
 
             // Register show window hotkey
             if let Some(shortcut_show) = parse_hotkey(&hotkey_config.show_window) {
                 let app_handle = app.handle().clone();
-                let _ = app.global_shortcut().on_shortcut(shortcut_show, move |_app, _shortcut, event| {
-                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                let _ = app.global_shortcut().on_shortcut(
+                    shortcut_show,
+                    move |_app, _shortcut, event| {
+                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
                         }
-                    }
-                });
+                    },
+                );
             }
 
             // Register translate selection hotkey
             if let Some(shortcut_translate) = parse_hotkey(&hotkey_config.translate_selection) {
                 let app_handle = app.handle().clone();
-                let _ = app.global_shortcut().on_shortcut(shortcut_translate, move |_app, _shortcut, event| {
-                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.emit("trigger-translate-selection", ());
+                let _ = app.global_shortcut().on_shortcut(
+                    shortcut_translate,
+                    move |_app, _shortcut, event| {
+                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.emit("trigger-translate-selection", ());
+                            }
                         }
-                    }
-                });
+                    },
+                );
             }
 
             // Register replace translate hotkey
             if let Some(shortcut_replace) = parse_hotkey(&hotkey_config.replace_translate) {
                 let app_handle = app.handle().clone();
-                let _ = app.global_shortcut().on_shortcut(shortcut_replace, move |_app, _shortcut, event| {
-                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.emit("trigger-replace-translate", ());
+                let _ = app.global_shortcut().on_shortcut(
+                    shortcut_replace,
+                    move |_app, _shortcut, event| {
+                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.emit("trigger-replace-translate", ());
+                            }
                         }
-                    }
-                });
+                    },
+                );
             }
 
             // Register overlay click-through toggle hotkey (escape hatch)
             if let Some(shortcut_ct) = parse_hotkey(&hotkey_config.toggle_overlay_click_through) {
                 let app_handle = app.handle().clone();
-                let _ = app.global_shortcut().on_shortcut(shortcut_ct, move |_app, _shortcut, event| {
-                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        overlay::interaction::disable_click_through_and_focus(&app_handle);
-                    }
-                });
+                let _ = app.global_shortcut().on_shortcut(
+                    shortcut_ct,
+                    move |_app, _shortcut, event| {
+                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                            overlay::interaction::disable_click_through_and_focus(&app_handle);
+                        }
+                    },
+                );
             }
 
             // Start API server if enabled
@@ -420,6 +443,8 @@ pub fn run() {
             commands::window::update_overlay,
             commands::window::update_overlay_content,
             commands::window::update_overlay_position,
+            commands::window::create_ocr_screenshot_selector,
+            commands::window::close_ocr_screenshot_selector,
             commands::window::create_ocr_region_frame,
             commands::window::close_ocr_region_frame,
             commands::config_cmd::get_config,
@@ -439,9 +464,9 @@ pub fn run() {
             commands::cache_cmd::cache_size,
             commands::capture::capture_screen,
             commands::capture::capture_full_screen,
-            commands::capture::screenshot_to_base64,
-            commands::capture::cut_image_base64,
             commands::capture::system_ocr,
+            commands::capture::system_ocr_detailed,
+            commands::capture::youdao_ocr,
             commands::capture::prepare_screenshot_snapshot,
             commands::capture::load_screenshot_snapshot,
             commands::capture::crop_screenshot_snapshot,
@@ -483,6 +508,9 @@ pub fn run() {
             commands::plugin_cmd::set_plugin_enabled,
             commands::plugin_cmd::get_plugins_dir,
             commands::plugin_cmd::open_plugins_dir,
+            commands::hook_cmd::start_hook_monitor,
+            commands::hook_cmd::stop_hook_monitor,
+            commands::hook_cmd::get_hook_monitor_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

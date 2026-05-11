@@ -13,7 +13,7 @@ const defaultConfig: AppConfig = {
   engines: {
     google: { enabled: true },
     baidu: { enabled: false, appId: "", secret: "" },
-    youdao: { enabled: false, useAi: false },
+    youdao: { enabled: true, useAi: false },
     deepl: { enabled: false, apiKey: "", pro: false },
     deeplx: { enabled: false, apiKey: "", pro: false },
     microsoft: { enabled: false },

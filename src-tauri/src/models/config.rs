@@ -299,7 +299,7 @@ impl Default for AppConfig {
                     secret: String::new(),
                 },
                 youdao: YoudaoConfig {
-                    enabled: false,
+                    enabled: true,
                     use_ai: false,
                 },
                 deepl: DeepLConfig::default(),

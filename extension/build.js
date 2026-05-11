@@ -1,11 +1,12 @@
-// Build script for Moon Translator Browser Extension
-// Creates Chrome and Firefox versions
+// Build script for Moon Translator Browser Extension.
+// Creates Chrome MV3 and Firefox MV2 packages.
 
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT_DIR = __dirname;
+const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 
 // Clean dist
@@ -45,18 +46,21 @@ firefoxManifest.background = {
 firefoxManifest.browser_action = firefoxManifest.action;
 delete firefoxManifest.action;
 firefoxManifest.permissions = firefoxManifest.permissions.filter(p => p !== 'scripting');
+delete firefoxManifest.commands;
 fs.writeFileSync(path.join(firefoxDir, 'manifest.json'), JSON.stringify(firefoxManifest, null, 2));
 
-// Create zip files
+// Create portable archives. For local development, load the unpacked dist folders.
 console.log('Creating Chrome extension...');
-execSync(`cd "${chromeDir}" && tar -cf ../moontranslator-chrome.zip .`, { stdio: 'inherit' });
+archiveDir(chromeDir, path.join(DIST_DIR, 'moontranslator-chrome.tar.gz'));
 
 console.log('Creating Firefox extension...');
-execSync(`cd "${firefoxDir}" && tar -cf ../moontranslator-firefox.zip .`, { stdio: 'inherit' });
+archiveDir(firefoxDir, path.join(DIST_DIR, 'moontranslator-firefox.tar.gz'));
 
 console.log('\nBuild complete!');
-console.log(`Chrome: ${path.join(DIST_DIR, 'moontranslator-chrome.zip')}`);
-console.log(`Firefox: ${path.join(DIST_DIR, 'moontranslator-firefox.zip')}`);
+console.log(`Chrome directory: ${chromeDir}`);
+console.log(`Firefox directory: ${firefoxDir}`);
+console.log(`Chrome archive: ${path.join(DIST_DIR, 'moontranslator-chrome.tar.gz')}`);
+console.log(`Firefox archive: ${path.join(DIST_DIR, 'moontranslator-firefox.tar.gz')}`);
 
 // Helper: Copy directory
 function copyDir(src, dest, exclude = []) {
@@ -75,4 +79,11 @@ function copyDir(src, dest, exclude = []) {
       fs.copyFileSync(srcPath, destPath);
     }
   }
+}
+
+function archiveDir(src, dest) {
+  execSync(`tar -czf "${dest}" .`, {
+    cwd: src,
+    stdio: 'inherit',
+  });
 }

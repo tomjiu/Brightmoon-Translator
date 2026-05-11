@@ -11,6 +11,7 @@ import {
   Copy,
   Check,
   X,
+  Scan,
   Volume2,
   Clipboard,
   Eye,
@@ -28,9 +29,12 @@ import {
   MicOff,
   Sparkles,
 } from "lucide-react";
-import OcrSelector from "../components/OcrSelector";
 
-function MainTranslator() {
+interface MainTranslatorProps {
+  onOcrScreenshot: () => void;
+}
+
+function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
   const {
     sourceText,
     results,
@@ -252,72 +256,82 @@ function MainTranslator() {
         </select>
 
         <div className="ml-2 flex items-center gap-2">
-          <OcrSelector />
-
-          {/* Incremental Mode Toggle */}
           <button
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              incrementalMode
-                ? "bg-accent text-white"
-                : "bg-bg-tertiary text-text-secondary hover:bg-bg-tertiary/80"
-            }`}
-            onClick={toggleIncrementalMode}
-            title={t(incrementalMode ? "translator.incrementalModeOn" : "translator.incrementalModeOff")}
+            className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-primary-hover transition-colors flex items-center gap-2"
+            onClick={onOcrScreenshot}
+            title="全屏截图 OCR 翻译"
           >
-            <Layers size={16} />
+            <Scan size={16} />
+            OCR截图翻译
           </button>
 
-          {/* Delete Newlines Toggle */}
-          <button
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              deleteNewlines
-                ? "bg-warning text-white"
-                : "bg-bg-tertiary text-text-secondary hover:bg-bg-tertiary/80"
-            }`}
-            onClick={() => setDeleteNewlines(!deleteNewlines)}
-            title={t(deleteNewlines ? "translator.keepNewlines" : "translator.deleteNewlines")}
-          >
-            <Eraser size={16} />
-          </button>
+          {/* Mode Toggles Group */}
+          <div className="flex items-center gap-1 bg-bg-tertiary/50 rounded-lg p-1">
+            {/* Incremental Mode Toggle */}
+            <button
+              className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+                incrementalMode
+                  ? "bg-accent text-white"
+                  : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+              }`}
+              onClick={toggleIncrementalMode}
+              title={t(incrementalMode ? "translator.incrementalModeOn" : "translator.incrementalModeOff")}
+            >
+              <Layers size={14} />
+            </button>
 
-          {/* Clipboard Monitor Toggle */}
-          <button
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              clipboardMonitorEnabled
-                ? "bg-primary text-white"
-                : "bg-bg-tertiary text-text-secondary hover:bg-bg-tertiary/80"
-            }`}
-            onClick={toggleClipboardMonitor}
-            title={t(clipboardMonitorEnabled ? "translator.stopClipboardMonitor" : "translator.startClipboardMonitor")}
-          >
-            <Clipboard size={16} />
-          </button>
+            {/* Delete Newlines Toggle */}
+            <button
+              className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+                deleteNewlines
+                  ? "bg-warning text-white"
+                  : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+              }`}
+              onClick={() => setDeleteNewlines(!deleteNewlines)}
+              title={t(deleteNewlines ? "translator.keepNewlines" : "translator.deleteNewlines")}
+            >
+              <Eraser size={14} />
+            </button>
 
-          {/* Bilingual Mode Toggle */}
-          <button
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              bilingualMode
-                ? "bg-accent text-white"
-                : "bg-bg-tertiary text-text-secondary hover:bg-bg-tertiary/80"
-            }`}
-            onClick={() => setBilingualMode(!bilingualMode)}
-            title={t(bilingualMode ? "translator.bilingualOff" : "translator.bilingualOn")}
-          >
-            <Columns size={16} />
-          </button>
+            {/* Clipboard Monitor Toggle */}
+            <button
+              className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+                clipboardMonitorEnabled
+                  ? "bg-primary text-white"
+                  : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+              }`}
+              onClick={toggleClipboardMonitor}
+              title={t(clipboardMonitorEnabled ? "translator.stopClipboardMonitor" : "translator.startClipboardMonitor")}
+            >
+              <Clipboard size={14} />
+            </button>
 
-          {/* Embedded Translation Mode Toggle */}
-          <button
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              embeddedMode
-                ? "bg-primary text-white"
-                : "bg-bg-tertiary text-text-secondary hover:bg-bg-tertiary/80"
-            }`}
-            onClick={toggleEmbeddedMode}
-            title={t(embeddedMode ? "translator.embeddedOff" : "translator.embeddedOn")}
-          >
-            <BookOpen size={16} />
-          </button>
+            {/* Bilingual Mode Toggle */}
+            <button
+              className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+                bilingualMode
+                  ? "bg-accent text-white"
+                  : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+              }`}
+              onClick={() => setBilingualMode(!bilingualMode)}
+              title={t(bilingualMode ? "translator.bilingualOff" : "translator.bilingualOn")}
+            >
+              <Columns size={14} />
+            </button>
+
+            {/* Embedded Translation Mode Toggle */}
+            <button
+              className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+                embeddedMode
+                  ? "bg-primary text-white"
+                  : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+              }`}
+              onClick={toggleEmbeddedMode}
+              title={t(embeddedMode ? "translator.embeddedOff" : "translator.embeddedOn")}
+            >
+              <BookOpen size={14} />
+            </button>
+          </div>
         </div>
       </div>
 

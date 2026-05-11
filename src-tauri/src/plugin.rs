@@ -98,8 +98,7 @@ pub fn set_plugin_enabled(plugin_name: &str, enabled: bool) -> Result<(), String
                         if manifest.name == plugin_name {
                             manifest.enabled = enabled;
                             if let Ok(json) = serde_json::to_string_pretty(&manifest) {
-                                std::fs::write(&manifest_path, json)
-                                    .map_err(|e| e.to_string())?;
+                                std::fs::write(&manifest_path, json).map_err(|e| e.to_string())?;
                             }
                             return Ok(());
                         }

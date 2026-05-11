@@ -149,9 +149,9 @@ pub fn detect_language(text: &str) -> DetectionResult {
 fn contains_english_words(text: &str) -> bool {
     let common_words = [
         "the", "is", "at", "which", "on", "and", "a", "to", "in", "it", "of", "for", "that",
-        "this", "with", "you", "but", "have", "not", "are", "be", "from", "or", "by", "one",
-        "had", "was", "what", "when", "where", "how", "all", "can", "her", "there", "been",
-        "if", "will", "do",
+        "this", "with", "you", "but", "have", "not", "are", "be", "from", "or", "by", "one", "had",
+        "was", "what", "when", "where", "how", "all", "can", "her", "there", "been", "if", "will",
+        "do",
     ];
 
     let words: Vec<&str> = text.split_whitespace().collect();

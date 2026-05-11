@@ -23,7 +23,10 @@ pub async fn delete_history_item(state: State<'_, AppState>, id: String) -> Resu
 }
 
 #[tauri::command]
-pub async fn batch_delete_history(state: State<'_, AppState>, ids: Vec<String>) -> Result<(), String> {
+pub async fn batch_delete_history(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
     let history = state.history.lock().await;
     history.batch_remove(&ids);
     Ok(())

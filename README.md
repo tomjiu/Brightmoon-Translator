@@ -13,11 +13,12 @@ Desktop translation tool with browser extension, overlay UI, and multi-engine su
 ### Desktop App (Tauri)
 
 ```bash
-cd src-tauri
-cargo build --release
+pnpm install
+pnpm tauri build
 ```
 
-The executable will be at `src-tauri/target/release/moontranslator.exe`.
+Tauri runs the configured frontend build first, then writes bundles under
+`src-tauri/target/release/bundle/`.
 
 ### Browser Extension
 
@@ -26,20 +27,25 @@ cd extension
 node build.js
 ```
 
-The built extension will be in `extension/dist/`. Load it in Chrome via `chrome://extensions` > Load unpacked.
+The built extension will be in `extension/dist/`.
+Load `extension/dist/chrome/` in Chrome/Edge via `chrome://extensions` > Load unpacked.
+Load `extension/dist/firefox/manifest.json` in Firefox via `about:debugging`.
 
 ## Development
 
 ```bash
 # Run desktop app in dev mode
-cd src-tauri
-cargo run
+pnpm install
+pnpm tauri dev
 
 # Run tests
-cargo test
+pnpm test
+cd src-tauri && cargo test
 
 # Check for warnings
-cargo check
+pnpm run check
+pnpm run lint
+cd src-tauri && cargo check
 ```
 
 ## Architecture

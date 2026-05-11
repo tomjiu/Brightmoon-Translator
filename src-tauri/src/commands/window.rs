@@ -1,7 +1,7 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::command;
 use tauri::Manager;
 use tauri::{WebviewUrl, WebviewWindowBuilder};
-use std::sync::atomic::{AtomicBool, Ordering};
 
 static ALWAYS_ON_TOP: AtomicBool = AtomicBool::new(false);
 
@@ -54,7 +54,8 @@ pub async fn get_selected_text() -> Result<String, String> {
             fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
             fn CloseClipboard() -> i32;
             fn EmptyClipboard() -> i32;
-            fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+            fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void)
+                -> *mut std::ffi::c_void;
             fn GetClipboardData(uFormat: u32) -> *mut std::ffi::c_void;
             fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut std::ffi::c_void;
             fn GlobalLock(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
@@ -170,7 +171,11 @@ pub async fn get_selected_text() -> Result<String, String> {
                         if !h_mem.is_null() {
                             let p_mem = GlobalLock(h_mem);
                             if !p_mem.is_null() {
-                                std::ptr::copy_nonoverlapping(saved.as_ptr(), p_mem as *mut u8, saved.len());
+                                std::ptr::copy_nonoverlapping(
+                                    saved.as_ptr(),
+                                    p_mem as *mut u8,
+                                    saved.len(),
+                                );
                                 GlobalUnlock(h_mem);
                                 SetClipboardData(CF_UNICODETEXT, h_mem);
                             }
@@ -272,7 +277,11 @@ pub async fn translate_selection(
     let dismiss_ms = config.overlay_auto_dismiss_ms;
     drop(config);
 
-    let response = state.translation_service.translate(&text, &from, &to).await.map_err(|e| e.to_string())?;
+    let response = state
+        .translation_service
+        .translate(&text, &from, &to)
+        .await
+        .map_err(|e| e.to_string())?;
 
     if let Some(first) = response.results.first() {
         let (cursor_x, cursor_y) = get_cursor_position().await.unwrap_or((100.0, 100.0));
@@ -302,7 +311,9 @@ pub async fn trigger_selection_translate(
     state: tauri::State<'_, crate::AppState>,
     overlay_level: Option<u8>,
 ) -> Result<(), String> {
-    let cap = state.selection_translation.get()
+    let cap = state
+        .selection_translation
+        .get()
         .ok_or_else(|| "SelectionTranslation capability not initialized".to_string())?;
 
     let options = crate::capabilities::SelectionTranslateOptions {
@@ -312,7 +323,9 @@ pub async fn trigger_selection_translate(
         show_overlay: true,
     };
 
-    cap.translate_selection(options).await.map_err(|e| e.to_string())?;
+    cap.translate_selection(options)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -381,7 +394,9 @@ pub async fn move_window_to_cursor(app: tauri::AppHandle) -> Result<(), String> 
                 let screen_h = GetSystemMetrics(SM_CYSCREEN) as f64;
 
                 // Get window size
-                let size = window.inner_size().unwrap_or(tauri::PhysicalSize::new(800, 600));
+                let size = window
+                    .inner_size()
+                    .unwrap_or(tauri::PhysicalSize::new(800, 600));
                 let win_w = size.width as f64;
                 let win_h = size.height as f64;
 
@@ -389,13 +404,18 @@ pub async fn move_window_to_cursor(app: tauri::AppHandle) -> Result<(), String> 
                 let final_x = window_x.min(screen_w - win_w - 20.0).max(20.0);
                 let final_y = window_y.min(screen_h - win_h - 20.0).max(20.0);
 
-                let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(final_x as i32, final_y as i32)));
+                let _ = window.set_position(tauri::Position::Physical(
+                    tauri::PhysicalPosition::new(final_x as i32, final_y as i32),
+                ));
             }
         }
 
         #[cfg(not(target_os = "windows"))]
         {
-            let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(window_x as i32, window_y as i32)));
+            let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+                window_x as i32,
+                window_y as i32,
+            )));
         }
 
         let _ = window.show();
@@ -441,9 +461,7 @@ pub async fn refresh_overlay_position(
 
 /// Stop overlay following (does not close the overlay).
 #[command]
-pub async fn stop_overlay_follow(
-    state: tauri::State<'_, crate::AppState>,
-) -> Result<(), String> {
+pub async fn stop_overlay_follow(state: tauri::State<'_, crate::AppState>) -> Result<(), String> {
     state.follow_controller.stop().await;
     Ok(())
 }
@@ -482,7 +500,9 @@ pub async fn update_overlay(
             window_title: None,
         };
         let html = crate::overlay::html_builder::build_html(&content, level, 3000);
-        crate::overlay::window_manager::create_overlay_window(&app, &html, x, y, width, height, true)?;
+        crate::overlay::window_manager::create_overlay_window(
+            &app, &html, x, y, width, height, true,
+        )?;
     }
 
     Ok(())
@@ -524,25 +544,141 @@ pub async fn create_ocr_region_frame(
     // Close existing region frame if any
     if let Some(existing) = app.get_webview_window("ocr-region-frame") {
         let _ = existing.close();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 
-    WebviewWindowBuilder::new(
+    log::info!(
+        "Creating OCR region frame at ({}, {}) {}x{}",
+        x, y, width, height
+    );
+
+    // Retry loop: Tauri may not release the window label immediately after close()
+    let max_attempts = 5;
+    let mut last_error = String::new();
+
+    for attempt in 1..=max_attempts {
+        if attempt > 1 {
+            let delay_ms = 50u64 * (1 << (attempt - 1)); // 50, 100, 200, 400, 800
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        }
+
+        match WebviewWindowBuilder::new(
+            &app,
+            "ocr-region-frame",
+            WebviewUrl::App("index.html?window=ocr-region-frame".into()),
+        )
+        .title("OCR Region")
+        .inner_size(width.max(80.0), height.max(60.0))
+        .position(x, y)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(true)
+        .focused(true)
+        .fullscreen(false)
+        .background_color(tauri::window::Color(10, 10, 10, 255))
+        .build()
+        {
+            Ok(window) => {
+                let _ = window;
+                log::info!("OCR region frame created successfully (attempt {})", attempt);
+                return Ok(());
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+                last_error = err_str.clone();
+                log::warn!(
+                    "OCR region frame creation attempt {} failed: {}",
+                    attempt,
+                    err_str
+                );
+                // If it's not a label conflict, fail immediately
+                if !err_str.contains("already exists") {
+                    return Err(format!("Failed to create OCR region frame: {}", err_str));
+                }
+                // Otherwise retry with longer delay
+            }
+        }
+    }
+
+    Err(format!(
+        "Failed to create OCR region frame after {} attempts: {}",
+        max_attempts, last_error
+    ))
+}
+
+/// Create the full-screen OCR screenshot selector window.
+/// Uses explicit screen-sized dimensions for reliability instead of fullscreen mode,
+/// which can be unreliable across Tauri v2 versions and multi-monitor setups.
+#[command]
+pub async fn create_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(), String> {
+    // Close existing selector window if any, and wait briefly for cleanup
+    if let Some(existing) = app.get_webview_window("ocr-screenshot") {
+        let _ = existing.close();
+        // Brief yield to let Tauri release the window label
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    log::info!("Creating OCR screenshot selector window");
+
+    // Get primary screen dimensions for explicit sizing
+    #[cfg(target_os = "windows")]
+    let (screen_w, screen_h) = {
+        extern "system" {
+            fn GetSystemMetrics(nIndex: i32) -> i32;
+        }
+        const SM_CXSCREEN: i32 = 0;
+        const SM_CYSCREEN: i32 = 1;
+        unsafe {
+            (
+                GetSystemMetrics(SM_CXSCREEN) as f64,
+                GetSystemMetrics(SM_CYSCREEN) as f64,
+            )
+        }
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let (screen_w, screen_h) = (1920.0, 1080.0);
+
+    log::info!(
+        "OCR selector screen size: {}x{}",
+        screen_w,
+        screen_h
+    );
+
+    let window = WebviewWindowBuilder::new(
         &app,
-        "ocr-region-frame",
-        WebviewUrl::App("/?window=ocr-region-frame".into()),
+        "ocr-screenshot",
+        WebviewUrl::App("index.html?window=ocr-screenshot".into()),
     )
-    .title("OCR Region")
-    .inner_size(width.max(80.0), height.max(60.0))
-    .position(x, y)
+    .title("OCR Screenshot")
+    .inner_size(screen_w, screen_h)
+    .position(0.0, 0.0)
     .decorations(false)
-    .transparent(true)
     .always_on_top(true)
     .skip_taskbar(true)
-    .resizable(true)
+    .resizable(false)
     .focused(true)
+    .visible(false) // Start hidden to avoid black flash
+    .background_color(tauri::window::Color(0, 0, 0, 255))
     .build()
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| format!("Failed to create OCR screenshot selector: {}", e))?;
 
+    // Also try to enter fullscreen as a secondary measure
+    let _ = window.set_fullscreen(true);
+
+    log::info!("OCR screenshot selector window created successfully");
+    Ok(())
+}
+
+/// Close the OCR screenshot selector window if it exists.
+#[command]
+pub async fn close_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("ocr-screenshot") {
+        let _ = window.close();
+        // Wait for the window to be fully destroyed before returning
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
     Ok(())
 }
 
@@ -551,6 +687,9 @@ pub async fn create_ocr_region_frame(
 pub async fn close_ocr_region_frame(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("ocr-region-frame") {
         let _ = window.close();
+        // Wait for the window to be fully destroyed before returning
+        // This prevents ghost windows and "already exists" label conflicts
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     Ok(())
 }

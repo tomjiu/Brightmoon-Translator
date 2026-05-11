@@ -44,8 +44,9 @@ impl TranslationCache {
             );
             CREATE INDEX IF NOT EXISTS idx_timestamp ON translations(timestamp);
             CREATE INDEX IF NOT EXISTS idx_from_to ON translations(from_lang, to_lang);
-            "
-        ).expect("Failed to create cache table");
+            ",
+        )
+        .expect("Failed to create cache table");
 
         Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -80,9 +81,7 @@ impl TranslationCache {
             .ok()?;
 
         let results: Vec<(String, String)> = stmt
-            .query_map(params![key], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })
+            .query_map(params![key], |row| Ok((row.get(0)?, row.get(1)?)))
             .ok()?
             .filter_map(|r| r.ok())
             .collect();
@@ -93,9 +92,7 @@ impl TranslationCache {
 
         // Get timestamp and hits from first row
         let mut stmt = conn
-            .prepare(
-                "SELECT timestamp, hits FROM translations WHERE cache_key = ?1 LIMIT 1",
-            )
+            .prepare("SELECT timestamp, hits FROM translations WHERE cache_key = ?1 LIMIT 1")
             .ok()?;
 
         let (timestamp, hits): (i64, i64) = stmt
@@ -137,7 +134,11 @@ impl TranslationCache {
 
         // Evict oldest entries if cache exceeds max size
         let count: i64 = conn
-            .query_row("SELECT COUNT(DISTINCT cache_key) FROM translations", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(DISTINCT cache_key) FROM translations",
+                [],
+                |row| row.get(0),
+            )
             .unwrap_or(0);
 
         if count > self.max_size as i64 {
@@ -182,9 +183,7 @@ impl TranslationCache {
             .unwrap_or(0);
 
         let total_hits: i64 = conn
-            .query_row("SELECT SUM(hits) FROM translations", [], |row| {
-                row.get(0)
-            })
+            .query_row("SELECT SUM(hits) FROM translations", [], |row| row.get(0))
             .unwrap_or(0);
 
         // Get per-engine stats

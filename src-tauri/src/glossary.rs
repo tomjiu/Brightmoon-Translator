@@ -58,10 +58,7 @@ impl Glossary {
     }
 
     pub fn get_entries(&self, lang_pair: &str) -> Vec<GlossaryEntry> {
-        self.entries
-            .get(lang_pair)
-            .cloned()
-            .unwrap_or_default()
+        self.entries.get(lang_pair).cloned().unwrap_or_default()
     }
 
     pub fn get_all_entries(&self) -> &HashMap<String, Vec<GlossaryEntry>> {

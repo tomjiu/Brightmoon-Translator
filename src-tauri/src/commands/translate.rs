@@ -1,7 +1,7 @@
+use crate::capabilities::input_replacement::ReplacementResult;
 use crate::dictionary::{self, DictionaryResult};
 use crate::engine::TranslateResponse;
 use crate::lang_detect::{self, DetectionResult};
-use crate::capabilities::input_replacement::ReplacementResult;
 use crate::AppState;
 use serde::Deserialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -61,16 +61,22 @@ pub async fn translate_stream(
         let mut full_text = String::new();
         while let Some(chunk) = rx.recv().await {
             full_text.push_str(&chunk);
-            let _ = app_handle.emit("stream-chunk", serde_json::json!({
-                "chunk": chunk,
-                "done": false,
-            }));
+            let _ = app_handle.emit(
+                "stream-chunk",
+                serde_json::json!({
+                    "chunk": chunk,
+                    "done": false,
+                }),
+            );
         }
         // Emit completion
-        let _ = app_handle.emit("stream-chunk", serde_json::json!({
-            "chunk": "",
-            "done": true,
-        }));
+        let _ = app_handle.emit(
+            "stream-chunk",
+            serde_json::json!({
+                "chunk": "",
+                "done": true,
+            }),
+        );
         full_text
     });
 
@@ -150,11 +156,14 @@ pub async fn translate_selection_with_text(
 
     if let Some(first) = response.results.first() {
         // Emit result to frontend for overlay display
-        let _ = app.emit("selection-translated", serde_json::json!({
-            "source": text,
-            "translated": first.text,
-            "engine": first.engine,
-        }));
+        let _ = app.emit(
+            "selection-translated",
+            serde_json::json!({
+                "source": text,
+                "translated": first.text,
+                "engine": first.engine,
+            }),
+        );
     }
 
     Ok(())
@@ -164,15 +173,15 @@ pub async fn translate_selection_with_text(
 /// Uses the InputReplacement capability: selection → translate → clipboard paste.
 /// No frontend clipboard read needed — the capability handles everything.
 #[tauri::command]
-pub async fn replace_translate(
-    state: State<'_, AppState>,
-) -> Result<ReplacementResult, String> {
+pub async fn replace_translate(state: State<'_, AppState>) -> Result<ReplacementResult, String> {
     let config = state.config.lock().await;
     let from = config.default_from.clone();
     let to = config.default_to.clone();
     drop(config);
 
-    let cap = state.input_replacement.get()
+    let cap = state
+        .input_replacement
+        .get()
         .ok_or_else(|| "InputReplacement capability not initialized".to_string())?;
 
     let result = cap
@@ -185,11 +194,10 @@ pub async fn replace_translate(
 
 /// Replace text in the foreground application via the InputReplacement capability.
 #[tauri::command]
-pub async fn replace_text_in_app(
-    state: State<'_, AppState>,
-    text: String,
-) -> Result<(), String> {
-    let cap = state.input_replacement.get()
+pub async fn replace_text_in_app(state: State<'_, AppState>, text: String) -> Result<(), String> {
+    let cap = state
+        .input_replacement
+        .get()
         .ok_or_else(|| "InputReplacement capability not initialized".to_string())?;
 
     cap.replace_text(&text).await.map_err(|e| e.to_string())?;
@@ -238,7 +246,8 @@ pub async fn translate_embedded(
     let batch_results = state
         .translation_service
         .translate_batch(
-            &text.lines()
+            &text
+                .lines()
                 .enumerate()
                 .filter(|(_, l)| !l.trim().is_empty())
                 .map(|(i, l)| (i, l.trim()))
@@ -304,13 +313,13 @@ impl Clone for AppState {
             selection_manager: self.selection_manager.clone(),
             app_detector: self.app_detector.clone(),
             follow_controller: self.follow_controller.clone(),
+            hook_monitor: self.hook_monitor.clone(),
             // OnceCell fields: create new empty cells for clones
             selection_translation: tokio::sync::OnceCell::new(),
             input_replacement: tokio::sync::OnceCell::new(),
         }
     }
 }
-
 
 #[tauri::command]
 pub async fn get_metrics(state: State<'_, AppState>) -> Result<serde_json::Value, String> {

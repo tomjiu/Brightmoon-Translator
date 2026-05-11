@@ -70,7 +70,11 @@ impl TranslationEngine for BaiduEngine {
         let body: BaiduResponse = resp.json().await?;
 
         if let Some(code) = body.error_code {
-            return Err(anyhow::anyhow!("Baidu error {}: {}", code, body.error_msg.unwrap_or_default()));
+            return Err(anyhow::anyhow!(
+                "Baidu error {}: {}",
+                code,
+                body.error_msg.unwrap_or_default()
+            ));
         }
 
         let translated = body

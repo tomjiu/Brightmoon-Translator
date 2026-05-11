@@ -1,8 +1,8 @@
 use super::TranslationEngine;
 use async_trait::async_trait;
+use rand::Rng;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use rand::Rng;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::sleep;
 
@@ -244,7 +244,11 @@ impl DeepLXEngine {
 
             if !status.is_success() {
                 let error_text = resp.text().await.unwrap_or_default();
-                return Err(anyhow::anyhow!("DeepL API error {}: {}", status, error_text));
+                return Err(anyhow::anyhow!(
+                    "DeepL API error {}: {}",
+                    status,
+                    error_text
+                ));
             }
 
             let body: JsonRpcResponse = resp.json().await?;
@@ -290,7 +294,9 @@ impl DeepLXEngine {
     }
 
     async fn translate_pro(&self, text: &str, from: &str, to: &str) -> anyhow::Result<String> {
-        let api_key = self.api_key.as_ref()
+        let api_key = self
+            .api_key
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("DeepL Pro API key not configured"))?;
 
         let source_lang = Self::map_lang(from);
@@ -320,7 +326,11 @@ impl DeepLXEngine {
         let status = resp.status();
         if !status.is_success() {
             let error_text = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("DeepL Pro API error {}: {}", status, error_text));
+            return Err(anyhow::anyhow!(
+                "DeepL Pro API error {}: {}",
+                status,
+                error_text
+            ));
         }
 
         let body: serde_json::Value = resp.json().await?;

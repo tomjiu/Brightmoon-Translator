@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emitTo } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { ScanLine } from "lucide-react";
 import {
   captureScreenshotRegion,
-  ocrImagePreferNative,
+  ocrImagePreferNativeDetailed,
   prepareScreenshotSnapshot,
   type ScreenshotSnapshotInfo,
   type ScreenshotRegion,
+  type OcrResultDetailed,
 } from "../services/ocr";
-import { calculateOcrResultOverlayRect } from "../services/ocrOverlayPosition";
 import { useConfigStore } from "../stores/configStore";
 import type { TranslateResponse } from "../types";
 
 type OcrStatus = "idle" | "capturing" | "selecting" | "running" | "error";
+
+interface OcrScreenshotTranslatorProps {
+  launchNonce?: number;
+}
 
 interface RegionRect {
   x: number;
@@ -24,7 +27,23 @@ interface RegionRect {
   height: number;
 }
 
-export default function OcrScreenshotTranslator() {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreenshotTranslatorProps) {
   const config = useConfigStore((state) => state.config);
   const [status, setStatus] = useState<OcrStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +57,10 @@ export default function OcrScreenshotTranslator() {
   const snapshotInfoRef = useRef<ScreenshotSnapshotInfo | null>(null);
   const busyRef = useRef(false);
   const continuousRef = useRef(false);
+  const lastOcrTextRef = useRef<string>("");
+  const hasOcrRef = useRef(false); // Track whether OCR has been performed (avoids ocrSource dependency)
+  const sourceLangRef = useRef(config.defaultFrom);
+  const targetLangRef = useRef(config.defaultTo);
 
   // Keep refs in sync
   useEffect(() => {
@@ -46,6 +69,31 @@ export default function OcrScreenshotTranslator() {
   useEffect(() => {
     continuousRef.current = continuous;
   }, [continuous]);
+
+  // ---- Send data to the merged region frame ----
+  const sendToRegionFrame = useCallback(
+    async (
+      screenshot: string,
+      ocrResult: OcrResultDetailed,
+      translatedText: string,
+      lineTranslations: string[] = [],
+    ) => {
+      try {
+        await emitTo("ocr-region-frame", "ocr-region-update-data", {
+          screenshot,
+          sourceText: ocrResult.text,
+          translatedText,
+          ocrLines: ocrResult.lines,
+          lineTranslations,
+          sourceLang: sourceLangRef.current,
+          targetLang: targetLangRef.current,
+        });
+      } catch {
+        // region frame may not be ready yet
+      }
+    },
+    [],
+  );
 
   // ---- Core OCR + Translate pipeline ----
   const captureAndTranslate = useCallback(
@@ -64,122 +112,139 @@ export default function OcrScreenshotTranslator() {
         };
 
         const image = await captureScreenshotRegion(sRegion);
-        const sourceText = await ocrImagePreferNative(image, "auto");
-        if (!sourceText.trim()) {
+        const ocrResult = await ocrImagePreferNativeDetailed(image, "auto");
+        if (!ocrResult.text.trim()) {
           throw new Error("OCR 没有识别到文本");
         }
-        setOcrSource(sourceText.trim());
 
-        const response = await invoke<TranslateResponse>("translate", {
-          request: {
-            text: sourceText.trim(),
-            from: config.defaultFrom,
-            to: config.defaultTo,
-          },
-        });
+        const sourceTextTrimmed = ocrResult.text.trim();
+        setOcrSource(sourceTextTrimmed);
+        hasOcrRef.current = true;
 
-        const translatedText = response.results[0]?.text ?? "";
-        setTranslation(translatedText);
+        // Only translate if the OCR text actually changed
+        const textChanged = sourceTextTrimmed !== lastOcrTextRef.current;
+        let translatedText = "";
+        let lineTranslations: string[] = [];
 
-        // Show/update overlay near the region frame
-        if (translatedText) {
-          const overlay = calculateOcrResultOverlayRect(
-            sRegion,
-            snapshotInfoRef.current,
-          );
-          await invoke("update_overlay", {
-            x: overlay.x,
-            y: overlay.y,
-            width: overlay.width,
-            height: overlay.height,
-            text: translatedText,
-            showControls: true,
-            source: sourceText.trim(),
+        if (textChanged || !lastOcrTextRef.current) {
+          lastOcrTextRef.current = sourceTextTrimmed;
+
+          // Translate each line separately for immersive replacement
+          const lines = ocrResult.lines.filter(l => l.text.trim().length > 0);
+          const translatePromises = lines.map(async (line) => {
+            try {
+              const response = await invoke<TranslateResponse>("translate", {
+                request: {
+                  text: line.text.trim(),
+                  from: sourceLangRef.current,
+                  to: targetLangRef.current,
+                },
+              });
+              return response.results[0]?.text ?? line.text;
+            } catch {
+              return line.text; // Fallback to original text on error
+            }
           });
+
+          lineTranslations = await Promise.all(translatePromises);
+          translatedText = lineTranslations.join("\n");
+          setTranslation(translatedText);
         }
+
+        // Send screenshot + OCR + translation to the merged region frame
+        await sendToRegionFrame(image, ocrResult, translatedText, lineTranslations);
       } catch (err) {
         setError(String(err));
+        throw err; // Re-throw so caller can handle (e.g., close region frame on failure)
       } finally {
         busyRef.current = false;
       }
     },
-    [config.defaultFrom, config.defaultTo],
+    [sendToRegionFrame],
   );
 
   // ---- Listen for events from the region frame window ----
+  // Uses `cancelled` flag to handle React StrictMode double-mount:
+  // StrictMode runs setup() twice; the first instance's cleanup runs before
+  // await listen() resolves, so `unlisteners` is empty. The `cancelled` flag
+  // ensures the first listener self-destructs when its callback fires.
   useEffect(() => {
+    let cancelled = false;
     const unlisteners: (() => void)[] = [];
 
-    const setup = async () => {
-      // Position changed (drag)
-      unlisteners.push(
-        await listen<RegionRect>("ocr-region-position-changed", (event) => {
-          const r = event.payload;
-          regionRef.current = { x: r.x, y: r.y, width: r.width, height: r.height };
-          // Reposition overlay
-          const sRegion: ScreenshotRegion = {
-            left: Math.round(r.x),
-            top: Math.round(r.y),
-            width: Math.round(r.width),
-            height: Math.round(r.height),
-          };
-          const overlay = calculateOcrResultOverlayRect(sRegion, snapshotInfoRef.current);
-          void invoke("update_overlay_position", { x: overlay.x, y: overlay.y });
-        }),
-      );
-
-      // Size changed (resize)
-      unlisteners.push(
-        await listen<RegionRect>("ocr-region-size-changed", (event) => {
-          const r = event.payload;
-          regionRef.current = { x: r.x, y: r.y, width: r.width, height: r.height };
-          // Re-run OCR with new size if we have previous results
-          if (ocrSource !== null) {
-            void captureAndTranslate({ x: r.x, y: r.y, width: r.width, height: r.height });
-          }
-        }),
-      );
-
-      // Manual refresh
-      unlisteners.push(
-        await listen("ocr-region-refresh", () => {
-          if (regionRef.current) {
-            void captureAndTranslate(regionRef.current);
-          }
-        }),
-      );
-
-      // Continuous toggle
-      unlisteners.push(
-        await listen<{ enabled: boolean }>("ocr-region-continuous", (event) => {
-          setContinuous(event.payload.enabled);
-        }),
-      );
-
-      // Region frame closed
-      unlisteners.push(
-        await listen("ocr-region-close", async () => {
-          setContinuous(false);
-          setStatus("idle");
-          setError(null);
-          setOcrSource(null);
-          setTranslation(null);
-          regionRef.current = null;
-          try {
-            await invoke("close_overlay");
-          } catch {
-            // overlay may not exist
-          }
-          await getCurrentWindow().show();
-        }),
-      );
+    const registerListener = async (
+      eventName: string,
+      handler: (event: { payload: unknown }) => void,
+    ) => {
+      const unlisten = await listen(eventName, (event) => {
+        if (cancelled) return;
+        handler(event);
+      });
+      if (cancelled) {
+        unlisten();
+      } else {
+        unlisteners.push(unlisten);
+      }
     };
 
-    void setup();
+    // Position changed (drag)
+    void registerListener("ocr-region-position-changed", (event) => {
+      const r = event.payload as RegionRect;
+      regionRef.current = { x: r.x, y: r.y, width: r.width, height: r.height };
+    });
+
+    // Size changed (resize) — re-run OCR
+    void registerListener("ocr-region-size-changed", (event) => {
+      const r = event.payload as RegionRect;
+      regionRef.current = { x: r.x, y: r.y, width: r.width, height: r.height };
+      if (hasOcrRef.current) {
+        lastOcrTextRef.current = "";
+        void captureAndTranslate({ x: r.x, y: r.y, width: r.width, height: r.height });
+      }
+    });
+
+    // Manual refresh
+    void registerListener("ocr-region-refresh", () => {
+      if (regionRef.current) {
+        void captureAndTranslate(regionRef.current);
+      }
+    });
+
+    // Continuous toggle
+    void registerListener("ocr-region-continuous", (event) => {
+      setContinuous((event.payload as { enabled: boolean }).enabled);
+    });
+
+    // Language change from region frame
+    void registerListener("ocr-region-lang-change", (event) => {
+      const p = event.payload as { sourceLang: string; targetLang: string };
+      sourceLangRef.current = p.sourceLang;
+      targetLangRef.current = p.targetLang;
+      lastOcrTextRef.current = "";
+      if (regionRef.current) {
+        void captureAndTranslate(regionRef.current);
+      }
+    });
+
+    // Region frame closed
+    void registerListener("ocr-region-close", async () => {
+      setContinuous(false);
+      setStatus("idle");
+      setError(null);
+      setOcrSource(null);
+      setTranslation(null);
+      regionRef.current = null;
+      lastOcrTextRef.current = "";
+      hasOcrRef.current = false;
+      try { await invoke("close_ocr_region_frame"); } catch { /* may already be closed */ }
+      await getCurrentWindow().show();
+    });
+
     return () => {
+      cancelled = true;
       unlisteners.forEach((fn) => fn());
     };
-  }, [captureAndTranslate, ocrSource]);
+  }, [captureAndTranslate]);
 
   // ---- Continuous refresh timer ----
   useEffect(() => {
@@ -197,11 +262,12 @@ export default function OcrScreenshotTranslator() {
 
   // ---- Screenshot selection listener ----
   useEffect(() => {
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
 
     listen<ScreenshotRegion>("ocr-screenshot-selected", async (event) => {
+      if (cancelled) return; // guard against StrictMode double-mount
       const sel = event.payload;
-      // Convert image-pixel coordinates to screen coordinates
       const info = snapshotInfoRef.current;
       const scaleX = info ? info.screenWidth / info.imageWidth : 1;
       const scaleY = info ? info.screenHeight / info.imageHeight : 1;
@@ -218,17 +284,12 @@ export default function OcrScreenshotTranslator() {
 
       // Close selector window
       try {
-        const selector = await WebviewWindow.getByLabel("ocr-screenshot");
-        if (selector) await selector.close();
+        await invoke("close_ocr_screenshot_selector");
       } catch {
         // may already be closed
       }
 
-      // Show main window (but we'll show the region frame on top)
-      const appWindow = getCurrentWindow();
-      await appWindow.show();
-
-      // Create region frame window at the selection position
+      // Create merged region frame window at the selection position
       try {
         await invoke("create_ocr_region_frame", {
           x: screenX,
@@ -237,86 +298,121 @@ export default function OcrScreenshotTranslator() {
           height: screenH,
         });
       } catch (err) {
+        if (cancelled) return;
+        try { await invoke("close_ocr_region_frame"); } catch {}
+        await getCurrentWindow().show();
         setError(String(err));
         setStatus("error");
         return;
       }
 
-      // Run first OCR + translate
-      await captureAndTranslate(region);
+      // Wait briefly for region frame to initialize, then run first OCR + translate
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+
+      lastOcrTextRef.current = "";
+      try {
+        await captureAndTranslate(region);
+      } catch (err) {
+        if (cancelled) return;
+        console.error("[OCR] captureAndTranslate failed after selection:", err);
+        setError(String(err));
+        setStatus("error");
+        try { await invoke("close_ocr_region_frame"); } catch {}
+        await getCurrentWindow().show();
+      }
     }).then((fn) => {
-      unlisten = fn;
+      if (cancelled) {
+        fn(); // StrictMode cleanup came before registration — remove immediately
+      } else {
+        unlisten = fn;
+      }
     });
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, [captureAndTranslate]);
 
   // ---- Cancelled listener ----
   useEffect(() => {
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
+
     listen("ocr-screenshot-cancelled", () => {
+      if (cancelled) return;
       void getCurrentWindow().show();
       setStatus("idle");
     }).then((fn) => {
-      unlisten = fn;
+      if (cancelled) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
     });
+
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, []);
 
+  // Guard ref to prevent concurrent startScreenshotTranslate calls
+  const startingRef = useRef(false);
+
   // ---- Start screenshot translate ----
-  const startScreenshotTranslate = async () => {
+  const startScreenshotTranslate = useCallback(async () => {
+    if (startingRef.current) return;
+    startingRef.current = true;
+
     setStatus("capturing");
     setError(null);
     setOcrSource(null);
     setTranslation(null);
     setContinuous(false);
     regionRef.current = null;
+    lastOcrTextRef.current = "";
+    hasOcrRef.current = false;
 
     try {
-      // Close existing region frame and overlay
+      // Close existing region frame and selector
       try {
         await invoke("close_ocr_region_frame");
-        await invoke("close_overlay");
+        await invoke("close_ocr_screenshot_selector");
       } catch {
         // may not exist
       }
 
       const appWindow = getCurrentWindow();
       await appWindow.hide();
-      await new Promise((resolve) => window.setTimeout(resolve, 180));
 
-      const info = await prepareScreenshotSnapshot();
+      const info = await withTimeout(
+        prepareScreenshotSnapshot(),
+        10000,
+        "屏幕捕获超时：当前桌面会话可能不允许截图",
+      );
       setSnapshotInfo(info);
       snapshotInfoRef.current = info;
 
-      // Close any existing selector
-      const existing = await WebviewWindow.getByLabel("ocr-screenshot");
-      if (existing) {
-        await existing.close();
-      }
-
-      new WebviewWindow("ocr-screenshot", {
-        url: "/?window=ocr-screenshot",
-        title: "OCR Screenshot",
-        fullscreen: true,
-        decorations: false,
-        alwaysOnTop: true,
-        skipTaskbar: true,
-        resizable: false,
-        focus: true,
-      });
-
+      await invoke("create_ocr_screenshot_selector");
       setStatus("selecting");
     } catch (err) {
-      await getCurrentWindow().show();
+      try {
+        await getCurrentWindow().show();
+      } catch {
+        // ignore
+      }
       setError(String(err));
       setStatus("error");
+    } finally {
+      startingRef.current = false;
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (launchNonce <= 0) return;
+    void startScreenshotTranslate();
+  }, [launchNonce, startScreenshotTranslate]);
 
   const busy = status === "capturing" || status === "selecting" || status === "running";
 
@@ -329,8 +425,8 @@ export default function OcrScreenshotTranslator() {
             屏幕 OCR 翻译
           </div>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
-            全屏截图选区后，在屏幕原位显示可拖拽/可调整的 OCR 区域框，翻译结果以浮窗显示在旁边。
-            支持手动刷新和持续刷新（2 秒间隔）。优先使用 Windows 原生 OCR，失败时回退到 tesseract.js。
+            选区后直接在屏幕原位显示翻译结果，支持自动刷新、原文/译文切换、语言切换和截图复制。
+            优先使用 Windows 原生 OCR，失败时回退到 tesseract.js。
           </p>
         </div>
 

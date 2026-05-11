@@ -42,11 +42,14 @@ pub async fn translate_subtitle(
             &to_lang,
             3, // concurrency
             |completed, _total| {
-                let _ = window_clone.emit("subtitle-progress", serde_json::json!({
-                    "current": completed,
-                    "total": total,
-                    "text": format!("Translating... {}/{}", completed, total),
-                }));
+                let _ = window_clone.emit(
+                    "subtitle-progress",
+                    serde_json::json!({
+                        "current": completed,
+                        "total": total,
+                        "text": format!("Translating... {}/{}", completed, total),
+                    }),
+                );
             },
         )
         .await;
@@ -59,11 +62,14 @@ pub async fn translate_subtitle(
     }
 
     // Emit completion event
-    let _ = window.emit("subtitle-progress", serde_json::json!({
-        "current": total,
-        "total": total,
-        "text": "Done",
-    }));
+    let _ = window.emit(
+        "subtitle-progress",
+        serde_json::json!({
+            "current": total,
+            "total": total,
+            "text": "Done",
+        }),
+    );
 
     Ok(TranslatedSubtitle {
         entries: doc.entries,

@@ -1,4 +1,4 @@
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -39,13 +39,15 @@ impl HistoryStore {
                 timestamp INTEGER NOT NULL
             )",
             [],
-        ).expect("Failed to create history table");
+        )
+        .expect("Failed to create history table");
 
         // Create index for faster queries
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_history_timestamp ON history(timestamp DESC)",
             [],
-        ).ok();
+        )
+        .ok();
 
         Self {
             conn: Mutex::new(conn),
@@ -101,13 +103,15 @@ impl HistoryStore {
 
     pub fn remove(&self, id: &str) {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM history WHERE id = ?1", params![id]).ok();
+        conn.execute("DELETE FROM history WHERE id = ?1", params![id])
+            .ok();
     }
 
     pub fn batch_remove(&self, ids: &[String]) {
         let conn = self.conn.lock().unwrap();
         for id in ids {
-            conn.execute("DELETE FROM history WHERE id = ?1", params![id]).ok();
+            conn.execute("DELETE FROM history WHERE id = ?1", params![id])
+                .ok();
         }
     }
 }
@@ -128,12 +132,14 @@ impl WordBookStore {
                 timestamp INTEGER NOT NULL
             )",
             [],
-        ).expect("Failed to create wordbook table");
+        )
+        .expect("Failed to create wordbook table");
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_wordbook_timestamp ON wordbook(timestamp DESC)",
             [],
-        ).ok();
+        )
+        .ok();
 
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_wordbook_word ON wordbook(word, from_lang, to_lang)",
@@ -145,7 +151,14 @@ impl WordBookStore {
         }
     }
 
-    pub fn add(&self, word: &str, translation: &str, from_lang: &str, to_lang: &str, note: &str) -> Result<(), String> {
+    pub fn add(
+        &self,
+        word: &str,
+        translation: &str,
+        from_lang: &str,
+        to_lang: &str,
+        note: &str,
+    ) -> Result<(), String> {
         let conn = self.conn.lock().unwrap();
         let id = Uuid::new_v4().to_string();
         let timestamp = chrono::Utc::now().timestamp_millis();
@@ -185,19 +198,22 @@ impl WordBookStore {
         conn.execute(
             "UPDATE wordbook SET note = ?1 WHERE id = ?2",
             params![note, id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn remove(&self, id: &str) {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM wordbook WHERE id = ?1", params![id]).ok();
+        conn.execute("DELETE FROM wordbook WHERE id = ?1", params![id])
+            .ok();
     }
 
     pub fn batch_remove(&self, ids: &[String]) {
         let conn = self.conn.lock().unwrap();
         for id in ids {
-            conn.execute("DELETE FROM wordbook WHERE id = ?1", params![id]).ok();
+            conn.execute("DELETE FROM wordbook WHERE id = ?1", params![id])
+                .ok();
         }
     }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -12,7 +12,7 @@ import PdfViewer from "./pages/PdfViewer";
 import EpubViewer from "./pages/EpubViewer";
 import SubtitleViewer from "./pages/SubtitleViewer";
 import Plugins from "./pages/Plugins";
-import OcrMonitor from "./components/OcrMonitor";
+import HookMonitor from "./components/HookMonitor";
 import OcrScreenshotSelector from "./components/OcrScreenshotSelector";
 import OcrScreenshotTranslator from "./components/OcrScreenshotTranslator";
 import OcrRegionFrame from "./components/OcrRegionFrame";
@@ -36,9 +36,10 @@ import {
   Puzzle,
   Scan,
   Subtitles,
+  Zap,
 } from "lucide-react";
 
-type Page = "translator" | "settings" | "history" | "glossary" | "tools" | "wordbook" | "pdf" | "epub" | "subtitle" | "plugins" | "ocr";
+type Page = "translator" | "settings" | "history" | "glossary" | "tools" | "wordbook" | "pdf" | "epub" | "subtitle" | "plugins" | "ocr" | "hook";
 
 interface NavItem {
   id: Page;
@@ -62,10 +63,16 @@ function App() {
 function MainApp() {
   const [page, setPage] = useState<Page>("translator");
   const [pinned, setPinned] = useState(false);
+  const [ocrLaunchNonce, setOcrLaunchNonce] = useState(0);
   const { theme, toggleTheme } = useThemeStore();
   const { setSourceText } = useTranslateStore();
   const addToast = useToastStore((s) => s.addToast);
   const { t } = useI18n();
+
+  const startOcrScreenshot = useCallback(() => {
+    setPage("ocr");
+    setOcrLaunchNonce((nonce) => nonce + 1);
+  }, []);
 
   const togglePin = async () => {
     try {
@@ -91,10 +98,15 @@ function MainApp() {
         subtitle: "subtitle",
         plugins: "plugins",
         ocr: "ocr",
+        hook: "hook",
       };
       if (pageMap[event.payload]) {
         setPage(pageMap[event.payload]);
       }
+    });
+
+    const unlistenOcrScreenshot = listen("trigger-ocr-screenshot", () => {
+      startOcrScreenshot();
     });
 
     // Listen for translate-selection shortcut (Ctrl+Shift+Y)
@@ -206,16 +218,18 @@ function MainApp() {
       unlistenMoved.then((fn) => fn());
       unlistenResized.then((fn) => fn());
       unlistenNav.then((fn) => fn());
+      unlistenOcrScreenshot.then((fn) => fn());
       unlistenTranslateSelection.then((fn) => fn());
       unlistenAutoCopy.then((fn) => fn());
       unlistenReplaceTranslate.then((fn) => fn());
     };
-  }, [setSourceText]);
+  }, [setSourceText, startOcrScreenshot]);
 
   const navItems: NavItem[] = [
     // Core translation features
     { id: "translator", icon: Languages, label: t("nav.translator"), group: "core" },
     { id: "ocr", icon: Scan, label: t("nav.ocr"), group: "core" },
+    { id: "hook", icon: Zap, label: t("nav.hook"), group: "core" },
     // Reading & document translation
     { id: "pdf", icon: FileText, label: t("nav.pdf"), group: "read" },
     { id: "epub", icon: BookOpen, label: t("nav.epub"), group: "read" },
@@ -310,18 +324,10 @@ function MainApp() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
-        {page === "translator" && <MainTranslator />}
+        {page === "translator" && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
         {page === "ocr" && (
           <div className="flex flex-col h-full gap-4 p-4 overflow-y-auto">
-            <OcrScreenshotTranslator />
-            <details className="rounded-2xl border border-border bg-bg-secondary p-4">
-              <summary className="cursor-pointer text-sm font-medium text-text-primary">
-                旧版连续 OCR 监控（实验功能）
-              </summary>
-              <div className="mt-4">
-                <OcrMonitor />
-              </div>
-            </details>
+            <OcrScreenshotTranslator launchNonce={ocrLaunchNonce} />
           </div>
         )}
         {page === "settings" && <Settings />}
@@ -333,6 +339,7 @@ function MainApp() {
         {page === "glossary" && <Glossary />}
         {page === "tools" && <Tools />}
         {page === "plugins" && <Plugins />}
+        {page === "hook" && <HookMonitor />}
       </main>
 
       {/* Toast Notifications */}

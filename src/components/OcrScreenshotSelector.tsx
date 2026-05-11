@@ -39,8 +39,16 @@ export default function OcrScreenshotSelector() {
 
   useEffect(() => {
     loadScreenshotSnapshot()
-      .then(setSnapshot)
-      .catch((err) => setError(String(err)));
+      .then((snap) => {
+        setSnapshot(snap);
+        // Show window after snapshot is loaded to avoid black flash
+        return getCurrentWindow().show();
+      })
+      .catch((err) => {
+        setError(String(err));
+        // Show window even on error so user can see the error message
+        return getCurrentWindow().show();
+      });
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {

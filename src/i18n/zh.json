@@ -13,7 +13,8 @@
     "glossary": "术语表",
     "settings": "设置",
     "tools": "工具",
-    "plugins": "插件"
+    "plugins": "插件",
+    "hook": "Hook翻译"
   },
   "translator": {
     "placeholder": "输入要翻译的文本...",
@@ -344,6 +345,23 @@
     "autoBindWindowHint": "启动 OCR 时自动绑定当前前台窗口，监控区域会跟随窗口移动",
     "clickThroughSetting": "穿透点击",
     "clickThroughSettingHint": "允许点击穿透翻译悬浮窗，直接操作下方窗口"
+  },
+  "hook": {
+    "title": "Hook 沉浸式翻译",
+    "running": "监控中",
+    "items": "条",
+    "description": "监控前台窗口文本变化，自动翻译并显示结果。适用于游戏、阅读器等支持 UI Automation 的应用。",
+    "start": "启动监控",
+    "stop": "停止监控",
+    "clear": "清空",
+    "empty": "暂无翻译结果",
+    "emptyHint": "启动监控后，在目标窗口中切换文本即可看到翻译",
+    "copy": "复制翻译",
+    "search": "搜索翻译记录...",
+    "noMatch": "没有匹配的记录",
+    "export": "导出记录",
+    "showOverlay": "悬浮窗显示",
+    "autoCopy": "自动复制"
   },
   "replace": {
     "hardFail": "替换失败",

@@ -6,10 +6,7 @@ pub async fn get_plugins() -> Result<Vec<PluginInfo>, String> {
 }
 
 #[tauri::command]
-pub async fn set_plugin_enabled(
-    plugin_name: String,
-    enabled: bool,
-) -> Result<(), String> {
+pub async fn set_plugin_enabled(plugin_name: String, enabled: bool) -> Result<(), String> {
     plugin::set_plugin_enabled(&plugin_name, enabled)
 }
 

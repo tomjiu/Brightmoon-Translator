@@ -28,13 +28,13 @@ impl DefaultInputReplacement {
 #[async_trait]
 impl InputReplacement for DefaultInputReplacement {
     async fn get_selected_text(&self) -> Result<String, TranslationError> {
-        let selection = self
-            .selection_manager
-            .get_selection()
-            .await
-            .ok_or(TranslationError::InvalidInput(
-                "No text selected".to_string(),
-            ))?;
+        let selection =
+            self.selection_manager
+                .get_selection()
+                .await
+                .ok_or(TranslationError::InvalidInput(
+                    "No text selected".to_string(),
+                ))?;
 
         if selection.text.trim().is_empty() {
             return Err(TranslationError::InvalidInput(
@@ -52,14 +52,21 @@ impl InputReplacement for DefaultInputReplacement {
     ) -> Result<ReplacementResult, TranslationError> {
         // Get selected text
         let original = self.get_selected_text().await?;
-        log::info!("[replace_translate] Selected text: {} chars", original.len());
+        log::info!(
+            "[replace_translate] Selected text: {} chars",
+            original.len()
+        );
 
         // Translate
         let translated = self
             .translation_service
             .translate_primary(&original, from, to)
             .await?;
-        log::info!("[replace_translate] Translated: '{}' -> '{}'", original.chars().take(50).collect::<String>(), translated.chars().take(50).collect::<String>());
+        log::info!(
+            "[replace_translate] Translated: '{}' -> '{}'",
+            original.chars().take(50).collect::<String>(),
+            translated.chars().take(50).collect::<String>()
+        );
 
         // Replace in target app via clipboard
         let result = tokio::task::spawn_blocking({

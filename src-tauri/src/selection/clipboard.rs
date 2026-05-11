@@ -13,7 +13,11 @@ impl SelectionProvider for ClipboardSelectionProvider {
             log::debug!("[clipboard] Got text but empty after trim");
             return None;
         }
-        log::info!("[clipboard] Got selection: {} chars from '{}'", text.trim().len(), window_title);
+        log::info!(
+            "[clipboard] Got selection: {} chars from '{}'",
+            text.trim().len(),
+            window_title
+        );
         Some(SelectionResult {
             text: text.trim().to_string(),
             source_app: detect_app_from_title(&window_title),
@@ -64,7 +68,8 @@ fn get_clipboard_selection() -> Option<(String, String)> {
             fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
             fn CloseClipboard() -> i32;
             fn EmptyClipboard() -> i32;
-            fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+            fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void)
+                -> *mut std::ffi::c_void;
             fn GetClipboardData(uFormat: u32) -> *mut std::ffi::c_void;
             fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut std::ffi::c_void;
             fn GlobalLock(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
@@ -158,8 +163,14 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                     let h_data = GetClipboardData(CF_UNICODETEXT);
                     let has_content = if !h_data.is_null() {
                         let p_data = GlobalLock(h_data);
-                        let size = if !p_data.is_null() { GlobalSize(h_data) } else { 0 };
-                        if !p_data.is_null() { GlobalUnlock(h_data); }
+                        let size = if !p_data.is_null() {
+                            GlobalSize(h_data)
+                        } else {
+                            0
+                        };
+                        if !p_data.is_null() {
+                            GlobalUnlock(h_data);
+                        }
                         size > 2
                     } else {
                         false
@@ -225,7 +236,9 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                                 GlobalUnlock(h_mem);
                                 SetClipboardData(CF_UNICODETEXT, h_mem);
                             } else {
-                                log::warn!("[clipboard] GlobalLock failed when restoring clipboard");
+                                log::warn!(
+                                    "[clipboard] GlobalLock failed when restoring clipboard"
+                                );
                             }
                         } else {
                             log::warn!("[clipboard] GlobalAlloc failed when restoring clipboard");

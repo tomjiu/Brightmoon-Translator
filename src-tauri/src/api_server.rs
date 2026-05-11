@@ -79,11 +79,17 @@ async fn translate(
     }
 
     // Use TranslationService for the full pipeline (glossary, blacklist, cache, history, metrics)
-    match state.translation_service.translate(&req.text, &req.from, &req.to).await {
+    match state
+        .translation_service
+        .translate(&req.text, &req.from, &req.to)
+        .await
+    {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(e) => {
             let status = match &e {
-                TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => StatusCode::SERVICE_UNAVAILABLE,
+                TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => {
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
                 TranslationError::InvalidInput(_) => StatusCode::BAD_REQUEST,
                 TranslationError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
@@ -115,7 +121,11 @@ async fn translate_primary(
     }
 
     // Use TranslationService for the full pipeline
-    match state.translation_service.translate_primary(&req.text, &req.from, &req.to).await {
+    match state
+        .translation_service
+        .translate_primary(&req.text, &req.from, &req.to)
+        .await
+    {
         Ok(translated) => (
             StatusCode::OK,
             Json(PrimaryResult {
@@ -126,7 +136,9 @@ async fn translate_primary(
             .into_response(),
         Err(e) => {
             let status = match &e {
-                TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => StatusCode::SERVICE_UNAVAILABLE,
+                TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => {
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
                 TranslationError::InvalidInput(_) => StatusCode::BAD_REQUEST,
                 TranslationError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
@@ -360,7 +372,9 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/browser/translate", post(browser_translate))
         .route(
             "/glossary",
-            get(get_glossary).post(add_glossary_entry).delete(remove_glossary_entry),
+            get(get_glossary)
+                .post(add_glossary_entry)
+                .delete(remove_glossary_entry),
         )
         .route("/blacklist", get(get_blacklist).post(update_blacklist))
         .route("/cache/stats", get(cache_stats))

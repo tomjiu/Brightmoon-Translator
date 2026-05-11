@@ -13,7 +13,8 @@
     "glossary": "Glossary",
     "settings": "Settings",
     "tools": "Tools",
-    "plugins": "Plugins"
+    "plugins": "Plugins",
+    "hook": "Hook Translate"
   },
   "translator": {
     "placeholder": "Enter text to translate...",
@@ -344,6 +345,23 @@
     "autoBindWindowHint": "Automatically bind to the foreground window when starting OCR, so the monitor region follows window movement",
     "clickThroughSetting": "Click-through overlay",
     "clickThroughSettingHint": "Allow clicking through the translation overlay to interact with the window below"
+  },
+  "hook": {
+    "title": "Hook Immersive Translate",
+    "running": "Running",
+    "items": "items",
+    "description": "Monitor foreground window text changes, auto-translate and display results. Works with apps supporting UI Automation (games, readers, etc).",
+    "start": "Start Monitor",
+    "stop": "Stop Monitor",
+    "clear": "Clear",
+    "empty": "No translation results yet",
+    "emptyHint": "Start monitoring, then switch text in target window to see translations",
+    "copy": "Copy translation",
+    "search": "Search translations...",
+    "noMatch": "No matching records",
+    "export": "Export records",
+    "showOverlay": "Show overlay",
+    "autoCopy": "Auto copy"
   },
   "replace": {
     "hardFail": "Replace failed",

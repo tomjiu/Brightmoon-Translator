@@ -48,6 +48,8 @@ impl TranslationService {
         from: &str,
         to: &str,
     ) -> Result<TranslateResponse, TranslationError> {
+        log::info!("[Translation] Input text ({} chars): {:?}", text.len(), &text[..text.len().min(200)]);
+
         // Apply glossary
         let glossary = self.glossary.lock().await;
         let mut processed_text = text.to_string();
@@ -93,18 +95,32 @@ impl TranslationService {
         let router = self.engine_router.read().await;
         let mut response = router.translate_all(&protected_text, from, to).await;
         let elapsed_ms = start.elapsed().as_millis() as u64;
+
+        // Record failures for empty results (check before dropping router)
+        let engine_names = router.engine_names();
         drop(router);
 
         // Record engine latency for each result
         for result in &response.results {
-            self.metrics.record_engine_latency(&result.engine, elapsed_ms).await;
+            self.metrics
+                .record_engine_latency(&result.engine, elapsed_ms)
+                .await;
         }
 
-        // Record failures for empty results
         if response.results.is_empty() {
-            self.metrics.record_failure("all", "No engine returned a result").await;
+            let detail = if engine_names.is_empty() {
+                "No engines are configured".to_string()
+            } else {
+                format!(
+                    "No engine returned a result (configured: {})",
+                    engine_names.join(", ")
+                )
+            };
+            self.metrics
+                .record_failure("all", &detail)
+                .await;
             return Err(TranslationError::AllEnginesFailed {
-                errors: vec!["No engine returned a result".to_string()],
+                errors: vec![detail],
             });
         }
 
@@ -113,6 +129,11 @@ impl TranslationService {
             for result in &mut response.results {
                 result.text = blacklist_processor.restore(&result.text, &placeholder_map);
             }
+        }
+
+        // Log translation results
+        for result in &response.results {
+            log::info!("[Translation] Engine: {}, Result ({} chars): {:?}", result.engine, result.text.len(), &result.text[..result.text.len().min(200)]);
         }
 
         // Cache the results
@@ -177,9 +198,7 @@ impl TranslationService {
         // Stream translation using primary engine
         let start = Instant::now();
         let router = self.engine_router.read().await;
-        let result = router
-            .translate_stream(&protected_text, from, to, tx)
-            .await;
+        let result = router.translate_stream(&protected_text, from, to, tx).await;
         drop(router);
 
         match result {
@@ -246,15 +265,15 @@ impl TranslationService {
 
         let start = Instant::now();
         let router = self.engine_router.read().await;
-        let result = router
-            .translate_primary(&protected_text, from, to)
-            .await;
+        let result = router.translate_primary(&protected_text, from, to).await;
         drop(router);
 
         match result {
             Ok(translated) => {
                 let elapsed_ms = start.elapsed().as_millis() as u64;
-                self.metrics.record_engine_latency("primary", elapsed_ms).await;
+                self.metrics
+                    .record_engine_latency("primary", elapsed_ms)
+                    .await;
 
                 // Restore blacklist words
                 let final_text = if has_blacklist {

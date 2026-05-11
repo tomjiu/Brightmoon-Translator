@@ -3,7 +3,9 @@ use crate::AppState;
 use tauri::State;
 
 #[tauri::command]
-pub async fn get_post_process_config(state: State<'_, AppState>) -> Result<PostProcessConfig, String> {
+pub async fn get_post_process_config(
+    state: State<'_, AppState>,
+) -> Result<PostProcessConfig, String> {
     let processor = state.post_processor.lock().await;
     Ok(processor.get_config())
 }
@@ -39,10 +41,7 @@ pub async fn add_replacement_rule(
 }
 
 #[tauri::command]
-pub async fn remove_replacement_rule(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn remove_replacement_rule(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let processor = state.post_processor.lock().await;
     processor.remove_rule(&id);
     Ok(())
@@ -70,10 +69,7 @@ pub async fn update_replacement_rule(
 }
 
 #[tauri::command]
-pub async fn test_post_process(
-    state: State<'_, AppState>,
-    text: String,
-) -> Result<String, String> {
+pub async fn test_post_process(state: State<'_, AppState>, text: String) -> Result<String, String> {
     let processor = state.post_processor.lock().await;
     Ok(processor.process(&text))
 }

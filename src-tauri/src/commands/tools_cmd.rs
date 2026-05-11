@@ -46,7 +46,10 @@ fn split_into_words(text: &str) -> Vec<String> {
                 words.push(current_word.clone());
                 current_word.clear();
             }
-        } else if ch.is_uppercase() && !current_word.is_empty() && !current_word.ends_with(|c: char| c.is_uppercase()) {
+        } else if ch.is_uppercase()
+            && !current_word.is_empty()
+            && !current_word.ends_with(|c: char| c.is_uppercase())
+        {
             // camelCase or PascalCase boundary
             words.push(current_word.clone());
             current_word.clear();

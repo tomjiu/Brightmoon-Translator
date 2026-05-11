@@ -103,7 +103,8 @@ fn parse_ass(content: &str) -> Vec<SubtitleEntry> {
             let start_time = parts[1].trim().to_string();
             let end_time = parts[2].trim().to_string();
             // Text is the last field after "Text" in format
-            let text = parts[9..].join(",")
+            let text = parts[9..]
+                .join(",")
                 .replace("\\N", "\n")
                 .replace("\\n", "\n")
                 .replace(r"\h", " ");
@@ -184,7 +185,11 @@ fn parse_vtt(content: &str) -> Vec<SubtitleEntry> {
         }
 
         let start_time = time_parts[0].trim().to_string();
-        let end_time = time_parts[1].split_whitespace().next().unwrap_or("").to_string();
+        let end_time = time_parts[1]
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_string();
 
         // Text lines after timestamp
         let text = if time_line_idx + 1 < lines.len() {
@@ -338,7 +343,11 @@ pub fn generate_ass_bilingual(original_content: &str, entries: &[SubtitleEntry])
                 let parts: Vec<&str> = trimmed.splitn(10, ',').collect();
                 if parts.len() >= 10 {
                     let prefix = parts[..9].join(",");
-                    let bilingual_text = format!("{}\\N{}", entry.original_text.replace('\n', "\\N"), entry.translated_text.replace('\n', "\\N"));
+                    let bilingual_text = format!(
+                        "{}\\N{}",
+                        entry.original_text.replace('\n', "\\N"),
+                        entry.translated_text.replace('\n', "\\N")
+                    );
                     output.push_str(&format!("{},{}", prefix, bilingual_text));
                 } else {
                     output.push_str(line);
@@ -378,7 +387,10 @@ pub fn generate_lrc_bilingual(entries: &[SubtitleEntry]) -> String {
         // Original line
         output.push_str(&format!("{}{}\n", entry.start_time, entry.original_text));
         // Translation line (with offset for visual alignment)
-        output.push_str(&format!("{}[译] {}\n", entry.start_time, entry.translated_text));
+        output.push_str(&format!(
+            "{}[译] {}\n",
+            entry.start_time, entry.translated_text
+        ));
     }
 
     output

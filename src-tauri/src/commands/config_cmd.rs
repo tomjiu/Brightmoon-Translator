@@ -3,7 +3,6 @@ use crate::engine::Router;
 use crate::AppState;
 use tauri::State;
 
-
 #[tauri::command]
 pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String> {
     let config = state.config.lock().await;
@@ -43,9 +42,16 @@ pub async fn save_window_position(
 }
 
 #[tauri::command]
-pub async fn get_window_position(state: State<'_, AppState>) -> Result<Option<(f64, f64, f64, f64)>, String> {
+pub async fn get_window_position(
+    state: State<'_, AppState>,
+) -> Result<Option<(f64, f64, f64, f64)>, String> {
     let config = state.config.lock().await;
-    if let (Some(x), Some(y), Some(w), Some(h)) = (config.window_x, config.window_y, config.window_width, config.window_height) {
+    if let (Some(x), Some(y), Some(w), Some(h)) = (
+        config.window_x,
+        config.window_y,
+        config.window_width,
+        config.window_height,
+    ) {
         Ok(Some((x, y, w, h)))
     } else {
         Ok(None)
@@ -53,7 +59,9 @@ pub async fn get_window_position(state: State<'_, AppState>) -> Result<Option<(f
 }
 
 #[tauri::command]
-pub async fn get_api_server_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub async fn get_api_server_status(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     let config = state.config.lock().await;
     Ok(serde_json::json!({
         "enabled": config.api_server_enabled,
@@ -69,7 +77,8 @@ pub async fn export_config_json(state: State<'_, AppState>) -> Result<String, St
 
 #[tauri::command]
 pub async fn import_config_json(state: State<'_, AppState>, json: String) -> Result<(), String> {
-    let imported: AppConfig = serde_json::from_str(&json).map_err(|e| format!("Invalid config JSON: {}", e))?;
+    let imported: AppConfig =
+        serde_json::from_str(&json).map_err(|e| format!("Invalid config JSON: {}", e))?;
     imported.save();
     let mut current = state.config.lock().await;
     *current = imported.clone();

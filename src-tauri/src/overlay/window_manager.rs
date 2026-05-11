@@ -14,9 +14,11 @@ pub fn create_overlay_window(
     close_overlay_window(app);
 
     let encoded = urlencoding::encode(html);
-    let overlay_url = format!("data:text/html,{}", encoded);
+    let overlay_url_str = format!("data:text/html,{}", encoded);
+    let overlay_url = tauri::Url::parse(&overlay_url_str)
+        .map_err(|e| format!("Failed to parse overlay URL: {}", e))?;
 
-    WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App(overlay_url.into()))
+    WebviewWindowBuilder::new(app, "overlay", WebviewUrl::External(overlay_url))
         .title("Translation")
         .inner_size(width.max(200.0), height.max(50.0))
         .position(x, y)
@@ -52,7 +54,8 @@ pub fn move_overlay_window(app: &AppHandle, x: f64, y: f64) {
 pub fn resize_overlay_window(app: &AppHandle, width: f64, height: f64) {
     if let Some(window) = app.get_webview_window("overlay") {
         let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-            width as u32, height as u32,
+            width as u32,
+            height as u32,
         )));
     }
 }
@@ -71,8 +74,14 @@ pub fn update_overlay_content(
     };
 
     // Escape for JS string literals
-    let src_escaped = source.replace('\\', "\\\\").replace('`', "\\`").replace('$', "\\$");
-    let trans_escaped = translated.replace('\\', "\\\\").replace('`', "\\`").replace('$', "\\$");
+    let src_escaped = source
+        .replace('\\', "\\\\")
+        .replace('`', "\\`")
+        .replace('$', "\\$");
+    let trans_escaped = translated
+        .replace('\\', "\\\\")
+        .replace('`', "\\`")
+        .replace('$', "\\$");
 
     // Update DOM elements if they exist, using data attributes for reliable selection
     let js = format!(

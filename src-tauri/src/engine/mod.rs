@@ -1,11 +1,11 @@
-pub mod llm;
-pub mod google;
 pub mod baidu;
-pub mod youdao;
 pub mod deepl;
 pub mod deeplx;
+pub mod google;
+pub mod llm;
 pub mod microsoft;
 pub mod yandex;
+pub mod youdao;
 
 use crate::config::AppConfig;
 use crate::plugin;
@@ -26,7 +26,11 @@ pub struct PluginEngine {
 }
 
 impl PluginEngine {
-    pub fn new(name: &str, endpoint: &str, headers: std::collections::HashMap<String, String>) -> Self {
+    pub fn new(
+        name: &str,
+        endpoint: &str,
+        headers: std::collections::HashMap<String, String>,
+    ) -> Self {
         Self {
             name: name.to_string(),
             endpoint: endpoint.to_string(),
@@ -97,7 +101,10 @@ impl Router {
         let mut engines: Vec<Arc<dyn TranslationEngine>> = Vec::new();
 
         // Create shared HTTP client with proxy support
-        let client = config.proxy.to_client_builder().build()
+        let client = config
+            .proxy
+            .to_client_builder()
+            .build()
             .unwrap_or_else(|_| Client::new());
 
         // LLM engine (primary) - supports multiple API keys
@@ -107,7 +114,8 @@ impl Router {
                 llm_keys,
                 &config.llm.base_url,
                 &config.llm.model,
-            ).with_client(client.clone());
+            )
+            .with_client(client.clone());
             let engine = if !config.custom_prompt.is_empty() {
                 engine.with_custom_prompt(&config.custom_prompt)
             } else {
@@ -116,27 +124,17 @@ impl Router {
             engines.push(Arc::new(engine));
         }
 
-        // Google engine
-        if config.engines.google.enabled {
-            engines.push(Arc::new(google::GoogleEngine::new().with_client(client.clone())));
-        }
-
-        // Baidu engine
-        if config.engines.baidu.enabled && !config.engines.baidu.app_id.is_empty() {
-            engines.push(Arc::new(baidu::BaiduEngine::new(
-                &config.engines.baidu.app_id,
-                &config.engines.baidu.secret,
-            ).with_client(client.clone())));
-        }
-
-        // Youdao engine (uses CDN-based key scraping, no API key needed)
+        // Youdao engine (free, no API key needed) - prioritize over Google
         if config.engines.youdao.enabled {
-            engines.push(Arc::new(youdao::YoudaoEngine::new().with_client(client.clone())));
+            engines.push(Arc::new(
+                youdao::YoudaoEngine::new().with_client(client.clone()),
+            ));
         }
 
-        // DeepL engine
+        // DeepL engine (requires API key)
         if config.engines.deepl.enabled && !config.engines.deepl.api_key.is_empty() {
-            let engine = deepl::DeepLEngine::new(&config.engines.deepl.api_key).with_client(client.clone());
+            let engine =
+                deepl::DeepLEngine::new(&config.engines.deepl.api_key).with_client(client.clone());
             let engine = if config.engines.deepl.pro {
                 engine.with_pro()
             } else {
@@ -147,8 +145,7 @@ impl Router {
 
         // DeepLX engine (built-in, free DeepL alternative)
         if config.engines.deeplx.enabled {
-            let mut engine = deeplx::DeepLXEngine::new()
-                .with_client(client.clone());
+            let mut engine = deeplx::DeepLXEngine::new().with_client(client.clone());
             // If API key is provided, use Pro mode
             if let Some(ref key) = config.engines.deeplx.api_key {
                 if !key.is_empty() {
@@ -161,24 +158,46 @@ impl Router {
             engines.push(Arc::new(engine));
         }
 
+        // Baidu engine (requires API key)
+        if config.engines.baidu.enabled && !config.engines.baidu.app_id.is_empty() {
+            engines.push(Arc::new(
+                baidu::BaiduEngine::new(&config.engines.baidu.app_id, &config.engines.baidu.secret)
+                    .with_client(client.clone()),
+            ));
+        }
+
         // Microsoft engine (free, no config needed)
         if config.engines.microsoft.enabled {
-            engines.push(Arc::new(microsoft::MicrosoftEngine::new().with_client(client.clone())));
+            engines.push(Arc::new(
+                microsoft::MicrosoftEngine::new().with_client(client.clone()),
+            ));
         }
 
         // Yandex engine (free, no config needed)
         if config.engines.yandex.enabled {
-            engines.push(Arc::new(yandex::YandexEngine::new().with_client(client.clone())));
+            engines.push(Arc::new(
+                yandex::YandexEngine::new().with_client(client.clone()),
+            ));
+        }
+
+        // Google engine (free, no config needed) - lowest priority
+        if config.engines.google.enabled {
+            engines.push(Arc::new(
+                google::GoogleEngine::new().with_client(client.clone()),
+            ));
         }
 
         // Fallback: if no engines configured, add a default LLM
         if engines.is_empty() {
-            engines.push(Arc::new(llm::LlmEngine::new(
-                "",
-                "https://api.deepseek.com/v1",
-                "deepseek-chat",
-            ).with_client(client.clone())));
+            engines.push(Arc::new(
+                llm::LlmEngine::new("", "https://api.deepseek.com/v1", "deepseek-chat")
+                    .with_client(client.clone()),
+            ));
         }
+
+        // Log configured engines for debugging
+        let engine_names: Vec<&str> = engines.iter().map(|e| e.name()).collect();
+        log::info!("[Router] Configured engines: {:?} (strategy: {:?})", engine_names, config.routing_strategy);
 
         // Load plugin engines
         let plugins = plugin::scan_plugins();
@@ -189,7 +208,8 @@ impl Router {
                         &format!("Plugin: {}", p.manifest.name),
                         &tc.endpoint,
                         tc.headers.clone(),
-                    ).with_client(client.clone());
+                    )
+                    .with_client(client.clone());
                     engines.push(Arc::new(engine));
                 }
             }
@@ -201,6 +221,11 @@ impl Router {
         }
     }
 
+    /// Get the list of available engine names
+    pub fn engine_names(&self) -> Vec<String> {
+        self.engines.iter().map(|e| e.name().to_string()).collect()
+    }
+
     /// Rebuild engines list with new config (used when plugins change)
     pub fn rebuild(&self, config: &AppConfig) -> Self {
         Self::new(config)
@@ -210,7 +235,9 @@ impl Router {
         match self.strategy {
             RoutingStrategy::PrimaryOnly => self.translate_primary_only(text, from, to).await,
             RoutingStrategy::FallbackOnError => self.translate_with_fallback(text, from, to).await,
-            RoutingStrategy::ParallelCompare => self.translate_parallel_compare(text, from, to).await,
+            RoutingStrategy::ParallelCompare => {
+                self.translate_parallel_compare(text, from, to).await
+            }
             RoutingStrategy::CostAware => self.translate_cost_aware(text, from, to).await,
             RoutingStrategy::LatencyFirst => self.translate_latency_first(text, from, to).await,
         }
@@ -220,16 +247,20 @@ impl Router {
     async fn translate_primary_only(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
         if let Some(engine) = self.engines.first() {
             let name = engine.name().to_string();
+            log::info!("[Router] Using primary engine: {}", name);
             match engine.translate(text, from, to).await {
-                Ok(translated) => TranslateResponse {
-                    results: vec![TranslationResult {
-                        engine: name,
-                        text: translated,
-                    }],
-                    detected_language: None,
+                Ok(translated) => {
+                    log::info!("[Router] Primary engine {} succeeded", name);
+                    TranslateResponse {
+                        results: vec![TranslationResult {
+                            engine: name,
+                            text: translated,
+                        }],
+                        detected_language: None,
+                    }
                 },
                 Err(e) => {
-                    eprintln!("Primary engine failed: {}", e);
+                    log::error!("[Router] Primary engine {} failed: {}", name, e);
                     TranslateResponse {
                         results: vec![],
                         detected_language: None,
@@ -237,6 +268,7 @@ impl Router {
                 }
             }
         } else {
+            log::error!("[Router] No engines configured");
             TranslateResponse {
                 results: vec![],
                 detected_language: None,
@@ -248,8 +280,10 @@ impl Router {
     async fn translate_with_fallback(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
         for engine in &self.engines {
             let name = engine.name().to_string();
+            log::info!("[Router] Trying engine: {}", name);
             match engine.translate(text, from, to).await {
                 Ok(translated) => {
+                    log::info!("[Router] Engine {} succeeded", name);
                     return TranslateResponse {
                         results: vec![TranslationResult {
                             engine: name,
@@ -259,12 +293,13 @@ impl Router {
                     };
                 }
                 Err(e) => {
-                    eprintln!("Engine {} failed: {}, trying next...", name, e);
+                    log::warn!("[Router] Engine {} failed: {}, trying next...", name, e);
                     continue;
                 }
             }
         }
 
+        log::error!("[Router] All engines failed");
         TranslateResponse {
             results: vec![],
             detected_language: None,
@@ -272,7 +307,12 @@ impl Router {
     }
 
     /// Strategy: Parallel Compare - run all engines, return all results
-    async fn translate_parallel_compare(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
+    async fn translate_parallel_compare(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> TranslateResponse {
         let mut handles = Vec::new();
 
         for engine in &self.engines {
@@ -418,7 +458,12 @@ impl Router {
         }
     }
 
-    pub async fn translate_primary(&self, text: &str, from: &str, to: &str) -> anyhow::Result<String> {
+    pub async fn translate_primary(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> anyhow::Result<String> {
         if let Some(engine) = self.engines.first() {
             engine.translate(text, from, to).await
         } else {
@@ -445,7 +490,9 @@ impl Router {
         if let Some(engine) = self.engines.first() {
             // Try to downcast to LlmEngine for context support
             if let Some(llm_engine) = engine.as_any().downcast_ref::<llm::LlmEngine>() {
-                llm_engine.translate_with_context(text, from, to, context).await
+                llm_engine
+                    .translate_with_context(text, from, to, context)
+                    .await
             } else {
                 // Fallback to regular translate for non-LLM engines
                 engine.translate(text, from, to).await

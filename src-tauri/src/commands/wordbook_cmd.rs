@@ -18,7 +18,13 @@ pub async fn add_wordbook_entry(
     note: Option<String>,
 ) -> Result<(), String> {
     let wordbook = state.wordbook.lock().await;
-    wordbook.add(&word, &translation, &from_lang, &to_lang, note.as_deref().unwrap_or(""))
+    wordbook.add(
+        &word,
+        &translation,
+        &from_lang,
+        &to_lang,
+        note.as_deref().unwrap_or(""),
+    )
 }
 
 #[tauri::command]
@@ -39,7 +45,10 @@ pub async fn delete_wordbook_entry(state: State<'_, AppState>, id: String) -> Re
 }
 
 #[tauri::command]
-pub async fn batch_delete_wordbook(state: State<'_, AppState>, ids: Vec<String>) -> Result<(), String> {
+pub async fn batch_delete_wordbook(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
     let wordbook = state.wordbook.lock().await;
     wordbook.batch_remove(&ids);
     Ok(())
@@ -53,7 +62,10 @@ pub async fn clear_wordbook(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn search_wordbook(state: State<'_, AppState>, query: String) -> Result<Vec<WordBookItem>, String> {
+pub async fn search_wordbook(
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<Vec<WordBookItem>, String> {
     let wordbook = state.wordbook.lock().await;
     if query.trim().is_empty() {
         Ok(wordbook.get_all())

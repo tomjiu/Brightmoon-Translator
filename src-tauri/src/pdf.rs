@@ -59,8 +59,5 @@ pub fn extract_text_from_pdf(file_path: &str) -> Result<PdfDocument, String> {
 
     let total_pages = pages.len();
 
-    Ok(PdfDocument {
-        pages,
-        total_pages,
-    })
+    Ok(PdfDocument { pages, total_pages })
 }

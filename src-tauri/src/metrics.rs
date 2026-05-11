@@ -1,8 +1,8 @@
+use chrono::Utc;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use chrono::Utc;
 
 /// Translation metrics collector
 pub struct MetricsCollector {

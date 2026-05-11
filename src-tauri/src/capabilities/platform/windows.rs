@@ -167,8 +167,14 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                     let h_data = GetClipboardData(CF_UNICODETEXT);
                     let has_content = if !h_data.is_null() {
                         let p_data = GlobalLock(h_data);
-                        let size = if !p_data.is_null() { GlobalSize(h_data) } else { 0 };
-                        if !p_data.is_null() { GlobalUnlock(h_data); }
+                        let size = if !p_data.is_null() {
+                            GlobalSize(h_data)
+                        } else {
+                            0
+                        };
+                        if !p_data.is_null() {
+                            GlobalUnlock(h_data);
+                        }
                         size > 2
                     } else {
                         false
@@ -197,7 +203,11 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                 if !h_mem.is_null() {
                     let p_mem = GlobalLock(h_mem);
                     if !p_mem.is_null() {
-                        std::ptr::copy_nonoverlapping(saved.as_ptr(), p_mem as *mut u8, saved.len());
+                        std::ptr::copy_nonoverlapping(
+                            saved.as_ptr(),
+                            p_mem as *mut u8,
+                            saved.len(),
+                        );
                         GlobalUnlock(h_mem);
                         SetClipboardData(CF_UNICODETEXT, h_mem);
                     } else {
@@ -214,7 +224,10 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
         }
     }
 
-    log::info!("[replace] Replace-via-clipboard completed for {} chars", text.len());
+    log::info!(
+        "[replace] Replace-via-clipboard completed for {} chars",
+        text.len()
+    );
     Ok(())
 }
 
@@ -231,13 +244,15 @@ pub struct ForegroundAppInfo {
 pub fn detect_foreground_app() -> Option<ForegroundAppInfo> {
     extern "system" {
         fn GetForegroundWindow() -> *mut std::ffi::c_void;
-        fn GetWindowThreadProcessId(
-            hWnd: *mut std::ffi::c_void,
-            lpdwProcessId: *mut u32,
-        ) -> u32;
+        fn GetWindowThreadProcessId(hWnd: *mut std::ffi::c_void, lpdwProcessId: *mut u32) -> u32;
         fn GetWindowTextW(hWnd: *mut std::ffi::c_void, lpString: *mut u16, nMaxCount: i32) -> i32;
-        fn GetClassNameW(hWnd: *mut std::ffi::c_void, lpClassName: *mut u16, nMaxCount: i32) -> i32;
-        fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> *mut std::ffi::c_void;
+        fn GetClassNameW(hWnd: *mut std::ffi::c_void, lpClassName: *mut u16, nMaxCount: i32)
+            -> i32;
+        fn OpenProcess(
+            dwDesiredAccess: u32,
+            bInheritHandle: i32,
+            dwProcessId: u32,
+        ) -> *mut std::ffi::c_void;
         fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
         fn QueryFullProcessImageNameW(
             hProcess: *mut std::ffi::c_void,
@@ -288,7 +303,8 @@ pub fn detect_foreground_app() -> Option<ForegroundAppInfo> {
             } else {
                 let mut exe_buf = [0u16; 1024];
                 let mut exe_size = 1024u32;
-                let result = QueryFullProcessImageNameW(h_process, 0, exe_buf.as_mut_ptr(), &mut exe_size);
+                let result =
+                    QueryFullProcessImageNameW(h_process, 0, exe_buf.as_mut_ptr(), &mut exe_size);
                 CloseHandle(h_process);
 
                 if result != 0 && exe_size > 0 {
@@ -316,7 +332,10 @@ pub fn detect_foreground_app() -> Option<ForegroundAppInfo> {
 
 /// Classify the embedded app type based on process name and window class.
 /// Returns None for standard (non-embedded) applications.
-pub fn classify_embedded_app(app_name: &str, window_class: &str) -> Option<super::super::EmbeddedAppType> {
+pub fn classify_embedded_app(
+    app_name: &str,
+    window_class: &str,
+) -> Option<super::super::EmbeddedAppType> {
     let app_lower = app_name.to_lowercase();
     let class_lower = window_class.to_lowercase();
 
@@ -341,7 +360,8 @@ pub fn classify_embedded_app(app_name: &str, window_class: &str) -> Option<super
     // Detection is heuristic: apps with WebView2 runtime but not Electron
     if class_lower == "chrome_widgetwin_1" {
         // If it's a known WebView2 host, classify as WebView2
-        if app_lower.contains("webview") || app_lower.contains("microsoftedge")
+        if app_lower.contains("webview")
+            || app_lower.contains("microsoftedge")
             || app_lower == "msedge.exe"
         {
             return Some(super::super::EmbeddedAppType::WebView2);

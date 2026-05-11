@@ -98,16 +98,34 @@ export async function ocrImage(imageDataUrl: string): Promise<string> {
 }
 
 export async function ocrImagePreferNative(imageDataUrl: string, lang = "auto"): Promise<string> {
-  try {
-    const text = await systemOcrImage(imageDataUrl, lang);
-    if (text.trim()) {
-      console.log("[OCR] Engine: Windows.Media.Ocr (WinRT)");
-      return text.trim();
-    }
-    console.warn("[OCR] WinRT returned empty, falling back to tesseract.js");
-  } catch (err) {
-    console.warn("[OCR] WinRT failed, falling back to tesseract.js:", err);
+  // Run Youdao and WinRT in parallel
+  const youdaoPromise = youdaoOcrDetailed(imageDataUrl, lang).catch((err) => {
+    console.warn("[OCR] Youdao OCR failed:", err);
+    return null;
+  });
+
+  const winrtPromise = systemOcrImage(imageDataUrl, lang).catch((err) => {
+    console.warn("[OCR] WinRT failed:", err);
+    return null;
+  });
+
+  const [youdaoResult, winrtText] = await Promise.all([youdaoPromise, winrtPromise]);
+
+  // Prefer WinRT first (local, fast, reliable)
+  if (winrtText?.trim()) {
+    console.log("[OCR] Engine: Windows.Media.Ocr (WinRT)");
+    return winrtText.trim();
   }
+
+  // Fallback to Youdao if WinRT fails or returns empty
+  if (youdaoResult?.text?.trim()) {
+    console.log("[OCR] Engine: Youdao OCR (fallback)");
+    return youdaoResult.text.trim();
+  }
+
+  console.warn("[OCR] Both Youdao and WinRT returned empty or failed");
+
+  // 3. Fallback: tesseract.js
   const text = await ocrImage(imageDataUrl);
   console.log("[OCR] Engine: tesseract.js");
   return text;
@@ -149,4 +167,93 @@ export async function terminateOcrWorker(): Promise<void> {
     await worker.terminate();
     worker = null;
   }
+}
+
+// ── Detailed OCR with per-line bounding boxes ──────────────────────────────
+
+export interface OcrWordResult {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface OcrLineResult {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  words: OcrWordResult[];
+}
+
+export interface OcrResultDetailed {
+  lines: OcrLineResult[];
+  text: string;
+}
+
+/** Run WinRT OCR and return detailed per-line results with bounding boxes. */
+export async function ocrImageDetailed(
+  imageDataUrl: string,
+  lang = "auto",
+): Promise<OcrResultDetailed> {
+  return await invoke<OcrResultDetailed>("system_ocr_detailed", {
+    base64Data: imageDataUrl,
+    lang,
+  });
+}
+
+/** Run Youdao OCR and return detailed per-line results with bounding boxes. */
+export async function youdaoOcrDetailed(
+  imageDataUrl: string,
+  lang = "auto",
+): Promise<OcrResultDetailed> {
+  return await invoke<OcrResultDetailed>("youdao_ocr", {
+    base64Data: imageDataUrl,
+    lang,
+  });
+}
+
+/** Prefer WinRT OCR, fall back to Youdao, then tesseract.js.
+ *  Runs WinRT and Youdao in parallel for faster results. */
+export async function ocrImagePreferNativeDetailed(
+  imageDataUrl: string,
+  lang = "auto",
+): Promise<OcrResultDetailed> {
+  // Run Youdao and WinRT in parallel
+  const youdaoPromise = youdaoOcrDetailed(imageDataUrl, lang).catch((err) => {
+    console.warn("[OCR] Youdao OCR failed:", err);
+    return null;
+  });
+
+  const winrtPromise = ocrImageDetailed(imageDataUrl, lang).catch((err) => {
+    console.warn("[OCR] WinRT detailed failed:", err);
+    return null;
+  });
+
+  // Wait for both to complete
+  const [youdaoResult, winrtResult] = await Promise.all([youdaoPromise, winrtPromise]);
+
+  // Prefer WinRT first (local, fast, reliable)
+  if (winrtResult?.text?.trim()) {
+    console.log("[OCR] Engine: Windows.Media.Ocr (WinRT) detailed");
+    return winrtResult;
+  }
+
+  // Fallback to Youdao if WinRT fails or returns empty
+  if (youdaoResult?.text?.trim()) {
+    console.log("[OCR] Engine: Youdao OCR (fallback)");
+    return youdaoResult;
+  }
+
+  console.warn("[OCR] Both Youdao and WinRT returned empty or failed");
+
+  // 3. Fallback: tesseract.js flat text, no bounding boxes
+  const text = await ocrImage(imageDataUrl);
+  console.log("[OCR] Engine: tesseract.js");
+  const lines: OcrLineResult[] = text
+    ? [{ text, x: 0, y: 0, width: 0, height: 0, words: [] }]
+    : [];
+  return { text, lines };
 }

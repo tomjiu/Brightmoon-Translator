@@ -1,18 +1,23 @@
 use super::{SelectionBounds, SelectionProvider, SelectionResult};
+use windows::core::Interface;
 use windows::Win32::Foundation::HWND;
-use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+};
 use windows::Win32::UI::Accessibility::{
-    IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern, CUIAutomation,
-    UIA_TextPatternId,
+    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern, UIA_TextPatternId,
 };
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-use windows::core::Interface;
 
 // SAFEARRAY helpers for reading GetBoundingRectangles output
 #[cfg(target_os = "windows")]
 extern "system" {
     fn SafeArrayGetUBound(psa: *mut std::ffi::c_void, nDim: u32, plUbound: *mut i32) -> i32;
-    fn SafeArrayGetElement(psa: *mut std::ffi::c_void, rgIndices: *const i32, pv: *mut std::ffi::c_void) -> i32;
+    fn SafeArrayGetElement(
+        psa: *mut std::ffi::c_void,
+        rgIndices: *const i32,
+        pv: *mut std::ffi::c_void,
+    ) -> i32;
 }
 
 /// Uses Windows UI Automation to read selected text from the focused control.
@@ -23,7 +28,9 @@ pub struct UiAutomationSelectionProvider;
 impl SelectionProvider for UiAutomationSelectionProvider {
     async fn get_selection(&self) -> Option<SelectionResult> {
         // UIA calls are blocking, run on a dedicated thread
-        tokio::task::spawn_blocking(|| get_uia_selection()).await.ok()?
+        tokio::task::spawn_blocking(|| get_uia_selection())
+            .await
+            .ok()?
     }
 
     fn name(&self) -> &'static str {
@@ -68,7 +75,8 @@ fn get_uia_selection() -> Option<SelectionResult> {
 
         // Get app name from element's class name or window title
         let source_app = {
-            let class_name = element.CurrentClassName()
+            let class_name = element
+                .CurrentClassName()
                 .ok()
                 .map(|s| s.to_string())
                 .unwrap_or_default();
@@ -82,28 +90,40 @@ fn get_uia_selection() -> Option<SelectionResult> {
         // Try patterns in order: TextPattern -> ValuePattern with selection -> ValuePattern full -> children
         let (text, bounds) = match try_text_pattern(&element) {
             Ok(result) => {
-                log::info!("[uiautomation] TextPattern success: {} chars", result.0.len());
+                log::info!(
+                    "[uiautomation] TextPattern success: {} chars",
+                    result.0.len()
+                );
                 result
             }
             Err(e) => {
                 log::debug!("[uiautomation] TextPattern failed: {}", e);
                 match try_value_pattern_with_selection(&element, &automation) {
                     Ok(result) => {
-                        log::info!("[uiautomation] ValuePattern+selection success: {} chars", result.0.len());
+                        log::info!(
+                            "[uiautomation] ValuePattern+selection success: {} chars",
+                            result.0.len()
+                        );
                         result
                     }
                     Err(e2) => {
                         log::debug!("[uiautomation] ValuePattern+selection failed: {}", e2);
                         match try_value_pattern_full(&element) {
                             Ok(result) => {
-                                log::info!("[uiautomation] ValuePattern(full) success: {} chars", result.0.len());
+                                log::info!(
+                                    "[uiautomation] ValuePattern(full) success: {} chars",
+                                    result.0.len()
+                                );
                                 result
                             }
                             Err(e3) => {
                                 log::debug!("[uiautomation] ValuePattern(full) failed: {}", e3);
                                 match find_text_in_children(&element, &automation, 0) {
                                     Some(result) => {
-                                        log::info!("[uiautomation] Children walk success: {} chars", result.0.len());
+                                        log::info!(
+                                            "[uiautomation] Children walk success: {} chars",
+                                            result.0.len()
+                                        );
                                         result
                                     }
                                     None => {
@@ -231,15 +251,14 @@ unsafe fn try_value_pattern_with_selection(
                         }
                         if !selected.is_empty() && full_text.contains(&selected) {
                             // Found the selected portion within the full value
-                            let bounds = element
-                                .CurrentBoundingRectangle()
-                                .ok()
-                                .map(|rect| SelectionBounds {
+                            let bounds = element.CurrentBoundingRectangle().ok().map(|rect| {
+                                SelectionBounds {
                                     x: rect.left as f64,
                                     y: rect.top as f64,
                                     width: (rect.right - rect.left) as f64,
                                     height: (rect.bottom - rect.top) as f64,
-                                });
+                                }
+                            });
                             return Ok((selected, bounds));
                         }
                     }
@@ -303,7 +322,11 @@ unsafe fn find_text_in_children(
     ) {
         Ok(c) => c,
         Err(e) => {
-            log::debug!("[uiautomation] FindAll children failed at depth {}: {}", depth, e);
+            log::debug!(
+                "[uiautomation] FindAll children failed at depth {}: {}",
+                depth,
+                e
+            );
             return None;
         }
     };

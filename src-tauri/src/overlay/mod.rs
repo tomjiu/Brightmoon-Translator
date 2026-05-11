@@ -84,7 +84,12 @@ pub struct OverlayPosition {
 
 impl OverlayPosition {
     pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// Create position at cursor + offset

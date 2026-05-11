@@ -156,8 +156,7 @@ impl FollowController {
 
                 let should_move = match last_pos {
                     Some((lx, ly)) => {
-                        (nx - lx).abs() > MOVE_THRESHOLD
-                            || (ny - ly).abs() > MOVE_THRESHOLD
+                        (nx - lx).abs() > MOVE_THRESHOLD || (ny - ly).abs() > MOVE_THRESHOLD
                     }
                     None => true,
                 };
@@ -256,8 +255,5 @@ fn get_cursor_position() -> CursorPos {
             }
         }
     }
-    CursorPos {
-        x: 100.0,
-        y: 100.0,
-    }
+    CursorPos { x: 100.0, y: 100.0 }
 }

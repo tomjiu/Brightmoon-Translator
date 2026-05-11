@@ -95,7 +95,11 @@ impl TranslationEngine for DeepLEngine {
         let status = resp.status();
         if !status.is_success() {
             let error_text = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("DeepL API error {}: {}", status, error_text));
+            return Err(anyhow::anyhow!(
+                "DeepL API error {}: {}",
+                status,
+                error_text
+            ));
         }
 
         let body: DeepLResponse = resp.json().await?;
