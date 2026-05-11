@@ -12,7 +12,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_TextPatternId,
 };
 use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
-use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
+use windows::Win32::System::Threading::{GetCurrentThreadId, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 /// Monitored text from a window
@@ -36,6 +36,8 @@ pub struct MonitoredText {
 pub struct HookMonitor {
     running: Arc<Mutex<bool>>,
     sender: Option<mpsc::UnboundedSender<MonitoredText>>,
+    /// Thread IDs for message-loop threads that need WM_QUIT to exit
+    message_loop_tids: Arc<std::sync::Mutex<Vec<u32>>>,
 }
 
 impl HookMonitor {
@@ -43,6 +45,7 @@ impl HookMonitor {
         Self {
             running: Arc::new(Mutex::new(false)),
             sender: None,
+            message_loop_tids: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 
@@ -59,6 +62,10 @@ impl HookMonitor {
         }
         *running = true;
         drop(running);
+
+        // Clear and reuse the shared thread ID list
+        self.message_loop_tids.lock().unwrap().clear();
+        let thread_ids = self.message_loop_tids.clone();
 
         let (tx, mut rx) = mpsc::unbounded_channel::<MonitoredText>();
         self.sender = Some(tx.clone());
@@ -85,8 +92,9 @@ impl HookMonitor {
         if enabled_sources.contains(&"clipboard".to_string()) {
             let tx_clip = tx.clone();
             let running_clip = running_clone.clone();
+            let clip_tids = thread_ids.clone();
             tokio::spawn(async move {
-                clipboard_monitor_task(running_clip, tx_clip).await;
+                clipboard_monitor_task(running_clip, tx_clip, clip_tids).await;
             });
         }
 
@@ -103,8 +111,9 @@ impl HookMonitor {
         if enabled_sources.contains(&"hook".to_string()) {
             let tx_hook = tx.clone();
             let running_hook = running_clone.clone();
+            let hook_tids = thread_ids.clone();
             tokio::spawn(async move {
-                win_event_hook_task(running_hook, tx_hook).await;
+                win_event_hook_task(running_hook, tx_hook, hook_tids).await;
             });
         }
 
@@ -114,6 +123,15 @@ impl HookMonitor {
     pub async fn stop(&self) {
         let mut running = self.running.lock().await;
         *running = false;
+        drop(running);
+
+        // Post WM_QUIT to all message-loop threads so they exit cleanly
+        let tids = self.message_loop_tids.lock().unwrap();
+        for tid in tids.iter() {
+            unsafe {
+                let _ = PostThreadMessageW(*tid, WM_QUIT, WPARAM(0), LPARAM(0));
+            }
+        }
     }
 
     pub async fn is_running(&self) -> bool {
@@ -162,6 +180,7 @@ async fn uia_monitor_task(
 async fn clipboard_monitor_task(
     running: Arc<Mutex<bool>>,
     tx: mpsc::UnboundedSender<MonitoredText>,
+    thread_ids: Arc<std::sync::Mutex<Vec<u32>>>,
 ) {
     // Channel from the clipboard listener thread to async runtime
     let (clip_tx, mut clip_rx) = mpsc::unbounded_channel::<String>();
@@ -171,6 +190,12 @@ async fn clipboard_monitor_task(
         use windows::Win32::System::DataExchange::{
             AddClipboardFormatListener, RemoveClipboardFormatListener,
         };
+
+        // Register thread ID for clean shutdown
+        let tid = GetCurrentThreadId();
+        if let Ok(mut tids) = thread_ids.lock() {
+            tids.push(tid);
+        }
 
         CLIP_SENDER.with(|s| *s.borrow_mut() = Some(clip_tx));
 
@@ -368,12 +393,19 @@ async fn ocr_monitor_task(
 async fn win_event_hook_task(
     running: Arc<Mutex<bool>>,
     tx: mpsc::UnboundedSender<MonitoredText>,
+    thread_ids: Arc<std::sync::Mutex<Vec<u32>>>,
 ) {
     // Channel from the Win32 callback (OS thread) to async runtime
     let (hook_tx, mut hook_rx) = mpsc::unbounded_channel::<(isize, String, String)>();
 
     // Spawn the Win32 hook thread (must have a message loop)
     let hook_thread = std::thread::spawn(move || unsafe {
+        // Register thread ID for clean shutdown
+        let tid = GetCurrentThreadId();
+        if let Ok(mut tids) = thread_ids.lock() {
+            tids.push(tid);
+        }
+
         // Store sender in thread-local for the callback
         HOOK_SENDER.with(|s| *s.borrow_mut() = Some(hook_tx));
 
