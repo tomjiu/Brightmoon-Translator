@@ -178,13 +178,15 @@ function HookMonitor() {
         await invoke("stop_hook_monitor");
         setIsRunning(false);
       } else {
+        // Ensure config (source selection, intervals) is saved before starting
+        await saveConfig();
         await invoke("start_hook_monitor");
         setIsRunning(true);
       }
     } catch (err) {
       console.error("Hook monitor toggle failed:", err);
     }
-  }, [isRunning]);
+  }, [isRunning, saveConfig]);
 
   const handleClear = useCallback(() => {
     setResults([]);
