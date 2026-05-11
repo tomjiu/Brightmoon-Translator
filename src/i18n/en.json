@@ -357,6 +357,7 @@
     "empty": "No translation results yet",
     "emptyHint": "Start monitoring, then switch text in target window to see translations",
     "copy": "Copy translation",
+    "speak": "Speak",
     "search": "Search translations...",
     "noMatch": "No matching records",
     "export": "Export records",

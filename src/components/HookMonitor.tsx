@@ -15,6 +15,7 @@ import {
   Search,
   Download,
   ArrowDown,
+  Volume2,
 } from "lucide-react";
 
 interface HookTranslatedItem {
@@ -34,6 +35,7 @@ function HookMonitor() {
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<HookTranslatedItem[]>([]);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [speakingId, setSpeakingId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
   const [showOverlay, setShowOverlay] = useState(config.hookShowOverlay ?? true);
@@ -151,6 +153,29 @@ function HookMonitor() {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 1500);
+  }, []);
+
+  const speakText = useCallback(async (text: string, lang: string, id: number) => {
+    try {
+      setSpeakingId(id);
+      const base64Audio = await invoke<string>("text_to_speech", { text, lang });
+      const audioBytes = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
+      const audioBlob = new Blob([audioBytes], { type: "audio/mp3" });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.onended = () => {
+        setSpeakingId(null);
+        URL.revokeObjectURL(audioUrl);
+      };
+      audio.onerror = () => {
+        setSpeakingId(null);
+        URL.revokeObjectURL(audioUrl);
+      };
+      await audio.play();
+    } catch (err) {
+      console.error("TTS failed:", err);
+      setSpeakingId(null);
+    }
   }, []);
 
   const handleExport = useCallback(() => {
@@ -378,17 +403,26 @@ function HookMonitor() {
                   <div className="text-sm text-text-primary leading-relaxed flex-1 select-text">
                     {item.translated}
                   </div>
-                  <button
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-bg-tertiary text-text-secondary shrink-0"
-                    onClick={() => copyText(item.translated, item.id)}
-                    title={t("hook.copy")}
-                  >
-                    {copiedId === item.id ? (
-                      <Check size={14} className="text-success" />
-                    ) : (
-                      <Copy size={14} />
-                    )}
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      className="p-1 rounded hover:bg-bg-tertiary text-text-secondary"
+                      onClick={() => speakText(item.translated, "auto", item.id)}
+                      title={t("hook.speak")}
+                    >
+                      <Volume2 size={14} className={speakingId === item.id ? "text-primary animate-pulse" : ""} />
+                    </button>
+                    <button
+                      className="p-1 rounded hover:bg-bg-tertiary text-text-secondary"
+                      onClick={() => copyText(item.translated, item.id)}
+                      title={t("hook.copy")}
+                    >
+                      {copiedId === item.id ? (
+                        <Check size={14} className="text-success" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
