@@ -27,7 +27,7 @@ pub async fn translate_epub(
 
     // Use batch translation
     let batch_results = state
-        .translation_service
+        .translation.service
         .translate_batch(&chapters_to_translate, &from_lang, &to_lang, 2)
         .await;
 

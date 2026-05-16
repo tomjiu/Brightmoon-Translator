@@ -226,6 +226,11 @@ impl Router {
         self.engines.iter().map(|e| e.name().to_string()).collect()
     }
 
+    /// Get the primary engine's name
+    pub fn primary_engine_name(&self) -> Option<&str> {
+        self.engines.first().map(|e| e.name())
+    }
+
     /// Rebuild engines list with new config (used when plugins change)
     pub fn rebuild(&self, config: &AppConfig) -> Self {
         Self::new(config)
@@ -243,6 +248,52 @@ impl Router {
         }
     }
 
+    /// Translate with all engines except the primary (for when primary is handled separately)
+    pub async fn translate_rest(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
+        let mut results = Vec::new();
+        let engines: Vec<_> = self.engines.iter().skip(1).collect();
+
+        if engines.is_empty() {
+            return TranslateResponse {
+                results,
+                detected_language: None,
+            };
+        }
+
+        let mut handles = Vec::new();
+        for engine in engines {
+            let engine = engine.clone();
+            let text = text.to_string();
+            let from = from.to_string();
+            let to = to.to_string();
+            handles.push(tokio::spawn(async move {
+                let name = engine.name().to_string();
+                match engine.translate(&text, &from, &to).await {
+                    Ok(translated) => Some(TranslationResult {
+                        engine: name,
+                        text: translated,
+                        latency_ms: None,
+                    }),
+                    Err(e) => {
+                        log::warn!("[Router] Engine {} failed: {}", name, e);
+                        None
+                    }
+                }
+            }));
+        }
+
+        for handle in handles {
+            if let Ok(Some(result)) = handle.await {
+                results.push(result);
+            }
+        }
+
+        TranslateResponse {
+            results,
+            detected_language: None,
+        }
+    }
+
     /// Strategy: Primary Only - use first engine only
     async fn translate_primary_only(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
         if let Some(engine) = self.engines.first() {
@@ -255,6 +306,7 @@ impl Router {
                         results: vec![TranslationResult {
                             engine: name,
                             text: translated,
+                            latency_ms: None,
                         }],
                         detected_language: None,
                     }
@@ -288,6 +340,7 @@ impl Router {
                         results: vec![TranslationResult {
                             engine: name,
                             text: translated,
+                            latency_ms: None,
                         }],
                         detected_language: None,
                     };
@@ -307,7 +360,7 @@ impl Router {
     }
 
     /// Strategy: Parallel Compare - run all engines, return all results
-    async fn translate_parallel_compare(
+    pub async fn translate_parallel_compare(
         &self,
         text: &str,
         from: &str,
@@ -327,9 +380,10 @@ impl Router {
                     Ok(translated) => Some(TranslationResult {
                         engine: name,
                         text: translated,
+                        latency_ms: None,
                     }),
                     Err(e) => {
-                        eprintln!("Engine {} error: {}", name, e);
+                        log::warn!("Engine {} error: {}", name, e);
                         None
                     }
                 }
@@ -365,12 +419,13 @@ impl Router {
                             results: vec![TranslationResult {
                                 engine: name,
                                 text: translated,
+                                latency_ms: None,
                             }],
                             detected_language: None,
                         };
                     }
                     Err(e) => {
-                        eprintln!("Free engine {} failed: {}", name, e);
+                        log::warn!("Free engine {} failed: {}", name, e);
                         continue;
                     }
                 }
@@ -387,12 +442,13 @@ impl Router {
                             results: vec![TranslationResult {
                                 engine: name,
                                 text: translated,
+                                latency_ms: None,
                             }],
                             detected_language: None,
                         };
                     }
                     Err(e) => {
-                        eprintln!("Paid engine {} failed: {}", name, e);
+                        log::warn!("Paid engine {} failed: {}", name, e);
                         continue;
                     }
                 }
@@ -422,12 +478,13 @@ impl Router {
                     Ok(translated) => {
                         let elapsed = start.elapsed();
                         Some(TranslationResult {
-                            engine: format!("{} ({}ms)", name, elapsed.as_millis()),
+                            engine: name,
                             text: translated,
+                            latency_ms: Some(elapsed.as_millis() as u64),
                         })
                     }
                     Err(e) => {
-                        eprintln!("Engine {} error: {}", name, e);
+                        log::warn!("Engine {} error: {}", name, e);
                         None
                     }
                 }
@@ -479,6 +536,27 @@ impl Router {
         self.engines.len()
     }
 
+    /// Translate with glossary terms injected into the LLM system prompt
+    pub async fn translate_primary_with_glossary(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+        glossary_hint: &str,
+    ) -> anyhow::Result<String> {
+        if let Some(engine) = self.engines.first() {
+            if let Some(llm_engine) = engine.as_any().downcast_ref::<llm::LlmEngine>() {
+                llm_engine
+                    .translate_with_glossary(text, from, to, glossary_hint)
+                    .await
+            } else {
+                engine.translate(text, from, to).await
+            }
+        } else {
+            Err(anyhow::anyhow!("No translation engine available"))
+        }
+    }
+
     /// Translate with context from previous translations (for long document consistency)
     pub async fn translate_primary_with_context(
         &self,
@@ -516,6 +594,30 @@ impl Router {
                 llm_engine.translate_stream(text, from, to, tx).await
             } else {
                 // Fallback: translate normally and send complete result
+                let result = engine.translate(text, from, to).await?;
+                let _ = tx.send(result.clone()).await;
+                Ok(result)
+            }
+        } else {
+            Err(anyhow::anyhow!("No translation engine available"))
+        }
+    }
+
+    /// Stream translation with glossary hint injected into the LLM system prompt
+    pub async fn translate_stream_with_glossary(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+        tx: tokio::sync::mpsc::Sender<String>,
+        glossary_hint: &str,
+    ) -> anyhow::Result<String> {
+        if let Some(engine) = self.engines.first() {
+            if let Some(llm_engine) = engine.as_any().downcast_ref::<llm::LlmEngine>() {
+                llm_engine
+                    .translate_stream_with_glossary(text, from, to, tx, glossary_hint)
+                    .await
+            } else {
                 let result = engine.translate(text, from, to).await?;
                 let _ = tx.send(result.clone()).await;
                 Ok(result)

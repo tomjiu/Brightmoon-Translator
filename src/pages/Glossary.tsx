@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeOrThrow } from "../services/invoke";
 import { Plus, Trash2, Book } from "lucide-react";
 
 interface GlossaryEntry {
@@ -22,7 +22,7 @@ function Glossary() {
 
   const loadGlossary = async () => {
     try {
-      const allEntries = await invoke<Record<string, GlossaryEntry[]>>(
+      const allEntries = await invokeOrThrow<Record<string, GlossaryEntry[]>>(
         "get_all_glossary"
       );
       setEntries(allEntries);
@@ -36,7 +36,7 @@ function Glossary() {
 
     setLoading(true);
     try {
-      await invoke("add_glossary_entry", {
+      await invokeOrThrow("add_glossary_entry", {
         langPair,
         source: newSource.trim(),
         target: newTarget.trim(),
@@ -55,7 +55,7 @@ function Glossary() {
 
   const removeEntry = async (langPair: string, source: string) => {
     try {
-      await invoke("remove_glossary_entry", { langPair, source });
+      await invokeOrThrow("remove_glossary_entry", { langPair, source });
       await loadGlossary();
     } catch (err) {
       console.error("Failed to remove entry:", err);

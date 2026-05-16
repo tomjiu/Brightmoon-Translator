@@ -1,10 +1,20 @@
-import { useState, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
 import type { HistoryItem } from "../types";
 import { Search, Trash2, Copy, Check, X, Download, ChevronLeft, ChevronRight } from "lucide-react";
 
 const PAGE_SIZE = 50;
+
+const formatTime = (timestamp: number) => {
+  const date = new Date(timestamp);
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 function History() {
   const [items, setItems] = useState<HistoryItem[]>([]);
@@ -39,7 +49,7 @@ function History() {
 
   const loadHistory = async () => {
     try {
-      const history = await invoke<HistoryItem[]>("get_history");
+      const history = await invokeOrThrow<HistoryItem[]>("get_history");
       setItems(history);
     } catch (err) {
       console.error("Failed to load history:", err);
@@ -48,7 +58,7 @@ function History() {
 
   const clearHistory = async () => {
     try {
-      await invoke("clear_history");
+      await invokeOrThrow("clear_history");
       setItems([]);
       setSelectedIds(new Set());
       setCurrentPage(1);
@@ -59,7 +69,7 @@ function History() {
 
   const deleteItem = async (id: string) => {
     try {
-      await invoke("delete_history_item", { id });
+      await invokeOrThrow("delete_history_item", { id });
       setItems((prev) => prev.filter((item) => item.id !== id));
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -74,7 +84,7 @@ function History() {
   const batchDelete = async () => {
     if (selectedIds.size === 0) return;
     try {
-      await invoke("batch_delete_history", { ids: Array.from(selectedIds) });
+      await invokeOrThrow("batch_delete_history", { ids: Array.from(selectedIds) });
       setItems((prev) => prev.filter((item) => !selectedIds.has(item.id)));
       setSelectedIds(new Set());
     } catch (err) {
@@ -149,28 +159,19 @@ function History() {
     URL.revokeObjectURL(url);
   };
 
-  const filtered = items.filter(
-    (item) =>
-      item.sourceText.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      item.translatedText.toLowerCase().includes(debouncedSearch.toLowerCase())
-  );
-
-  // Pagination
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginatedItems = filtered.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
-  );
-
-  const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleString("zh-CN", {
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+  const { filtered, totalPages, paginatedItems } = useMemo(() => {
+    const query = debouncedSearch.toLowerCase();
+    const f = query
+      ? items.filter(
+          (item) =>
+            item.sourceText.toLowerCase().includes(query) ||
+            item.translatedText.toLowerCase().includes(query)
+        )
+      : items;
+    const tp = Math.max(1, Math.ceil(f.length / PAGE_SIZE));
+    const pi = f.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+    return { filtered: f, totalPages: tp, paginatedItems: pi };
+  }, [items, debouncedSearch, currentPage]);
 
   return (
     <div className="h-full flex flex-col p-6">

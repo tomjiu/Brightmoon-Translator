@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeOrThrow } from "../services/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "../i18n";
 import { FileText, Languages, Download, ChevronLeft, ChevronRight, Subtitles, Loader2 } from "lucide-react";
@@ -70,7 +70,7 @@ function SubtitleViewer() {
       });
 
       if (selected) {
-        const path = typeof selected === "string" ? selected : (selected as any).path;
+        const path = selected;
         setFilePath(path);
         setFileName(path.split(/[/\\]/).pop() || "subtitle.srt");
         setTranslatedSub(null);
@@ -80,7 +80,7 @@ function SubtitleViewer() {
         // Load subtitle content
         setLoading(true);
         try {
-          const doc = await invoke<SubtitleDocument>("open_subtitle", { filePath: path });
+          const doc = await invokeOrThrow<SubtitleDocument>("open_subtitle", { filePath: path });
           setSubtitleDoc(doc);
         } catch (err) {
           console.error("Failed to open subtitle:", err);
@@ -99,7 +99,7 @@ function SubtitleViewer() {
     setTranslating(true);
     setProgress(null);
     try {
-      const result = await invoke<TranslatedSubtitle>("translate_subtitle", {
+      const result = await invokeOrThrow<TranslatedSubtitle>("translate_subtitle", {
         filePath,
         fromLang,
         toLang,
@@ -157,7 +157,7 @@ function SubtitleViewer() {
         }
 
         // Write file using invoke
-        await invoke("export_subtitle_file", {
+        await invokeOrThrow("export_subtitle_file", {
           filePath: filePath!,
           outputPath,
           bilingual: showBilingual,

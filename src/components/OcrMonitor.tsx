@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeOrThrow } from "../services/invoke";
 import { useOcrMonitor } from "../hooks/useOcrMonitor";
 import { useI18n } from "../i18n";
 import { useConfigStore } from "../stores/configStore";
@@ -123,14 +123,14 @@ function OcrMonitor() {
     setSelection(null);
 
     // Hide window for clean capture
-    await invoke("hide_main_window");
+    await invokeOrThrow("hide_main_window");
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     // Start monitoring with screen coordinates
     startMonitoring(region, interval);
 
     // Show window again
-    await invoke("show_main_window");
+    await invokeOrThrow("show_main_window");
   }, [selection, isSelecting, interval, startMonitoring]);
 
   const cancelSelection = () => {
@@ -150,12 +150,12 @@ function OcrMonitor() {
 
   const handleRebind = async () => {
     if (region) {
-      await invoke("show_main_window");
+      await invokeOrThrow("show_main_window");
       await new Promise((resolve) => setTimeout(resolve, 300));
-      await invoke("hide_main_window");
+      await invokeOrThrow("hide_main_window");
       await new Promise((resolve) => setTimeout(resolve, 200));
       await rebindWindow(region);
-      await invoke("show_main_window");
+      await invokeOrThrow("show_main_window");
     }
   };
 

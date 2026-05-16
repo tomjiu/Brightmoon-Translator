@@ -1,6 +1,6 @@
 use axum::{
     extract::State as AxumState,
-    http::StatusCode,
+    http::{header, StatusCode},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -8,7 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::capabilities::handle_browser_request;
 use crate::config::AppConfig;
@@ -19,7 +19,67 @@ use crate::models::browser_protocol::BrowserTranslateRequest;
 use crate::models::error::{ApiError, TranslationError};
 use crate::models::glossary::GlossaryEntry;
 use crate::services::TranslationService;
-use crate::TranslationCache;
+use crate::cache::TranslationCache;
+
+/// Mask a secret string, keeping first 4 and last 4 chars visible.
+fn mask_secret(s: &str) -> String {
+    if s.len() <= 12 {
+        return "*".repeat(s.len());
+    }
+    format!("{}...{}", &s[..4], &s[s.len() - 4..])
+}
+
+/// Return a sanitized copy of config with all secret fields masked.
+/// Used for API responses to avoid leaking credentials to external callers.
+fn sanitize_config(config: &AppConfig) -> serde_json::Value {
+    let mut v = serde_json::to_value(config).unwrap_or_default();
+    // Mask LLM keys
+    if let Some(llm) = v.get_mut("llm") {
+        if let Some(key) = llm.get_mut("apiKey").and_then(|v| v.as_str().map(|s| s.to_string())) {
+            if let Some(obj) = llm.as_object_mut() {
+                obj.insert("apiKey".into(), serde_json::Value::String(mask_secret(&key)));
+            }
+        }
+        if let Some(keys) = llm.get_mut("apiKeys").and_then(|v| v.as_array().cloned()) {
+            let masked: Vec<_> = keys.iter().map(|k| {
+                k.as_str().map(|s| serde_json::Value::String(mask_secret(s))).unwrap_or(k.clone())
+            }).collect();
+            if let Some(obj) = llm.as_object_mut() {
+                obj.insert("apiKeys".into(), serde_json::Value::Array(masked));
+            }
+        }
+    }
+    // Mask engine secrets
+    if let Some(engines) = v.get_mut("engines") {
+        for field in &["deepl", "deeplx", "baidu"] {
+            if let Some(engine_cfg) = engines.get_mut(field) {
+                for secret_field in &["apiKey", "secret"] {
+                    if let Some(val) = engine_cfg.get(*secret_field).and_then(|v| v.as_str().map(|s| s.to_string())) {
+                        if let Some(obj) = engine_cfg.as_object_mut() {
+                            obj.insert(secret_field.to_string(), serde_json::Value::String(mask_secret(&val)));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(youdao) = engines.get_mut("youdao") {
+            if let Some(val) = youdao.get("ocrAppSecret").and_then(|v| v.as_str().map(|s| s.to_string())) {
+                if let Some(obj) = youdao.as_object_mut() {
+                    obj.insert("ocrAppSecret".into(), serde_json::Value::String(mask_secret(&val)));
+                }
+            }
+        }
+    }
+    // Mask proxy password
+    if let Some(proxy) = v.get_mut("proxy") {
+        if let Some(val) = proxy.get("password").and_then(|v| v.as_str().map(|s| s.to_string())) {
+            if let Some(obj) = proxy.as_object_mut() {
+                obj.insert("password".into(), serde_json::Value::String(mask_secret(&val)));
+            }
+        }
+    }
+    v
+}
 
 #[derive(Clone)]
 pub struct ApiState {
@@ -31,15 +91,15 @@ pub struct ApiState {
     pub translation_service: Arc<TranslationService>,
 }
 
-impl From<&crate::AppState> for ApiState {
-    fn from(state: &crate::AppState) -> Self {
+impl ApiState {
+    pub fn from_app_state(state: &crate::AppState) -> Self {
         Self {
-            config: state.config.clone(),
-            history: state.history.clone(),
-            engine_router: state.engine_router.clone(),
-            cache: state.cache.clone(),
-            glossary: state.glossary.clone(),
-            translation_service: state.translation_service.clone(),
+            config: state.system.config.clone(),
+            history: state.document.history.clone(),
+            engine_router: state.translation.engine_router.clone(),
+            cache: state.translation.cache.clone(),
+            glossary: state.translation.glossary.clone(),
+            translation_service: state.translation.service.clone(),
         }
     }
 }
@@ -73,6 +133,16 @@ async fn translate(
             StatusCode::BAD_REQUEST,
             Json(ApiError {
                 error: "Text is empty".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    if req.text.len() > 50_000 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError {
+                error: "Text exceeds maximum length of 50,000 characters".to_string(),
             }),
         )
             .into_response();
@@ -114,6 +184,16 @@ async fn translate_primary(
             .into_response();
     }
 
+    if req.text.len() > 50_000 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError {
+                error: "Text exceeds maximum length of 50,000 characters".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     #[derive(Serialize)]
     struct PrimaryResult {
         engine: String,
@@ -148,10 +228,10 @@ async fn translate_primary(
     }
 }
 
-// GET /config
+// GET /config - Returns sanitized config (secrets masked)
 async fn get_config(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
     let config = state.config.lock().await;
-    Json(config.clone()).into_response()
+    Json(sanitize_config(&config)).into_response()
 }
 
 // POST /config - Partial update
@@ -192,7 +272,7 @@ async fn update_config(
             let mut router = state.engine_router.write().await;
             *router = new_router;
 
-            Json(new_config).into_response()
+            Json(sanitize_config(&new_config)).into_response()
         }
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -358,9 +438,16 @@ async fn clear_cache(AxumState(state): AxumState<ApiState>) -> impl IntoResponse
 
 pub fn create_router(state: ApiState) -> Router {
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::predicate(|origin, _parts| {
+            // Allow browser extensions and localhost origins
+            let o = origin.as_bytes();
+            o.starts_with(b"chrome-extension://")
+                || o.starts_with(b"moz-extension://")
+                || o.starts_with(b"http://localhost")
+                || o.starts_with(b"http://127.0.0.1")
+        }))
+        .allow_methods(tower_http::cors::Any)
+        .allow_headers([header::CONTENT_TYPE, header::ACCEPT]);
 
     Router::new()
         .route("/health", get(health))

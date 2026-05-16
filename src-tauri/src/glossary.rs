@@ -72,4 +72,24 @@ impl Glossary {
             }
         }
     }
+
+    /// Format glossary entries as a hint string for LLM system prompt injection.
+    /// Returns empty string if no entries exist for the language pair.
+    pub fn format_hint(&self, lang_pair: &str) -> String {
+        let entries = match self.entries.get(lang_pair) {
+            Some(e) if !e.is_empty() => e,
+            _ => return String::new(),
+        };
+
+        let mut lines = Vec::new();
+        lines.push("术语表（翻译时必须使用以下译法）：".to_string());
+        for entry in entries {
+            if let Some(ref ctx) = entry.context {
+                lines.push(format!("{} → {} ({})", entry.source, entry.target, ctx));
+            } else {
+                lines.push(format!("{} → {}", entry.source, entry.target));
+            }
+        }
+        lines.join("\n")
+    }
 }

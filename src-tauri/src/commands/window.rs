@@ -24,174 +24,179 @@ pub async fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
 
 /// Get the currently selected text by simulating Ctrl+C and reading clipboard.
 /// Saves and restores original clipboard content.
+/// Wrapped in spawn_blocking because it uses thread::sleep and synchronous Win32 clipboard/input APIs.
 #[command]
 pub async fn get_selected_text() -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    {
-        #[repr(C)]
-        struct INPUT {
-            type_: u32,
-            union_data: [u8; 24],
-        }
-
-        #[repr(C)]
-        #[allow(non_snake_case)]
-        struct KEYBDINPUT {
-            wVk: u16,
-            wScan: u16,
-            dwFlags: u32,
-            time: u32,
-            dwExtraInfo: usize,
-        }
-
-        const INPUT_KEYBOARD: u32 = 1;
-        const KEYEVENTF_KEYUP: u32 = 0x0002;
-        const VK_CONTROL: u16 = 0x11;
-        const VK_C: u16 = 0x43;
-
-        extern "system" {
-            fn SendInput(cInputs: u32, pInputs: *const INPUT, cbSize: i32) -> u32;
-            fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
-            fn CloseClipboard() -> i32;
-            fn EmptyClipboard() -> i32;
-            fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void)
-                -> *mut std::ffi::c_void;
-            fn GetClipboardData(uFormat: u32) -> *mut std::ffi::c_void;
-            fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut std::ffi::c_void;
-            fn GlobalLock(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
-            fn GlobalUnlock(hMem: *mut std::ffi::c_void) -> i32;
-            fn GlobalSize(hMem: *mut std::ffi::c_void) -> usize;
-        }
-
-        const CF_UNICODETEXT: u32 = 13;
-        const GMEM_MOVEABLE: u32 = 0x0002;
-
-        fn make_input(vk: u16, flags: u32) -> INPUT {
-            let mut input = INPUT {
-                type_: INPUT_KEYBOARD,
-                union_data: [0u8; 24],
-            };
-            let ki = KEYBDINPUT {
-                wVk: vk,
-                wScan: 0,
-                dwFlags: flags,
-                time: 0,
-                dwExtraInfo: 0,
-            };
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    &ki as *const _ as *const u8,
-                    input.union_data.as_mut_ptr(),
-                    std::mem::size_of::<KEYBDINPUT>(),
-                );
+    // Use spawn_blocking to avoid blocking the async runtime (150ms sleep + clipboard ops)
+    tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        {
+            #[repr(C)]
+            struct INPUT {
+                type_: u32,
+                union_data: [u8; 24],
             }
-            input
-        }
 
-        unsafe {
-            // Save current clipboard content
-            // Track whether we opened clipboard (for restore), and what was in it
-            let mut clipboard_was_opened = false;
-            let mut saved_text: Option<Vec<u8>> = None;
+            #[repr(C)]
+            #[allow(non_snake_case)]
+            struct KEYBDINPUT {
+                wVk: u16,
+                wScan: u16,
+                dwFlags: u32,
+                time: u32,
+                dwExtraInfo: usize,
+            }
 
-            if OpenClipboard(std::ptr::null_mut()) != 0 {
-                clipboard_was_opened = true;
-                let h_data = GetClipboardData(CF_UNICODETEXT);
-                if !h_data.is_null() {
-                    let p_data = GlobalLock(h_data);
-                    if !p_data.is_null() {
-                        let size = GlobalSize(h_data);
-                        if size > 2 {
-                            let slice = std::slice::from_raw_parts(p_data as *const u8, size);
-                            saved_text = Some(slice.to_vec());
-                        }
-                        GlobalUnlock(h_data);
-                    }
+            const INPUT_KEYBOARD: u32 = 1;
+            const KEYEVENTF_KEYUP: u32 = 0x0002;
+            const VK_CONTROL: u16 = 0x11;
+            const VK_C: u16 = 0x43;
+
+            extern "system" {
+                fn SendInput(cInputs: u32, pInputs: *const INPUT, cbSize: i32) -> u32;
+                fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
+                fn CloseClipboard() -> i32;
+                fn EmptyClipboard() -> i32;
+                fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void)
+                    -> *mut std::ffi::c_void;
+                fn GetClipboardData(uFormat: u32) -> *mut std::ffi::c_void;
+                fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut std::ffi::c_void;
+                fn GlobalLock(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+                fn GlobalUnlock(hMem: *mut std::ffi::c_void) -> i32;
+                fn GlobalSize(hMem: *mut std::ffi::c_void) -> usize;
+            }
+
+            const CF_UNICODETEXT: u32 = 13;
+            const GMEM_MOVEABLE: u32 = 0x0002;
+
+            fn make_input(vk: u16, flags: u32) -> INPUT {
+                let mut input = INPUT {
+                    type_: INPUT_KEYBOARD,
+                    union_data: [0u8; 24],
+                };
+                let ki = KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                };
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        &ki as *const _ as *const u8,
+                        input.union_data.as_mut_ptr(),
+                        std::mem::size_of::<KEYBDINPUT>(),
+                    );
                 }
-                CloseClipboard();
+                input
             }
 
-            // Clear clipboard before simulating Ctrl+C
-            if OpenClipboard(std::ptr::null_mut()) != 0 {
-                EmptyClipboard();
-                CloseClipboard();
-            }
+            unsafe {
+                // Save current clipboard content
+                let mut clipboard_was_opened = false;
+                let mut saved_text: Option<Vec<u8>> = None;
 
-            // Simulate Ctrl+C to copy selected text
-            let inputs = [
-                make_input(VK_CONTROL, 0),
-                make_input(VK_C, 0),
-                make_input(VK_C, KEYEVENTF_KEYUP),
-                make_input(VK_CONTROL, KEYEVENTF_KEYUP),
-            ];
-            SendInput(
-                inputs.len() as u32,
-                inputs.as_ptr(),
-                std::mem::size_of::<INPUT>() as i32,
-            );
-
-            // Wait for clipboard to be populated
-            std::thread::sleep(std::time::Duration::from_millis(150));
-
-            // Read clipboard (the selected text)
-            let selected_text = if OpenClipboard(std::ptr::null_mut()) != 0 {
-                let h_data = GetClipboardData(CF_UNICODETEXT);
-                let text = if !h_data.is_null() {
-                    let p_data = GlobalLock(h_data);
-                    if !p_data.is_null() {
-                        let size = GlobalSize(h_data);
-                        if size > 2 {
-                            let slice = std::slice::from_raw_parts(p_data as *const u16, size / 2);
-                            let text = String::from_utf16_lossy(slice);
-                            let text = text.trim_end_matches('\0');
+                if OpenClipboard(std::ptr::null_mut()) != 0 {
+                    clipboard_was_opened = true;
+                    let h_data = GetClipboardData(CF_UNICODETEXT);
+                    if !h_data.is_null() {
+                        let p_data = GlobalLock(h_data);
+                        if !p_data.is_null() {
+                            let size = GlobalSize(h_data);
+                            if size > 2 {
+                                let slice = std::slice::from_raw_parts(p_data as *const u8, size);
+                                saved_text = Some(slice.to_vec());
+                            }
                             GlobalUnlock(h_data);
-                            Some(text.to_string())
+                        }
+                    }
+                    CloseClipboard();
+                }
+
+                // Clear clipboard before simulating Ctrl+C
+                if OpenClipboard(std::ptr::null_mut()) != 0 {
+                    EmptyClipboard();
+                    CloseClipboard();
+                }
+
+                // Simulate Ctrl+C to copy selected text
+                let inputs = [
+                    make_input(VK_CONTROL, 0),
+                    make_input(VK_C, 0),
+                    make_input(VK_C, KEYEVENTF_KEYUP),
+                    make_input(VK_CONTROL, KEYEVENTF_KEYUP),
+                ];
+                SendInput(
+                    inputs.len() as u32,
+                    inputs.as_ptr(),
+                    std::mem::size_of::<INPUT>() as i32,
+                );
+
+                // Wait for clipboard to be populated
+                std::thread::sleep(std::time::Duration::from_millis(150));
+
+                // Read clipboard (the selected text)
+                let selected_text = if OpenClipboard(std::ptr::null_mut()) != 0 {
+                    let h_data = GetClipboardData(CF_UNICODETEXT);
+                    let text = if !h_data.is_null() {
+                        let p_data = GlobalLock(h_data);
+                        if !p_data.is_null() {
+                            let size = GlobalSize(h_data);
+                            if size > 2 {
+                                let slice =
+                                    std::slice::from_raw_parts(p_data as *const u16, size / 2);
+                                let text = String::from_utf16_lossy(slice);
+                                let text = text.trim_end_matches('\0');
+                                GlobalUnlock(h_data);
+                                Some(text.to_string())
+                            } else {
+                                GlobalUnlock(h_data);
+                                None
+                            }
                         } else {
-                            GlobalUnlock(h_data);
                             None
                         }
                     } else {
                         None
-                    }
+                    };
+                    CloseClipboard();
+                    text
                 } else {
                     None
                 };
-                CloseClipboard();
-                text
-            } else {
-                None
-            };
 
-            // Restore original clipboard (always, even if originally empty)
-            if clipboard_was_opened {
-                if OpenClipboard(std::ptr::null_mut()) != 0 {
-                    EmptyClipboard();
-                    if let Some(ref saved) = saved_text {
-                        let h_mem = GlobalAlloc(GMEM_MOVEABLE, saved.len());
-                        if !h_mem.is_null() {
-                            let p_mem = GlobalLock(h_mem);
-                            if !p_mem.is_null() {
-                                std::ptr::copy_nonoverlapping(
-                                    saved.as_ptr(),
-                                    p_mem as *mut u8,
-                                    saved.len(),
-                                );
-                                GlobalUnlock(h_mem);
-                                SetClipboardData(CF_UNICODETEXT, h_mem);
+                // Restore original clipboard (always, even if originally empty)
+                if clipboard_was_opened {
+                    if OpenClipboard(std::ptr::null_mut()) != 0 {
+                        EmptyClipboard();
+                        if let Some(ref saved) = saved_text {
+                            let h_mem = GlobalAlloc(GMEM_MOVEABLE, saved.len());
+                            if !h_mem.is_null() {
+                                let p_mem = GlobalLock(h_mem);
+                                if !p_mem.is_null() {
+                                    std::ptr::copy_nonoverlapping(
+                                        saved.as_ptr(),
+                                        p_mem as *mut u8,
+                                        saved.len(),
+                                    );
+                                    GlobalUnlock(h_mem);
+                                    SetClipboardData(CF_UNICODETEXT, h_mem);
+                                }
                             }
                         }
+                        CloseClipboard();
                     }
-                    // If saved_text was None, clipboard remains empty (already emptied above)
-                    CloseClipboard();
                 }
+
+                return selected_text.ok_or_else(|| "No text selected".to_string());
             }
-
-            return selected_text.ok_or_else(|| "No text selected".to_string());
         }
-    }
 
-    #[cfg(not(target_os = "windows"))]
-    Err("Not supported on this platform".to_string())
+        #[cfg(not(target_os = "windows"))]
+        Err("Not supported on this platform".to_string())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[command]
@@ -254,7 +259,7 @@ pub async fn close_overlay(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     // Stop following before closing
-    state.follow_controller.stop().await;
+    state.overlay.follow_controller.stop().await;
     crate::overlay::window_manager::close_overlay_window(&app);
     Ok(())
 }
@@ -270,7 +275,7 @@ pub async fn translate_selection(
         return Err("Text is empty".to_string());
     }
 
-    let config = state.config.lock().await;
+    let config = state.system.config.lock().await;
     let from = config.default_from.clone();
     let to = config.default_to.clone();
     let config_level = config.overlay_level;
@@ -278,7 +283,7 @@ pub async fn translate_selection(
     drop(config);
 
     let response = state
-        .translation_service
+        .translation.service
         .translate(&text, &from, &to)
         .await
         .map_err(|e| e.to_string())?;
@@ -430,7 +435,7 @@ pub async fn move_window_to_cursor(app: tauri::AppHandle) -> Result<(), String> 
 pub async fn detect_foreground_app(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Option<crate::capabilities::AppContext>, String> {
-    Ok(state.app_detector.detect().await)
+    Ok(state.system.app_detector.detect().await)
 }
 
 /// Set the overlay follow mode.
@@ -446,7 +451,7 @@ pub async fn set_overlay_follow_mode(
         "target_bounds" | "target" => FollowMode::TargetBounds,
         _ => FollowMode::None,
     };
-    state.follow_controller.set_mode(follow_mode).await;
+    state.overlay.follow_controller.set_mode(follow_mode).await;
     Ok(())
 }
 
@@ -455,14 +460,14 @@ pub async fn set_overlay_follow_mode(
 pub async fn refresh_overlay_position(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
-    state.follow_controller.refresh_once().await;
+    state.overlay.follow_controller.refresh_once().await;
     Ok(())
 }
 
 /// Stop overlay following (does not close the overlay).
 #[command]
 pub async fn stop_overlay_follow(state: tauri::State<'_, crate::AppState>) -> Result<(), String> {
-    state.follow_controller.stop().await;
+    state.overlay.follow_controller.stop().await;
     Ok(())
 }
 

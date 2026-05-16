@@ -5,6 +5,7 @@ use sha2::Digest;
 use std::io::Cursor;
 use std::path::PathBuf;
 use tauri::command;
+use uuid::Uuid;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,6 +46,22 @@ fn ocr_snapshot_meta_path() -> PathBuf {
 fn encode_png_bytes(raw: &[u8]) -> String {
     let base64_str = base64::engine::general_purpose::STANDARD.encode(raw);
     format!("data:image/png;base64,{}", base64_str)
+}
+
+/// Generate a unique temp file path for OCR to avoid race conditions
+fn unique_ocr_temp_path() -> PathBuf {
+    let id = Uuid::new_v4().to_string();
+    std::env::temp_dir().join(format!("moontranslator_ocr_{}.png", id))
+}
+
+/// RAII guard that deletes a temp file on drop.
+/// Ensures cleanup even on early `?` return paths.
+struct TempFileGuard(PathBuf);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
 }
 
 // ── In-memory snapshot cache ───────────────────────────────────────────────
@@ -220,120 +237,137 @@ fn crop_image_to_base64(
 
 #[command]
 pub async fn capture_screen(x: i32, y: i32, width: u32, height: u32) -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let img = capture_area_gdi(x, y, width, height)?;
-        return image_to_base64_png(&img);
-    }
+    // Use spawn_blocking to avoid blocking the async runtime with GDI calls
+    tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        {
+            let img = capture_area_gdi(x, y, width, height)?;
+            return image_to_base64_png(&img);
+        }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        let screens = Screen::all().map_err(|e| format!("Failed to get screens: {}", e))?;
+        #[cfg(not(target_os = "windows"))]
+        {
+            let screens = Screen::all().map_err(|e| format!("Failed to get screens: {}", e))?;
 
-        let screen = screens
-            .first()
-            .ok_or_else(|| "No screen found".to_string())?;
+            let screen = screens
+                .first()
+                .ok_or_else(|| "No screen found".to_string())?;
 
-        // Capture the specified region
-        let buffer = screen
-            .capture_area(x, y, width, height)
-            .map_err(|e| format!("Failed to capture area: {}", e))?;
+            // Capture the specified region
+            let buffer = screen
+                .capture_area(x, y, width, height)
+                .map_err(|e| format!("Failed to capture area: {}", e))?;
 
-        // Convert to DynamicImage
-        let img = screenshots::image::DynamicImage::ImageRgba8(buffer);
+            // Convert to DynamicImage
+            let img = screenshots::image::DynamicImage::ImageRgba8(buffer);
 
-        image_to_base64_png(&img)
-    }
+            image_to_base64_png(&img)
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[command]
 pub async fn capture_full_screen() -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let info = primary_screen_info()?;
-        let img = capture_area_gdi(
-            info.screen_x,
-            info.screen_y,
-            info.screen_width,
-            info.screen_height,
-        )?;
-        return image_to_base64_png(&img);
-    }
+    // Use spawn_blocking to avoid blocking the async runtime with GDI calls
+    tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        {
+            let info = primary_screen_info()?;
+            let img = capture_area_gdi(
+                info.screen_x,
+                info.screen_y,
+                info.screen_width,
+                info.screen_height,
+            )?;
+            return image_to_base64_png(&img);
+        }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        let screens = Screen::all().map_err(|e| format!("Failed to get screens: {}", e))?;
+        #[cfg(not(target_os = "windows"))]
+        {
+            let screens = Screen::all().map_err(|e| format!("Failed to get screens: {}", e))?;
 
-        let screen = screens
-            .first()
-            .ok_or_else(|| "No screen found".to_string())?;
+            let screen = screens
+                .first()
+                .ok_or_else(|| "No screen found".to_string())?;
 
-        let buffer = screen
-            .capture()
-            .map_err(|e| format!("Failed to capture screen: {}", e))?;
+            let buffer = screen
+                .capture()
+                .map_err(|e| format!("Failed to capture screen: {}", e))?;
 
-        let img = screenshots::image::DynamicImage::ImageRgba8(buffer);
+            let img = screenshots::image::DynamicImage::ImageRgba8(buffer);
 
-        image_to_base64_png(&img)
-    }
+            image_to_base64_png(&img)
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[command]
 pub async fn prepare_screenshot_snapshot() -> Result<ScreenshotSnapshotInfo, String> {
-    // Capture the screen (platform-specific)
-    #[cfg(target_os = "windows")]
-    let (info, png_bytes) = {
-        log::info!("prepare_screenshot_snapshot: capturing primary screen");
-        let info = primary_screen_info()?;
-        log::info!("prepare_screenshot_snapshot: screen info {:?}", info);
-        let img = capture_area_gdi(
-            info.screen_x,
-            info.screen_y,
-            info.screen_width,
-            info.screen_height,
-        )?;
-        let mut buf = std::io::Cursor::new(Vec::new());
-        img.write_to(&mut buf, screenshots::image::ImageFormat::Png)
-            .map_err(|e| format!("PNG encode: {}", e))?;
-        (info, buf.into_inner())
-    };
-
-    #[cfg(not(target_os = "windows"))]
-    let (info, png_bytes) = {
-        let screens = Screen::all().map_err(|e| format!("Failed to get screens: {}", e))?;
-        let screen = screens
-            .first()
-            .ok_or_else(|| "No screen found".to_string())?;
-        let buffer = screen
-            .capture()
-            .map_err(|e| format!("Failed to capture screen: {}", e))?;
-        let info = ScreenshotSnapshotInfo {
-            screen_x: screen.display_info.x,
-            screen_y: screen.display_info.y,
-            screen_width: screen.display_info.width,
-            screen_height: screen.display_info.height,
-            scale_factor: screen.display_info.scale_factor,
-            image_width: buffer.width(),
-            image_height: buffer.height(),
+    // Use spawn_blocking to avoid blocking the async runtime with GDI calls
+    tokio::task::spawn_blocking(move || {
+        // Capture the screen (platform-specific)
+        #[cfg(target_os = "windows")]
+        let (info, png_bytes) = {
+            log::info!("prepare_screenshot_snapshot: capturing primary screen");
+            let info = primary_screen_info()?;
+            log::info!("prepare_screenshot_snapshot: screen info {:?}", info);
+            let img = capture_area_gdi(
+                info.screen_x,
+                info.screen_y,
+                info.screen_width,
+                info.screen_height,
+            )?;
+            let mut buf = std::io::Cursor::new(Vec::new());
+            img.write_to(&mut buf, screenshots::image::ImageFormat::Png)
+                .map_err(|e| format!("PNG encode: {}", e))?;
+            (info, buf.into_inner())
         };
-        let mut buf = std::io::Cursor::new(Vec::new());
-        screenshots::image::DynamicImage::ImageRgba8(buffer)
-            .write_to(&mut buf, screenshots::image::ImageFormat::Png)
-            .map_err(|e| format!("PNG encode: {}", e))?;
-        (info, buf.into_inner())
-    };
 
-    // Cache in memory for instant access by the selector window
-    cache_snapshot(png_bytes.clone(), &info);
+        #[cfg(not(target_os = "windows"))]
+        let (info, png_bytes) = {
+            let screens = Screen::all().map_err(|e| format!("Failed to get screens: {}", e))?;
+            let screen = screens
+                .first()
+                .ok_or_else(|| "No screen found".to_string())?;
+            let buffer = screen
+                .capture()
+                .map_err(|e| format!("Failed to capture screen: {}", e))?;
+            let info = ScreenshotSnapshotInfo {
+                screen_x: screen.display_info.x,
+                screen_y: screen.display_info.y,
+                screen_width: screen.display_info.width,
+                screen_height: screen.display_info.height,
+                scale_factor: screen.display_info.scale_factor,
+                image_width: buffer.width(),
+                image_height: buffer.height(),
+            };
+            let mut buf = std::io::Cursor::new(Vec::new());
+            screenshots::image::DynamicImage::ImageRgba8(buffer)
+                .write_to(&mut buf, screenshots::image::ImageFormat::Png)
+                .map_err(|e| format!("PNG encode: {}", e))?;
+            (info, buf.into_inner())
+        };
 
-    // Also save to disk as backup
-    let _ = std::fs::write(ocr_snapshot_image_path(), &png_bytes);
-    if let Ok(meta) = serde_json::to_vec(&info) {
-        let _ = std::fs::write(ocr_snapshot_meta_path(), meta);
-    }
+        // Save to disk as backup first (uses reference, no clone needed)
+        let _ = std::fs::write(ocr_snapshot_image_path(), &png_bytes);
+        if let Ok(meta) = serde_json::to_vec(&info) {
+            let _ = std::fs::write(ocr_snapshot_meta_path(), meta);
+        }
 
-    log::info!("prepare_screenshot_snapshot: done ({}KB cached)", png_bytes.len() / 1024);
-    Ok(info)
+        let size_kb = png_bytes.len() / 1024;
+
+        // Cache in memory for instant access by the selector window (moves bytes, no clone)
+        cache_snapshot(png_bytes, &info);
+
+        log::info!("prepare_screenshot_snapshot: done ({}KB cached)", size_kb);
+        Ok(info)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[command]
@@ -377,11 +411,16 @@ pub async fn crop_screenshot_snapshot(
     width: u32,
     height: u32,
 ) -> Result<String, String> {
-    let raw = std::fs::read(ocr_snapshot_image_path())
-        .map_err(|e| format!("Failed to read screenshot snapshot: {}", e))?;
-    let image = screenshots::image::load_from_memory(&raw)
-        .map_err(|e| format!("Failed to load screenshot snapshot: {}", e))?;
-    crop_image_to_base64(&image, left, top, width, height)
+    // Use spawn_blocking to avoid blocking async runtime with disk I/O and image processing
+    tokio::task::spawn_blocking(move || {
+        let raw = std::fs::read(ocr_snapshot_image_path())
+            .map_err(|e| format!("Failed to read screenshot snapshot: {}", e))?;
+        let image = screenshots::image::load_from_memory(&raw)
+            .map_err(|e| format!("Failed to load screenshot snapshot: {}", e))?;
+        crop_image_to_base64(&image, left, top, width, height)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[command]
@@ -391,24 +430,29 @@ pub async fn capture_screenshot_region(
     width: u32,
     height: u32,
 ) -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let img = capture_area_gdi(left as i32, top as i32, width, height)?;
-        return image_to_base64_png(&img);
-    }
+    // Use spawn_blocking to avoid blocking the async runtime with GDI calls
+    tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        {
+            let img = capture_area_gdi(left as i32, top as i32, width, height)?;
+            return image_to_base64_png(&img);
+        }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        let screens = Screen::all().map_err(|e| format!("Failed to get screens: {}", e))?;
-        let screen = screens
-            .first()
-            .ok_or_else(|| "No screen found".to_string())?;
-        let buffer = screen
-            .capture()
-            .map_err(|e| format!("Failed to capture screen: {}", e))?;
-        let image = screenshots::image::DynamicImage::ImageRgba8(buffer);
-        crop_image_to_base64(&image, left, top, width, height)
-    }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let screens = Screen::all().map_err(|e| format!("Failed to get screens: {}", e))?;
+            let screen = screens
+                .first()
+                .ok_or_else(|| "No screen found".to_string())?;
+            let buffer = screen
+                .capture()
+                .map_err(|e| format!("Failed to capture screen: {}", e))?;
+            let image = screenshots::image::DynamicImage::ImageRgba8(buffer);
+            crop_image_to_base64(&image, left, top, width, height)
+        }
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Detect the foreground window HWND.
@@ -547,8 +591,9 @@ pub async fn system_ocr(base64_data: String, lang: Option<String>) -> Result<Str
         // Decode to temp file (WinRT needs StorageFile path)
         let raw = decode_base64_png(&base64_data)?;
         log::info!("[WinRT OCR] Image decoded: {} bytes", raw.len());
-        let temp_path = std::env::temp_dir().join("moontranslator_ocr_temp.png");
+        let temp_path = unique_ocr_temp_path();
         std::fs::write(&temp_path, &raw).map_err(|e| format!("Temp write failed: {}", e))?;
+        let _guard = TempFileGuard(temp_path.clone());
 
         let path_str = temp_path.to_string_lossy().replace("\\\\?\\", "");
 
@@ -599,8 +644,6 @@ pub async fn system_ocr(base64_data: String, lang: Option<String>) -> Result<Str
             .map_err(|e| format!("Text: {}", e))?
             .to_string_lossy();
 
-        let _ = std::fs::remove_file(&temp_path);
-
         if text.is_empty() {
             log::warn!("[WinRT OCR] OCR returned empty text");
             return Err("OCR returned empty text".to_string());
@@ -634,8 +677,9 @@ pub async fn system_ocr_detailed(
         // Decode to temp file (WinRT needs StorageFile path)
         let raw = decode_base64_png(&base64_data)?;
         log::info!("[WinRT OCR Detailed] Image decoded: {} bytes", raw.len());
-        let temp_path = std::env::temp_dir().join("moontranslator_ocr_temp.png");
+        let temp_path = unique_ocr_temp_path();
         std::fs::write(&temp_path, &raw).map_err(|e| format!("Temp write failed: {}", e))?;
+        let _guard = TempFileGuard(temp_path.clone());
 
         let path_str = temp_path.to_string_lossy().replace("\\\\?\\", "");
 
@@ -756,8 +800,6 @@ pub async fn system_ocr_detailed(
             });
         }
 
-        let _ = std::fs::remove_file(&temp_path);
-
         let full_text = line_results
             .iter()
             .map(|l| l.text.as_str())
@@ -810,7 +852,7 @@ fn youdao_sign(app_key: &str, input: &str, salt: &str, curtime: &str, app_secret
 fn youdao_curtime() -> String {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs()
         .to_string()
 }
@@ -844,7 +886,7 @@ fn extract_bounding_box(item: &serde_json::Value) -> (f64, f64, f64, f64) {
 /// Run Youdao OCR using ocrtran.youdao.com endpoint (same as YoudaoDict).
 /// Returns per-line details with bounding boxes.
 #[command]
-pub async fn youdao_ocr(base64_data: String, lang: Option<String>) -> Result<OcrResultDetailed, String> {
+pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Option<String>, app_secret: Option<String>) -> Result<OcrResultDetailed, String> {
     let raw = decode_base64_png(&base64_data)?;
 
     // Compress image if too large
@@ -896,13 +938,14 @@ pub async fn youdao_ocr(base64_data: String, lang: Option<String>) -> Result<Ocr
     // Generate signing parameters
     let salt = uuid::Uuid::new_v4().to_string();
     let curtime = youdao_curtime();
-    let app_key = "3d9fa94028675971";  // YoudaoDict's appKey
-    let app_secret = "5X2CJlMERfGOkOP0PFqokVJkSgDIOD0p";  // YoudaoDict's appSecret
+    // Use provided keys or fall back to defaults (YoudaoDict built-in keys)
+    let app_key = app_key.unwrap_or_else(|| "3d9fa94028675971".to_string());
+    let app_secret = app_secret.unwrap_or_else(|| "5X2CJlMERfGOkOP0PFqokVJkSgDIOD0p".to_string());
 
     // For OCR, input is empty string
-    let sign = youdao_sign(app_key, "", &salt, &curtime, app_secret);
+    let sign = youdao_sign(&app_key, "", &salt, &curtime, &app_secret);
 
-    log::info!("[Youdao OCR] Signing params: appKey={}, salt={}, curtime={}", app_key, &salt[..8], curtime);
+    log::info!("[Youdao OCR] Signing params: appKey={}, salt={}, curtime={}", &app_key[..8], &salt[..8], curtime);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))

@@ -71,6 +71,20 @@ pub struct YoudaoConfig {
     pub enabled: bool,
     #[serde(default)]
     pub use_ai: bool,
+    /// Youdao OCR API key (default: YoudaoDict built-in key)
+    #[serde(default = "default_youdao_ocr_app_key")]
+    pub ocr_app_key: String,
+    /// Youdao OCR API secret (default: YoudaoDict built-in secret)
+    #[serde(default = "default_youdao_ocr_app_secret")]
+    pub ocr_app_secret: String,
+}
+
+fn default_youdao_ocr_app_key() -> String {
+    "3d9fa94028675971".to_string()
+}
+
+fn default_youdao_ocr_app_secret() -> String {
+    "5X2CJlMERfGOkOP0PFqokVJkSgDIOD0p".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -229,6 +243,10 @@ fn default_ocr_hook_interval_ms() -> u64 {
     5000
 }
 
+fn default_tm_threshold() -> f64 {
+    0.8
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookConfig {
@@ -322,6 +340,15 @@ pub struct AppConfig {
     /// Hook monitor configuration
     #[serde(default)]
     pub hook: HookConfig,
+    /// Translation Memory: enable fuzzy matching from history
+    #[serde(default)]
+    pub tm_enabled: bool,
+    /// Translation Memory: similarity threshold (0.0 - 1.0, default 0.8)
+    #[serde(default = "default_tm_threshold")]
+    pub tm_threshold: f64,
+    /// Furigana: add ruby annotations for Japanese kanji
+    #[serde(default)]
+    pub furigana_enabled: bool,
 }
 
 fn default_true() -> bool {
@@ -348,6 +375,8 @@ impl Default for AppConfig {
                 youdao: YoudaoConfig {
                     enabled: true,
                     use_ai: false,
+                    ocr_app_key: default_youdao_ocr_app_key(),
+                    ocr_app_secret: default_youdao_ocr_app_secret(),
                 },
                 deepl: DeepLConfig::default(),
                 deeplx: DeepLXConfig::default(),
@@ -380,6 +409,9 @@ impl Default for AppConfig {
             ocr_click_through: false,
             ocr_auto_bind_window: true,
             hook: HookConfig::default(),
+            tm_enabled: false,
+            tm_threshold: 0.8,
+            furigana_enabled: false,
         }
     }
 }

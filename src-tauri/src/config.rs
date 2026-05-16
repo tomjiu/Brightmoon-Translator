@@ -17,20 +17,48 @@ impl AppConfig {
     pub fn load() -> Self {
         let path = config_path();
         if path.exists() {
-            let data = std::fs::read_to_string(&path).unwrap_or_default();
-            serde_json::from_str(&data).unwrap_or_default()
+            match std::fs::read_to_string(&path) {
+                Ok(data) => {
+                    match serde_json::from_str::<AppConfig>(&data) {
+                        Ok(config) => return config,
+                        Err(e) => {
+                            log::error!("Failed to parse config file (using defaults): {}", e);
+                            log::info!("Config file path: {}", path.display());
+                            // Backup the corrupted file
+                            let backup = path.with_extension("json.bak");
+                            if let Err(bak_err) = std::fs::copy(&path, &backup) {
+                                log::warn!("Failed to backup corrupted config: {}", bak_err);
+                            } else {
+                                log::info!("Corrupted config backed up to: {}", backup.display());
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to read config file: {}", e);
+                }
+            }
         } else {
-            let config = Self::default();
-            config.save();
-            config
+            log::info!("No config file found, creating default");
         }
+
+        let config = Self::default();
+        config.save();
+        config
     }
 
     /// Save config to platform-specific config directory
     pub fn save(&self) {
         let path = config_path();
-        if let Ok(data) = serde_json::to_string_pretty(self) {
-            std::fs::write(path, data).ok();
+        match serde_json::to_string_pretty(self) {
+            Ok(data) => {
+                if let Err(e) = std::fs::write(&path, data) {
+                    log::error!("Failed to save config: {}", e);
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to serialize config: {}", e);
+            }
         }
     }
 }

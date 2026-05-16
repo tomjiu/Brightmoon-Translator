@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
 import { Search, Trash2, Copy, Check, X, Download, Plus, Edit2, Save } from "lucide-react";
 
@@ -12,6 +12,16 @@ interface WordBookItem {
   note: string;
   timestamp: number;
 }
+
+const formatTime = (timestamp: number) => {
+  const date = new Date(timestamp);
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
 
 function WordBook() {
   const [items, setItems] = useState<WordBookItem[]>([]);
@@ -49,7 +59,7 @@ function WordBook() {
 
   const loadWordBook = async () => {
     try {
-      const data = await invoke<WordBookItem[]>("get_wordbook");
+      const data = await invokeOrThrow<WordBookItem[]>("get_wordbook");
       setItems(data);
     } catch (err) {
       console.error("Failed to load wordbook:", err);
@@ -58,7 +68,7 @@ function WordBook() {
 
   const searchWordBook = async (query: string) => {
     try {
-      const data = await invoke<WordBookItem[]>("search_wordbook", { query });
+      const data = await invokeOrThrow<WordBookItem[]>("search_wordbook", { query });
       setItems(data);
     } catch (err) {
       console.error("Failed to search wordbook:", err);
@@ -76,7 +86,7 @@ function WordBook() {
   const addWord = async () => {
     if (!newWord.trim() || !newTranslation.trim()) return;
     try {
-      await invoke("add_wordbook_entry", {
+      await invokeOrThrow("add_wordbook_entry", {
         word: newWord.trim(),
         translation: newTranslation.trim(),
         fromLang: "auto",
@@ -95,7 +105,7 @@ function WordBook() {
 
   const updateNote = async (id: string) => {
     try {
-      await invoke("update_wordbook_note", { id, note: noteText });
+      await invokeOrThrow("update_wordbook_note", { id, note: noteText });
       setEditingNoteId(null);
       setNoteText("");
       loadWordBook();
@@ -106,7 +116,7 @@ function WordBook() {
 
   const deleteItem = async (id: string) => {
     try {
-      await invoke("delete_wordbook_entry", { id });
+      await invokeOrThrow("delete_wordbook_entry", { id });
       setItems((prev) => prev.filter((item) => item.id !== id));
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -121,7 +131,7 @@ function WordBook() {
   const batchDelete = async () => {
     if (selectedIds.size === 0) return;
     try {
-      await invoke("batch_delete_wordbook", { ids: Array.from(selectedIds) });
+      await invokeOrThrow("batch_delete_wordbook", { ids: Array.from(selectedIds) });
       setItems((prev) => prev.filter((item) => !selectedIds.has(item.id)));
       setSelectedIds(new Set());
     } catch (err) {
@@ -131,7 +141,7 @@ function WordBook() {
 
   const clearAll = async () => {
     try {
-      await invoke("clear_wordbook");
+      await invokeOrThrow("clear_wordbook");
       setItems([]);
       setSelectedIds(new Set());
     } catch (err) {
@@ -168,7 +178,7 @@ function WordBook() {
 
   const exportCsv = async () => {
     try {
-      const csv = await invoke<string>("export_wordbook_csv");
+      const csv = await invokeOrThrow<string>("export_wordbook_csv");
       const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -184,16 +194,6 @@ function WordBook() {
   const startEditNote = (item: WordBookItem) => {
     setEditingNoteId(item.id);
     setNoteText(item.note);
-  };
-
-  const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleString("zh-CN", {
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
   };
 
   return (

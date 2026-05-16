@@ -2,10 +2,10 @@
 // Pure functions for evaluating OCR text quality. No React dependencies.
 
 /** Minimum similarity threshold to consider two texts "the same" */
-export const SIMILARITY_THRESHOLD = 0.92;
+const SIMILARITY_THRESHOLD = 0.92;
 
 /** Texts shorter than this are considered too short */
-export const MIN_TEXT_LENGTH = 2;
+const MIN_TEXT_LENGTH = 2;
 
 /** Number of recent texts to check for jitter patterns */
 export const JITTER_WINDOW = 5;
@@ -14,7 +14,7 @@ export const JITTER_WINDOW = 5;
 export const MAX_CONSECUTIVE_EMPTY = 3;
 
 /** Character-level similarity between two strings (0..1). */
-export function textSimilarity(a: string, b: string): number {
+function textSimilarity(a: string, b: string): number {
   if (a === b) return 1;
   if (!a || !b) return 0;
   const maxLen = Math.max(a.length, b.length);
@@ -32,7 +32,7 @@ export function textSimilarity(a: string, b: string): number {
 }
 
 /** Check if text is likely OCR noise (random single chars, symbols). */
-export function isNoisyText(text: string): boolean {
+function isNoisyText(text: string): boolean {
   if (text.length < 3) return true;
   const alphanum = text.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, "");
   if (alphanum.length / text.length < 0.3) return true;
@@ -40,7 +40,7 @@ export function isNoisyText(text: string): boolean {
 }
 
 /** Check if recent texts form a jitter pattern (oscillating between similar results). */
-export function isJittery(recentTexts: string[]): boolean {
+function isJittery(recentTexts: string[]): boolean {
   if (recentTexts.length < JITTER_WINDOW) return false;
   const last = recentTexts.slice(-JITTER_WINDOW);
   const unique = new Set(last);

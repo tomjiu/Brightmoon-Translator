@@ -1,5 +1,6 @@
-use std::sync::Arc;
+use std::collections::VecDeque;
 use std::io::Cursor;
+use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use windows::core::Interface;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
@@ -49,6 +50,83 @@ impl HookMonitor {
         }
     }
 
+    /// Start monitor with full translation pipeline.
+    /// Encapsulates text filtering, dedup, and translation logic.
+    pub async fn start_with_translation(
+        &mut self,
+        enabled_sources: &[String],
+        uia_interval_ms: u64,
+        ocr_interval_ms: u64,
+        source_lang: String,
+        target_lang: String,
+        translation_service: Arc<crate::services::TranslationService>,
+        app_handle: tauri::AppHandle,
+    ) -> Result<(), String> {
+        use tauri::Emitter;
+
+        let recent_texts: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
+
+        self.start(
+            enabled_sources,
+            uia_interval_ms,
+            ocr_interval_ms,
+            move |text: MonitoredText| {
+                let translation_service = translation_service.clone();
+                let target_lang = target_lang.clone();
+                let source_lang = source_lang.clone();
+                let app_handle = app_handle.clone();
+                let recent_texts = recent_texts.clone();
+
+                tokio::spawn(async move {
+                    // Check if text is worth translating
+                    {
+                        let recent = recent_texts.lock().await;
+                        if !is_translatable(&text.text, &recent) {
+                            return;
+                        }
+                    }
+
+                    // Dedup
+                    {
+                        let mut recent = recent_texts.lock().await;
+                        recent.push_back(text.text.trim().to_string());
+                        while recent.len() > 20 {
+                            recent.pop_front();
+                        }
+                    }
+
+                    // Translate
+                    match translation_service
+                        .translate(&text.text, &source_lang, &target_lang)
+                        .await
+                    {
+                        Ok(response) => {
+                            if let Some(result) = response.results.first() {
+                                let _ = app_handle.emit(
+                                    "hook-text-translated",
+                                    serde_json::json!({
+                                        "window_title": text.window_title,
+                                        "process_name": text.process_name,
+                                        "original": text.text,
+                                        "translated": result.text,
+                                        "engine": result.engine,
+                                        "timestamp": text.timestamp,
+                                        "source": text.source,
+                                        "text_rect": text.text_rect.map(|(x, y, w, h)| [x, y, w, h]),
+                                    }),
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("[HookMonitor] Translation failed: {}", e);
+                        }
+                    }
+                });
+            },
+        )
+        .await
+    }
+
     pub async fn start(
         &mut self,
         enabled_sources: &[String],
@@ -64,7 +142,7 @@ impl HookMonitor {
         drop(running);
 
         // Clear and reuse the shared thread ID list
-        self.message_loop_tids.lock().unwrap().clear();
+        self.message_loop_tids.lock().unwrap_or_else(|e| e.into_inner()).clear();
         let thread_ids = self.message_loop_tids.clone();
 
         let (tx, mut rx) = mpsc::unbounded_channel::<MonitoredText>();
@@ -126,7 +204,7 @@ impl HookMonitor {
         drop(running);
 
         // Post WM_QUIT to all message-loop threads so they exit cleanly
-        let tids = self.message_loop_tids.lock().unwrap();
+        let tids = self.message_loop_tids.lock().unwrap_or_else(|e| e.into_inner());
         for tid in tids.iter() {
             unsafe {
                 let _ = PostThreadMessageW(*tid, WM_QUIT, WPARAM(0), LPARAM(0));
@@ -136,6 +214,21 @@ impl HookMonitor {
 
     pub async fn is_running(&self) -> bool {
         *self.running.lock().await
+    }
+}
+
+impl Drop for HookMonitor {
+    fn drop(&mut self) {
+        // Post WM_QUIT to all message-loop threads so they exit cleanly.
+        // stop() is async and may not have been called, so we do the critical
+        // cleanup here synchronously.
+        if let Ok(tids) = self.message_loop_tids.lock() {
+            for tid in tids.iter() {
+                unsafe {
+                    let _ = PostThreadMessageW(*tid, WM_QUIT, WPARAM(0), LPARAM(0));
+                }
+            }
+        }
     }
 }
 
@@ -605,4 +698,69 @@ unsafe fn get_process_name(hwnd: HWND) -> String {
     } else {
         format!("PID: {}", process_id)
     }
+}
+
+// ─── Text Filtering ─────────────────────────────────────────────────────────
+
+/// Check if text is worth translating.
+/// Filters out URLs, file paths, code-like content, pure numbers, and duplicates.
+pub fn is_translatable(text: &str, recent: &VecDeque<String>) -> bool {
+    let trimmed = text.trim();
+    if trimmed.len() < 3 {
+        return false;
+    }
+
+    let char_count = trimmed.chars().count();
+    if char_count < 2 {
+        return false;
+    }
+
+    // Skip URLs
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") || trimmed.starts_with("ftp://") {
+        return false;
+    }
+
+    // Skip file paths
+    if trimmed.starts_with("C:\\") || trimmed.starts_with("D:\\") || trimmed.starts_with("/") || trimmed.starts_with("\\\\") {
+        return false;
+    }
+
+    // Skip code-like content (too many special chars)
+    let special_count = trimmed.chars().filter(|c| matches!(c, '{' | '}' | '(' | ')' | ';' | '=' | '<' | '>' | '&' | '|' | '!' | '#' | '$' | '@' | '`')).count();
+    if special_count > 0 && special_count * 3 > char_count {
+        return false;
+    }
+
+    // Skip pure numbers / hex / UUIDs
+    let hex_like = trimmed.chars().filter(|c| c.is_ascii_hexdigit() || *c == '-' || *c == '_').count();
+    if hex_like == char_count {
+        return false;
+    }
+
+    let meaningful = trimmed
+        .chars()
+        .filter(|c| c.is_alphabetic() || is_cjk(*c))
+        .count();
+
+    // At least 30% meaningful characters
+    if meaningful * 10 < char_count * 3 {
+        return false;
+    }
+
+    if recent.contains(&trimmed.to_string()) {
+        return false;
+    }
+
+    true
+}
+
+fn is_cjk(c: char) -> bool {
+    matches!(c,
+        '\u{4E00}'..='\u{9FFF}' |
+        '\u{3400}'..='\u{4DBF}' |
+        '\u{F900}'..='\u{FAFF}' |
+        '\u{3040}'..='\u{309F}' |
+        '\u{30A0}'..='\u{30FF}' |
+        '\u{AC00}'..='\u{D7AF}'
+    )
 }

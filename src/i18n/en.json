@@ -4,6 +4,7 @@
   },
   "nav": {
     "translator": "Translate",
+    "compare": "Compare",
     "ocr": "OCR Monitor",
     "history": "History",
     "wordbook": "Word Book",
@@ -123,7 +124,9 @@
       "clipboardMonitor": "Clipboard Monitor Translation",
       "clipboardMonitorHint": "Monitor clipboard changes, auto-translate copied content",
       "translationMask": "Translation Mask (Learning Mode)",
-      "translationMaskHint": "Hide original text, try to understand from translation first, click to show original"
+      "translationMaskHint": "Hide original text, try to understand from translation first, click to show original",
+      "furigana": "Japanese Furigana Annotations",
+      "furiganaHint": "Show hiragana readings above kanji characters (Japanese translations only)"
     },
     "blacklist": {
       "title": "Translation Blacklist",
@@ -180,6 +183,27 @@
       "pattern": "Match Text",
       "replacement": "Replace With",
       "isRegex": "Regex",
+      "testInput": "Test Input",
+      "testOutput": "Test Result",
+      "test": "Test",
+      "noRules": "No replacement rules yet"
+    },
+    "preProcess": {
+      "title": "Translation Pre-Processing",
+      "hint": "Auto-correct and replace source text before translation (e.g., remove control chars, normalize fullwidth characters)",
+      "trimWhitespace": "Trim Whitespace",
+      "trimWhitespaceHint": "Auto-remove leading/trailing spaces before translation",
+      "normalizeUnicode": "Normalize Unicode",
+      "normalizeUnicodeHint": "Convert fullwidth characters to halfwidth (e.g., Ａ→A, １→1)",
+      "removeControlChars": "Remove Control Characters",
+      "removeControlCharsHint": "Remove invisible control characters (preserves newlines and tabs)",
+      "replacementRules": "Replacement Rules",
+      "addRule": "Add Rule",
+      "pattern": "Match Text",
+      "replacement": "Replace With",
+      "isRegex": "Regex",
+      "langPair": "Language Pair (optional)",
+      "langPairPlaceholder": "e.g. ja-zh, leave empty for all",
       "testInput": "Test Input",
       "testOutput": "Test Result",
       "test": "Test",
@@ -370,6 +394,17 @@
     "source.ocr": "OCR Screenshot - universal fallback",
     "source.hook": "Win32 Event Hook - system-level text change monitor"
   },
+  "compare": {
+    "title": "Multi-Engine Compare",
+    "description": "Translate text with all enabled engines simultaneously and compare results.",
+    "placeholder": "Enter text to translate...",
+    "translate": "Compare Translate",
+    "translating": "Translating...",
+    "noResults": "No translation results",
+    "empty": "Enter text to start comparing",
+    "emptyHint": "Press Ctrl+Enter to translate quickly",
+    "copy": "Copy"
+  },
   "replace": {
     "hardFail": "Replace failed",
     "softFail": "Replace failed, showing overlay instead",
@@ -381,6 +416,14 @@
   "selection": {
     "noSelection": "No text selected",
     "translateFailed": "Translation failed"
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "An error occurred during rendering. The current page cannot be displayed.",
+    "showDetail": "Show details",
+    "hideDetail": "Hide details",
+    "reload": "Reload",
+    "reset": "Reset & Reload"
   },
   "common": {
     "loading": "Loading...",

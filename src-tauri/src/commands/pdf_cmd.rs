@@ -27,7 +27,7 @@ pub async fn translate_pdf(
 
     // Use batch translation
     let batch_results = state
-        .translation_service
+        .translation.service
         .translate_batch(&pages_to_translate, &from_lang, &to_lang, 2)
         .await;
 

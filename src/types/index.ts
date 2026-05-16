@@ -2,23 +2,13 @@
 export interface TranslationResult {
   engine: string;
   text: string;
-}
-
-export interface TranslateRequest {
-  text: string;
-  from: string;
-  to: string;
+  /** Optional latency in milliseconds (populated by LatencyFirst strategy) */
+  latencyMs?: number;
 }
 
 export interface TranslateResponse {
   results: TranslationResult[];
   detectedLanguage?: string;
-}
-
-// OCR types
-export interface OcrResult {
-  text: string;
-  confidence: number;
 }
 
 // History types
@@ -33,7 +23,7 @@ export interface HistoryItem {
 }
 
 // Config types
-export interface LlmConfig {
+interface LlmConfig {
   provider: "openai" | "deepseek" | "custom";
   apiKey: string;
   apiKeys: string[];
@@ -41,7 +31,7 @@ export interface LlmConfig {
   model: string;
 }
 
-export interface EnginesConfig {
+interface EnginesConfig {
   google: { enabled: boolean };
   baidu: { enabled: boolean; appId: string; secret: string };
   youdao: { enabled: boolean; useAi: boolean };
@@ -51,14 +41,14 @@ export interface EnginesConfig {
   yandex: { enabled: boolean };
 }
 
-export interface HotkeyConfig {
+interface HotkeyConfig {
   ocrTranslate: string;
   showWindow: string;
   translateSelection: string;
   replaceTranslate?: string;
 }
 
-export interface ProxyConfig {
+interface ProxyConfig {
   enabled: boolean;
   proxyType: string;
   host: string;
@@ -67,13 +57,13 @@ export interface ProxyConfig {
   password: string;
 }
 
-export interface PromptTemplate {
+interface PromptTemplate {
   name: string;
   prompt: string;
 }
 
 export type AutoCopyMode = "translated" | "source" | "both" | "none";
-export type WindowFollowMode = "none" | "cursor";
+type WindowFollowMode = "none" | "cursor";
 
 export interface AppConfig {
   llm: LlmConfig;
@@ -102,15 +92,18 @@ export interface AppConfig {
   hookShowOverlay?: boolean;
   hookAutoCopy?: boolean;
   hook?: HookConfig;
+  tmEnabled?: boolean;
+  tmThreshold?: number;
+  furiganaEnabled?: boolean;
 }
 
-export interface HookConfig {
-  enabledSources: string[];
-  showOverlay: boolean;
-  autoCopy: boolean;
-  enabled: boolean;
-  uiaIntervalMs: number;
-  ocrIntervalMs: number;
+interface HookConfig {
+  enabledSources?: string[];
+  showOverlay?: boolean;
+  autoCopy?: boolean;
+  enabled?: boolean;
+  uiaIntervalMs?: number;
+  ocrIntervalMs?: number;
 }
 
 // Language definitions
@@ -146,14 +139,14 @@ export interface EmbeddedLine {
 }
 
 // Dictionary types
-export interface DictionaryDefinition {
+interface DictionaryDefinition {
   definition: string;
   example?: string;
   synonyms: string[];
   antonyms: string[];
 }
 
-export interface DictionaryMeaning {
+interface DictionaryMeaning {
   partOfSpeech: string;
   definitions: DictionaryDefinition[];
 }

@@ -173,6 +173,7 @@ pub fn mock_handle_browser_request(
         results: vec![TranslationResult {
             engine: "mock".to_string(),
             text: format!("[translated] {}", text),
+            latency_ms: None,
         }],
         detected_language: Some("en".to_string()),
     };
@@ -281,6 +282,7 @@ pub async fn handle_browser_request(
                     results: vec![TranslationResult {
                         engine: "batch".into(),
                         text: combined_text,
+                        latency_ms: None,
                     }],
                     detected_language: None,
                 },

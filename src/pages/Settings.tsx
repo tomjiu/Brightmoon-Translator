@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeOrThrow } from "../services/invoke";
 import { useConfigStore } from "../stores/configStore";
 import { useI18n } from "../i18n";
-import { Save, Check, Trash2, Database, Power, Clipboard, Eye, EyeOff, Globe, Keyboard, Plus, X, Download, Upload, Languages, Wand2, MousePointer } from "lucide-react";
+import { Save, Check, Trash2, Database, Power, Clipboard, Eye, EyeOff, Globe, Keyboard, Plus, X, Download, Upload, Languages, Wand2, MousePointer, Brain, BookOpen } from "lucide-react";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
+import type { AutoCopyMode } from "../types";
 
 function Settings() {
   const {
@@ -55,11 +56,12 @@ function Settings() {
     loadCacheSize();
     checkAutostart();
     loadPostProcessConfig();
+    loadPreProcessConfig();
   }, [loadConfig, loadCacheSize]);
 
   const loadPostProcessConfig = async () => {
     try {
-      const config = await invoke<PostProcessConfig>("get_post_process_config");
+      const config = await invokeOrThrow<PostProcessConfig>("get_post_process_config");
       setPostConfig(config);
     } catch (err) {
       console.error("Failed to load post-process config:", err);
@@ -69,7 +71,7 @@ function Settings() {
   const savePostProcessConfig = async (newConfig: PostProcessConfig) => {
     setPostConfig(newConfig);
     try {
-      await invoke("update_post_process_config", { config: newConfig });
+      await invokeOrThrow("update_post_process_config", { config: newConfig });
     } catch (err) {
       console.error("Failed to save post-process config:", err);
     }
@@ -78,7 +80,7 @@ function Settings() {
   const addReplacementRule = async () => {
     if (!newRulePattern.trim()) return;
     try {
-      await invoke("add_replacement_rule", {
+      await invokeOrThrow("add_replacement_rule", {
         pattern: newRulePattern.trim(),
         replacement: newRuleReplacement,
         isRegex: newRuleIsRegex,
@@ -94,7 +96,7 @@ function Settings() {
 
   const removeReplacementRule = async (id: string) => {
     try {
-      await invoke("remove_replacement_rule", { id });
+      await invokeOrThrow("remove_replacement_rule", { id });
       await loadPostProcessConfig();
     } catch (err) {
       console.error("Failed to remove rule:", err);
@@ -103,7 +105,7 @@ function Settings() {
 
   const toggleRuleEnabled = async (rule: ReplacementRule) => {
     try {
-      await invoke("update_replacement_rule", {
+      await invokeOrThrow("update_replacement_rule", {
         id: rule.id,
         pattern: rule.pattern,
         replacement: rule.replacement,
@@ -119,10 +121,110 @@ function Settings() {
   const runPostProcessTest = async () => {
     if (!testInput.trim()) return;
     try {
-      const result = await invoke<string>("test_post_process", { text: testInput });
+      const result = await invokeOrThrow<string>("test_post_process", { text: testInput });
       setTestOutput(result);
     } catch (err) {
       console.error("Failed to test post-process:", err);
+    }
+  };
+
+  // Pre-processing state
+  interface PreProcessRule {
+    id: string;
+    pattern: string;
+    replacement: string;
+    enabled: boolean;
+    isRegex: boolean;
+    langPair?: string;
+  }
+  interface PreProcessConfig {
+    rules: PreProcessRule[];
+    trimWhitespace: boolean;
+    normalizeUnicode: boolean;
+    removeControlChars: boolean;
+  }
+  const [preConfig, setPreConfig] = useState<PreProcessConfig>({
+    rules: [],
+    trimWhitespace: true,
+    normalizeUnicode: false,
+    removeControlChars: true,
+  });
+  const [newPreRulePattern, setNewPreRulePattern] = useState("");
+  const [newPreRuleReplacement, setNewPreRuleReplacement] = useState("");
+  const [newPreRuleIsRegex, setNewPreRuleIsRegex] = useState(false);
+  const [newPreRuleLangPair, setNewPreRuleLangPair] = useState("");
+  const [preTestInput, setPreTestInput] = useState("");
+  const [preTestOutput, setPreTestOutput] = useState("");
+
+  const loadPreProcessConfig = async () => {
+    try {
+      const config = await invokeOrThrow<PreProcessConfig>("get_pre_process_config");
+      setPreConfig(config);
+    } catch (err) {
+      console.error("Failed to load pre-process config:", err);
+    }
+  };
+
+  const savePreProcessConfig = async (newConfig: PreProcessConfig) => {
+    setPreConfig(newConfig);
+    try {
+      await invokeOrThrow("update_pre_process_config", { config: newConfig });
+    } catch (err) {
+      console.error("Failed to save pre-process config:", err);
+    }
+  };
+
+  const addPreProcessRule = async () => {
+    if (!newPreRulePattern.trim()) return;
+    try {
+      await invokeOrThrow("add_pre_process_rule", {
+        pattern: newPreRulePattern.trim(),
+        replacement: newPreRuleReplacement,
+        isRegex: newPreRuleIsRegex,
+        langPair: newPreRuleLangPair.trim() || null,
+      });
+      setNewPreRulePattern("");
+      setNewPreRuleReplacement("");
+      setNewPreRuleIsRegex(false);
+      setNewPreRuleLangPair("");
+      await loadPreProcessConfig();
+    } catch (err) {
+      console.error("Failed to add pre-process rule:", err);
+    }
+  };
+
+  const removePreProcessRule = async (id: string) => {
+    try {
+      await invokeOrThrow("remove_pre_process_rule", { id });
+      await loadPreProcessConfig();
+    } catch (err) {
+      console.error("Failed to remove pre-process rule:", err);
+    }
+  };
+
+  const togglePreRuleEnabled = async (rule: PreProcessRule) => {
+    try {
+      await invokeOrThrow("update_pre_process_rule", {
+        id: rule.id,
+        pattern: rule.pattern,
+        replacement: rule.replacement,
+        enabled: !rule.enabled,
+        isRegex: rule.isRegex,
+        langPair: rule.langPair ?? null,
+      });
+      await loadPreProcessConfig();
+    } catch (err) {
+      console.error("Failed to toggle pre-process rule:", err);
+    }
+  };
+
+  const runPreProcessTest = async () => {
+    if (!preTestInput.trim()) return;
+    try {
+      const result = await invokeOrThrow<string>("test_pre_process", { text: preTestInput });
+      setPreTestOutput(result);
+    } catch (err) {
+      console.error("Failed to test pre-process:", err);
     }
   };
 
@@ -177,7 +279,7 @@ function Settings() {
 
   const exportConfig = async () => {
     try {
-      const json = await invoke<string>("export_config_json");
+      const json = await invokeOrThrow<string>("export_config_json");
       const blob = new Blob([json], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -199,7 +301,7 @@ function Settings() {
       if (!file) return;
       try {
         const text = await file.text();
-        await invoke("import_config_json", { json: text });
+        await invokeOrThrow("import_config_json", { json: text });
         // Reload config after import
         await loadConfig();
         alert("配置导入成功！");
@@ -787,6 +889,72 @@ function Settings() {
           </div>
         </section>
 
+        {/* Translation Memory Section */}
+        <section className="bg-bg-secondary border border-border rounded-xl p-5 mb-5">
+          <h2 className="text-base font-semibold text-primary mb-4 flex items-center gap-2">
+            <Brain size={18} />
+            翻译记忆库 (TM)
+          </h2>
+          <p className="text-xs text-text-secondary mb-4">
+            从翻译历史中查找相似文本，避免重复翻译。适合游戏等重复文本场景。
+          </p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-primary font-medium">
+                  启用翻译记忆库
+                </p>
+                <p className="text-xs text-text-secondary mt-1">
+                  翻译前先查询历史记录中的相似文本
+                </p>
+              </div>
+              <button
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  config.tmEnabled ? "bg-primary" : "bg-bg-tertiary"
+                }`}
+                onClick={() =>
+                  updateConfig((prev) => ({
+                    ...prev,
+                    tmEnabled: !prev.tmEnabled,
+                  }))
+                }
+              >
+                <div
+                  className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                    config.tmEnabled ? "translate-x-6" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {config.tmEnabled && (
+              <div>
+                <label className="block text-xs text-text-secondary mb-1.5">
+                  相似度阈值: {((config.tmThreshold ?? 0.8) * 100).toFixed(0)}%
+                </label>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="1"
+                  step="0.05"
+                  value={config.tmThreshold ?? 0.8}
+                  onChange={(e) =>
+                    updateConfig((prev) => ({
+                      ...prev,
+                      tmThreshold: parseFloat(e.target.value),
+                    }))
+                  }
+                  className="w-full accent-primary"
+                />
+                <div className="flex justify-between text-[10px] text-text-secondary mt-1">
+                  <span>50% (宽松)</span>
+                  <span>100% (精确匹配)</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* Custom Prompt Section */}
         <section className="bg-bg-secondary border border-border rounded-xl p-5 mb-5">
           <h2 className="text-base font-semibold text-primary mb-4">
@@ -908,7 +1076,7 @@ function Settings() {
                       onClick={() =>
                         updateConfig((prev) => ({
                           ...prev,
-                          autoCopyMode: mode.value as any,
+                          autoCopyMode: mode.value as AutoCopyMode,
                         }))
                       }
                     >
@@ -981,6 +1149,38 @@ function Settings() {
                 />
               </button>
             </div>
+
+            {/* Furigana */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-primary font-medium flex items-center gap-1.5">
+                  <BookOpen size={14} />
+                  {t("settings.general.furigana")}
+                </p>
+                <p className="text-xs text-text-secondary mt-1">
+                  {t("settings.general.furiganaHint")}
+                </p>
+              </div>
+              <button
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  config.furiganaEnabled ? "bg-primary" : "bg-bg-tertiary"
+                }`}
+                onClick={() =>
+                  updateConfig((prev) => ({
+                    ...prev,
+                    furiganaEnabled: !prev.furiganaEnabled,
+                  }))
+                }
+              >
+                <div
+                  className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                    config.furiganaEnabled
+                      ? "translate-x-6"
+                      : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </section>
 
@@ -1044,7 +1244,9 @@ function Settings() {
               <button
                 className="bg-primary text-white rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors"
                 onClick={(e) => {
-                  const input = (e.target as HTMLElement).previousElementSibling as HTMLInputElement;
+                  const btn = e.currentTarget;
+                  const input = btn.previousElementSibling as HTMLInputElement | null;
+                  if (!input) return;
                   const word = input.value.trim();
                   if (word && !(config.translationBlacklist || []).includes(word)) {
                     updateConfig((prev) => ({
@@ -1057,6 +1259,171 @@ function Settings() {
               >
                 {t("settings.blacklist.add")}
               </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Pre-Processing Section */}
+        <section className="bg-bg-secondary border border-border rounded-xl p-5 mb-5">
+          <h2 className="text-base font-semibold text-primary mb-4 flex items-center gap-2">
+            <Wand2 size={18} />
+            {t("settings.preProcess.title")}
+          </h2>
+          <p className="text-xs text-text-secondary mb-4">
+            {t("settings.preProcess.hint")}
+          </p>
+
+          <div className="space-y-4">
+            {/* Trim Whitespace */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-primary font-medium">{t("settings.preProcess.trimWhitespace")}</p>
+                <p className="text-xs text-text-secondary mt-1">{t("settings.preProcess.trimWhitespaceHint")}</p>
+              </div>
+              <button
+                className={`relative w-12 h-6 rounded-full transition-colors ${preConfig.trimWhitespace ? "bg-primary" : "bg-bg-tertiary"}`}
+                onClick={() => savePreProcessConfig({ ...preConfig, trimWhitespace: !preConfig.trimWhitespace })}
+              >
+                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${preConfig.trimWhitespace ? "translate-x-6" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+
+            {/* Normalize Unicode */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-primary font-medium">{t("settings.preProcess.normalizeUnicode")}</p>
+                <p className="text-xs text-text-secondary mt-1">{t("settings.preProcess.normalizeUnicodeHint")}</p>
+              </div>
+              <button
+                className={`relative w-12 h-6 rounded-full transition-colors ${preConfig.normalizeUnicode ? "bg-primary" : "bg-bg-tertiary"}`}
+                onClick={() => savePreProcessConfig({ ...preConfig, normalizeUnicode: !preConfig.normalizeUnicode })}
+              >
+                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${preConfig.normalizeUnicode ? "translate-x-6" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+
+            {/* Remove Control Chars */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-primary font-medium">{t("settings.preProcess.removeControlChars")}</p>
+                <p className="text-xs text-text-secondary mt-1">{t("settings.preProcess.removeControlCharsHint")}</p>
+              </div>
+              <button
+                className={`relative w-12 h-6 rounded-full transition-colors ${preConfig.removeControlChars ? "bg-primary" : "bg-bg-tertiary"}`}
+                onClick={() => savePreProcessConfig({ ...preConfig, removeControlChars: !preConfig.removeControlChars })}
+              >
+                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${preConfig.removeControlChars ? "translate-x-6" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+
+            {/* Replacement Rules */}
+            <div className="pt-2 border-t border-border">
+              <h3 className="text-sm font-medium text-text-primary mb-3">{t("settings.preProcess.replacementRules")}</h3>
+
+              {preConfig.rules.length === 0 ? (
+                <p className="text-xs text-text-secondary mb-3">{t("settings.preProcess.noRules")}</p>
+              ) : (
+                <div className="space-y-2 mb-3">
+                  {preConfig.rules.map((rule) => (
+                    <div key={rule.id} className="flex items-center gap-2 bg-bg-tertiary rounded-lg p-2 group">
+                      <button
+                        className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${rule.enabled ? "bg-primary border-primary" : "border-border"}`}
+                        onClick={() => togglePreRuleEnabled(rule)}
+                      >
+                        {rule.enabled && <Check size={10} className="text-white" />}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <span className={`text-xs font-mono ${!rule.enabled ? "text-text-secondary line-through" : "text-text-primary"}`}>
+                          {rule.pattern}
+                        </span>
+                        <span className="text-xs text-text-secondary mx-1">→</span>
+                        <span className={`text-xs font-mono ${!rule.enabled ? "text-text-secondary line-through" : "text-accent"}`}>
+                          {rule.replacement}
+                        </span>
+                        {rule.isRegex && (
+                          <span className="ml-1 text-xs bg-primary/20 text-primary px-1 rounded">.*</span>
+                        )}
+                        {rule.langPair && (
+                          <span className="ml-1 text-xs bg-accent/20 text-accent px-1 rounded">{rule.langPair}</span>
+                        )}
+                      </div>
+                      <button
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-error/20 text-text-secondary hover:text-error"
+                        onClick={() => removePreProcessRule(rule.id)}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add new rule */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newPreRulePattern}
+                  onChange={(e) => setNewPreRulePattern(e.target.value)}
+                  placeholder={t("settings.preProcess.pattern")}
+                  className="flex-1 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-1.5 text-sm focus:border-primary outline-none"
+                />
+                <input
+                  type="text"
+                  value={newPreRuleReplacement}
+                  onChange={(e) => setNewPreRuleReplacement(e.target.value)}
+                  placeholder={t("settings.preProcess.replacement")}
+                  className="flex-1 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-1.5 text-sm focus:border-primary outline-none"
+                />
+                <input
+                  type="text"
+                  value={newPreRuleLangPair}
+                  onChange={(e) => setNewPreRuleLangPair(e.target.value)}
+                  placeholder={t("settings.preProcess.langPairPlaceholder")}
+                  className="w-28 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-1.5 text-sm focus:border-primary outline-none"
+                />
+                <button
+                  className={`px-2 py-1.5 rounded-lg text-xs transition-colors ${newPreRuleIsRegex ? "bg-primary text-white" : "bg-bg-tertiary text-text-secondary border border-border"}`}
+                  onClick={() => setNewPreRuleIsRegex(!newPreRuleIsRegex)}
+                  title={t("settings.preProcess.isRegex")}
+                >
+                  .*
+                </button>
+                <button
+                  className="bg-primary text-white rounded-lg px-3 py-1.5 text-sm hover:bg-primary/80 transition-colors flex items-center gap-1"
+                  onClick={addPreProcessRule}
+                  disabled={!newPreRulePattern.trim()}
+                >
+                  <Plus size={14} />
+                  {t("settings.preProcess.addRule")}
+                </button>
+              </div>
+            </div>
+
+            {/* Test */}
+            <div className="pt-2 border-t border-border">
+              <h3 className="text-sm font-medium text-text-primary mb-3">{t("settings.preProcess.test")}</h3>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={preTestInput}
+                  onChange={(e) => setPreTestInput(e.target.value)}
+                  placeholder={t("settings.preProcess.testInput")}
+                  className="flex-1 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-1.5 text-sm focus:border-primary outline-none"
+                  onKeyDown={(e) => e.key === "Enter" && runPreProcessTest()}
+                />
+                <button
+                  className="bg-accent text-white rounded-lg px-3 py-1.5 text-sm hover:bg-accent/80 transition-colors"
+                  onClick={runPreProcessTest}
+                  disabled={!preTestInput.trim()}
+                >
+                  {t("settings.preProcess.test")}
+                </button>
+              </div>
+              {preTestOutput && (
+                <div className="bg-bg-tertiary rounded-lg p-3 text-sm text-text-primary font-mono">
+                  {preTestOutput}
+                </div>
+              )}
             </div>
           </div>
         </section>

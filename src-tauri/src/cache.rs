@@ -28,10 +28,17 @@ fn cache_path() -> PathBuf {
 
 impl TranslationCache {
     pub fn new(max_size: usize) -> Self {
-        let conn = Connection::open(cache_path()).expect("Failed to open cache database");
+        let conn = match Connection::open(cache_path()) {
+            Ok(conn) => conn,
+            Err(e) => {
+                log::error!("Failed to open cache database: {}", e);
+                // Create in-memory database as fallback
+                Connection::open_in_memory().expect("Failed to create in-memory cache")
+            }
+        };
 
         // Create table if not exists
-        conn.execute_batch(
+        if let Err(e) = conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS translations (
                 cache_key TEXT PRIMARY KEY,
                 from_lang TEXT NOT NULL,
@@ -45,8 +52,9 @@ impl TranslationCache {
             CREATE INDEX IF NOT EXISTS idx_timestamp ON translations(timestamp);
             CREATE INDEX IF NOT EXISTS idx_from_to ON translations(from_lang, to_lang);
             ",
-        )
-        .expect("Failed to create cache table");
+        ) {
+            log::error!("Failed to create cache table: {}", e);
+        }
 
         Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -187,21 +195,27 @@ impl TranslationCache {
             .unwrap_or(0);
 
         // Get per-engine stats
-        let mut stmt = conn
+        let engine_stats = match conn
             .prepare("SELECT engine, COUNT(*), SUM(hits) FROM translations GROUP BY engine")
-            .unwrap();
-
-        let engine_stats: Vec<EngineStats> = stmt
-            .query_map([], |row| {
+        {
+            Ok(mut stmt) => match stmt.query_map([], |row| {
                 Ok(EngineStats {
                     engine: row.get(0)?,
                     entries: row.get(1)?,
                     hits: row.get(2)?,
                 })
-            })
-            .unwrap()
-            .filter_map(|r| r.ok())
-            .collect();
+            }) {
+                Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+                Err(e) => {
+                    log::error!("Failed to query engine stats: {}", e);
+                    Vec::new()
+                }
+            },
+            Err(e) => {
+                log::error!("Failed to prepare engine stats query: {}", e);
+                Vec::new()
+            }
+        };
 
         CacheStats {
             total_entries,

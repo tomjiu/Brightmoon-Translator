@@ -1,7 +1,7 @@
 // ─── OCR Overlay Sync ────────────────────────────────────────────────────────
 // Manages overlay window creation, content updates, and position syncing.
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "../services/invoke";
 import type { OcrRegion } from "./useOcrMonitor";
 
 export class OverlaySyncManager {
@@ -29,22 +29,22 @@ export class OverlaySyncManager {
       // First creation: create overlay with position and text
       const overlayX = region.x + region.width + 10;
       const overlayY = region.y;
-      await invoke("update_overlay", {
+      await safeInvoke("update_overlay", {
         x: overlayX,
         y: overlayY,
         width: 350,
         height: 200,
         text: translatedText,
         showControls: true,
-      });
+      }, { silent: true });
       this.created = true;
       this.lastText = translatedText;
     } else if (textChanged) {
       // Text changed but overlay exists: update content only (preserves pin/click-through)
-      await invoke("update_overlay_content", {
+      await safeInvoke("update_overlay_content", {
         source: "",
         translated: translatedText,
-      });
+      }, { silent: true });
       this.lastText = translatedText;
     }
   }
@@ -52,11 +52,7 @@ export class OverlaySyncManager {
   /** Update overlay position (used when bound window moves) */
   async updatePosition(x: number, y: number): Promise<void> {
     if (!this.created) return;
-    try {
-      await invoke("update_overlay_position", { x, y });
-    } catch {
-      // Overlay may have been closed externally
-    }
+    await safeInvoke("update_overlay_position", { x, y }, { silent: true });
   }
 
   /** Reset state (when monitoring stops) */

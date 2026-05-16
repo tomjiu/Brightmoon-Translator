@@ -1,8 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { safeInvoke, invokeOrThrow } from "../services/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "../i18n";
 import { useConfigStore } from "../stores/configStore";
+import {
+  showOverlayAt,
+  positionBelowText,
+  positionAtWindowBottom,
+} from "../services/overlayPosition";
 import {
   Zap,
   Square,
@@ -30,28 +35,30 @@ interface HookTranslatedItem {
   textRect?: [number, number, number, number]; // [x, y, w, h] screen coords
 }
 
-const DEFAULT_HOOK_CONFIG = {
-  enabledSources: ["uia", "clipboard", "ocr", "hook"] as string[],
-  showOverlay: true,
-  autoCopy: false,
-  enabled: true,
-  uiaIntervalMs: 500,
-  ocrIntervalMs: 5000,
+const formatTime = (timestamp: number) => {
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 };
 
 function HookMonitor() {
   const { t } = useI18n();
-  const { config, updateConfig, saveConfig } = useConfigStore();
+  const config = useConfigStore((s) => s.config);
+  const updateConfig = useConfigStore((s) => s.updateConfig);
+  const saveConfig = useConfigStore((s) => s.saveConfig);
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<HookTranslatedItem[]>([]);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [speakingId, setSpeakingId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
-  const hookConfig = config.hook ?? DEFAULT_HOOK_CONFIG;
-  const [showOverlay, setShowOverlay] = useState(hookConfig.showOverlay);
-  const [autoCopy, setAutoCopy] = useState(hookConfig.autoCopy);
-  const [enabledSources, setEnabledSources] = useState<string[]>(hookConfig.enabledSources);
+  const hookConfig = config.hook;
+  const [showOverlay, setShowOverlay] = useState(hookConfig?.showOverlay ?? true);
+  const [autoCopy, setAutoCopy] = useState(hookConfig?.autoCopy ?? false);
+  const [enabledSources, setEnabledSources] = useState<string[]>(hookConfig?.enabledSources ?? ["uia", "clipboard", "ocr", "hook"]);
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const idCounter = useRef(0);
@@ -65,14 +72,17 @@ function HookMonitor() {
 
   // Check initial status
   useEffect(() => {
-    invoke<boolean>("get_hook_monitor_status").then((running) => {
-      setIsRunning(running);
-    });
+    invokeOrThrow<boolean>("get_hook_monitor_status")
+      .then((running) => {
+        setIsRunning(running);
+      })
+      .catch(() => {});
   }, []);
 
   // Listen for hook-text-translated events
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
 
     const setup = async () => {
       unlisten = await listen<{
@@ -109,50 +119,34 @@ function HookMonitor() {
 
         // Show in overlay positioned at target window bottom
         if (showOverlay) {
-          const positionOverlay = (x: number, y: number, w: number, h: number) => {
-            const overlayW = Math.min(500, w - 40);
-            const overlayH = 180;
-            const ox = x + (w - overlayW) / 2;
-            const oy = y + h - overlayH - 20;
-            invoke("update_overlay", {
-              x: Math.round(ox),
-              y: Math.round(oy),
-              width: Math.round(overlayW),
-              height: overlayH,
-              text: item.translated,
-              source: item.original,
-              overlayLevel: 2,
-            }).catch(() => {});
-          };
-
           if (item.textRect) {
             // Use precise text position: overlay below the text element
             const [tx, ty, tw, th] = item.textRect;
-            const overlayW = Math.min(500, tw + 60);
-            const overlayH = 180;
-            const ox = tx + (tw - overlayW) / 2;
-            const oy = ty + th + 8; // below the text element
-            invoke("update_overlay", {
-              x: Math.round(ox),
-              y: Math.round(oy),
-              width: Math.round(overlayW),
-              height: overlayH,
-              text: item.translated,
-              source: item.original,
-              overlayLevel: 2,
-            }).catch(() => {});
+            const pos = positionBelowText(tx, ty, tw, th);
+            showOverlayAt(pos, item.translated, item.original);
           } else {
             // Fallback: position at bottom of foreground window
-            invoke<[number, number, number, number]>("get_foreground_window_rect")
-              .then(([wx, wy, ww, wh]) => positionOverlay(wx, wy, ww, wh))
-              .catch(() => {});
+            safeInvoke<[number, number, number, number]>("get_foreground_window_rect", undefined, { silent: true })
+              .then(([rect]) => {
+                if (rect) {
+                  const [wx, wy, ww, wh] = rect;
+                  const pos = positionAtWindowBottom(wx, wy, ww, wh);
+                  showOverlayAt(pos, item.translated, item.original);
+                }
+              });
           }
         }
       });
+
+      if (cancelled && unlisten) {
+        unlisten();
+        unlisten = null;
+      }
     };
 
     setup();
     return () => {
+      cancelled = true;
       if (unlisten) unlisten();
     };
   }, [autoCopy, showOverlay]);
@@ -175,12 +169,12 @@ function HookMonitor() {
   const handleToggle = useCallback(async () => {
     try {
       if (isRunning) {
-        await invoke("stop_hook_monitor");
+        await invokeOrThrow("stop_hook_monitor");
         setIsRunning(false);
       } else {
         // Ensure config (source selection, intervals) is saved before starting
         await saveConfig();
-        await invoke("start_hook_monitor");
+        await invokeOrThrow("start_hook_monitor");
         setIsRunning(true);
       }
     } catch (err) {
@@ -201,7 +195,7 @@ function HookMonitor() {
   const speakText = useCallback(async (text: string, lang: string, id: number) => {
     try {
       setSpeakingId(id);
-      const base64Audio = await invoke<string>("text_to_speech", { text, lang });
+      const base64Audio = await invokeOrThrow<string>("text_to_speech", { text, lang });
       const audioBytes = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
       const audioBlob = new Blob([audioBytes], { type: "audio/mp3" });
       const audioUrl = URL.createObjectURL(audioBlob);
@@ -241,7 +235,7 @@ function HookMonitor() {
     updateConfig((prev) => ({
       ...prev,
       hookShowOverlay: next,
-      hook: { ...(prev.hook ?? DEFAULT_HOOK_CONFIG), showOverlay: next },
+      hook: { ...prev.hook, showOverlay: next },
     }));
   }, [showOverlay, updateConfig]);
 
@@ -251,7 +245,7 @@ function HookMonitor() {
     updateConfig((prev) => ({
       ...prev,
       hookAutoCopy: next,
-      hook: { ...(prev.hook ?? DEFAULT_HOOK_CONFIG), autoCopy: next },
+      hook: { ...prev.hook, autoCopy: next },
     }));
   }, [autoCopy, updateConfig]);
 
@@ -262,7 +256,7 @@ function HookMonitor() {
         : [...prev, source];
       updateConfig((cfg) => ({
         ...cfg,
-        hook: { ...(cfg.hook ?? DEFAULT_HOOK_CONFIG), enabledSources: next },
+        hook: { ...cfg.hook, enabledSources: next },
       }));
       // Persist source config since it's read at monitor start
       setTimeout(() => saveConfig(), 0);
@@ -270,24 +264,17 @@ function HookMonitor() {
     });
   }, [updateConfig, saveConfig]);
 
-  const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString("zh-CN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  };
-
   // Filter results by search query
-  const filteredResults = searchQuery
+  const filteredResults = useMemo(() => searchQuery
     ? results.filter(
         (r) =>
           r.original.toLowerCase().includes(searchQuery.toLowerCase()) ||
           r.translated.toLowerCase().includes(searchQuery.toLowerCase()) ||
           r.windowTitle.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : results;
+    : results,
+    [results, searchQuery]
+  );
 
   return (
     <div className="flex flex-col h-full gap-3 p-4">

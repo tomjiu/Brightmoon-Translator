@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "../services/invoke";
 import { captureScreen, ocrImage } from "../services/ocr";
 import { useTranslateStore } from "../stores/translateStore";
 import { useConfigStore } from "../stores/configStore";
@@ -183,9 +183,7 @@ export function useOcrMonitor() {
             consecutiveEmptyRef.current >= MAX_CONSECUTIVE_EMPTY &&
             overlayRef.current.isCreated()
           ) {
-            console.log(
-              `[OCR] ${consecutiveEmptyRef.current} consecutive empty results, keeping last overlay`
-            );
+            // Keep last overlay after many consecutive empty results
           }
         } else {
           // Valid text
@@ -221,11 +219,7 @@ export function useOcrMonitor() {
           }
         }
 
-        // Performance log
-        const totalMs = diag.captureMs + diag.ocrMs + diag.translateMs;
-        console.log(
-          `[OCR] cycle=${cycleCountRef.current} capture=${diag.captureMs.toFixed(0)}ms ocr=${diag.ocrMs.toFixed(0)}ms translate=${diag.translateMs.toFixed(0)}ms total=${totalMs.toFixed(0)}ms changed=${diag.textChanged} skip=${diag.skipped ? diag.skipReason : "none"} quality=${diag.qualityScore.toFixed(2)} len=${diag.textLen}`
-        );
+        // Performance diagnostics available in diag object if needed
       } catch (e) {
         console.error("[OCR] Monitor error:", e);
         diag.skipped = true;
@@ -387,10 +381,9 @@ export function useOcrMonitor() {
       lastGoodTextRef.current = "";
 
       if (clickThrough) {
-        try {
-          await invoke("set_overlay_click_through", { ignore: true });
-        } catch (e) {
-          console.warn("[OCR] Failed to set click-through:", e);
+        const [, err] = await safeInvoke("set_overlay_click_through", { ignore: true }, { silent: true });
+        if (err) {
+          console.warn("[OCR] Failed to set click-through:", err);
         }
       }
 
@@ -408,17 +401,15 @@ export function useOcrMonitor() {
 
   const toggleClickThrough = useCallback(async () => {
     const newValue = !state.clickThrough;
-    await invoke("set_overlay_click_through", { ignore: newValue });
+    await safeInvoke("set_overlay_click_through", { ignore: newValue }, { silent: true });
     setState((prev) => ({ ...prev, clickThrough: newValue }));
     useConfigStore.getState().updateConfig((prev) => ({ ...prev, ocrClickThrough: newValue }));
   }, [state.clickThrough]);
 
   const togglePin = useCallback(async () => {
-    try {
-      const result = await invoke<boolean>("pin_overlay");
+    const [result] = await safeInvoke<boolean>("pin_overlay", undefined, { silent: true });
+    if (result !== null) {
       setState((prev) => ({ ...prev, pinned: result }));
-    } catch {
-      // Overlay doesn't exist yet
     }
   }, []);
 
@@ -440,6 +431,7 @@ export function useOcrMonitor() {
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
     const setupListener = async () => {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
@@ -451,12 +443,17 @@ export function useOcrMonitor() {
             autoPause();
           }
         });
+        if (cancelled && unlisten) {
+          unlisten();
+          unlisten = null;
+        }
       } catch {
         // Ignore if not in Tauri context
       }
     };
     setupListener();
     return () => {
+      cancelled = true;
       if (unlisten) unlisten();
     };
   }, [autoPause, autoResume]);

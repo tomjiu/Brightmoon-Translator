@@ -5,20 +5,27 @@ use tauri::State;
 
 #[tauri::command]
 pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, String> {
-    let config = state.config.lock().await;
+    let config = state.system.config.lock().await;
     Ok(config.clone())
+}
+
+/// Returns the default AppConfig. Used by the frontend to get authoritative
+/// defaults instead of maintaining a duplicated TypeScript default object.
+#[tauri::command]
+pub async fn get_default_config() -> Result<AppConfig, String> {
+    Ok(AppConfig::default())
 }
 
 #[tauri::command]
 pub async fn save_config(state: State<'_, AppState>, config: AppConfig) -> Result<(), String> {
     config.save();
-    let mut current = state.config.lock().await;
+    let mut current = state.system.config.lock().await;
     *current = config.clone();
     drop(current);
 
     // Rebuild engine router with new config (safe RwLock write)
     let new_router = Router::new(&config);
-    let mut router = state.engine_router.write().await;
+    let mut router = state.translation.engine_router.write().await;
     *router = new_router;
 
     Ok(())
@@ -32,7 +39,7 @@ pub async fn save_window_position(
     width: f64,
     height: f64,
 ) -> Result<(), String> {
-    let mut config = state.config.lock().await;
+    let mut config = state.system.config.lock().await;
     config.window_x = Some(x);
     config.window_y = Some(y);
     config.window_width = Some(width);
@@ -45,7 +52,7 @@ pub async fn save_window_position(
 pub async fn get_window_position(
     state: State<'_, AppState>,
 ) -> Result<Option<(f64, f64, f64, f64)>, String> {
-    let config = state.config.lock().await;
+    let config = state.system.config.lock().await;
     if let (Some(x), Some(y), Some(w), Some(h)) = (
         config.window_x,
         config.window_y,
@@ -62,7 +69,7 @@ pub async fn get_window_position(
 pub async fn get_api_server_status(
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
-    let config = state.config.lock().await;
+    let config = state.system.config.lock().await;
     Ok(serde_json::json!({
         "enabled": config.api_server_enabled,
         "port": config.api_server_port,
@@ -71,7 +78,7 @@ pub async fn get_api_server_status(
 
 #[tauri::command]
 pub async fn export_config_json(state: State<'_, AppState>) -> Result<String, String> {
-    let config = state.config.lock().await;
+    let config = state.system.config.lock().await;
     serde_json::to_string_pretty(&*config).map_err(|e| e.to_string())
 }
 
@@ -80,13 +87,13 @@ pub async fn import_config_json(state: State<'_, AppState>, json: String) -> Res
     let imported: AppConfig =
         serde_json::from_str(&json).map_err(|e| format!("Invalid config JSON: {}", e))?;
     imported.save();
-    let mut current = state.config.lock().await;
+    let mut current = state.system.config.lock().await;
     *current = imported.clone();
     drop(current);
 
     // Rebuild engine router (safe RwLock write)
     let new_router = Router::new(&imported);
-    let mut router = state.engine_router.write().await;
+    let mut router = state.translation.engine_router.write().await;
     *router = new_router;
 
     Ok(())
@@ -94,7 +101,7 @@ pub async fn import_config_json(state: State<'_, AppState>, json: String) -> Res
 
 #[tauri::command]
 pub async fn get_translation_blacklist(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let config = state.config.lock().await;
+    let config = state.system.config.lock().await;
     Ok(config.translation_blacklist.clone())
 }
 
@@ -103,7 +110,7 @@ pub async fn update_translation_blacklist(
     state: State<'_, AppState>,
     blacklist: Vec<String>,
 ) -> Result<(), String> {
-    let mut config = state.config.lock().await;
+    let mut config = state.system.config.lock().await;
     config.translation_blacklist = blacklist;
     config.save();
     Ok(())

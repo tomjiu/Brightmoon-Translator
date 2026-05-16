@@ -31,7 +31,7 @@ pub async fn translate_subtitle(
     // Use batch translation with progress
     let window_clone = window.clone();
     let batch_results = state
-        .translation_service
+        .translation.service
         .translate_embedded_batch(
             &entries_to_translate
                 .iter()
@@ -84,6 +84,22 @@ pub async fn export_subtitle_file(
     output_path: String,
     bilingual: bool,
 ) -> Result<String, String> {
+    // Validate output path: must have a parent directory that exists
+    let out = std::path::Path::new(&output_path);
+    let parent = out
+        .parent()
+        .ok_or_else(|| "Invalid output path".to_string())?;
+    if !parent.as_os_str().is_empty() && !parent.exists() {
+        return Err(format!(
+            "Output directory does not exist: {}",
+            parent.display()
+        ));
+    }
+    // Reject paths with traversal components
+    if output_path.contains("..") {
+        return Err("Output path must not contain '..'".to_string());
+    }
+
     let doc = subtitle::extract_text_from_subtitle(&file_path)?;
     let content = subtitle::export_subtitle(&doc, bilingual);
 
@@ -101,7 +117,7 @@ pub async fn translate_subtitle_text(
     to_lang: String,
 ) -> Result<String, String> {
     state
-        .translation_service
+        .translation.service
         .translate_primary(&text, &from_lang, &to_lang)
         .await
         .map_err(|e| e.to_string())

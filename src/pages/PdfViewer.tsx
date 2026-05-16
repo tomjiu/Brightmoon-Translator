@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
 import { FileText, Languages, Download, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -51,7 +51,7 @@ function PdfViewer() {
       });
 
       if (selected) {
-        const path = typeof selected === "string" ? selected : (selected as any).path;
+        const path = selected;
         setFilePath(path);
         setFileName(path.split(/[/\\]/).pop() || "document.pdf");
         setTranslatedPdf(null);
@@ -60,7 +60,7 @@ function PdfViewer() {
         // Load PDF content
         setLoading(true);
         try {
-          const doc = await invoke<PdfDocument>("open_pdf", { filePath: path });
+          const doc = await invokeOrThrow<PdfDocument>("open_pdf", { filePath: path });
           setPdfDoc(doc);
         } catch (err) {
           console.error("Failed to open PDF:", err);
@@ -78,7 +78,7 @@ function PdfViewer() {
 
     setTranslating(true);
     try {
-      const result = await invoke<TranslatedPdf>("translate_pdf", {
+      const result = await invokeOrThrow<TranslatedPdf>("translate_pdf", {
         filePath,
         fromLang,
         toLang,

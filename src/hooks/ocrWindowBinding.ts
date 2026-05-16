@@ -1,7 +1,7 @@
 // ─── OCR Window Binding ──────────────────────────────────────────────────────
 // Manages binding the OCR region to a target window and tracking its movement.
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "../services/invoke";
 import type { OcrRegion } from "./useOcrMonitor";
 
 export interface BoundWindow {
@@ -64,40 +64,30 @@ export class WindowBindingManager {
 
   /** Bind to the foreground window and start tracking */
   async bind(region: OcrRegion): Promise<BoundWindow | null> {
-    try {
-      const hwnd = await invoke<number>("detect_foreground_hwnd");
-      if (hwnd <= 0) return null;
+    const [hwnd, hwndErr] = await safeInvoke<number>("detect_foreground_hwnd", undefined, { silent: true });
+    if (hwndErr || !hwnd || hwnd <= 0) return null;
 
-      const rect = await invoke<WindowRect | null>("get_window_rect_cmd", { hwnd });
-      if (!rect) return null;
+    const [rect, rectErr] = await safeInvoke<WindowRect | null>("get_window_rect_cmd", { hwnd }, { silent: true });
+    if (rectErr || !rect) return null;
 
-      let title = "";
-      try {
-        title = await invoke<string>("get_window_title_cmd", { hwnd });
-      } catch {
-        title = `Window ${hwnd}`;
-      }
+    const [title] = await safeInvoke<string>("get_window_title_cmd", { hwnd }, { silent: true });
 
-      const bound: BoundWindow = {
-        hwnd,
-        title,
-        offset: {
-          dx: region.x - rect.x,
-          dy: region.y - rect.y,
-          width: region.width,
-          height: region.height,
-        },
-        lastRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-      };
+    const bound: BoundWindow = {
+      hwnd,
+      title: title || `Window ${hwnd}`,
+      offset: {
+        dx: region.x - rect.x,
+        dy: region.y - rect.y,
+        width: region.width,
+        height: region.height,
+      },
+      lastRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+    };
 
-      this.hwnd = hwnd;
-      this.boundWindow = bound;
-      this.startFollowLoop(hwnd);
-      return bound;
-    } catch (e) {
-      console.warn("[OCR] Failed to bind window:", e);
-      return null;
-    }
+    this.hwnd = hwnd;
+    this.boundWindow = bound;
+    this.startFollowLoop(hwnd);
+    return bound;
   }
 
   /** Stop tracking and clear binding state */
@@ -131,57 +121,53 @@ export class WindowBindingManager {
     }
 
     this.followTimer = setInterval(async () => {
-      try {
-        const rect = await invoke<WindowRect | null>("get_window_rect_cmd", { hwnd });
-        if (!rect || !this.regionRef || !this.boundWindow) return;
+      const [rect] = await safeInvoke<WindowRect | null>("get_window_rect_cmd", { hwnd }, { silent: true });
+      if (!rect || !this.regionRef || !this.boundWindow) return;
 
-        const bw = this.boundWindow;
-        const lastRect = bw.lastRect;
+      const bw = this.boundWindow;
+      const lastRect = bw.lastRect;
 
-        // Check if minimized (width/height == 0)
-        if (rect.width === 0 && rect.height === 0) {
-          if (!this.wasMinimized) {
-            this.wasMinimized = true;
-            this.callbacks.onWindowMinimized();
-          }
-          return;
+      // Check if minimized (width/height == 0)
+      if (rect.width === 0 && rect.height === 0) {
+        if (!this.wasMinimized) {
+          this.wasMinimized = true;
+          this.callbacks.onWindowMinimized();
         }
+        return;
+      }
 
-        // Check if window moved
-        const shouldMove =
-          !lastRect ||
-          Math.abs(rect.x - lastRect.x) > 2 ||
-          Math.abs(rect.y - lastRect.y) > 2;
+      // Check if window moved
+      const shouldMove =
+        !lastRect ||
+        Math.abs(rect.x - lastRect.x) > 2 ||
+        Math.abs(rect.y - lastRect.y) > 2;
 
-        if (shouldMove) {
-          const newRegion: OcrRegion = {
-            x: rect.x + bw.offset.dx,
-            y: rect.y + bw.offset.dy,
-            width: bw.offset.width,
-            height: bw.offset.height,
-          };
-          this.regionRef = newRegion;
-          this.boundWindow = {
-            ...bw,
-            lastRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-          };
-          this.callbacks.onRegionUpdate(newRegion);
+      if (shouldMove) {
+        const newRegion: OcrRegion = {
+          x: rect.x + bw.offset.dx,
+          y: rect.y + bw.offset.dy,
+          width: bw.offset.width,
+          height: bw.offset.height,
+        };
+        this.regionRef = newRegion;
+        this.boundWindow = {
+          ...bw,
+          lastRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        };
+        this.callbacks.onRegionUpdate(newRegion);
 
-          // Sync overlay position
-          if (this.overlayCreatedRef) {
-            const overlayX = newRegion.x + newRegion.width + 10;
-            const overlayY = newRegion.y;
-            this.callbacks.onOverlayPositionSync(overlayX, overlayY);
-          }
+        // Sync overlay position
+        if (this.overlayCreatedRef) {
+          const overlayX = newRegion.x + newRegion.width + 10;
+          const overlayY = newRegion.y;
+          this.callbacks.onOverlayPositionSync(overlayX, overlayY);
         }
+      }
 
-        // Auto-resume only on minimize→restore transition
-        if (this.wasMinimized && rect.width > 0 && rect.height > 0) {
-          this.wasMinimized = false;
-          this.callbacks.onWindowRestored();
-        }
-      } catch {
-        // Window might be gone
+      // Auto-resume only on minimize→restore transition
+      if (this.wasMinimized && rect.width > 0 && rect.height > 0) {
+        this.wasMinimized = false;
+        this.callbacks.onWindowRestored();
       }
     }, FOLLOW_POLL_MS);
   }

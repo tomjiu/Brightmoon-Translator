@@ -1,11 +1,12 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeOrThrow } from "../services/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslateStore } from "../stores/translateStore";
 import { useConfigStore } from "../stores/configStore";
 import { useI18n } from "../i18n";
 import { LANGUAGES } from "../types";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
+import { RubyText } from "../components/RubyText";
 import {
   ArrowLeftRight,
   Copy,
@@ -35,18 +36,19 @@ interface MainTranslatorProps {
 }
 
 function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
+  // Split high-frequency streaming state from stable state to reduce re-renders
+  const streamingText = useTranslateStore((s) => s.streamingText);
+  const isStreaming = useTranslateStore((s) => s.isStreaming);
+  const loading = useTranslateStore((s) => s.loading);
+  const sourceText = useTranslateStore((s) => s.sourceText);
+  const results = useTranslateStore((s) => s.results);
   const {
-    sourceText,
-    results,
     dictionaryResults,
     backTranslation,
     fromLang,
     toLang,
-    loading,
     detectedLang,
     error,
-    streamingText,
-    isStreaming,
     incrementalMode,
     incrementalEntries,
     translationHistory,
@@ -76,7 +78,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
     toggleEmbeddedMode,
   } = useTranslateStore();
 
-  const { config } = useConfigStore();
+  const config = useConfigStore((s) => s.config);
   const { t } = useI18n();
 
   // Speech recognition
@@ -143,7 +145,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
   const speakText = async (text: string, lang: string, index: number) => {
     try {
       setSpeakingIndex(index);
-      const base64Audio = await invoke<string>("text_to_speech", { text, lang });
+      const base64Audio = await invokeOrThrow<string>("text_to_speech", { text, lang });
       const audioBytes = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
       const audioBlob = new Blob([audioBytes], { type: "audio/mp3" });
       const audioUrl = URL.createObjectURL(audioBlob);
@@ -617,7 +619,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
                     </div>
                   ) : (
                     <div className="text-sm leading-relaxed text-text-primary select-text">
-                      {r.text}
+                      <RubyText text={r.text} enabled={config.furiganaEnabled && toLang === "ja"} />
                     </div>
                   )}
                 </div>

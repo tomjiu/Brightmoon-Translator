@@ -2,9 +2,13 @@ use serde::{Deserialize, Serialize};
 
 /// Result from a single translation engine
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TranslationResult {
     pub engine: String,
     pub text: String,
+    /// Optional latency in milliseconds (populated by LatencyFirst strategy)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u64>,
 }
 
 /// Response from translation containing results from one or more engines
@@ -148,6 +152,7 @@ mod tests {
             results: vec![TranslationResult {
                 engine: "test".to_string(),
                 text: "你好".to_string(),
+                latency_ms: None,
             }],
             detected_language: Some("en".to_string()),
         };

@@ -143,7 +143,7 @@ impl DeepLXEngine {
     fn get_timestamp(i_count: i64) -> i64 {
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as i64;
 
         if i_count != 0 {

@@ -6,6 +6,33 @@ use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::mpsc;
 
+/// Sanitize LLM error messages before sending to frontend.
+/// Strips content that could contain API keys or sensitive request details.
+fn sanitize_llm_error(status: reqwest::StatusCode, body: &str) -> String {
+    // Truncate long error bodies
+    let truncated = if body.len() > 200 {
+        &body[..200]
+    } else {
+        body
+    };
+    // Strip patterns that look like API keys (sk-..., Bearer ..., key=...)
+    let sanitized = truncated
+        .split(|c: char| c == ',' || c == '"' || c == '\'')
+        .map(|part| {
+            let trimmed = part.trim();
+            if (trimmed.starts_with("sk-") || trimmed.starts_with("Bearer ") || trimmed.contains("api_key"))
+                && trimmed.len() > 10
+            {
+                "***"
+            } else {
+                part
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("LLM API error {}: {}", status, sanitized)
+}
+
 pub struct LlmEngine {
     api_keys: Vec<String>,
     base_url: String,
@@ -107,7 +134,7 @@ impl LlmEngine {
         Some(&self.api_keys[idx])
     }
 
-    fn build_system_prompt(&self, from: &str, to: &str) -> String {
+    fn build_system_prompt(&self, from: &str, to: &str, glossary_hint: Option<&str>) -> String {
         let lang_map = |code: &str| -> String {
             match code {
                 "zh" => "中文".to_string(),
@@ -131,7 +158,7 @@ impl LlmEngine {
         let from_lang = lang_map(from);
         let to_lang = lang_map(to);
 
-        if !self.custom_prompt.is_empty() {
+        let base = if !self.custom_prompt.is_empty() {
             self.custom_prompt
                 .replace("{from}", &from_lang)
                 .replace("{to}", &to_lang)
@@ -149,6 +176,12 @@ impl LlmEngine {
 源语言：{from_lang}
 目标语言：{to_lang}"#
             )
+        };
+
+        // Append glossary hint if available
+        match glossary_hint {
+            Some(hint) if !hint.is_empty() => format!("{}\n\n{}", base, hint),
+            _ => base,
         }
     }
 
@@ -159,7 +192,7 @@ impl LlmEngine {
         to: &str,
         tx: mpsc::Sender<String>,
     ) -> anyhow::Result<String> {
-        let system_prompt = self.build_system_prompt(from, to);
+        let system_prompt = self.build_system_prompt(from, to, None);
         let total_keys = self.api_keys.len();
 
         let request = ChatRequest {
@@ -201,8 +234,11 @@ impl LlmEngine {
                     let status = resp.status();
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
-                        last_error = format!("LLM API error {}: {}", status, body);
-                        eprintln!("Key attempt {} failed: {}", attempt + 1, last_error);
+                        // Log full error body to backend log (may contain API details)
+                        log::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
+                        // Sanitize error for frontend: strip anything that looks like an API key
+                        let sanitized = sanitize_llm_error(status, &body);
+                        last_error = sanitized;
                         continue;
                     }
 
@@ -241,7 +277,114 @@ impl LlmEngine {
                 }
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
-                    eprintln!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    log::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    continue;
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "All {} API keys failed. Last error: {}",
+            total_keys,
+            last_error
+        ))
+    }
+
+    /// Stream translation with glossary hint injected into the system prompt
+    pub async fn translate_stream_with_glossary(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+        tx: mpsc::Sender<String>,
+        glossary_hint: &str,
+    ) -> anyhow::Result<String> {
+        if glossary_hint.is_empty() {
+            return self.translate_stream(text, from, to, tx).await;
+        }
+        let system_prompt = self.build_system_prompt(from, to, Some(glossary_hint));
+        let total_keys = self.api_keys.len();
+
+        let request = ChatRequest {
+            model: self.model.clone(),
+            messages: vec![
+                Message {
+                    role: "system".to_string(),
+                    content: system_prompt,
+                },
+                Message {
+                    role: "user".to_string(),
+                    content: text.to_string(),
+                },
+            ],
+            temperature: 0.3,
+            max_tokens: 4096,
+            stream: true,
+        };
+
+        let url = format!("{}/chat/completions", self.base_url);
+        let mut last_error = String::new();
+
+        for attempt in 0..total_keys.max(1) {
+            let key = if total_keys > 0 {
+                let idx = (self.key_index.fetch_add(1, Ordering::Relaxed)) % total_keys;
+                &self.api_keys[idx]
+            } else {
+                ""
+            };
+
+            let mut req = self.client.post(&url).json(&request);
+            if !key.is_empty() {
+                req = req.bearer_auth(key);
+            }
+
+            match req.send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if !status.is_success() {
+                        let body = resp.text().await.unwrap_or_default();
+                        log::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
+                        let sanitized = sanitize_llm_error(status, &body);
+                        last_error = sanitized;
+                        continue;
+                    }
+
+                    let mut stream = resp.bytes_stream();
+                    let mut full_text = String::new();
+                    let mut buffer = String::new();
+
+                    while let Some(chunk) = stream.next().await {
+                        let chunk = chunk?;
+                        let text = String::from_utf8_lossy(&chunk);
+                        buffer.push_str(&text);
+
+                        while let Some(line_end) = buffer.find('\n') {
+                            let line = buffer[..line_end].trim().to_string();
+                            buffer = buffer[line_end + 1..].to_string();
+
+                            if line.starts_with("data: ") {
+                                let data = &line[6..];
+                                if data == "[DONE]" {
+                                    break;
+                                }
+
+                                if let Ok(resp) = serde_json::from_str::<StreamResponse>(data) {
+                                    if let Some(choice) = resp.choices.first() {
+                                        if let Some(content) = &choice.delta.content {
+                                            full_text.push_str(content);
+                                            let _ = tx.send(content.clone()).await;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    return Ok(full_text);
+                }
+                Err(e) => {
+                    last_error = format!("Request failed: {}", e);
+                    log::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
                     continue;
                 }
             }
@@ -258,7 +401,7 @@ impl LlmEngine {
 #[async_trait]
 impl TranslationEngine for LlmEngine {
     async fn translate(&self, text: &str, from: &str, to: &str) -> anyhow::Result<String> {
-        let system_prompt = self.build_system_prompt(from, to);
+        let system_prompt = self.build_system_prompt(from, to, None);
         let total_keys = self.api_keys.len();
 
         let request = ChatRequest {
@@ -300,8 +443,11 @@ impl TranslationEngine for LlmEngine {
                     let status = resp.status();
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
-                        last_error = format!("LLM API error {}: {}", status, body);
-                        eprintln!("Key attempt {} failed: {}", attempt + 1, last_error);
+                        // Log full error body to backend log (may contain API details)
+                        log::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
+                        // Sanitize error for frontend: strip anything that looks like an API key
+                        let sanitized = sanitize_llm_error(status, &body);
+                        last_error = sanitized;
                         continue;
                     }
 
@@ -316,7 +462,7 @@ impl TranslationEngine for LlmEngine {
                 }
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
-                    eprintln!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    log::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
                     continue;
                 }
             }
@@ -358,7 +504,7 @@ impl LlmEngine {
             return self.translate(text, from, to).await;
         }
 
-        let system_prompt = self.build_system_prompt(from, to);
+        let system_prompt = self.build_system_prompt(from, to, None);
         let total_keys = self.api_keys.len();
 
         // Build context message
@@ -419,8 +565,11 @@ impl LlmEngine {
                     let status = resp.status();
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
-                        last_error = format!("LLM API error {}: {}", status, body);
-                        eprintln!("Key attempt {} failed: {}", attempt + 1, last_error);
+                        // Log full error body to backend log (may contain API details)
+                        log::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
+                        // Sanitize error for frontend: strip anything that looks like an API key
+                        let sanitized = sanitize_llm_error(status, &body);
+                        last_error = sanitized;
                         continue;
                     }
 
@@ -435,7 +584,94 @@ impl LlmEngine {
                 }
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
-                    eprintln!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    log::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    continue;
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "All {} API keys failed. Last error: {}",
+            total_keys,
+            last_error
+        ))
+    }
+
+    /// Translate with glossary terms injected into the system prompt.
+    /// This tells the LLM about preferred translations for specific terms.
+    pub async fn translate_with_glossary(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+        glossary_hint: &str,
+    ) -> anyhow::Result<String> {
+        if glossary_hint.is_empty() {
+            return self.translate(text, from, to).await;
+        }
+        let system_prompt = self.build_system_prompt(from, to, Some(glossary_hint));
+        self.call_llm(&system_prompt, text).await
+    }
+
+    /// Shared LLM call logic
+    async fn call_llm(&self, system_prompt: &str, user_text: &str) -> anyhow::Result<String> {
+        let total_keys = self.api_keys.len();
+        let request = ChatRequest {
+            model: self.model.clone(),
+            messages: vec![
+                Message {
+                    role: "system".to_string(),
+                    content: system_prompt.to_string(),
+                },
+                Message {
+                    role: "user".to_string(),
+                    content: user_text.to_string(),
+                },
+            ],
+            temperature: 0.3,
+            max_tokens: 4096,
+            stream: false,
+        };
+
+        let url = format!("{}/chat/completions", self.base_url);
+        let mut last_error = String::new();
+
+        for attempt in 0..total_keys.max(1) {
+            let key = if total_keys > 0 {
+                let idx = (self.key_index.fetch_add(1, Ordering::Relaxed)) % total_keys;
+                &self.api_keys[idx]
+            } else {
+                ""
+            };
+
+            let mut req = self.client.post(&url).json(&request);
+            if !key.is_empty() {
+                req = req.bearer_auth(key);
+            }
+
+            match req.send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if !status.is_success() {
+                        let body = resp.text().await.unwrap_or_default();
+                        log::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
+                        let sanitized = sanitize_llm_error(status, &body);
+                        last_error = sanitized;
+                        continue;
+                    }
+
+                    let chat_resp: ChatResponse = resp.json().await?;
+                    let content = chat_resp
+                        .choices
+                        .first()
+                        .map(|c| c.message.content.trim().to_string())
+                        .unwrap_or_default();
+
+                    return Ok(content);
+                }
+                Err(e) => {
+                    last_error = format!("Request failed: {}", e);
+                    log::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
                     continue;
                 }
             }
@@ -453,6 +689,8 @@ fn truncate_text(text: &str, max_len: usize) -> String {
     if text.len() <= max_len {
         text.to_string()
     } else {
-        format!("{}...", &text[..max_len])
+        // Use char-based truncation to avoid panicking on multi-byte UTF-8 boundaries
+        let truncated: String = text.chars().take(max_len).collect();
+        format!("{}...", truncated)
     }
 }

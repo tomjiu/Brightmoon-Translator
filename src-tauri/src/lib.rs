@@ -1,4 +1,5 @@
 pub mod api_server;
+pub mod app_context;
 pub mod blacklist;
 pub mod cache;
 pub mod capabilities;
@@ -7,7 +8,10 @@ pub mod config;
 pub mod dictionary;
 pub mod engine;
 pub mod epub_reader;
+pub mod furigana;
 pub mod glossary;
+pub mod hotkey;
+pub mod hook_profile;
 pub mod lang_detect;
 pub mod memory;
 pub mod metrics;
@@ -17,96 +21,49 @@ pub mod overlay;
 pub mod pdf;
 pub mod plugin;
 pub mod post_process;
+pub mod pre_process;
 pub mod selection;
 pub mod services;
 pub mod subtitle;
 pub mod tts;
 
-use cache::TranslationCache;
+use app_context::Contexts;
 use capabilities::{
-    DefaultInputReplacement, DefaultSelectionTranslation, HookMonitor, InputReplacement,
-    SelectionTranslation, TargetAppDetector, WindowsTargetAppDetector,
+    DefaultInputReplacement, DefaultSelectionTranslation, InputReplacement, SelectionTranslation,
 };
-use config::AppConfig;
-use glossary::Glossary;
-use memory::{HistoryStore, WordBookStore};
-use metrics::MetricsCollector;
-use overlay::FollowController;
-use post_process::PostProcessor;
-use services::TranslationService;
 use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
-use tokio::sync::{Mutex, OnceCell as TokioOnceCell, RwLock};
+use tokio::sync::OnceCell as TokioOnceCell;
 
+/// Top-level application state.
+/// Composed of sub-contexts for separation of concerns.
+/// Commands can access either the full AppState or specific sub-contexts.
 pub struct AppState {
-    pub config: Arc<Mutex<AppConfig>>,
-    pub history: Arc<Mutex<HistoryStore>>,
-    pub wordbook: Arc<Mutex<WordBookStore>>,
-    pub post_processor: Arc<Mutex<PostProcessor>>,
-    pub engine_router: Arc<RwLock<engine::Router>>,
-    pub cache: Arc<TranslationCache>,
-    pub glossary: Arc<Mutex<Glossary>>,
-    pub translation_service: Arc<TranslationService>,
-    pub metrics: Arc<MetricsCollector>,
-    pub selection_manager: Arc<selection::SelectionProviderManager>,
-    pub app_detector: Arc<dyn TargetAppDetector>,
-    /// Manages overlay position following (cursor / target bounds)
-    pub follow_controller: Arc<FollowController>,
-    /// Hook monitor for foreground window text
-    pub hook_monitor: Arc<Mutex<HookMonitor>>,
-    /// Initialized in setup() after AppHandle is available
+    // Sub-contexts
+    pub translation: app_context::TranslationContext,
+    pub document: app_context::DocumentContext,
+    pub overlay: app_context::OverlayContext,
+    pub hook: app_context::HookContext,
+    pub system: app_context::SystemContext,
+
+    // Capability cells (initialized in setup() after AppHandle is available)
     pub selection_translation: TokioOnceCell<Arc<dyn SelectionTranslation>>,
-    /// Initialized in setup() after AppHandle is available
     pub input_replacement: TokioOnceCell<Arc<dyn InputReplacement>>,
 }
 
 pub fn run() {
-    let config = AppConfig::load();
-    let history = HistoryStore::load();
-    let wordbook = WordBookStore::load();
-    let post_processor = PostProcessor::load();
-    let glossary = Glossary::load();
-    let engine_router = Arc::new(RwLock::new(engine::Router::new(&config)));
-    let cache = Arc::new(TranslationCache::new(1000));
-    let metrics = Arc::new(MetricsCollector::new());
-
-    let config_arc = Arc::new(Mutex::new(config));
-    let history_arc = Arc::new(Mutex::new(history));
-    let glossary_arc = Arc::new(Mutex::new(glossary));
-
-    // Create TranslationService
-    let translation_service = Arc::new(TranslationService::new(
-        config_arc.clone(),
-        glossary_arc.clone(),
-        history_arc.clone(),
-        cache.clone(),
-        engine_router.clone(),
-        metrics.clone(),
-    ));
-
-    let selection_manager = Arc::new(selection::SelectionProviderManager::with_defaults());
-    let app_detector: Arc<dyn TargetAppDetector> = Arc::new(WindowsTargetAppDetector::new());
-    let follow_controller = Arc::new(FollowController::new());
-    let hook_monitor = Arc::new(Mutex::new(HookMonitor::new()));
+    let ctx = build_contexts();
 
     let state = AppState {
-        config: config_arc,
-        history: history_arc,
-        wordbook: Arc::new(Mutex::new(wordbook)),
-        post_processor: Arc::new(Mutex::new(post_processor)),
-        engine_router,
-        cache,
-        glossary: glossary_arc,
-        translation_service,
-        metrics,
-        selection_manager,
-        app_detector,
-        follow_controller,
-        hook_monitor,
+        translation: ctx.translation,
+        document: ctx.document,
+        overlay: ctx.overlay,
+        hook: ctx.hook,
+        system: ctx.system,
         selection_translation: TokioOnceCell::new(),
         input_replacement: TokioOnceCell::new(),
     };
@@ -120,7 +77,7 @@ pub fn run() {
             // Restore window position from config
             if let Some(window) = app.get_webview_window("main") {
                 let app_state = app.state::<AppState>();
-                let config = app_state.config.blocking_lock();
+                let config = app_state.system.config.blocking_lock();
                 if let (Some(x), Some(y), Some(w), Some(h)) = (
                     config.window_x,
                     config.window_y,
@@ -131,7 +88,8 @@ pub fn run() {
                         tauri::PhysicalPosition::new(x as i32, y as i32),
                     ));
                     let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-                        w as u32, h as u32,
+                        w as u32,
+                        h as u32,
                     )));
                 }
             }
@@ -142,21 +100,21 @@ pub fn run() {
                 let app_handle = app.handle().clone();
 
                 // Initialize the follow controller with the AppHandle
-                app_state.follow_controller.init(app_handle.clone());
+                app_state.overlay.follow_controller.init(app_handle.clone());
 
                 let sel_translation: Arc<dyn SelectionTranslation> =
                     Arc::new(DefaultSelectionTranslation::new(
-                        app_state.selection_manager.clone(),
-                        app_state.translation_service.clone(),
-                        app_state.config.clone(),
+                        app_state.system.selection_manager.clone(),
+                        app_state.translation.service.clone(),
+                        app_state.system.config.clone(),
                         app_handle,
-                        app_state.app_detector.clone(),
-                        app_state.follow_controller.clone(),
+                        app_state.system.app_detector.clone(),
+                        app_state.overlay.follow_controller.clone(),
                     ));
                 let inp_replacement: Arc<dyn InputReplacement> =
                     Arc::new(DefaultInputReplacement::new(
-                        app_state.selection_manager.clone(),
-                        app_state.translation_service.clone(),
+                        app_state.system.selection_manager.clone(),
+                        app_state.translation.service.clone(),
                     ));
                 let _ = app_state.selection_translation.set(sel_translation);
                 let _ = app_state.input_replacement.set(inp_replacement);
@@ -171,8 +129,12 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&show, &ocr, &settings, &quit])?;
 
             // Create system tray
+            let icon = app.default_window_icon().cloned().unwrap_or_else(|| {
+                log::warn!("No default window icon found, using empty icon");
+                tauri::image::Image::new(&[], 0, 0)
+            });
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(icon)
                 .menu(&menu)
                 .tooltip("Moon Translator")
                 .on_menu_event(|app, event| match event.id().as_ref() {
@@ -183,8 +145,6 @@ pub fn run() {
                         }
                     }
                     "ocr" => {
-                        // Start the full-screen OCR screenshot flow. Do not show/focus
-                        // the main window first, otherwise the app gets captured.
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.emit("trigger-ocr-screenshot", ());
                         }
@@ -216,196 +176,16 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Register global shortcuts from config
-            use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
-
-            // Helper to parse hotkey string like "Ctrl+Shift+T" into Shortcut
-            fn parse_hotkey(hotkey: &str) -> Option<Shortcut> {
-                let parts: Vec<&str> = hotkey.split('+').map(|s| s.trim()).collect();
-                let mut modifiers = Modifiers::empty();
-                let mut code = None;
-
-                for part in &parts {
-                    match part.to_lowercase().as_str() {
-                        "ctrl" | "control" => modifiers |= Modifiers::CONTROL,
-                        "shift" => modifiers |= Modifiers::SHIFT,
-                        "alt" => modifiers |= Modifiers::ALT,
-                        "super" | "win" | "meta" => modifiers |= Modifiers::SUPER,
-                        key => {
-                            code = match key.to_uppercase().as_str() {
-                                "A" => Some(Code::KeyA),
-                                "B" => Some(Code::KeyB),
-                                "C" => Some(Code::KeyC),
-                                "D" => Some(Code::KeyD),
-                                "E" => Some(Code::KeyE),
-                                "F" => Some(Code::KeyF),
-                                "G" => Some(Code::KeyG),
-                                "H" => Some(Code::KeyH),
-                                "I" => Some(Code::KeyI),
-                                "J" => Some(Code::KeyJ),
-                                "K" => Some(Code::KeyK),
-                                "L" => Some(Code::KeyL),
-                                "M" => Some(Code::KeyM),
-                                "N" => Some(Code::KeyN),
-                                "O" => Some(Code::KeyO),
-                                "P" => Some(Code::KeyP),
-                                "Q" => Some(Code::KeyQ),
-                                "R" => Some(Code::KeyR),
-                                "S" => Some(Code::KeyS),
-                                "T" => Some(Code::KeyT),
-                                "U" => Some(Code::KeyU),
-                                "V" => Some(Code::KeyV),
-                                "W" => Some(Code::KeyW),
-                                "X" => Some(Code::KeyX),
-                                "Y" => Some(Code::KeyY),
-                                "Z" => Some(Code::KeyZ),
-                                "0" => Some(Code::Digit0),
-                                "1" => Some(Code::Digit1),
-                                "2" => Some(Code::Digit2),
-                                "3" => Some(Code::Digit3),
-                                "4" => Some(Code::Digit4),
-                                "5" => Some(Code::Digit5),
-                                "6" => Some(Code::Digit6),
-                                "7" => Some(Code::Digit7),
-                                "8" => Some(Code::Digit8),
-                                "9" => Some(Code::Digit9),
-                                "F1" => Some(Code::F1),
-                                "F2" => Some(Code::F2),
-                                "F3" => Some(Code::F3),
-                                "F4" => Some(Code::F4),
-                                "F5" => Some(Code::F5),
-                                "F6" => Some(Code::F6),
-                                "F7" => Some(Code::F7),
-                                "F8" => Some(Code::F8),
-                                "F9" => Some(Code::F9),
-                                "F10" => Some(Code::F10),
-                                "F11" => Some(Code::F11),
-                                "F12" => Some(Code::F12),
-                                "SPACE" => Some(Code::Space),
-                                "ENTER" => Some(Code::Enter),
-                                "TAB" => Some(Code::Tab),
-                                "ESCAPE" | "ESC" => Some(Code::Escape),
-                                "BACKSPACE" => Some(Code::Backspace),
-                                "DELETE" | "DEL" => Some(Code::Delete),
-                                "INSERT" | "INS" => Some(Code::Insert),
-                                "HOME" => Some(Code::Home),
-                                "END" => Some(Code::End),
-                                "PAGEUP" => Some(Code::PageUp),
-                                "PAGEDOWN" => Some(Code::PageDown),
-                                "UP" => Some(Code::ArrowUp),
-                                "DOWN" => Some(Code::ArrowDown),
-                                "LEFT" => Some(Code::ArrowLeft),
-                                "RIGHT" => Some(Code::ArrowRight),
-                                _ => None,
-                            };
-                        }
-                    }
-                }
-
-                code.map(|c| Shortcut::new(Some(modifiers), c))
-            }
-
-            // Read hotkeys from config
+            // Register global shortcuts
             let hotkey_config = {
-                let config = app.state::<AppState>().config.clone();
-                let config = config.blocking_lock();
+                let app_state = app.state::<AppState>();
+                let config = app_state.system.config.blocking_lock();
                 config.hotkeys.clone()
             };
-
-            // Register OCR hotkey
-            if let Some(shortcut_ocr) = parse_hotkey(&hotkey_config.ocr_translate) {
-                let app_handle = app.handle().clone();
-                let _ = app.global_shortcut().on_shortcut(
-                    shortcut_ocr,
-                    move |_app, _shortcut, event| {
-                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.emit("trigger-ocr-screenshot", ());
-                            }
-                        }
-                    },
-                );
-            }
-
-            // Register show window hotkey
-            if let Some(shortcut_show) = parse_hotkey(&hotkey_config.show_window) {
-                let app_handle = app.handle().clone();
-                let _ = app.global_shortcut().on_shortcut(
-                    shortcut_show,
-                    move |_app, _shortcut, event| {
-                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                        }
-                    },
-                );
-            }
-
-            // Register translate selection hotkey
-            if let Some(shortcut_translate) = parse_hotkey(&hotkey_config.translate_selection) {
-                let app_handle = app.handle().clone();
-                let _ = app.global_shortcut().on_shortcut(
-                    shortcut_translate,
-                    move |_app, _shortcut, event| {
-                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.emit("trigger-translate-selection", ());
-                            }
-                        }
-                    },
-                );
-            }
-
-            // Register replace translate hotkey
-            if let Some(shortcut_replace) = parse_hotkey(&hotkey_config.replace_translate) {
-                let app_handle = app.handle().clone();
-                let _ = app.global_shortcut().on_shortcut(
-                    shortcut_replace,
-                    move |_app, _shortcut, event| {
-                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.emit("trigger-replace-translate", ());
-                            }
-                        }
-                    },
-                );
-            }
-
-            // Register overlay click-through toggle hotkey (escape hatch)
-            if let Some(shortcut_ct) = parse_hotkey(&hotkey_config.toggle_overlay_click_through) {
-                let app_handle = app.handle().clone();
-                let _ = app.global_shortcut().on_shortcut(
-                    shortcut_ct,
-                    move |_app, _shortcut, event| {
-                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                            overlay::interaction::disable_click_through_and_focus(&app_handle);
-                        }
-                    },
-                );
-            }
+            hotkey::register_all(app, &hotkey_config);
 
             // Start API server if enabled
-            let api_state = api_server::ApiState::from(&*app.state::<AppState>());
-            let api_config = app.state::<AppState>().config.clone();
-            let api_port = {
-                let config = api_config.blocking_lock();
-                config.api_server_port
-            };
-            let api_enabled = {
-                let config = api_config.blocking_lock();
-                config.api_server_enabled
-            };
-
-            if api_enabled {
-                tokio::spawn(async move {
-                    if let Err(e) = api_server::start_server(api_port, api_state).await {
-                        log::error!("API server error: {}", e);
-                    }
-                });
-                log::info!("API server starting on port {}", api_port);
-            }
+            start_api_server(app);
 
             Ok(())
         })
@@ -420,6 +200,8 @@ pub fn run() {
             commands::translate::replace_text_in_app,
             commands::translate::back_translate,
             commands::translate::polish_translation,
+            commands::translate::query_tm,
+            commands::translate::compare_translate,
             commands::translate::detect_language,
             commands::translate::lookup_dictionary,
             commands::window::create_overlay,
@@ -449,6 +231,7 @@ pub fn run() {
             commands::window::create_ocr_region_frame,
             commands::window::close_ocr_region_frame,
             commands::config_cmd::get_config,
+            commands::config_cmd::get_default_config,
             commands::config_cmd::save_config,
             commands::config_cmd::save_window_position,
             commands::config_cmd::get_window_position,
@@ -505,6 +288,12 @@ pub fn run() {
             commands::post_process_cmd::remove_replacement_rule,
             commands::post_process_cmd::update_replacement_rule,
             commands::post_process_cmd::test_post_process,
+            commands::pre_process_cmd::get_pre_process_config,
+            commands::pre_process_cmd::update_pre_process_config,
+            commands::pre_process_cmd::add_pre_process_rule,
+            commands::pre_process_cmd::remove_pre_process_rule,
+            commands::pre_process_cmd::update_pre_process_rule,
+            commands::pre_process_cmd::test_pre_process,
             commands::plugin_cmd::get_plugins,
             commands::plugin_cmd::set_plugin_enabled,
             commands::plugin_cmd::get_plugins_dir,
@@ -513,7 +302,41 @@ pub fn run() {
             commands::hook_cmd::stop_hook_monitor,
             commands::hook_cmd::get_hook_monitor_status,
             commands::hook_cmd::get_foreground_window_rect,
+            commands::hook_profile_cmd::get_hook_profiles,
+            commands::hook_profile_cmd::get_active_hook_profile,
+            commands::hook_profile_cmd::create_hook_profile,
+            commands::hook_profile_cmd::update_hook_profile,
+            commands::hook_profile_cmd::delete_hook_profile,
+            commands::hook_profile_cmd::activate_hook_profile,
+            commands::furigana_cmd::add_furigana,
+            commands::furigana_cmd::add_furigana_html,
+            commands::furigana_cmd::add_furigana_text,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Build all sub-contexts from configuration
+fn build_contexts() -> Contexts {
+    app_context::build_contexts()
+}
+
+
+/// Start API server if enabled in config
+fn start_api_server(app: &tauri::App) {
+    let app_state = app.state::<AppState>();
+    let api_state = api_server::ApiState::from_app_state(&app_state);
+    let config = app_state.system.config.blocking_lock();
+    let api_port = config.api_server_port;
+    let api_enabled = config.api_server_enabled;
+    drop(config);
+
+    if api_enabled {
+        tokio::spawn(async move {
+            if let Err(e) = api_server::start_server(api_port, api_state).await {
+                log::error!("API server error: {}", e);
+            }
+        });
+        log::info!("API server starting on port {}", api_port);
+    }
 }

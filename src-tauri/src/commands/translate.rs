@@ -25,13 +25,13 @@ pub async fn translate(
 ) -> Result<TranslateResponse, String> {
     // Use TranslationService for the full pipeline
     let response = state
-        .translation_service
+        .translation.service
         .translate(&request.text, &request.from, &request.to)
         .await
         .map_err(|e| e.to_string())?;
 
     // Auto-copy result if enabled
-    let config = state.config.lock().await;
+    let config = state.system.config.lock().await;
     if config.auto_copy_result {
         if let Some(first) = response.results.first() {
             let copy_text = match config.auto_copy_mode.as_str() {
@@ -82,7 +82,7 @@ pub async fn translate_stream(
 
     // Stream translation using TranslationService
     let result = state
-        .translation_service
+        .translation.service
         .translate_stream(&request.text, &request.from, &request.to, tx)
         .await;
 
@@ -100,11 +100,16 @@ pub async fn start_clipboard_monitor(
     use std::thread;
     use std::time::Duration;
 
-    if CLIPBOARD_MONITORING.load(Ordering::Relaxed) {
-        return Ok(());
+    // Atomic check-and-set to prevent duplicate monitoring threads
+    match CLIPBOARD_MONITORING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
+        Ok(false) => {
+            // Successfully set from false to true, proceed to spawn thread
+        }
+        _ => {
+            // Already monitoring
+            return Ok(());
+        }
     }
-
-    CLIPBOARD_MONITORING.store(true, Ordering::Relaxed);
 
     let app_handle = app.clone();
 
@@ -142,14 +147,14 @@ pub async fn translate_selection_with_text(
     }
 
     // Get config
-    let config = state.config.lock().await;
+    let config = state.system.config.lock().await;
     let from = config.default_from.clone();
     let to = config.default_to.clone();
     drop(config);
 
     // Translate using service
     let response = state
-        .translation_service
+        .translation.service
         .translate(&text, &from, &to)
         .await
         .map_err(|e| e.to_string())?;
@@ -174,7 +179,7 @@ pub async fn translate_selection_with_text(
 /// No frontend clipboard read needed — the capability handles everything.
 #[tauri::command]
 pub async fn replace_translate(state: State<'_, AppState>) -> Result<ReplacementResult, String> {
-    let config = state.config.lock().await;
+    let config = state.system.config.lock().await;
     let from = config.default_from.clone();
     let to = config.default_to.clone();
     drop(config);
@@ -217,7 +222,7 @@ pub async fn back_translate(
 
     // Translate back: swap from and to languages
     state
-        .translation_service
+        .translation.service
         .translate_primary(&text, &to, &from)
         .await
         .map_err(|e| e.to_string())
@@ -244,7 +249,7 @@ pub async fn translate_embedded(
 
     // Use batch translation with concurrency of 3
     let batch_results = state
-        .translation_service
+        .translation.service
         .translate_batch(
             &text
                 .lines()
@@ -301,30 +306,36 @@ pub async fn lookup_dictionary(text: String) -> Result<Vec<DictionaryResult>, St
 impl Clone for AppState {
     fn clone(&self) -> Self {
         Self {
-            config: self.config.clone(),
-            history: self.history.clone(),
-            wordbook: self.wordbook.clone(),
-            post_processor: self.post_processor.clone(),
-            engine_router: self.engine_router.clone(),
-            cache: self.cache.clone(),
-            glossary: self.glossary.clone(),
-            translation_service: self.translation_service.clone(),
-            metrics: self.metrics.clone(),
-            selection_manager: self.selection_manager.clone(),
-            app_detector: self.app_detector.clone(),
-            follow_controller: self.follow_controller.clone(),
-            hook_monitor: self.hook_monitor.clone(),
+            translation: crate::app_context::TranslationContext {
+                service: self.translation.service.clone(),
+                engine_router: self.translation.engine_router.clone(),
+                cache: self.translation.cache.clone(),
+                glossary: self.translation.glossary.clone(),
+                metrics: self.translation.metrics.clone(),
+            },
+            document: crate::app_context::DocumentContext {
+                history: self.document.history.clone(),
+                wordbook: self.document.wordbook.clone(),
+                post_processor: self.document.post_processor.clone(),
+                pre_processor: self.document.pre_processor.clone(),
+            },
+            overlay: crate::app_context::OverlayContext {
+                follow_controller: self.overlay.follow_controller.clone(),
+            },
+            hook: crate::app_context::HookContext {
+                hook_monitor: self.hook.hook_monitor.clone(),
+                profiles: self.hook.profiles.clone(),
+            },
+            system: crate::app_context::SystemContext {
+                config: self.system.config.clone(),
+                selection_manager: self.system.selection_manager.clone(),
+                app_detector: self.system.app_detector.clone(),
+            },
             // OnceCell fields: create new empty cells for clones
             selection_translation: tokio::sync::OnceCell::new(),
             input_replacement: tokio::sync::OnceCell::new(),
         }
     }
-}
-
-#[tauri::command]
-pub async fn get_metrics(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let summary = state.metrics.summary().await;
-    serde_json::to_value(&summary).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -376,8 +387,37 @@ pub async fn polish_translation(
 
     // Use service to polish
     state
-        .translation_service
+        .translation.service
         .translate_primary(&prompt, &from_lang, &to_lang)
         .await
         .map_err(|e| format!("Polish failed: {}", e))
+}
+
+/// Query Translation Memory for a match
+#[tauri::command]
+pub async fn query_tm(
+    state: State<'_, AppState>,
+    text: String,
+    from: String,
+    to: String,
+) -> Result<Option<crate::models::memory::TmMatch>, String> {
+    let config = state.system.config.lock().await;
+    let threshold = config.tm_threshold;
+    drop(config);
+
+    let history = state.document.history.lock().await;
+    Ok(history.fuzzy_match(&text, &from, &to, threshold))
+}
+
+/// Translate with all enabled engines in parallel for comparison
+#[tauri::command]
+pub async fn compare_translate(
+    state: State<'_, AppState>,
+    request: TranslateRequest,
+) -> Result<TranslateResponse, String> {
+    let router = state.translation.engine_router.read().await;
+    let response = router
+        .translate_parallel_compare(&request.text, &request.from, &request.to)
+        .await;
+    Ok(response)
 }

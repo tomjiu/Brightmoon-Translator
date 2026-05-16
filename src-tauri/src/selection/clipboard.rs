@@ -8,7 +8,12 @@ pub struct ClipboardSelectionProvider;
 #[async_trait::async_trait]
 impl SelectionProvider for ClipboardSelectionProvider {
     async fn get_selection(&self) -> Option<SelectionResult> {
-        let (text, window_title) = get_clipboard_selection()?;
+        // Wrap in spawn_blocking because get_clipboard_selection uses thread::sleep and Win32 clipboard APIs
+        let result = tokio::task::spawn_blocking(get_clipboard_selection)
+            .await
+            .ok()
+            .flatten();
+        let (text, window_title) = result?;
         if text.trim().is_empty() {
             log::debug!("[clipboard] Got text but empty after trim");
             return None;

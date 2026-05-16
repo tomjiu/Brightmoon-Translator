@@ -4,9 +4,50 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
+
+/// Pre-compiled regex patterns (compiled once, never fails at runtime)
+fn re_version() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"translation-website/(\d+\.\d+\.\d+)/js/app").expect("invalid regex"))
+}
+
+fn re_js_files() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"(chunk-vendors\.[a-f0-9]+\.js|app\.[a-f0-9]+\.js)").expect("invalid regex"))
+}
+
+fn re_key_id() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r#"(?i)(keyId|keyid)\s*[:=]\s*["']([a-zA-Z0-9_-]+)["']"#).expect("invalid regex"))
+}
+
+fn re_key_32() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r#"["']([A-Za-z0-9]{32})["']"#).expect("invalid regex"))
+}
+
+fn re_key_pair() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r#"["']([a-zA-Z0-9_-]{4,64})["'][:=]\s*["']([A-Za-z0-9]{32})["']"#).expect("invalid regex"))
+}
+
+fn re_cred() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r#"["']([A-Za-z0-9+/=]{12,20})["']"#).expect("invalid regex"))
+}
+
+fn re_ocr_key() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r#"(?i)(appKey|appkey|ocrKey)\s*[:=]\s*["']([A-Za-z0-9]{16})["']"#).expect("invalid regex"))
+}
+
+fn re_ocr_secret() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r#"(?i)(appSecret|appsecret|ocrSecret)\s*[:=]\s*["']([A-Za-z0-9]{32})["']"#).expect("invalid regex"))
+}
 
 // ============================================================
 // Key structures
@@ -153,11 +194,6 @@ fn load_keys() -> HashMap<String, KeyEntry> {
     keys
 }
 
-/// Public function to load keys for external use (e.g., OCR API)
-pub fn load_youdao_keys() -> HashMap<String, KeyEntry> {
-    load_keys()
-}
-
 #[allow(dead_code)]
 fn save_keys(keys: &HashMap<String, KeyEntry>) {
     let path = keys_cache_path();
@@ -256,13 +292,13 @@ impl YoudaoEngine {
     /// Update keys from CDN (called lazily on first use)
     async fn ensure_cdn_synced(&self) {
         {
-            let synced = self.cdn_synced.lock().unwrap();
+            let synced = self.cdn_synced.lock().unwrap_or_else(|e| e.into_inner());
             if *synced {
                 return;
             }
         }
         self.sync_keys_from_cdn().await;
-        let mut synced = self.cdn_synced.lock().unwrap();
+        let mut synced = self.cdn_synced.lock().unwrap_or_else(|e| e.into_inner());
         *synced = true;
     }
 
@@ -323,8 +359,7 @@ impl YoudaoEngine {
         let Ok(text) = resp.text().await else {
             return "0.9.2".into();
         };
-        let re = regex::Regex::new(r"translation-website/(\d+\.\d+\.\d+)/js/app").unwrap();
-        if let Some(caps) = re.captures(&text) {
+        if let Some(caps) = re_version().captures(&text) {
             return caps[1].to_string();
         }
         "0.9.2".into()
@@ -350,9 +385,7 @@ impl YoudaoEngine {
             return HashMap::new();
         };
 
-        let re_js =
-            regex::Regex::new(r"(chunk-vendors\.[a-f0-9]+\.js|app\.[a-f0-9]+\.js)").unwrap();
-        let js_files: Vec<String> = re_js
+        let js_files: Vec<String> = re_js_files()
             .captures_iter(&text)
             .map(|c| c[1].to_string())
             .collect();
@@ -377,28 +410,20 @@ impl YoudaoEngine {
             let data_str = String::from_utf8_lossy(&data);
 
             // Pattern 1: keyId: "xxx" then find 32-char keys nearby
-            let re_kid =
-                regex::Regex::new(r#"(?i)(keyId|keyid)\s*[:=]\s*["']([a-zA-Z0-9_-]+)["']"#)
-                    .unwrap();
-            for m in re_kid.find_iter(&data_str) {
+            for m in re_key_id().find_iter(&data_str) {
                 let start = m.start();
                 let end = std::cmp::min(start + 400, data_str.len());
                 let chunk = &data_str[start..end];
-                if let Some(kid_caps) = re_kid.captures(chunk) {
+                if let Some(kid_caps) = re_key_id().captures(chunk) {
                     let kid = kid_caps[2].to_string();
-                    let re_key = regex::Regex::new(r#"["']([A-Za-z0-9]{32})["']"#).unwrap();
-                    if let Some(km) = re_key.captures(chunk) {
+                    if let Some(km) = re_key_32().captures(chunk) {
                         found.entry(kid).or_insert(km[1].to_string());
                     }
                 }
             }
 
             // Pattern 2: "xxx":"yyy" where yyy is 32 chars
-            let re_pair = regex::Regex::new(
-                r#"["']([a-zA-Z0-9_-]{4,64})["'][:=]\s*["']([A-Za-z0-9]{32})["']"#,
-            )
-            .unwrap();
-            for caps in re_pair.captures_iter(&data_str) {
+            for caps in re_key_pair().captures_iter(&data_str) {
                 let kid = caps[1].to_string();
                 let k = caps[2].to_string();
                 found.entry(kid).or_insert(k);
@@ -409,8 +434,7 @@ impl YoudaoEngine {
                 let start = idx.saturating_sub(100);
                 let end = std::cmp::min(idx + 300, data_str.len());
                 let chunk = &data_str[start..end];
-                let re_cred = regex::Regex::new(r#"["']([A-Za-z0-9+/=]{12,20})["']"#).unwrap();
-                if let Some(km) = re_cred.captures(chunk) {
+                if let Some(km) = re_cred().captures(chunk) {
                     let k = km[1].to_string();
                     if k.len() >= 12 {
                         found.entry("webfanyi-key-getter-2025".into()).or_insert(k);
@@ -422,15 +446,13 @@ impl YoudaoEngine {
             // Look for OCR-related code sections
             if data_str.contains("ocr") || data_str.contains("OCR") || data_str.contains("aidemo") {
                 // Try to find 16-char appKey patterns near OCR references
-                let re_ocr_key = regex::Regex::new(r#"(?i)(appKey|appkey|ocrKey)\s*[:=]\s*["']([A-Za-z0-9]{16})["']"#).unwrap();
-                for caps in re_ocr_key.captures_iter(&data_str) {
+                for caps in re_ocr_key().captures_iter(&data_str) {
                     let key_name = format!("ocr_{}", caps[1].to_lowercase());
                     found.entry(key_name).or_insert(caps[2].to_string());
                 }
 
                 // Try to find 32-char appSecret patterns near OCR references
-                let re_ocr_secret = regex::Regex::new(r#"(?i)(appSecret|appsecret|ocrSecret)\s*[:=]\s*["']([A-Za-z0-9]{32})["']"#).unwrap();
-                for caps in re_ocr_secret.captures_iter(&data_str) {
+                for caps in re_ocr_secret().captures_iter(&data_str) {
                     let key_name = format!("ocr_{}", caps[1].to_lowercase());
                     found.entry(key_name).or_insert(caps[2].to_string());
                 }
@@ -441,7 +463,9 @@ impl YoudaoEngine {
     }
 
     fn mystic_time() -> String {
-        let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let dur = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
         dur.as_millis().to_string()
     }
 
@@ -462,7 +486,7 @@ impl YoudaoEngine {
     /// Ensure we have a dynamic text translation key+token
     async fn ensure_text_key(&self) -> bool {
         {
-            let ts = self.text_secret.lock().unwrap();
+            let ts = self.text_secret.lock().unwrap_or_else(|e| e.into_inner());
             if ts.is_some() {
                 return true;
             }
@@ -524,8 +548,8 @@ impl YoudaoEngine {
         };
         if body.code == 0 {
             if let Some(data) = body.data {
-                let mut ts = self.text_secret.lock().unwrap();
-                let mut tt = self.text_token.lock().unwrap();
+                let mut ts = self.text_secret.lock().unwrap_or_else(|e| e.into_inner());
+                let mut tt = self.text_token.lock().unwrap_or_else(|e| e.into_inner());
                 *ts = Some(data.secret_key);
                 *tt = data.token;
                 return true;

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeOrThrow } from "../services/invoke";
 import {
   Copy,
   Check,
@@ -19,7 +19,7 @@ function Tools() {
   const handleTransform = async () => {
     if (!inputText.trim()) return;
     try {
-      const result = await invoke<string>("transform_variable_name", {
+      const result = await invokeOrThrow<string>("transform_variable_name", {
         text: inputText,
         targetFormat: targetFormat,
       });
@@ -32,7 +32,7 @@ function Tools() {
   const handleCycle = async () => {
     if (!inputText.trim()) return;
     try {
-      const [result, format] = await invoke<[string, string]>("cycle_variable_name", {
+      const [result, format] = await invokeOrThrow<[string, string]>("cycle_variable_name", {
         text: inputText,
       });
       setOutputText(result);

@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke, invokeOrThrow } from "./services/invoke";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import MainTranslator from "./pages/MainTranslator";
 import Settings from "./pages/Settings";
@@ -13,12 +13,15 @@ import EpubViewer from "./pages/EpubViewer";
 import SubtitleViewer from "./pages/SubtitleViewer";
 import Plugins from "./pages/Plugins";
 import HookMonitor from "./components/HookMonitor";
+import CompareView from "./components/CompareView";
+import ErrorBoundary from "./components/ErrorBoundary";
 import OcrScreenshotSelector from "./components/OcrScreenshotSelector";
 import OcrScreenshotTranslator from "./components/OcrScreenshotTranslator";
 import OcrRegionFrame from "./components/OcrRegionFrame";
 import { useThemeStore } from "./stores/themeStore";
 import { useTranslateStore } from "./stores/translateStore";
 import { useToastStore } from "./stores/toastStore";
+import { useConfigStore } from "./stores/configStore";
 import ToastContainer from "./components/Toast";
 import { useI18n } from "./i18n";
 import {
@@ -37,9 +40,10 @@ import {
   Scan,
   Subtitles,
   Zap,
+  BarChart3,
 } from "lucide-react";
 
-type Page = "translator" | "settings" | "history" | "glossary" | "tools" | "wordbook" | "pdf" | "epub" | "subtitle" | "plugins" | "ocr" | "hook";
+type Page = "translator" | "settings" | "history" | "glossary" | "tools" | "wordbook" | "pdf" | "epub" | "subtitle" | "plugins" | "ocr" | "hook" | "compare";
 
 interface NavItem {
   id: Page;
@@ -65,9 +69,15 @@ function MainApp() {
   const [pinned, setPinned] = useState(false);
   const [ocrLaunchNonce, setOcrLaunchNonce] = useState(0);
   const { theme, toggleTheme } = useThemeStore();
-  const { setSourceText } = useTranslateStore();
+  const setSourceText = useTranslateStore((s) => s.setSourceText);
   const addToast = useToastStore((s) => s.addToast);
+  const loadDefaults = useConfigStore((s) => s.loadDefaults);
   const { t } = useI18n();
+
+  // Fetch authoritative defaults from Rust backend on mount
+  useEffect(() => {
+    loadDefaults();
+  }, [loadDefaults]);
 
   const startOcrScreenshot = useCallback(() => {
     setPage("ocr");
@@ -76,7 +86,7 @@ function MainApp() {
 
   const togglePin = async () => {
     try {
-      const result = await invoke<boolean>("toggle_always_on_top");
+      const result = await invokeOrThrow<boolean>("toggle_always_on_top");
       setPinned(result);
     } catch (err) {
       console.error("Failed to toggle pin:", err);
@@ -90,6 +100,7 @@ function MainApp() {
         settings: "settings",
         history: "history",
         translator: "translator",
+        compare: "compare",
         glossary: "glossary",
         tools: "tools",
         wordbook: "wordbook",
@@ -111,12 +122,10 @@ function MainApp() {
 
     // Listen for translate-selection shortcut (Ctrl+Shift+Y)
     const unlistenTranslateSelection = listen("trigger-translate-selection", async () => {
-      try {
-        // Unified pipeline: selection provider → translate → overlay
-        await invoke("trigger_selection_translate");
-      } catch (err) {
+      const [_, err] = await safeInvoke("trigger_selection_translate");
+      if (err) {
         console.error("Failed to translate selection:", err);
-        const msg = String(err);
+        const msg = err.message;
         if (msg.includes("No text selected")) {
           addToast({ type: "warning", message: t("selection.noSelection"), duration: 3000 });
         } else {
@@ -137,51 +146,49 @@ function MainApp() {
     // Listen for replace-translate shortcut (Ctrl+Shift+R)
     // Backend uses SelectionProviderManager to get selection, no frontend clipboard read needed
     const unlistenReplaceTranslate = listen("trigger-replace-translate", async () => {
-      try {
-        const result = await invoke<{
-          original: string;
-          replacement: string;
-          success: boolean;
-          error: string | null;
-          fallbackToOverlay: boolean;
-        }>("replace_translate");
-        if (result.success) {
-          addToast({ type: "success", message: t("replace.success"), duration: 2000 });
-        } else {
-          // Soft failure: clipboard paste failed but translation exists
-          const errMsg = result.error || t("replace.unknownError");
-          const isClipboardLocked = errMsg.includes("OpenClipboard") || errMsg.includes("clipboard");
-          addToast({
-            type: "warning",
-            message: isClipboardLocked ? t("replace.clipboardLocked") : t("replace.softFail"),
-            detail: result.replacement,
-            duration: 5000,
-          });
-          // Show overlay fallback so the user can still see the translation
-          if (result.fallbackToOverlay && result.replacement) {
-            try {
-              const [cx, cy] = await invoke<[number, number]>("get_cursor_position");
-              await invoke("update_overlay", {
-                x: cx + 20,
-                y: cy + 20,
-                width: 350,
-                height: 200,
-                text: result.replacement,
-                source: result.original,
-                showControls: true,
-              });
-            } catch (overlayErr) {
-              console.error("Failed to show fallback overlay:", overlayErr);
-            }
-          }
-        }
-      } catch (err) {
+      const [result, err] = await safeInvoke<{
+        original: string;
+        replacement: string;
+        success: boolean;
+        error: string | null;
+        fallbackToOverlay: boolean;
+      }>("replace_translate");
+      if (err) {
         console.error("Failed to replace translate:", err);
-        const msg = String(err);
+        const msg = err.message;
         if (msg.includes("No text selected")) {
           addToast({ type: "warning", message: t("replace.noSelection"), duration: 3000 });
         } else {
           addToast({ type: "error", message: t("replace.hardFail"), detail: msg, duration: 5000 });
+        }
+        return;
+      }
+      if (result!.success) {
+        addToast({ type: "success", message: t("replace.success"), duration: 2000 });
+      } else {
+        // Soft failure: clipboard paste failed but translation exists
+        const errMsg = result!.error || t("replace.unknownError");
+        const isClipboardLocked = errMsg.includes("OpenClipboard") || errMsg.includes("clipboard");
+        addToast({
+          type: "warning",
+          message: isClipboardLocked ? t("replace.clipboardLocked") : t("replace.softFail"),
+          detail: result!.replacement,
+          duration: 5000,
+        });
+        // Show overlay fallback so the user can still see the translation
+        if (result!.fallbackToOverlay && result!.replacement) {
+          const [cursorPos, cursorErr] = await safeInvoke<[number, number]>("get_cursor_position");
+          if (!cursorErr && cursorPos) {
+            await invokeOrThrow("update_overlay", {
+              x: cursorPos[0] + 20,
+              y: cursorPos[1] + 20,
+              width: 350,
+              height: 200,
+              text: result!.replacement,
+              source: result!.original,
+              showControls: true,
+            });
+          }
         }
       }
     });
@@ -194,12 +201,12 @@ function MainApp() {
       try {
         const size = await appWindow.outerSize();
         const pos = await appWindow.outerPosition();
-        await invoke("save_window_position", {
+        await safeInvoke("save_window_position", {
           x: pos.x,
           y: pos.y,
           width: size.width,
           height: size.height,
-        });
+        }, { silent: true });
       } catch (err) {
         // Ignore
       }
@@ -228,6 +235,7 @@ function MainApp() {
   const navItems: NavItem[] = [
     // Core translation features
     { id: "translator", icon: Languages, label: t("nav.translator"), group: "core" },
+    { id: "compare", icon: BarChart3, label: t("nav.compare"), group: "core" },
     { id: "ocr", icon: Scan, label: t("nav.ocr"), group: "core" },
     { id: "hook", icon: Zap, label: t("nav.hook"), group: "core" },
     // Reading & document translation
@@ -324,22 +332,25 @@ function MainApp() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
-        {page === "translator" && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
-        {page === "ocr" && (
-          <div className="flex flex-col h-full gap-4 p-4 overflow-y-auto">
-            <OcrScreenshotTranslator launchNonce={ocrLaunchNonce} />
-          </div>
-        )}
-        {page === "settings" && <Settings />}
-        {page === "history" && <History />}
-        {page === "wordbook" && <WordBook />}
-        {page === "pdf" && <PdfViewer />}
-        {page === "epub" && <EpubViewer />}
-        {page === "subtitle" && <SubtitleViewer />}
-        {page === "glossary" && <Glossary />}
-        {page === "tools" && <Tools />}
-        {page === "plugins" && <Plugins />}
-        {page === "hook" && <HookMonitor />}
+        <ErrorBoundary key={page}>
+          {page === "translator" && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
+          {page === "ocr" && (
+            <div className="flex flex-col h-full gap-4 p-4 overflow-y-auto">
+              <OcrScreenshotTranslator launchNonce={ocrLaunchNonce} />
+            </div>
+          )}
+          {page === "settings" && <Settings />}
+          {page === "history" && <History />}
+          {page === "wordbook" && <WordBook />}
+          {page === "pdf" && <PdfViewer />}
+          {page === "epub" && <EpubViewer />}
+          {page === "subtitle" && <SubtitleViewer />}
+          {page === "glossary" && <Glossary />}
+          {page === "tools" && <Tools />}
+          {page === "plugins" && <Plugins />}
+          {page === "hook" && <HookMonitor />}
+          {page === "compare" && <CompareView />}
+        </ErrorBoundary>
       </main>
 
       {/* Toast Notifications */}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen, emitTo } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke, invokeOrThrow } from "../services/invoke";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ScanLine } from "lucide-react";
 import {
@@ -133,7 +133,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           const lines = ocrResult.lines.filter(l => l.text.trim().length > 0);
           const translatePromises = lines.map(async (line) => {
             try {
-              const response = await invoke<TranslateResponse>("translate", {
+              const response = await invokeOrThrow<TranslateResponse>("translate", {
                 request: {
                   text: line.text.trim(),
                   from: sourceLangRef.current,
@@ -172,11 +172,11 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     let cancelled = false;
     const unlisteners: (() => void)[] = [];
 
-    const registerListener = async (
+    const registerListener = async <T,>(
       eventName: string,
-      handler: (event: { payload: unknown }) => void,
+      handler: (event: { payload: T }) => void,
     ) => {
-      const unlisten = await listen(eventName, (event) => {
+      const unlisten = await listen<T>(eventName, (event) => {
         if (cancelled) return;
         handler(event);
       });
@@ -188,14 +188,14 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     };
 
     // Position changed (drag)
-    void registerListener("ocr-region-position-changed", (event) => {
-      const r = event.payload as RegionRect;
+    void registerListener<RegionRect>("ocr-region-position-changed", (event) => {
+      const r = event.payload;
       regionRef.current = { x: r.x, y: r.y, width: r.width, height: r.height };
     });
 
     // Size changed (resize) — re-run OCR
-    void registerListener("ocr-region-size-changed", (event) => {
-      const r = event.payload as RegionRect;
+    void registerListener<RegionRect>("ocr-region-size-changed", (event) => {
+      const r = event.payload;
       regionRef.current = { x: r.x, y: r.y, width: r.width, height: r.height };
       if (hasOcrRef.current) {
         lastOcrTextRef.current = "";
@@ -204,20 +204,20 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     });
 
     // Manual refresh
-    void registerListener("ocr-region-refresh", () => {
+    void registerListener<unknown>("ocr-region-refresh", () => {
       if (regionRef.current) {
         void captureAndTranslate(regionRef.current);
       }
     });
 
     // Continuous toggle
-    void registerListener("ocr-region-continuous", (event) => {
-      setContinuous((event.payload as { enabled: boolean }).enabled);
+    void registerListener<{ enabled: boolean }>("ocr-region-continuous", (event) => {
+      setContinuous(event.payload.enabled);
     });
 
     // Language change from region frame
-    void registerListener("ocr-region-lang-change", (event) => {
-      const p = event.payload as { sourceLang: string; targetLang: string };
+    void registerListener<{ sourceLang: string; targetLang: string }>("ocr-region-lang-change", (event) => {
+      const p = event.payload;
       sourceLangRef.current = p.sourceLang;
       targetLangRef.current = p.targetLang;
       lastOcrTextRef.current = "";
@@ -227,7 +227,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     });
 
     // Region frame closed
-    void registerListener("ocr-region-close", async () => {
+    void registerListener<unknown>("ocr-region-close", async () => {
       setContinuous(false);
       setStatus("idle");
       setError(null);
@@ -236,7 +236,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       regionRef.current = null;
       lastOcrTextRef.current = "";
       hasOcrRef.current = false;
-      try { await invoke("close_ocr_region_frame"); } catch { /* may already be closed */ }
+      await safeInvoke("close_ocr_region_frame", undefined, { silent: true });
       await getCurrentWindow().show();
     });
 
@@ -283,15 +283,11 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       regionRef.current = region;
 
       // Close selector window
-      try {
-        await invoke("close_ocr_screenshot_selector");
-      } catch {
-        // may already be closed
-      }
+      await safeInvoke("close_ocr_screenshot_selector", undefined, { silent: true });
 
       // Create merged region frame window at the selection position
       try {
-        await invoke("create_ocr_region_frame", {
+        await invokeOrThrow("create_ocr_region_frame", {
           x: screenX,
           y: screenY,
           width: screenW,
@@ -299,7 +295,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         });
       } catch (err) {
         if (cancelled) return;
-        try { await invoke("close_ocr_region_frame"); } catch {}
+        await safeInvoke("close_ocr_region_frame", undefined, { silent: true });
         await getCurrentWindow().show();
         setError(String(err));
         setStatus("error");
@@ -317,7 +313,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         console.error("[OCR] captureAndTranslate failed after selection:", err);
         setError(String(err));
         setStatus("error");
-        try { await invoke("close_ocr_region_frame"); } catch {}
+        await safeInvoke("close_ocr_region_frame", undefined, { silent: true });
         await getCurrentWindow().show();
       }
     }).then((fn) => {
@@ -376,12 +372,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
 
     try {
       // Close existing region frame and selector
-      try {
-        await invoke("close_ocr_region_frame");
-        await invoke("close_ocr_screenshot_selector");
-      } catch {
-        // may not exist
-      }
+      await safeInvoke("close_ocr_region_frame", undefined, { silent: true });
+      await safeInvoke("close_ocr_screenshot_selector", undefined, { silent: true });
 
       const appWindow = getCurrentWindow();
       await appWindow.hide();
@@ -394,7 +386,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       setSnapshotInfo(info);
       snapshotInfoRef.current = info;
 
-      await invoke("create_ocr_screenshot_selector");
+      await invokeOrThrow("create_ocr_screenshot_selector");
       setStatus("selecting");
     } catch (err) {
       try {

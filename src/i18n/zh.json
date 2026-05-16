@@ -4,6 +4,7 @@
   },
   "nav": {
     "translator": "翻译",
+    "compare": "对比",
     "ocr": "OCR监控",
     "history": "历史",
     "wordbook": "生词本",
@@ -123,7 +124,9 @@
       "clipboardMonitor": "剪贴板监听翻译",
       "clipboardMonitorHint": "监听剪贴板变化，自动翻译复制的内容",
       "translationMask": "翻译遮罩 (学习模式)",
-      "translationMaskHint": "遮挡原文，先看译文尝试理解，点击显示原文"
+      "translationMaskHint": "遮挡原文，先看译文尝试理解，点击显示原文",
+      "furigana": "日语振假名注音",
+      "furiganaHint": "在日语汉字上方显示假名读音（仅日译时生效）"
     },
     "blacklist": {
       "title": "禁翻表",
@@ -180,6 +183,27 @@
       "pattern": "匹配文本",
       "replacement": "替换为",
       "isRegex": "正则",
+      "testInput": "测试输入",
+      "testOutput": "测试结果",
+      "test": "测试",
+      "noRules": "暂无替换规则"
+    },
+    "preProcess": {
+      "title": "翻译预处理",
+      "hint": "翻译前对原文进行自动修正和替换（如去除控制字符、规范化全角字符等）",
+      "trimWhitespace": "去除首尾空白",
+      "trimWhitespaceHint": "翻译前自动去除原文首尾的空格",
+      "normalizeUnicode": "规范化 Unicode",
+      "normalizeUnicodeHint": "全角字符转半角（如Ａ→A，１→1）",
+      "removeControlChars": "去除控制字符",
+      "removeControlCharsHint": "移除不可见控制字符（保留换行和制表符）",
+      "replacementRules": "替换规则",
+      "addRule": "添加规则",
+      "pattern": "匹配文本",
+      "replacement": "替换为",
+      "isRegex": "正则",
+      "langPair": "语言对 (可选)",
+      "langPairPlaceholder": "如 ja-zh，留空应用于所有",
       "testInput": "测试输入",
       "testOutput": "测试结果",
       "test": "测试",
@@ -370,6 +394,17 @@
     "source.ocr": "OCR截图识别 - 通用后备方案",
     "source.hook": "Win32事件钩子 - 系统级文本变化监听"
   },
+  "compare": {
+    "title": "多引擎对比",
+    "description": "同时使用所有已启用的翻译引擎翻译文本，对比不同引擎的结果。",
+    "placeholder": "输入要翻译的文本...",
+    "translate": "对比翻译",
+    "translating": "翻译中...",
+    "noResults": "没有获取到翻译结果",
+    "empty": "输入文本开始对比",
+    "emptyHint": "按 Ctrl+Enter 快速翻译",
+    "copy": "复制"
+  },
   "replace": {
     "hardFail": "替换失败",
     "softFail": "替换失败，已切换为悬浮窗显示",
@@ -381,6 +416,14 @@
   "selection": {
     "noSelection": "未选中文本",
     "translateFailed": "翻译失败"
+  },
+  "errorBoundary": {
+    "title": "应用出现错误",
+    "description": "渲染过程中发生了异常，当前页面无法正常显示。",
+    "showDetail": "查看详情",
+    "hideDetail": "隐藏详情",
+    "reload": "重新加载",
+    "reset": "重置并重新加载"
   },
   "common": {
     "loading": "加载中...",
