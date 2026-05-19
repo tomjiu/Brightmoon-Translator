@@ -328,7 +328,10 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
                   ? "bg-primary text-white"
                   : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
               }`}
-              onClick={toggleEmbeddedMode}
+              onClick={() => {
+                console.log("[Embedded] button clicked");
+                toggleEmbeddedMode();
+              }}
               title={t(embeddedMode ? "translator.embeddedOff" : "translator.embeddedOn")}
             >
               <BookOpen size={14} />
@@ -462,59 +465,75 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
             )}
 
             {/* Embedded Translation Mode */}
-            {embeddedMode && embeddedLines.length > 0 && (
+            {embeddedMode && (
               <div className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <BookOpen size={14} className="text-primary" />
-                    <span className="text-xs text-primary font-semibold uppercase">
-                      {t("translator.embeddedTitle")}
-                    </span>
-                    <span className="text-xs text-text-secondary">
-                      {embeddedLines.length} {t("translator.chars")}
-                    </span>
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-pulse text-sm text-text-secondary">
+                      {t("translator.translating")}
+                    </div>
                   </div>
-                  <button
-                    className="flex items-center gap-1 px-2 py-1 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded transition-colors"
-                    onClick={() => {
-                      const text = embeddedLines
-                        .map((l) => `${l.lineNumber}. ${l.original}\n   ${l.translated}`)
-                        .join("\n");
-                      navigator.clipboard.writeText(text);
-                    }}
-                    title={t("translator.copy")}
-                  >
-                    <Copy size={12} />
-                    {t("translator.copy")}
-                  </button>
-                </div>
-                <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-                  {embeddedLines.map((line) => (
-                    <div
-                      key={line.lineNumber}
-                      className="group flex gap-3 py-2 px-3 rounded-lg border-l-2 border-primary/30 hover:bg-bg-tertiary/50 transition-colors"
-                    >
-                      <span className="text-xs text-text-secondary font-mono w-6 shrink-0 text-right pt-0.5">
-                        {line.lineNumber}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-text-secondary leading-relaxed select-text">
-                          {line.original}
-                        </p>
-                        <p className="text-sm text-text-primary leading-relaxed select-text mt-1">
-                          {line.translated}
-                        </p>
+                ) : embeddedLines.length > 0 ? (
+                  <>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <BookOpen size={14} className="text-primary" />
+                        <span className="text-xs text-primary font-semibold uppercase">
+                          {t("translator.embeddedTitle")}
+                        </span>
+                        <span className="text-xs text-text-secondary">
+                          {embeddedLines.length} {t("translator.chars")}
+                        </span>
                       </div>
                       <button
-                        className="opacity-0 group-hover:opacity-100 shrink-0 p-1 text-text-secondary hover:text-primary transition-all"
-                        onClick={() => navigator.clipboard.writeText(`${line.original}\n${line.translated}`)}
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded transition-colors"
+                        onClick={() => {
+                          const text = embeddedLines
+                            .map((l) => `${l.lineNumber}. ${l.original}\n   ${l.translated}`)
+                            .join("\n");
+                          navigator.clipboard.writeText(text);
+                        }}
                         title={t("translator.copy")}
                       >
                         <Copy size={12} />
+                        {t("translator.copy")}
                       </button>
                     </div>
-                  ))}
-                </div>
+                    <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                      {embeddedLines.map((line) => (
+                        <div
+                          key={line.lineNumber}
+                          className="group flex gap-3 py-2 px-3 rounded-lg border-l-2 border-primary/30 hover:bg-bg-tertiary/50 transition-colors"
+                        >
+                          <span className="text-xs text-text-secondary font-mono w-6 shrink-0 text-right pt-0.5">
+                            {line.lineNumber}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-text-secondary leading-relaxed select-text">
+                              {line.original}
+                            </p>
+                            <p className="text-sm text-text-primary leading-relaxed select-text mt-1">
+                              {line.translated}
+                            </p>
+                          </div>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 shrink-0 p-1 text-text-secondary hover:text-primary transition-all"
+                            onClick={() => navigator.clipboard.writeText(`${line.original}\n${line.translated}`)}
+                            title={t("translator.copy")}
+                          >
+                            <Copy size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-text-secondary">
+                    <BookOpen size={32} className="mb-3 opacity-30" />
+                    <p className="text-sm">{t("translator.embeddedEmpty")}</p>
+                    <p className="text-xs mt-1">{t("translator.embeddedEmptyHint")}</p>
+                  </div>
+                )}
               </div>
             )}
 

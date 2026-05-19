@@ -475,10 +475,12 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   },
 
   toggleEmbeddedMode: () => {
-    const { embeddedMode } = get();
+    const { embeddedMode, sourceText } = get();
+    console.log("[Embedded] toggleEmbeddedMode called, current:", embeddedMode, "sourceText length:", sourceText.length);
     set({ embeddedMode: !embeddedMode });
     // If switching to embedded mode and we have source text, translate
-    if (!embeddedMode && get().sourceText.trim()) {
+    if (!embeddedMode && sourceText.trim()) {
+      console.log("[Embedded] calling translateEmbedded");
       get().translateEmbedded();
     }
   },

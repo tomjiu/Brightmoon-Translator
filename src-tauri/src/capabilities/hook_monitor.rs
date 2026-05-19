@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use windows::core::Interface;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
 };
@@ -81,7 +82,8 @@ impl HookMonitor {
                     // Check if text is worth translating
                     {
                         let recent = recent_texts.lock().await;
-                        if !is_translatable(&text.text, &recent) {
+                        if !is_translatable(&text.text, &recent, &text.source) {
+                            tracing::debug!("[HookMonitor] Filtered out text from {}: {} chars", text.source, text.text.len());
                             return;
                         }
                     }
@@ -256,6 +258,7 @@ async fn uia_monitor_task(
 ) {
     let mut last_text = String::new();
     let mut last_hwnd: usize = 0;
+    tracing::info!("[UIA Monitor] Starting UI Automation capture (interval: {}ms)", interval_ms);
 
     loop {
         {
@@ -267,6 +270,7 @@ async fn uia_monitor_task(
             .await.ok().flatten();
 
         if let Some((text, hwnd_raw, window_title, process_name, text_rect)) = result {
+            tracing::debug!("[UIA Monitor] Captured {} chars from {} ({})", text.len(), window_title, process_name);
             if text != last_text || hwnd_raw != last_hwnd {
                 last_text = text.clone();
                 last_hwnd = hwnd_raw;
@@ -277,6 +281,8 @@ async fn uia_monitor_task(
                     text_rect,
                 });
             }
+        } else {
+            tracing::debug!("[UIA Monitor] No text captured (TextPattern not supported)");
         }
 
         tokio::time::sleep(tokio::time::Duration::from_millis(interval_ms)).await;
@@ -439,6 +445,7 @@ async fn ocr_monitor_task(
 
     // Delay start to let UIA work first
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+    tracing::info!("[OCR Monitor] Starting OCR fallback capture (interval: {}ms)", interval_ms);
 
     loop {
         {
@@ -451,18 +458,35 @@ async fn ocr_monitor_task(
 
             unsafe {
                 let hwnd = GetForegroundWindow();
-                let mut rect = windows::Win32::Foundation::RECT::default();
-                if GetWindowRect(hwnd, &mut rect).is_err() { return None; }
-
-                let width = (rect.right - rect.left) as u32;
-                let height = (rect.bottom - rect.top) as u32;
-                if width < 100 || height < 100 { return None; }
-
                 let window_title = get_window_title(hwnd);
                 let process_name = get_process_name(hwnd);
 
+                // Use GetClientRect for client area only (better for browsers)
+                let mut client_rect = windows::Win32::Foundation::RECT::default();
+                if GetClientRect(hwnd, &mut client_rect).is_err() {
+                    tracing::debug!("[OCR Monitor] GetClientRect failed for {}", window_title);
+                    return None;
+                }
+
+                // Convert client coordinates to screen coordinates
+                let mut top_left = windows::Win32::Foundation::POINT { x: client_rect.left, y: client_rect.top };
+                let mut bottom_right = windows::Win32::Foundation::POINT { x: client_rect.right, y: client_rect.bottom };
+                let _ = ClientToScreen(hwnd, &mut top_left);
+                let _ = ClientToScreen(hwnd, &mut bottom_right);
+
+                let width = (bottom_right.x - top_left.x) as u32;
+                let height = (bottom_right.y - top_left.y) as u32;
+
+                // Skip if area is too small
+                if width < 100 || height < 100 {
+                    tracing::debug!("[OCR Monitor] Window too small: {}x{} for {}", width, height, window_title);
+                    return None;
+                }
+
+                tracing::debug!("[OCR Monitor] Capturing {}x{} from {} ({})", width, height, window_title, process_name);
+
                 let img = crate::commands::capture::capture_area_gdi(
-                    rect.left, rect.top, width, height,
+                    top_left.x, top_left.y, width, height,
                 ).ok()?;
 
                 let mut buf = Cursor::new(Vec::new());
@@ -470,6 +494,8 @@ async fn ocr_monitor_task(
 
                 let text = crate::ocr_engine::run_winrt_ocr(&buf.into_inner(), None)
                     .ok()??;
+
+                tracing::debug!("[OCR Monitor] OCR result: {} chars from {}", text.len(), window_title);
 
                 Some((text, window_title, process_name))
             }
@@ -479,6 +505,7 @@ async fn ocr_monitor_task(
             let trimmed = text.trim().to_string();
             if !trimmed.is_empty() && trimmed != last_text {
                 last_text = trimmed.clone();
+                tracing::info!("[OCR Monitor] Sending text ({} chars) from {}", trimmed.len(), window_title);
                 let _ = tx.send(MonitoredText {
                     window_title, process_name,
                     text: trimmed,
@@ -719,7 +746,8 @@ unsafe fn get_process_name(hwnd: HWND) -> String {
 
 /// Check if text is worth translating.
 /// Filters out URLs, file paths, code-like content, pure numbers, and duplicates.
-pub fn is_translatable(text: &str, recent: &VecDeque<String>) -> bool {
+/// `source` indicates the capture source (uia, clipboard, ocr, hook) for source-specific filtering.
+pub fn is_translatable(text: &str, recent: &VecDeque<String>, source: &str) -> bool {
     let trimmed = text.trim();
     if trimmed.len() < 3 {
         return false;
@@ -741,8 +769,10 @@ pub fn is_translatable(text: &str, recent: &VecDeque<String>) -> bool {
     }
 
     // Skip code-like content (too many special chars)
+    // Be more lenient for OCR source which may have noise
+    let special_threshold = if source == "ocr" { 4 } else { 3 };
     let special_count = trimmed.chars().filter(|c| matches!(c, '{' | '}' | '(' | ')' | ';' | '=' | '<' | '>' | '&' | '|' | '!' | '#' | '$' | '@' | '`')).count();
-    if special_count > 0 && special_count * 3 > char_count {
+    if special_count > 0 && special_count * special_threshold > char_count {
         return false;
     }
 
@@ -757,8 +787,9 @@ pub fn is_translatable(text: &str, recent: &VecDeque<String>) -> bool {
         .filter(|c| c.is_alphabetic() || is_cjk(*c))
         .count();
 
-    // At least 30% meaningful characters
-    if meaningful * 10 < char_count * 3 {
+    // At least 20% meaningful characters (more lenient for OCR)
+    let meaningful_threshold = if source == "ocr" { 5 } else { 3 };
+    if meaningful * 10 < char_count * meaningful_threshold {
         return false;
     }
 

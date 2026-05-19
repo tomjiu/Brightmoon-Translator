@@ -54,6 +54,8 @@
     "embeddedOn": "开启行间翻译",
     "embeddedOff": "关闭行间翻译",
     "embeddedTitle": "行间翻译",
+    "embeddedEmpty": "暂无行间翻译结果",
+    "embeddedEmptyHint": "输入文本后点击翻译按钮",
     "startListening": "开始语音输入",
     "stopListening": "停止语音输入"
   },

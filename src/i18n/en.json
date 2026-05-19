@@ -54,6 +54,8 @@
     "embeddedOn": "Enable Embedded Translation",
     "embeddedOff": "Disable Embedded Translation",
     "embeddedTitle": "Embedded Translation",
+    "embeddedEmpty": "No embedded translation results",
+    "embeddedEmptyHint": "Enter text and click translate button",
     "startListening": "Start Voice Input",
     "stopListening": "Stop Voice Input"
   },
