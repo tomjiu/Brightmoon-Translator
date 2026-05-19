@@ -124,7 +124,10 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
       debounceTimer.current = setTimeout(() => {
         if (value.trim()) {
           detectLanguage(value);
-          if (useTranslateStore.getState().embeddedMode) {
+          // Auto-enable embedded mode for multi-line text
+          const isMultiLine = value.includes("\n");
+          const store = useTranslateStore.getState();
+          if (store.embeddedMode || isMultiLine) {
             translateEmbedded();
           } else {
             translateStream();
@@ -133,7 +136,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
         }
       }, 500);
     },
-    [setSourceText, translateStream, lookupDictionary, detectLanguage]
+    [setSourceText, translateStream, translateEmbedded, lookupDictionary, detectLanguage]
   );
 
   const copyResult = (text: string, index: number) => {

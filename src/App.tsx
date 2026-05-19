@@ -8,7 +8,6 @@ import DocumentsViewer from "./pages/DocumentsViewer";
 import Vocabulary from "./pages/Vocabulary";
 import Plugins from "./pages/Plugins";
 import HookMonitor from "./components/HookMonitor";
-import BatchTranslator from "./components/BatchTranslator";
 import ErrorBoundary from "./components/ErrorBoundary";
 import OcrScreenshotSelector from "./components/OcrScreenshotSelector";
 import OcrRegionFrame from "./components/OcrRegionFrame";
@@ -27,11 +26,10 @@ import {
   FileText,
   Puzzle,
   Zap,
-  Layers,
   BookOpen,
 } from "lucide-react";
 
-type Page = "translator" | "batch" | "hook" | "documents" | "vocabulary" | "plugins" | "settings";
+type Page = "translator" | "hook" | "documents" | "vocabulary" | "plugins" | "settings";
 
 interface NavItem {
   id: Page;
@@ -66,8 +64,12 @@ function MainApp() {
     loadDefaults();
   }, [loadDefaults]);
 
-  const startOcrScreenshot = useCallback(() => {
-    // OCR screenshot is now handled directly by MainTranslator
+  const startOcrScreenshot = useCallback(async () => {
+    try {
+      await invokeOrThrow("create_ocr_screenshot_selector");
+    } catch (err) {
+      console.error("Failed to start OCR screenshot:", err);
+    }
   }, []);
 
   const togglePin = async () => {
@@ -86,7 +88,6 @@ function MainApp() {
         settings: "settings",
         translator: "translator",
         hook: "hook",
-        batch: "batch",
         documents: "documents",
         vocabulary: "vocabulary",
         plugins: "plugins",
@@ -214,7 +215,6 @@ function MainApp() {
 
   const navItems: NavItem[] = [
     { id: "translator", icon: Languages, label: t("nav.translator"), group: "core" },
-    { id: "batch", icon: Layers, label: t("nav.batch"), group: "core" },
     { id: "hook", icon: Zap, label: t("nav.hook"), group: "core" },
     { id: "documents", icon: FileText, label: t("nav.documents"), group: "core" },
     { id: "vocabulary", icon: BookOpen, label: t("nav.vocabulary"), group: "core" },
@@ -302,7 +302,6 @@ function MainApp() {
       <main className="flex-1 overflow-hidden">
         <ErrorBoundary key={page}>
           {page === "translator" && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
-          {page === "batch" && <BatchTranslator />}
           {page === "documents" && <DocumentsViewer />}
           {page === "vocabulary" && <Vocabulary />}
           {page === "settings" && <Settings />}
