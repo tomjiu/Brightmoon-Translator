@@ -4,19 +4,12 @@
   },
   "nav": {
     "translator": "Translate",
-    "compare": "Compare",
-    "ocr": "OCR Monitor",
-    "history": "History",
-    "wordbook": "Word Book",
-    "pdf": "PDF Translate",
-    "epub": "EPUB Reader",
-    "subtitle": "Subtitle Translate",
-    "glossary": "Glossary",
-    "settings": "Settings",
-    "tools": "Tools",
-    "plugins": "Plugins",
+    "batch": "Batch Translate",
     "hook": "Hook Translate",
-    "batch": "Batch Translate"
+    "documents": "Documents",
+    "vocabulary": "Vocabulary",
+    "plugins": "Plugins",
+    "settings": "Settings"
   },
   "translator": {
     "placeholder": "Enter text to translate...",
@@ -263,6 +256,15 @@
     "translationPlaceholder": "Translation",
     "notePlaceholder": "Note (optional)",
     "add": "Add"
+  },
+  "vocabulary": {
+    "wordbook": "Word Book",
+    "glossary": "Glossary"
+  },
+  "documents": {
+    "pdf": "PDF",
+    "epub": "EPUB",
+    "subtitle": "Subtitle"
   },
   "pdf": {
     "title": "PDF Translate",

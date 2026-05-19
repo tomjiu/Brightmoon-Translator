@@ -4,19 +4,12 @@
   },
   "nav": {
     "translator": "翻译",
-    "compare": "对比",
-    "ocr": "OCR监控",
-    "history": "历史",
-    "wordbook": "生词本",
-    "pdf": "PDF翻译",
-    "epub": "EPUB阅读",
-    "subtitle": "字幕翻译",
-    "glossary": "术语表",
-    "settings": "设置",
-    "tools": "工具",
-    "plugins": "插件",
+    "batch": "批量翻译",
     "hook": "Hook翻译",
-    "batch": "批量翻译"
+    "documents": "文档翻译",
+    "vocabulary": "词汇",
+    "plugins": "插件",
+    "settings": "设置"
   },
   "translator": {
     "placeholder": "输入要翻译的文本...",
@@ -263,6 +256,15 @@
     "translationPlaceholder": "翻译",
     "notePlaceholder": "笔记 (可选)",
     "add": "添加"
+  },
+  "vocabulary": {
+    "wordbook": "生词本",
+    "glossary": "术语表"
+  },
+  "documents": {
+    "pdf": "PDF",
+    "epub": "EPUB",
+    "subtitle": "字幕"
   },
   "pdf": {
     "title": "PDF翻译",

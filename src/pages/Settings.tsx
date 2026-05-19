@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { invokeOrThrow } from "../services/invoke";
 import { useConfigStore } from "../stores/configStore";
 import { useI18n } from "../i18n";
-import { Save, Check, Trash2, Database, Power, Clipboard, Eye, EyeOff, Globe, Keyboard, Plus, X, Download, Upload, Languages, Wand2, MousePointer, Brain, BookOpen, Volume2 } from "lucide-react";
+import { Save, Check, Trash2, Database, Power, Clipboard, Eye, EyeOff, Globe, Keyboard, Plus, X, Download, Upload, Languages, Wand2, MousePointer, Brain, BookOpen, Volume2, Code, ArrowRight, RefreshCw, Copy } from "lucide-react";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
-import type { AutoCopyMode } from "../types";
+import type { AutoCopyMode, VariableFormat } from "../types";
+import { VARIABLE_FORMATS } from "../types";
 import TmManager from "../components/TmManager";
 
 function Settings() {
@@ -25,6 +26,13 @@ function Settings() {
   const [newApiKey, setNewApiKey] = useState("");
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplatePrompt, setNewTemplatePrompt] = useState("");
+
+  // Variable name transformer state
+  const [varInputText, setVarInputText] = useState("");
+  const [varOutputText, setVarOutputText] = useState("");
+  const [varTargetFormat, setVarTargetFormat] = useState<VariableFormat>("camelCase");
+  const [varDetectedFormat, setVarDetectedFormat] = useState("");
+  const [varCopied, setVarCopied] = useState(false);
 
   // Post-processing state
   interface ReplacementRule {
@@ -51,6 +59,45 @@ function Settings() {
   const [newRuleIsRegex, setNewRuleIsRegex] = useState(false);
   const [testInput, setTestInput] = useState("");
   const [testOutput, setTestOutput] = useState("");
+
+  // Variable name transformer functions
+  const handleVarTransform = async () => {
+    if (!varInputText.trim()) return;
+    try {
+      const result = await invokeOrThrow<string>("transform_variable_name", {
+        text: varInputText,
+        targetFormat: varTargetFormat,
+      });
+      setVarOutputText(result);
+    } catch (err) {
+      console.error("Transform failed:", err);
+    }
+  };
+
+  const handleVarCycle = async () => {
+    if (!varInputText.trim()) return;
+    try {
+      const [result, format] = await invokeOrThrow<[string, string]>("cycle_variable_name", {
+        text: varInputText,
+      });
+      setVarOutputText(result);
+      setVarDetectedFormat(format);
+      setVarInputText(result);
+    } catch (err) {
+      console.error("Cycle failed:", err);
+    }
+  };
+
+  const handleVarCopy = async () => {
+    if (!varOutputText) return;
+    try {
+      await navigator.clipboard.writeText(varOutputText);
+      setVarCopied(true);
+      setTimeout(() => setVarCopied(false), 1500);
+    } catch (err) {
+      console.error("Copy failed:", err);
+    }
+  };
 
   useEffect(() => {
     loadConfig();
@@ -1970,6 +2017,102 @@ function Settings() {
         {/* Translation Memory Section */}
         <section className="bg-bg-secondary border border-border rounded-xl p-5 mb-5">
           <TmManager />
+        </section>
+
+        {/* Developer Tools Section */}
+        <section className="bg-bg-secondary border border-border rounded-xl p-5 mb-5">
+          <h2 className="text-base font-semibold text-primary mb-4 flex items-center gap-2">
+            <Code size={18} />
+            {t("tools.title")}
+          </h2>
+
+          {/* Variable Name Transformer */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium text-text-primary mb-2">{t("tools.variableName.title")}</h3>
+              <p className="text-xs text-text-secondary mb-3">
+                {t("tools.variableName.input")}
+              </p>
+            </div>
+
+            {/* Input */}
+            <div>
+              <label className="block text-xs text-text-secondary mb-1.5">
+                {t("tools.variableName.input")}
+              </label>
+              <input
+                value={varInputText}
+                onChange={(e) => setVarInputText(e.target.value)}
+                placeholder="my_variable_name"
+                className="w-full bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
+              />
+            </div>
+
+            {/* Target Format */}
+            <div>
+              <label className="block text-xs text-text-secondary mb-1.5">
+                {t("tools.variableName.result")}
+              </label>
+              <select
+                value={varTargetFormat}
+                onChange={(e) => setVarTargetFormat(e.target.value as VariableFormat)}
+                className="w-full bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary"
+              >
+                {VARIABLE_FORMATS.map((format) => (
+                  <option key={format} value={format}>
+                    {format}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={handleVarTransform}
+                disabled={!varInputText.trim()}
+                className="bg-primary text-bg-primary font-semibold rounded-lg px-4 py-2 text-sm hover:bg-primary-hover transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ArrowRight size={14} />
+                {t("tools.variableName.result")}
+              </button>
+              <button
+                onClick={handleVarCycle}
+                disabled={!varInputText.trim()}
+                className="bg-bg-tertiary text-text-primary border border-border rounded-lg px-4 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw size={14} />
+                {t("tools.variableName.camelCase")}
+              </button>
+            </div>
+
+            {/* Output */}
+            {varOutputText && (
+              <div>
+                <label className="block text-xs text-text-secondary mb-1.5">
+                  {t("tools.variableName.result")}
+                  {varDetectedFormat && (
+                    <span className="ml-2 text-accent">({varDetectedFormat})</span>
+                  )}
+                </label>
+                <div className="relative">
+                  <div className="w-full bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm font-mono">
+                    {varOutputText}
+                  </div>
+                  <button
+                    onClick={handleVarCopy}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-bg-primary/50 text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    {varCopied ? (
+                      <Check size={14} className="text-success" />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Save Button */}

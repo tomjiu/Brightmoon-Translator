@@ -4,20 +4,13 @@ import { safeInvoke, invokeOrThrow } from "./services/invoke";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import MainTranslator from "./pages/MainTranslator";
 import Settings from "./pages/Settings";
-import History from "./pages/History";
-import Glossary from "./pages/Glossary";
-import Tools from "./pages/Tools";
-import WordBook from "./pages/WordBook";
-import PdfViewer from "./pages/PdfViewer";
-import EpubViewer from "./pages/EpubViewer";
-import SubtitleViewer from "./pages/SubtitleViewer";
+import DocumentsViewer from "./pages/DocumentsViewer";
+import Vocabulary from "./pages/Vocabulary";
 import Plugins from "./pages/Plugins";
 import HookMonitor from "./components/HookMonitor";
-import CompareView from "./components/CompareView";
 import BatchTranslator from "./components/BatchTranslator";
 import ErrorBoundary from "./components/ErrorBoundary";
 import OcrScreenshotSelector from "./components/OcrScreenshotSelector";
-import OcrScreenshotTranslator from "./components/OcrScreenshotTranslator";
 import OcrRegionFrame from "./components/OcrRegionFrame";
 import { useThemeStore } from "./stores/themeStore";
 import { useTranslateStore } from "./stores/translateStore";
@@ -27,25 +20,18 @@ import ToastContainer from "./components/Toast";
 import { useI18n } from "./i18n";
 import {
   Languages,
-  History as HistoryIcon,
   Settings as SettingsIcon,
-  Book,
   Sun,
   Moon,
-  Wrench,
   Pin,
-  Bookmark,
   FileText,
-  BookOpen,
   Puzzle,
-  Scan,
-  Subtitles,
   Zap,
-  BarChart3,
   Layers,
+  BookOpen,
 } from "lucide-react";
 
-type Page = "translator" | "settings" | "history" | "glossary" | "tools" | "wordbook" | "pdf" | "epub" | "subtitle" | "plugins" | "ocr" | "hook" | "compare" | "batch";
+type Page = "translator" | "batch" | "hook" | "documents" | "vocabulary" | "plugins" | "settings";
 
 interface NavItem {
   id: Page;
@@ -69,7 +55,6 @@ function App() {
 function MainApp() {
   const [page, setPage] = useState<Page>("translator");
   const [pinned, setPinned] = useState(false);
-  const [ocrLaunchNonce, setOcrLaunchNonce] = useState(0);
   const { theme, toggleTheme } = useThemeStore();
   const setSourceText = useTranslateStore((s) => s.setSourceText);
   const addToast = useToastStore((s) => s.addToast);
@@ -82,8 +67,7 @@ function MainApp() {
   }, [loadDefaults]);
 
   const startOcrScreenshot = useCallback(() => {
-    setPage("ocr");
-    setOcrLaunchNonce((nonce) => nonce + 1);
+    // OCR screenshot is now handled directly by MainTranslator
   }, []);
 
   const togglePin = async () => {
@@ -100,19 +84,12 @@ function MainApp() {
     const unlistenNav = listen<string>("navigate", (event) => {
       const pageMap: Record<string, Page> = {
         settings: "settings",
-        history: "history",
         translator: "translator",
-        compare: "compare",
-        glossary: "glossary",
-        tools: "tools",
-        wordbook: "wordbook",
-        pdf: "pdf",
-        epub: "epub",
-        subtitle: "subtitle",
-        plugins: "plugins",
-        ocr: "ocr",
         hook: "hook",
         batch: "batch",
+        documents: "documents",
+        vocabulary: "vocabulary",
+        plugins: "plugins",
       };
       if (pageMap[event.payload]) {
         setPage(pageMap[event.payload]);
@@ -236,22 +213,11 @@ function MainApp() {
   }, [setSourceText, startOcrScreenshot]);
 
   const navItems: NavItem[] = [
-    // Core translation features
     { id: "translator", icon: Languages, label: t("nav.translator"), group: "core" },
     { id: "batch", icon: Layers, label: t("nav.batch"), group: "core" },
-    { id: "compare", icon: BarChart3, label: t("nav.compare"), group: "core" },
-    { id: "ocr", icon: Scan, label: t("nav.ocr"), group: "core" },
     { id: "hook", icon: Zap, label: t("nav.hook"), group: "core" },
-    // Reading & document translation
-    { id: "pdf", icon: FileText, label: t("nav.pdf"), group: "read" },
-    { id: "epub", icon: BookOpen, label: t("nav.epub"), group: "read" },
-    { id: "subtitle", icon: Subtitles, label: t("nav.subtitle"), group: "read" },
-    // Data & vocabulary
-    { id: "history", icon: HistoryIcon, label: t("nav.history"), group: "data" },
-    { id: "wordbook", icon: Bookmark, label: t("nav.wordbook"), group: "data" },
-    { id: "glossary", icon: Book, label: t("nav.glossary"), group: "data" },
-    // System & tools
-    { id: "tools", icon: Wrench, label: t("nav.tools"), group: "system" },
+    { id: "documents", icon: FileText, label: t("nav.documents"), group: "core" },
+    { id: "vocabulary", icon: BookOpen, label: t("nav.vocabulary"), group: "core" },
     { id: "plugins", icon: Puzzle, label: t("nav.plugins"), group: "system" },
     { id: "settings", icon: SettingsIcon, label: t("nav.settings"), group: "system" },
   ];
@@ -259,8 +225,6 @@ function MainApp() {
   // Group nav items for rendering with separators
   const navGroups = [
     { key: "core", items: navItems.filter((i) => i.group === "core") },
-    { key: "read", items: navItems.filter((i) => i.group === "read") },
-    { key: "data", items: navItems.filter((i) => i.group === "data") },
     { key: "system", items: navItems.filter((i) => i.group === "system") },
   ];
 
@@ -339,22 +303,11 @@ function MainApp() {
         <ErrorBoundary key={page}>
           {page === "translator" && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
           {page === "batch" && <BatchTranslator />}
-          {page === "ocr" && (
-            <div className="flex flex-col h-full gap-4 p-4 overflow-y-auto">
-              <OcrScreenshotTranslator launchNonce={ocrLaunchNonce} />
-            </div>
-          )}
+          {page === "documents" && <DocumentsViewer />}
+          {page === "vocabulary" && <Vocabulary />}
           {page === "settings" && <Settings />}
-          {page === "history" && <History />}
-          {page === "wordbook" && <WordBook />}
-          {page === "pdf" && <PdfViewer />}
-          {page === "epub" && <EpubViewer />}
-          {page === "subtitle" && <SubtitleViewer />}
-          {page === "glossary" && <Glossary />}
-          {page === "tools" && <Tools />}
           {page === "plugins" && <Plugins />}
           {page === "hook" && <HookMonitor />}
-          {page === "compare" && <CompareView />}
         </ErrorBoundary>
       </main>
 
