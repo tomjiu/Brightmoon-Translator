@@ -47,7 +47,11 @@ impl TranslationEngine for GoogleEngine {
                     .collect::<Vec<_>>()
                     .join("")
             })
-            .unwrap_or_default();
+            .ok_or_else(|| anyhow::anyhow!("Google API returned unexpected response format"))?;
+
+        if translated.is_empty() {
+            return Err(anyhow::anyhow!("Google API returned empty translation"));
+        }
 
         Ok(translated)
     }

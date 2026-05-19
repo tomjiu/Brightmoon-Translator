@@ -52,7 +52,9 @@ fn plugins_dir() -> PathBuf {
     let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
     path.push("moontranslator");
     path.push("plugins");
-    std::fs::create_dir_all(&path).ok();
+    if let Err(e) = std::fs::create_dir_all(&path) {
+        tracing::warn!("Failed to create plugins directory {:?}: {}", path, e);
+    }
     path
 }
 

@@ -349,6 +349,12 @@ pub struct AppConfig {
     /// Furigana: add ruby annotations for Japanese kanji
     #[serde(default)]
     pub furigana_enabled: bool,
+    /// TTS: auto-play translation result
+    #[serde(default)]
+    pub tts_auto_play: bool,
+    /// TTS: preferred voice name (empty = auto from language)
+    #[serde(default)]
+    pub tts_voice: String,
 }
 
 fn default_true() -> bool {
@@ -412,6 +418,8 @@ impl Default for AppConfig {
             tm_enabled: false,
             tm_threshold: 0.8,
             furigana_enabled: false,
+            tts_auto_play: false,
+            tts_voice: String::new(),
         }
     }
 }

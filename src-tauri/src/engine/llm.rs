@@ -235,7 +235,7 @@ impl LlmEngine {
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
                         // Log full error body to backend log (may contain API details)
-                        log::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
+                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
                         // Sanitize error for frontend: strip anything that looks like an API key
                         let sanitized = sanitize_llm_error(status, &body);
                         last_error = sanitized;
@@ -277,7 +277,7 @@ impl LlmEngine {
                 }
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
-                    log::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
                     continue;
                 }
             }
@@ -343,7 +343,7 @@ impl LlmEngine {
                     let status = resp.status();
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
-                        log::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
+                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
                         let sanitized = sanitize_llm_error(status, &body);
                         last_error = sanitized;
                         continue;
@@ -384,7 +384,7 @@ impl LlmEngine {
                 }
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
-                    log::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
                     continue;
                 }
             }
@@ -444,7 +444,7 @@ impl TranslationEngine for LlmEngine {
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
                         // Log full error body to backend log (may contain API details)
-                        log::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
+                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
                         // Sanitize error for frontend: strip anything that looks like an API key
                         let sanitized = sanitize_llm_error(status, &body);
                         last_error = sanitized;
@@ -456,13 +456,13 @@ impl TranslationEngine for LlmEngine {
                         .choices
                         .first()
                         .map(|c| c.message.content.trim().to_string())
-                        .unwrap_or_default();
+                        .ok_or_else(|| anyhow::anyhow!("LLM API returned no choices in response"))?;
 
                     return Ok(content);
                 }
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
-                    log::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
                     continue;
                 }
             }
@@ -566,7 +566,7 @@ impl LlmEngine {
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
                         // Log full error body to backend log (may contain API details)
-                        log::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
+                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
                         // Sanitize error for frontend: strip anything that looks like an API key
                         let sanitized = sanitize_llm_error(status, &body);
                         last_error = sanitized;
@@ -578,13 +578,13 @@ impl LlmEngine {
                         .choices
                         .first()
                         .map(|c| c.message.content.trim().to_string())
-                        .unwrap_or_default();
+                        .ok_or_else(|| anyhow::anyhow!("LLM API returned no choices in response"))?;
 
                     return Ok(content);
                 }
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
-                    log::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
                     continue;
                 }
             }
@@ -654,7 +654,7 @@ impl LlmEngine {
                     let status = resp.status();
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
-                        log::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
+                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
                         let sanitized = sanitize_llm_error(status, &body);
                         last_error = sanitized;
                         continue;
@@ -665,13 +665,13 @@ impl LlmEngine {
                         .choices
                         .first()
                         .map(|c| c.message.content.trim().to_string())
-                        .unwrap_or_default();
+                        .ok_or_else(|| anyhow::anyhow!("LLM API returned no choices in response"))?;
 
                     return Ok(content);
                 }
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
-                    log::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
                     continue;
                 }
             }

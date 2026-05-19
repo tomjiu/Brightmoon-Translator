@@ -1,14 +1,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
-        if cfg!(debug_assertions) {
-            "debug"
-        } else {
-            "warn"
-        },
-    ))
-    .init();
+    use tracing_subscriber::EnvFilter;
+
+    let filter = if cfg!(debug_assertions) {
+        EnvFilter::new("debug")
+    } else {
+        EnvFilter::new("warn")
+    };
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .init();
 
     moontranslator_lib::run()
 }

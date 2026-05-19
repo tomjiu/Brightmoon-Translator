@@ -45,7 +45,9 @@ pub struct PreProcessor {
 fn config_path() -> PathBuf {
     let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
     path.push("moontranslator");
-    std::fs::create_dir_all(&path).ok();
+    if let Err(e) = std::fs::create_dir_all(&path) {
+        tracing::warn!("Failed to create config directory {:?}: {}", path, e);
+    }
     path.push("pre_process.json");
     path
 }
@@ -54,8 +56,16 @@ impl PreProcessor {
     pub fn load() -> Self {
         let path = config_path();
         let config = if path.exists() {
-            let data = std::fs::read_to_string(&path).unwrap_or_default();
-            serde_json::from_str(&data).unwrap_or_default()
+            match std::fs::read_to_string(&path) {
+                Ok(data) => serde_json::from_str(&data).unwrap_or_else(|e| {
+                    tracing::error!("Failed to parse pre-process config {:?}: {}", path, e);
+                    PreProcessConfig::default()
+                }),
+                Err(e) => {
+                    tracing::error!("Failed to read pre-process config {:?}: {}", path, e);
+                    PreProcessConfig::default()
+                }
+            }
         } else {
             PreProcessConfig::default()
         };
@@ -68,8 +78,15 @@ impl PreProcessor {
     pub fn save(&self) {
         let config = self.config.lock().unwrap_or_else(|e| e.into_inner());
         let path = config_path();
-        if let Ok(data) = serde_json::to_string_pretty(&*config) {
-            std::fs::write(path, data).ok();
+        match serde_json::to_string_pretty(&*config) {
+            Ok(data) => {
+                if let Err(e) = std::fs::write(&path, data) {
+                    tracing::error!("Failed to save pre-process config {:?}: {}", path, e);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to serialize pre-process config: {}", e);
+            }
         }
     }
 
@@ -177,4 +194,90 @@ fn normalize_unicode(text: &str) -> String {
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_remove_control_chars_preserves_newlines_and_tabs() {
+        let input = "hello\nworld\r\ttab";
+        assert_eq!(remove_control_chars(input), "hello\nworld\r\ttab");
+    }
+
+    #[test]
+    fn test_remove_control_chars_removes_null_and_bell() {
+        let input = "hello\x00world\x07!";
+        assert_eq!(remove_control_chars(input), "helloworld!");
+    }
+
+    #[test]
+    fn test_normalize_unicode_fullwidth_ascii() {
+        // Ａ is fullwidth A (U+FF21), ！ is fullwidth ! (U+FF01)
+        let input = "Ｈｅｌｌｏ！";
+        assert_eq!(normalize_unicode(input), "Hello!");
+    }
+
+    #[test]
+    fn test_normalize_unicode_fullwidth_space() {
+        let input = "hello　world"; // ideographic space U+3000
+        assert_eq!(normalize_unicode(input), "hello world");
+    }
+
+    #[test]
+    fn test_normalize_unicode_preserves_cjk() {
+        let input = "你好世界";
+        assert_eq!(normalize_unicode(input), "你好世界");
+    }
+
+    #[test]
+    fn test_pre_processor_process_trims_whitespace() {
+        let processor = PreProcessor {
+            config: Mutex::new(PreProcessConfig {
+                rules: Vec::new(),
+                trim_whitespace: true,
+                normalize_unicode: false,
+                remove_control_chars: false,
+            }),
+        };
+        assert_eq!(processor.process("  hello  ", None), "hello");
+    }
+
+    #[test]
+    fn test_pre_processor_process_normalizes_unicode() {
+        let processor = PreProcessor {
+            config: Mutex::new(PreProcessConfig {
+                rules: Vec::new(),
+                trim_whitespace: false,
+                normalize_unicode: true,
+                remove_control_chars: false,
+            }),
+        };
+        assert_eq!(processor.process("ＡＢＣ", None), "ABC");
+    }
+
+    #[test]
+    fn test_pre_processor_lang_pair_filter() {
+        let processor = PreProcessor {
+            config: Mutex::new(PreProcessConfig {
+                rules: vec![PreProcessRule {
+                    id: "1".to_string(),
+                    pattern: "foo".to_string(),
+                    replacement: "bar".to_string(),
+                    enabled: true,
+                    is_regex: false,
+                    lang_pair: Some("ja-zh".to_string()),
+                }],
+                trim_whitespace: false,
+                normalize_unicode: false,
+                remove_control_chars: false,
+            }),
+        };
+        // Should apply when lang_pair matches
+        assert_eq!(processor.process("foo", Some("ja-zh")), "bar");
+        // Should not apply when lang_pair doesn't match
+        assert_eq!(processor.process("foo", Some("en-zh")), "foo");
+        // Should apply when rule has no lang_pair filter
+    }
 }

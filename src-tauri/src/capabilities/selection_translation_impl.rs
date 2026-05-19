@@ -134,7 +134,7 @@ impl SelectionTranslation for DefaultSelectionTranslation {
             "No text selected".to_string(),
         ))?;
 
-        log::info!(
+        tracing::info!(
             "[selection_translate] Got selection via '{}': {} chars, app='{}'",
             selection.provider,
             selection.text.len(),

@@ -36,6 +36,8 @@ const INITIAL_CONFIG: AppConfig = {
   tmEnabled: false,
   tmThreshold: 0.8,
   furiganaEnabled: false,
+  ttsAutoPlay: false,
+  ttsVoice: "",
 };
 
 interface ConfigState {

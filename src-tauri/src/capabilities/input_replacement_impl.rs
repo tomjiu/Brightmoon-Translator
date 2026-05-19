@@ -52,7 +52,7 @@ impl InputReplacement for DefaultInputReplacement {
     ) -> Result<ReplacementResult, TranslationError> {
         // Get selected text
         let original = self.get_selected_text().await?;
-        log::info!(
+        tracing::info!(
             "[replace_translate] Selected text: {} chars",
             original.len()
         );
@@ -62,7 +62,7 @@ impl InputReplacement for DefaultInputReplacement {
             .translation_service
             .translate_primary(&original, from, to)
             .await?;
-        log::info!(
+        tracing::info!(
             "[replace_translate] Translated: '{}' -> '{}'",
             original.chars().take(50).collect::<String>(),
             translated.chars().take(50).collect::<String>()

@@ -7,7 +7,9 @@ use std::path::PathBuf;
 fn config_path() -> PathBuf {
     let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
     path.push("moontranslator");
-    std::fs::create_dir_all(&path).ok();
+    if let Err(e) = std::fs::create_dir_all(&path) {
+        tracing::warn!("Failed to create config directory {:?}: {}", path, e);
+    }
     path.push("config.json");
     path
 }
@@ -22,24 +24,24 @@ impl AppConfig {
                     match serde_json::from_str::<AppConfig>(&data) {
                         Ok(config) => return config,
                         Err(e) => {
-                            log::error!("Failed to parse config file (using defaults): {}", e);
-                            log::info!("Config file path: {}", path.display());
+                            tracing::error!("Failed to parse config file (using defaults): {}", e);
+                            tracing::info!("Config file path: {}", path.display());
                             // Backup the corrupted file
                             let backup = path.with_extension("json.bak");
                             if let Err(bak_err) = std::fs::copy(&path, &backup) {
-                                log::warn!("Failed to backup corrupted config: {}", bak_err);
+                                tracing::warn!("Failed to backup corrupted config: {}", bak_err);
                             } else {
-                                log::info!("Corrupted config backed up to: {}", backup.display());
+                                tracing::info!("Corrupted config backed up to: {}", backup.display());
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    log::error!("Failed to read config file: {}", e);
+                    tracing::error!("Failed to read config file: {}", e);
                 }
             }
         } else {
-            log::info!("No config file found, creating default");
+            tracing::info!("No config file found, creating default");
         }
 
         let config = Self::default();
@@ -53,11 +55,11 @@ impl AppConfig {
         match serde_json::to_string_pretty(self) {
             Ok(data) => {
                 if let Err(e) = std::fs::write(&path, data) {
-                    log::error!("Failed to save config: {}", e);
+                    tracing::error!("Failed to save config: {}", e);
                 }
             }
             Err(e) => {
-                log::error!("Failed to serialize config: {}", e);
+                tracing::error!("Failed to serialize config: {}", e);
             }
         }
     }

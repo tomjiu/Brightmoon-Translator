@@ -15,10 +15,10 @@ impl SelectionProvider for ClipboardSelectionProvider {
             .flatten();
         let (text, window_title) = result?;
         if text.trim().is_empty() {
-            log::debug!("[clipboard] Got text but empty after trim");
+            tracing::debug!("[clipboard] Got text but empty after trim");
             return None;
         }
-        log::info!(
+        tracing::info!(
             "[clipboard] Got selection: {} chars from '{}'",
             text.trim().len(),
             window_title
@@ -133,7 +133,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 }
                 CloseClipboard();
             } else {
-                log::warn!("[clipboard] Failed to open clipboard for saving");
+                tracing::warn!("[clipboard] Failed to open clipboard for saving");
             }
 
             // Clear clipboard before simulating Ctrl+C
@@ -141,7 +141,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 EmptyClipboard();
                 CloseClipboard();
             } else {
-                log::warn!("[clipboard] Failed to open clipboard for clearing");
+                tracing::warn!("[clipboard] Failed to open clipboard for clearing");
             }
 
             // Simulate Ctrl+C
@@ -157,7 +157,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 std::mem::size_of::<INPUT>() as i32,
             );
             if sent == 0 {
-                log::warn!("[clipboard] SendInput returned 0 — Ctrl+C may not have been delivered");
+                tracing::warn!("[clipboard] SendInput returned 0 — Ctrl+C may not have been delivered");
             }
 
             // Adaptive wait: poll clipboard every 50ms, up to 500ms
@@ -188,7 +188,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 }
             }
             if !clipboard_ready {
-                log::debug!("[clipboard] Adaptive wait: clipboard did not get new content after 500ms, trying final read");
+                tracing::debug!("[clipboard] Adaptive wait: clipboard did not get new content after 500ms, trying final read");
                 // One last attempt with a bit more wait
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
@@ -211,7 +211,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                             None
                         }
                     } else {
-                        log::warn!("[clipboard] GlobalLock failed when reading clipboard");
+                        tracing::warn!("[clipboard] GlobalLock failed when reading clipboard");
                         None
                     }
                 } else {
@@ -220,7 +220,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 CloseClipboard();
                 text
             } else {
-                log::warn!("[clipboard] Failed to open clipboard for reading");
+                tracing::warn!("[clipboard] Failed to open clipboard for reading");
                 None
             };
 
@@ -241,17 +241,17 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                                 GlobalUnlock(h_mem);
                                 SetClipboardData(CF_UNICODETEXT, h_mem);
                             } else {
-                                log::warn!(
+                                tracing::warn!(
                                     "[clipboard] GlobalLock failed when restoring clipboard"
                                 );
                             }
                         } else {
-                            log::warn!("[clipboard] GlobalAlloc failed when restoring clipboard");
+                            tracing::warn!("[clipboard] GlobalAlloc failed when restoring clipboard");
                         }
                     }
                     CloseClipboard();
                 } else {
-                    log::warn!("[clipboard] Failed to open clipboard for restore");
+                    tracing::warn!("[clipboard] Failed to open clipboard for restore");
                 }
             }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { safeInvoke, invokeOrThrow } from "../services/invoke";
+import { speakText as ttsSpeak } from "../services/tts";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "../i18n";
 import { useConfigStore } from "../stores/configStore";
@@ -21,6 +22,9 @@ import {
   Download,
   ArrowDown,
   Volume2,
+  ChevronDown,
+  ChevronUp,
+  Syringe,
 } from "lucide-react";
 
 interface HookTranslatedItem {
@@ -33,6 +37,21 @@ interface HookTranslatedItem {
   timestamp: number;
   source: string;
   textRect?: [number, number, number, number]; // [x, y, w, h] screen coords
+}
+
+interface HookStatus {
+  injected: boolean;
+  pid: number;
+  processName: string;
+  messagesRead: number;
+}
+
+interface CapturedText {
+  text: string;
+  codePage: number;
+  x: number;
+  y: number;
+  timestamp: number;
 }
 
 const formatTime = (timestamp: number) => {
@@ -69,6 +88,14 @@ function HookMonitor() {
     { key: "ocr", label: "OCR", desc: t("hook.source.ocr") },
     { key: "hook", label: "HOOK", desc: t("hook.source.hook") },
   ];
+
+  // H-Code DLL Injection state
+  const [hcodeExpanded, setHcodeExpanded] = useState(false);
+  const [hcodePid, setHcodePid] = useState("");
+  const [hcodeStatus, setHcodeStatus] = useState<HookStatus | null>(null);
+  const [hcodeLoading, setHcodeLoading] = useState(false);
+  const [hcodeMessages, setHcodeMessages] = useState<CapturedText[]>([]);
+  const hcodePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Check initial status
   useEffect(() => {
@@ -114,7 +141,16 @@ function HookMonitor() {
 
         // Auto-copy if enabled
         if (autoCopy) {
-          navigator.clipboard.writeText(item.translated).catch(() => {});
+          navigator.clipboard.writeText(item.translated).catch((e) => {
+            console.warn("Auto-copy failed:", e);
+          });
+        }
+
+        // Auto-play TTS if enabled
+        if (config.ttsAutoPlay && item.translated) {
+          ttsSpeak(item.translated, "auto").catch((e) => {
+            console.warn("TTS auto-play failed:", e);
+          });
         }
 
         // Show in overlay positioned at target window bottom
@@ -158,6 +194,41 @@ function HookMonitor() {
     }
   }, [results.length, autoScroll]);
 
+  // H-Code: Check initial injection status
+  useEffect(() => {
+    safeInvoke<HookStatus>("hook_status", undefined, { silent: true })
+      .then(([status]) => {
+        if (status) setHcodeStatus(status);
+      })
+      .catch(() => {});
+  }, []);
+
+  // H-Code: Poll for messages when injected
+  useEffect(() => {
+    if (hcodeStatus?.injected) {
+      hcodePollRef.current = setInterval(async () => {
+        try {
+          const [msgs] = await safeInvoke<CapturedText[]>("hook_read_messages", undefined, { silent: true });
+          if (msgs && msgs.length > 0) {
+            setHcodeMessages((prev) => {
+              const next = [...prev, ...msgs];
+              return next.length > 500 ? next.slice(-500) : next;
+            });
+            // Update status
+            const [status] = await safeInvoke<HookStatus>("hook_status", undefined, { silent: true });
+            if (status) setHcodeStatus(status);
+          }
+        } catch {}
+      }, 200);
+    }
+    return () => {
+      if (hcodePollRef.current) {
+        clearInterval(hcodePollRef.current);
+        hcodePollRef.current = null;
+      }
+    };
+  }, [hcodeStatus?.injected]);
+
   // Detect manual scroll to disable auto-scroll
   const handleScroll = useCallback(() => {
     if (!listRef.current) return;
@@ -195,22 +266,10 @@ function HookMonitor() {
   const speakText = useCallback(async (text: string, lang: string, id: number) => {
     try {
       setSpeakingId(id);
-      const base64Audio = await invokeOrThrow<string>("text_to_speech", { text, lang });
-      const audioBytes = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
-      const audioBlob = new Blob([audioBytes], { type: "audio/mp3" });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      audio.onended = () => {
-        setSpeakingId(null);
-        URL.revokeObjectURL(audioUrl);
-      };
-      audio.onerror = () => {
-        setSpeakingId(null);
-        URL.revokeObjectURL(audioUrl);
-      };
-      await audio.play();
+      await ttsSpeak(text, lang);
     } catch (err) {
       console.error("TTS failed:", err);
+    } finally {
       setSpeakingId(null);
     }
   }, []);
@@ -228,6 +287,37 @@ function HookMonitor() {
     a.click();
     URL.revokeObjectURL(url);
   }, [results]);
+
+  // H-Code: Inject DLL
+  const handleHcodeInject = useCallback(async () => {
+    const pid = parseInt(hcodePid, 10);
+    if (isNaN(pid) || pid <= 0) return;
+    setHcodeLoading(true);
+    try {
+      await invokeOrThrow("hook_inject", { pid });
+      const status = await invokeOrThrow<HookStatus>("hook_status");
+      setHcodeStatus(status);
+      setHcodeMessages([]);
+    } catch (err) {
+      console.error("H-Code inject failed:", err);
+    } finally {
+      setHcodeLoading(false);
+    }
+  }, [hcodePid]);
+
+  // H-Code: Eject DLL
+  const handleHcodeEject = useCallback(async () => {
+    setHcodeLoading(true);
+    try {
+      await invokeOrThrow("hook_eject");
+      setHcodeStatus(null);
+      setHcodeMessages([]);
+    } catch (err) {
+      console.error("H-Code eject failed:", err);
+    } finally {
+      setHcodeLoading(false);
+    }
+  }, []);
 
   const toggleOverlay = useCallback(() => {
     const next = !showOverlay;
@@ -354,6 +444,100 @@ function HookMonitor() {
             />
             <span className="text-xs text-text-secondary">{t("hook.autoCopy")}</span>
           </label>
+        </div>
+
+        {/* H-Code DLL Injection Section */}
+        <div className="border border-border rounded-lg overflow-hidden">
+          <button
+            className="w-full flex items-center justify-between px-3 py-2 bg-bg-tertiary hover:bg-bg-tertiary/80 transition-colors"
+            onClick={() => setHcodeExpanded(!hcodeExpanded)}
+          >
+            <div className="flex items-center gap-2">
+              <Syringe size={14} className="text-accent" />
+              <span className="text-xs font-medium text-text-primary">{t("hook.hcode.title")}</span>
+              {hcodeStatus?.injected && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success">
+                  {t("hook.hcode.injected")}
+                </span>
+              )}
+            </div>
+            {hcodeExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+
+          {hcodeExpanded && (
+            <div className="p-3 space-y-3">
+              <p className="text-[11px] text-text-secondary">
+                {t("hook.hcode.description")}
+              </p>
+
+              {/* PID Input */}
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={hcodePid}
+                  onChange={(e) => setHcodePid(e.target.value)}
+                  placeholder={t("hook.hcode.pidPlaceholder")}
+                  className="flex-1 bg-bg-secondary border border-border rounded px-2 py-1.5 text-xs text-text-primary outline-none focus:border-primary"
+                  disabled={hcodeStatus?.injected}
+                />
+                {hcodeStatus?.injected ? (
+                  <button
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-error text-white hover:bg-error/90 transition-colors disabled:opacity-50"
+                    onClick={handleHcodeEject}
+                    disabled={hcodeLoading}
+                  >
+                    {t("hook.hcode.eject")}
+                  </button>
+                ) : (
+                  <button
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50"
+                    onClick={handleHcodeInject}
+                    disabled={hcodeLoading || !hcodePid}
+                  >
+                    {hcodeLoading ? t("hook.hcode.injecting") : t("hook.hcode.inject")}
+                  </button>
+                )}
+              </div>
+
+              {/* Status */}
+              {hcodeStatus && (
+                <div className="flex items-center gap-4 text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-text-secondary">{t("hook.hcode.status")}:</span>
+                    <span className={hcodeStatus.injected ? "text-success" : "text-text-secondary"}>
+                      {hcodeStatus.injected ? t("hook.hcode.injected") : t("hook.hcode.notInjected")}
+                    </span>
+                  </div>
+                  {hcodeStatus.processName && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-text-secondary">{t("hook.hcode.processName")}:</span>
+                      <span className="text-text-primary">{hcodeStatus.processName}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-text-secondary">{t("hook.hcode.messagesRead")}:</span>
+                    <span className="text-text-primary">{hcodeStatus.messagesRead}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Captured Messages */}
+              {hcodeMessages.length > 0 && (
+                <div className="max-h-40 overflow-y-auto bg-bg-primary border border-border rounded p-2 space-y-1">
+                  {hcodeMessages.slice(-20).map((msg, i) => (
+                    <div key={i} className="text-[11px] text-text-primary font-mono truncate">
+                      {msg.text}
+                    </div>
+                  ))}
+                  {hcodeMessages.length > 20 && (
+                    <div className="text-[10px] text-text-secondary text-center">
+                      ... {hcodeMessages.length} {t("hook.items")}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}

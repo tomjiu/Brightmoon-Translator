@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { invokeOrThrow } from "../services/invoke";
+import { speakText as ttsSpeak } from "../services/tts";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslateStore } from "../stores/translateStore";
 import { useConfigStore } from "../stores/configStore";
@@ -145,22 +145,10 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
   const speakText = async (text: string, lang: string, index: number) => {
     try {
       setSpeakingIndex(index);
-      const base64Audio = await invokeOrThrow<string>("text_to_speech", { text, lang });
-      const audioBytes = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
-      const audioBlob = new Blob([audioBytes], { type: "audio/mp3" });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      audio.onended = () => {
-        setSpeakingIndex(null);
-        URL.revokeObjectURL(audioUrl);
-      };
-      audio.onerror = () => {
-        setSpeakingIndex(null);
-        URL.revokeObjectURL(audioUrl);
-      };
-      await audio.play();
+      await ttsSpeak(text, lang);
     } catch (err) {
       console.error("TTS failed:", err);
+    } finally {
       setSpeakingIndex(null);
     }
   };
@@ -205,6 +193,18 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
       if (unlisten) unlisten();
     };
   }, [config.windowFollowMode, moveWindowToCursor]);
+
+  // Auto-play TTS after translation completes
+  useEffect(() => {
+    if (config.ttsAutoPlay && results.length > 0 && !loading) {
+      const lastResult = results[results.length - 1];
+      if (lastResult?.text) {
+        ttsSpeak(lastResult.text, toLang).catch((e) => {
+          console.warn("TTS auto-play failed:", e);
+        });
+      }
+    }
+  }, [results, loading, config.ttsAutoPlay, toLang]);
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);

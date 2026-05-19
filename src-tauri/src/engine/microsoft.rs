@@ -77,7 +77,7 @@ impl TranslationEngine for MicrosoftEngine {
             .first()
             .and_then(|r| r.translations.first())
             .map(|t| t.text.clone())
-            .unwrap_or_default();
+            .ok_or_else(|| anyhow::anyhow!("Microsoft API returned empty translation result"))?;
 
         Ok(translated)
     }

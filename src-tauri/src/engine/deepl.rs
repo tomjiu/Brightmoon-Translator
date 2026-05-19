@@ -108,7 +108,7 @@ impl TranslationEngine for DeepLEngine {
             .translations
             .first()
             .map(|t| t.text.clone())
-            .unwrap_or_default();
+            .ok_or_else(|| anyhow::anyhow!("DeepL API returned empty translations"))?;
 
         Ok(translated)
     }

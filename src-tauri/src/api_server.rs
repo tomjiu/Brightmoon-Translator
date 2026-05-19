@@ -477,7 +477,7 @@ pub async fn start_server(port: u16, state: ApiState) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to bind to {}: {}", addr, e))?;
 
-    log::info!("API server listening on http://{}", addr);
+    tracing::info!("API server listening on http://{}", addr);
 
     axum::serve(listener, app)
         .await

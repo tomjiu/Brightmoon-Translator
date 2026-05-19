@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { listen, emitTo } from "@tauri-apps/api/event";
 import { safeInvoke, invokeOrThrow } from "../services/invoke";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ScanLine } from "lucide-react";
+import { ScanLine, Search } from "lucide-react";
 import {
   captureScreenshotRegion,
   ocrImagePreferNativeDetailed,
@@ -12,7 +12,7 @@ import {
   type OcrResultDetailed,
 } from "../services/ocr";
 import { useConfigStore } from "../stores/configStore";
-import type { TranslateResponse } from "../types";
+import type { TranslateResponse, DetectionResult, TextRegion } from "../types";
 
 type OcrStatus = "idle" | "capturing" | "selecting" | "running" | "error";
 
@@ -49,8 +49,11 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
   const [error, setError] = useState<string | null>(null);
   const [ocrSource, setOcrSource] = useState<string | null>(null);
   const [translation, setTranslation] = useState<string | null>(null);
+  const [detectedLang, setDetectedLang] = useState<string | null>(null);
   const [continuous, setContinuous] = useState(false);
   const [snapshotInfo, setSnapshotInfo] = useState<ScreenshotSnapshotInfo | null>(null);
+  const [detectedRegions, setDetectedRegions] = useState<TextRegion[]>([]);
+  const [detectingRegions, setDetectingRegions] = useState(false);
 
   // Refs for stable access inside callbacks/intervals
   const regionRef = useRef<RegionRect | null>(null);
@@ -77,6 +80,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       ocrResult: OcrResultDetailed,
       translatedText: string,
       lineTranslations: string[] = [],
+      detectedLangName?: string,
     ) => {
       try {
         await emitTo("ocr-region-frame", "ocr-region-update-data", {
@@ -87,6 +91,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           lineTranslations,
           sourceLang: sourceLangRef.current,
           targetLang: targetLangRef.current,
+          detectedLang: detectedLangName,
         });
       } catch {
         // region frame may not be ready yet
@@ -121,6 +126,27 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         setOcrSource(sourceTextTrimmed);
         hasOcrRef.current = true;
 
+        // Auto-detect language from full OCR text
+        let effectiveSourceLang = sourceLangRef.current;
+        if (sourceLangRef.current === "auto" && sourceTextTrimmed.length >= 2) {
+          try {
+            const detected = await invokeOrThrow<DetectionResult>("detect_language", {
+              text: sourceTextTrimmed,
+            });
+            if (detected.language !== "auto") {
+              effectiveSourceLang = detected.language;
+              setDetectedLang(detected.name);
+            } else {
+              setDetectedLang(null);
+            }
+          } catch {
+            // Language detection failure is non-fatal, continue with "auto"
+            setDetectedLang(null);
+          }
+        } else {
+          setDetectedLang(null);
+        }
+
         // Only translate if the OCR text actually changed
         const textChanged = sourceTextTrimmed !== lastOcrTextRef.current;
         let translatedText = "";
@@ -136,7 +162,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
               const response = await invokeOrThrow<TranslateResponse>("translate", {
                 request: {
                   text: line.text.trim(),
-                  from: sourceLangRef.current,
+                  from: effectiveSourceLang,
                   to: targetLangRef.current,
                 },
               });
@@ -152,7 +178,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         }
 
         // Send screenshot + OCR + translation to the merged region frame
-        await sendToRegionFrame(image, ocrResult, translatedText, lineTranslations);
+        await sendToRegionFrame(image, ocrResult, translatedText, lineTranslations, detectedLang ?? undefined);
       } catch (err) {
         setError(String(err));
         throw err; // Re-throw so caller can handle (e.g., close region frame on failure)
@@ -233,6 +259,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       setError(null);
       setOcrSource(null);
       setTranslation(null);
+      setDetectedLang(null);
       regionRef.current = null;
       lastOcrTextRef.current = "";
       hasOcrRef.current = false;
@@ -408,6 +435,62 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
 
   const busy = status === "capturing" || status === "selecting" || status === "running";
 
+  // Auto-detect text regions in foreground window
+  const autoDetectRegions = useCallback(async () => {
+    setDetectingRegions(true);
+    setError(null);
+    try {
+      const regions = await invokeOrThrow<TextRegion[]>("detect_text_regions", { hwnd: null });
+      setDetectedRegions(regions);
+      if (regions.length === 0) {
+        setError("未检测到文本区域");
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setDetectingRegions(false);
+    }
+  }, []);
+
+  // Select a detected region and start OCR monitoring
+  const selectDetectedRegion = useCallback(async (region: TextRegion) => {
+    const regionRect: RegionRect = {
+      x: region.x,
+      y: region.y,
+      width: region.width,
+      height: region.height,
+    };
+    regionRef.current = regionRect;
+    setDetectedRegions([]);
+    lastOcrTextRef.current = "";
+    hasOcrRef.current = false;
+
+    // Create region frame
+    try {
+      await invokeOrThrow("create_ocr_region_frame", {
+        x: region.x,
+        y: region.y,
+        width: region.width,
+        height: region.height,
+      });
+    } catch (err) {
+      setError(String(err));
+      setStatus("error");
+      return;
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+
+    try {
+      await captureAndTranslate(regionRect);
+    } catch (err) {
+      console.error("[OCR] captureAndTranslate failed:", err);
+      setError(String(err));
+      setStatus("error");
+      await safeInvoke("close_ocr_region_frame", undefined, { silent: true });
+    }
+  }, [captureAndTranslate]);
+
   return (
     <section className="rounded-2xl border border-border bg-bg-secondary p-5 shadow-sm">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -430,8 +513,54 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           >
             {busy ? "处理中..." : "开始截图翻译"}
           </button>
+          <button
+            className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-md shadow-emerald-600/20 disabled:cursor-not-allowed disabled:opacity-60 flex items-center gap-1"
+            onClick={autoDetectRegions}
+            disabled={busy || detectingRegions}
+          >
+            <Search size={16} />
+            {detectingRegions ? "检测中..." : "自动检测文本"}
+          </button>
         </div>
       </div>
+
+      {/* Detected regions selection */}
+      {detectedRegions.length > 0 && (
+        <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+          <div className="mb-2 text-sm font-medium text-emerald-400">
+            检测到 {detectedRegions.length} 个文本区域，点击选择：
+          </div>
+          <div className="flex flex-col gap-2">
+            {detectedRegions.map((region, idx) => (
+              <button
+                key={idx}
+                className="rounded-lg border border-border bg-bg-primary px-3 py-2 text-left text-sm hover:border-emerald-500/50 hover:bg-emerald-500/10 transition-colors"
+                onClick={() => selectDetectedRegion(region)}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-text-primary">
+                    区域 {idx + 1} ({region.lineCount} 行)
+                  </span>
+                  <span className="text-text-secondary text-xs">
+                    {region.width}×{region.height} @ ({region.x}, {region.y})
+                  </span>
+                </div>
+                {region.textPreview && (
+                  <p className="mt-1 text-xs text-text-secondary truncate">
+                    {region.textPreview}
+                  </p>
+                )}
+              </button>
+            ))}
+          </div>
+          <button
+            className="mt-2 text-xs text-text-secondary hover:text-text-primary"
+            onClick={() => setDetectedRegions([])}
+          >
+            清除检测结果
+          </button>
+        </div>
+      )}
 
       <div className="mt-4 rounded-xl bg-bg-tertiary px-3 py-2 text-sm text-text-secondary">
         当前状态：
@@ -444,6 +573,9 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         </span>
         {continuous && (
           <span className="ml-2 text-sky-500">持续刷新中 (2s)</span>
+        )}
+        {detectedLang && (
+          <span className="ml-2 text-emerald-500">检测到: {detectedLang}</span>
         )}
       </div>
 

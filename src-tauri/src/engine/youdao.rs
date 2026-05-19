@@ -67,7 +67,9 @@ pub struct KeyEntry {
 fn keys_cache_path() -> PathBuf {
     let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
     path.push("moontranslator");
-    std::fs::create_dir_all(&path).ok();
+    if let Err(e) = std::fs::create_dir_all(&path) {
+        tracing::warn!("Failed to create config directory {:?}: {}", path, e);
+    }
     path.push("youdao_keys.json");
     path
 }
@@ -197,8 +199,15 @@ fn load_keys() -> HashMap<String, KeyEntry> {
 #[allow(dead_code)]
 fn save_keys(keys: &HashMap<String, KeyEntry>) {
     let path = keys_cache_path();
-    if let Ok(data) = serde_json::to_string_pretty(keys) {
-        std::fs::write(path, data).ok();
+    match serde_json::to_string_pretty(keys) {
+        Ok(data) => {
+            if let Err(e) = std::fs::write(&path, data) {
+                tracing::error!("Failed to save youdao keys {:?}: {}", path, e);
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to serialize youdao keys: {}", e);
+        }
     }
 }
 

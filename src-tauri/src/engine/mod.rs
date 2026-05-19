@@ -197,7 +197,7 @@ impl Router {
 
         // Log configured engines for debugging
         let engine_names: Vec<&str> = engines.iter().map(|e| e.name()).collect();
-        log::info!("[Router] Configured engines: {:?} (strategy: {:?})", engine_names, config.routing_strategy);
+        tracing::info!("[Router] Configured engines: {:?} (strategy: {:?})", engine_names, config.routing_strategy);
 
         // Load plugin engines
         let plugins = plugin::scan_plugins();
@@ -275,7 +275,7 @@ impl Router {
                         latency_ms: None,
                     }),
                     Err(e) => {
-                        log::warn!("[Router] Engine {} failed: {}", name, e);
+                        tracing::warn!("[Router] Engine {} failed: {}", name, e);
                         None
                     }
                 }
@@ -298,10 +298,10 @@ impl Router {
     async fn translate_primary_only(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
         if let Some(engine) = self.engines.first() {
             let name = engine.name().to_string();
-            log::info!("[Router] Using primary engine: {}", name);
+            tracing::info!("[Router] Using primary engine: {}", name);
             match engine.translate(text, from, to).await {
                 Ok(translated) => {
-                    log::info!("[Router] Primary engine {} succeeded", name);
+                    tracing::info!("[Router] Primary engine {} succeeded", name);
                     TranslateResponse {
                         results: vec![TranslationResult {
                             engine: name,
@@ -312,7 +312,7 @@ impl Router {
                     }
                 },
                 Err(e) => {
-                    log::error!("[Router] Primary engine {} failed: {}", name, e);
+                    tracing::error!("[Router] Primary engine {} failed: {}", name, e);
                     TranslateResponse {
                         results: vec![],
                         detected_language: None,
@@ -320,7 +320,7 @@ impl Router {
                 }
             }
         } else {
-            log::error!("[Router] No engines configured");
+            tracing::error!("[Router] No engines configured");
             TranslateResponse {
                 results: vec![],
                 detected_language: None,
@@ -332,10 +332,10 @@ impl Router {
     async fn translate_with_fallback(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
         for engine in &self.engines {
             let name = engine.name().to_string();
-            log::info!("[Router] Trying engine: {}", name);
+            tracing::info!("[Router] Trying engine: {}", name);
             match engine.translate(text, from, to).await {
                 Ok(translated) => {
-                    log::info!("[Router] Engine {} succeeded", name);
+                    tracing::info!("[Router] Engine {} succeeded", name);
                     return TranslateResponse {
                         results: vec![TranslationResult {
                             engine: name,
@@ -346,13 +346,13 @@ impl Router {
                     };
                 }
                 Err(e) => {
-                    log::warn!("[Router] Engine {} failed: {}, trying next...", name, e);
+                    tracing::warn!("[Router] Engine {} failed: {}, trying next...", name, e);
                     continue;
                 }
             }
         }
 
-        log::error!("[Router] All engines failed");
+        tracing::error!("[Router] All engines failed");
         TranslateResponse {
             results: vec![],
             detected_language: None,
@@ -383,7 +383,7 @@ impl Router {
                         latency_ms: None,
                     }),
                     Err(e) => {
-                        log::warn!("Engine {} error: {}", name, e);
+                        tracing::warn!("Engine {} error: {}", name, e);
                         None
                     }
                 }
@@ -425,7 +425,7 @@ impl Router {
                         };
                     }
                     Err(e) => {
-                        log::warn!("Free engine {} failed: {}", name, e);
+                        tracing::warn!("Free engine {} failed: {}", name, e);
                         continue;
                     }
                 }
@@ -448,7 +448,7 @@ impl Router {
                         };
                     }
                     Err(e) => {
-                        log::warn!("Paid engine {} failed: {}", name, e);
+                        tracing::warn!("Paid engine {} failed: {}", name, e);
                         continue;
                     }
                 }
@@ -484,7 +484,7 @@ impl Router {
                         })
                     }
                     Err(e) => {
-                        log::warn!("Engine {} error: {}", name, e);
+                        tracing::warn!("Engine {} error: {}", name, e);
                         None
                     }
                 }

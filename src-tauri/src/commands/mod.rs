@@ -1,3 +1,4 @@
+pub mod batch_cmd;
 pub mod cache_cmd;
 pub mod capture;
 pub mod config_cmd;
@@ -6,6 +7,7 @@ pub mod furigana_cmd;
 pub mod glossary_cmd;
 pub mod history_cmd;
 pub mod hook_cmd;
+pub mod hook_inject_cmd;
 pub mod hook_profile_cmd;
 pub mod pdf_cmd;
 pub mod plugin_cmd;

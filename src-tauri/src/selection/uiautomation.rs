@@ -47,7 +47,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
         // Initialize COM on this thread
         let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         if hr.is_err() {
-            log::error!("[uiautomation] CoInitializeEx failed: {:?}", hr);
+            tracing::error!("[uiautomation] CoInitializeEx failed: {:?}", hr);
             return None;
         }
 
@@ -55,7 +55,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
         let automation: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL) {
             Ok(a) => a,
             Err(e) => {
-                log::error!("[uiautomation] CoCreateInstance failed: {}", e);
+                tracing::error!("[uiautomation] CoCreateInstance failed: {}", e);
                 return None;
             }
         };
@@ -64,7 +64,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
         let element = match automation.GetFocusedElement() {
             Ok(e) => e,
             Err(e) => {
-                log::warn!("[uiautomation] GetFocusedElement failed: {}", e);
+                tracing::warn!("[uiautomation] GetFocusedElement failed: {}", e);
                 return None;
             }
         };
@@ -90,44 +90,44 @@ fn get_uia_selection() -> Option<SelectionResult> {
         // Try patterns in order: TextPattern -> ValuePattern with selection -> ValuePattern full -> children
         let (text, bounds) = match try_text_pattern(&element) {
             Ok(result) => {
-                log::info!(
+                tracing::info!(
                     "[uiautomation] TextPattern success: {} chars",
                     result.0.len()
                 );
                 result
             }
             Err(e) => {
-                log::debug!("[uiautomation] TextPattern failed: {}", e);
+                tracing::debug!("[uiautomation] TextPattern failed: {}", e);
                 match try_value_pattern_with_selection(&element, &automation) {
                     Ok(result) => {
-                        log::info!(
+                        tracing::info!(
                             "[uiautomation] ValuePattern+selection success: {} chars",
                             result.0.len()
                         );
                         result
                     }
                     Err(e2) => {
-                        log::debug!("[uiautomation] ValuePattern+selection failed: {}", e2);
+                        tracing::debug!("[uiautomation] ValuePattern+selection failed: {}", e2);
                         match try_value_pattern_full(&element) {
                             Ok(result) => {
-                                log::info!(
+                                tracing::info!(
                                     "[uiautomation] ValuePattern(full) success: {} chars",
                                     result.0.len()
                                 );
                                 result
                             }
                             Err(e3) => {
-                                log::debug!("[uiautomation] ValuePattern(full) failed: {}", e3);
+                                tracing::debug!("[uiautomation] ValuePattern(full) failed: {}", e3);
                                 match find_text_in_children(&element, &automation, 0) {
                                     Some(result) => {
-                                        log::info!(
+                                        tracing::info!(
                                             "[uiautomation] Children walk success: {} chars",
                                             result.0.len()
                                         );
                                         result
                                     }
                                     None => {
-                                        log::debug!("[uiautomation] All patterns exhausted for focused element");
+                                        tracing::debug!("[uiautomation] All patterns exhausted for focused element");
                                         return None;
                                     }
                                 }
@@ -139,7 +139,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
         };
 
         if text.trim().is_empty() {
-            log::debug!("[uiautomation] Got text but it's empty after trim");
+            tracing::debug!("[uiautomation] Got text but it's empty after trim");
             return None;
         }
 
@@ -269,7 +269,7 @@ unsafe fn try_value_pattern_with_selection(
 
     // TextPattern cross-reference didn't confirm a real selection.
     // Only full value is available — that's not a selection success.
-    log::debug!("[uiautomation] ValuePattern: only full value available ({} chars), no confirmed selection — falling through", full_text.len());
+    tracing::debug!("[uiautomation] ValuePattern: only full value available ({} chars), no confirmed selection — falling through", full_text.len());
     Err("ValuePattern: no confirmed selection, only full text available".into())
 }
 
@@ -311,7 +311,7 @@ unsafe fn find_text_in_children(
     let true_cond = match automation.CreateTrueCondition() {
         Ok(c) => c,
         Err(e) => {
-            log::debug!("[uiautomation] CreateTrueCondition failed: {}", e);
+            tracing::debug!("[uiautomation] CreateTrueCondition failed: {}", e);
             return None;
         }
     };
@@ -322,7 +322,7 @@ unsafe fn find_text_in_children(
     ) {
         Ok(c) => c,
         Err(e) => {
-            log::debug!(
+            tracing::debug!(
                 "[uiautomation] FindAll children failed at depth {}: {}",
                 depth,
                 e

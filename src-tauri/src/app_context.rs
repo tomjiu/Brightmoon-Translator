@@ -75,6 +75,7 @@ pub fn build_contexts() -> Contexts {
     let glossary_arc = Arc::new(Mutex::new(glossary));
 
     let pre_processor_arc = Arc::new(pre_processor);
+    let post_processor_arc = Arc::new(Mutex::new(post_processor));
 
     let translation_service = Arc::new(TranslationService::new(
         config_arc.clone(),
@@ -84,6 +85,7 @@ pub fn build_contexts() -> Contexts {
         engine_router.clone(),
         metrics.clone(),
         pre_processor_arc.clone(),
+        post_processor_arc.clone(),
     ));
 
     let selection_manager = Arc::new(selection::SelectionProviderManager::with_defaults());
@@ -103,7 +105,7 @@ pub fn build_contexts() -> Contexts {
         document: DocumentContext {
             history: history_arc,
             wordbook: Arc::new(Mutex::new(wordbook)),
-            post_processor: Arc::new(Mutex::new(post_processor)),
+            post_processor: post_processor_arc,
             pre_processor: pre_processor_arc,
         },
         overlay: OverlayContext {

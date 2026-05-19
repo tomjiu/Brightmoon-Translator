@@ -36,7 +36,9 @@ pub struct HookProfileStore {
 fn config_path() -> PathBuf {
     let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
     path.push("moontranslator");
-    std::fs::create_dir_all(&path).ok();
+    if let Err(e) = std::fs::create_dir_all(&path) {
+        tracing::warn!("Failed to create config directory {:?}: {}", path, e);
+    }
     path.push("hook_profiles.json");
     path
 }
@@ -48,17 +50,23 @@ pub struct HookProfileManager {
 impl HookProfileManager {
     pub fn load() -> Self {
         let path = config_path();
+        let empty = HookProfileStore {
+            profiles: Vec::new(),
+            active_profile_id: None,
+        };
         let store = if path.exists() {
-            let data = std::fs::read_to_string(&path).unwrap_or_default();
-            serde_json::from_str(&data).unwrap_or(HookProfileStore {
-                profiles: Vec::new(),
-                active_profile_id: None,
-            })
-        } else {
-            HookProfileStore {
-                profiles: Vec::new(),
-                active_profile_id: None,
+            match std::fs::read_to_string(&path) {
+                Ok(data) => serde_json::from_str(&data).unwrap_or_else(|e| {
+                    tracing::error!("Failed to parse hook profiles {:?}: {}", path, e);
+                    empty
+                }),
+                Err(e) => {
+                    tracing::error!("Failed to read hook profiles {:?}: {}", path, e);
+                    empty
+                }
             }
+        } else {
+            empty
         };
 
         Self {
@@ -69,8 +77,15 @@ impl HookProfileManager {
     fn save(&self) {
         let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         let path = config_path();
-        if let Ok(data) = serde_json::to_string_pretty(&*store) {
-            std::fs::write(path, data).ok();
+        match serde_json::to_string_pretty(&*store) {
+            Ok(data) => {
+                if let Err(e) = std::fs::write(&path, data) {
+                    tracing::error!("Failed to save hook profiles {:?}: {}", path, e);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to serialize hook profiles: {}", e);
+            }
         }
     }
 

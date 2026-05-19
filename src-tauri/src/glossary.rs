@@ -30,10 +30,19 @@ impl Glossary {
 
     pub fn save(&self) {
         if let Some(parent) = self.path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                tracing::warn!("Failed to create glossary directory {:?}: {}", parent, e);
+            }
         }
-        if let Ok(data) = serde_json::to_string_pretty(&self.entries) {
-            let _ = std::fs::write(&self.path, data);
+        match serde_json::to_string_pretty(&self.entries) {
+            Ok(data) => {
+                if let Err(e) = std::fs::write(&self.path, data) {
+                    tracing::error!("Failed to save glossary to {:?}: {}", self.path, e);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to serialize glossary: {}", e);
+            }
         }
     }
 
@@ -91,5 +100,126 @@ impl Glossary {
             }
         }
         lines.join("\n")
+    }
+
+    /// Create a Glossary for testing with pre-populated entries.
+    #[cfg(test)]
+    fn test_fixture() -> Self {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "ja-zh".to_string(),
+            vec![
+                GlossaryEntry {
+                    source: "自動翻訳".to_string(),
+                    target: "自动翻译".to_string(),
+                    context: None,
+                },
+                GlossaryEntry {
+                    source: "機械学習".to_string(),
+                    target: "机器学习".to_string(),
+                    context: Some("ML domain".to_string()),
+                },
+            ],
+        );
+        Glossary {
+            entries,
+            path: PathBuf::from("/tmp/test_glossary.json"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_apply_glossary_replaces_terms() {
+        let glossary = Glossary::test_fixture();
+        let mut text = "自動翻訳と機械学習".to_string();
+        glossary.apply_glossary(&mut text, "ja-zh");
+        assert_eq!(text, "自动翻译と机器学习");
+    }
+
+    #[test]
+    fn test_apply_glossary_no_match() {
+        let glossary = Glossary::test_fixture();
+        let mut text = "こんにちは".to_string();
+        glossary.apply_glossary(&mut text, "ja-zh");
+        assert_eq!(text, "こんにちは");
+    }
+
+    #[test]
+    fn test_apply_glossary_wrong_lang_pair() {
+        let glossary = Glossary::test_fixture();
+        let mut text = "自動翻訳".to_string();
+        glossary.apply_glossary(&mut text, "en-zh");
+        assert_eq!(text, "自動翻訳");
+    }
+
+    #[test]
+    fn test_format_hint_with_entries() {
+        let glossary = Glossary::test_fixture();
+        let hint = glossary.format_hint("ja-zh");
+        assert!(hint.contains("术语表"));
+        assert!(hint.contains("自動翻訳 → 自动翻译"));
+        assert!(hint.contains("機械学習 → 机器学习 (ML domain)"));
+    }
+
+    #[test]
+    fn test_format_hint_empty_lang_pair() {
+        let glossary = Glossary::test_fixture();
+        let hint = glossary.format_hint("en-fr");
+        assert!(hint.is_empty());
+    }
+
+    #[test]
+    fn test_get_entries_returns_cloned_vec() {
+        let glossary = Glossary::test_fixture();
+        let entries = glossary.get_entries("ja-zh");
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn test_get_entries_missing_pair() {
+        let glossary = Glossary::test_fixture();
+        let entries = glossary.get_entries("en-fr");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_add_entry() {
+        let mut glossary = Glossary::test_fixture();
+        // Use a temp path that we won't actually write to
+        glossary.path = PathBuf::from("/dev/null/test_add");
+        glossary.add_entry(
+            "en-zh".to_string(),
+            GlossaryEntry {
+                source: "hello".to_string(),
+                target: "你好".to_string(),
+                context: None,
+            },
+        );
+        let entries = glossary.get_entries("en-zh");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source, "hello");
+    }
+
+    #[test]
+    fn test_remove_entry() {
+        let mut glossary = Glossary::test_fixture();
+        glossary.path = PathBuf::from("/dev/null/test_remove");
+        let removed = glossary.remove_entry("ja-zh", "自動翻訳");
+        assert!(removed);
+        let entries = glossary.get_entries("ja-zh");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source, "機械学習");
+    }
+
+    #[test]
+    fn test_remove_entry_not_found() {
+        let mut glossary = Glossary::test_fixture();
+        glossary.path = PathBuf::from("/dev/null/test_remove_nf");
+        let removed = glossary.remove_entry("ja-zh", "存在しない");
+        assert!(!removed);
     }
 }

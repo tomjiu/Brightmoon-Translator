@@ -95,9 +95,24 @@ impl HookMonitor {
                         }
                     }
 
+                    // Auto-detect language for OCR/UIA/hook sources when source_lang is "auto"
+                    let effective_source = if source_lang == "auto" && text.source != "clipboard" {
+                        match crate::lang_detect::detect_language(&text.text) {
+                            crate::lang_detect::DetectionResult { language, confidence, .. }
+                                if confidence > 0.3 && language != "auto" =>
+                            {
+                                tracing::debug!("[HookMonitor] Detected language: {} (confidence: {:.2})", language, confidence);
+                                language
+                            }
+                            _ => source_lang.clone(),
+                        }
+                    } else {
+                        source_lang.clone()
+                    };
+
                     // Translate
                     match translation_service
-                        .translate(&text.text, &source_lang, &target_lang)
+                        .translate(&text.text, &effective_source, &target_lang)
                         .await
                     {
                         Ok(response) => {
@@ -118,7 +133,7 @@ impl HookMonitor {
                             }
                         }
                         Err(e) => {
-                            log::warn!("[HookMonitor] Translation failed: {}", e);
+                            tracing::warn!("[HookMonitor] Translation failed: {}", e);
                         }
                     }
                 });

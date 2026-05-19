@@ -44,16 +44,20 @@ lindera-tokenizer = "0.28"
 lindera-dictionary = "0.28"
 lindera-core = "0.28"
 rand = "0.8"
-log = "0.4"
-env_logger = "0.11"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dependencies.windows]
 version = "0.58"
 features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Security",
     "Win32_System_Com",
     "Win32_System_DataExchange",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_LibraryLoader",
     "Win32_System_Memory",
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",

@@ -33,7 +33,7 @@ impl SelectionProviderManager {
         for provider in &self.providers {
             let name = provider.name();
             tried.push(name);
-            log::debug!(
+            tracing::debug!(
                 "[selection_manager] Trying provider '{}' (priority {})",
                 name,
                 provider.priority()
@@ -41,7 +41,7 @@ impl SelectionProviderManager {
             match provider.get_selection().await {
                 Some(result) => {
                     if !result.text.trim().is_empty() {
-                        log::info!(
+                        tracing::info!(
                             "[selection_manager] Provider '{}' succeeded: {} chars from '{}'",
                             name,
                             result.text.len(),
@@ -49,18 +49,18 @@ impl SelectionProviderManager {
                         );
                         return Some(result);
                     } else {
-                        log::debug!(
+                        tracing::debug!(
                             "[selection_manager] Provider '{}' returned empty text",
                             name
                         );
                     }
                 }
                 None => {
-                    log::debug!("[selection_manager] Provider '{}' returned None", name);
+                    tracing::debug!("[selection_manager] Provider '{}' returned None", name);
                 }
             }
         }
-        log::warn!(
+        tracing::warn!(
             "[selection_manager] All providers failed. Tried: {:?}",
             tried
         );
@@ -76,14 +76,14 @@ impl SelectionProviderManager {
             let name = provider.name();
             if exclude.contains(&name) {
                 skipped.push(name);
-                log::debug!(
+                tracing::debug!(
                     "[selection_manager] Skipping provider '{}' (excluded)",
                     name
                 );
                 continue;
             }
             tried.push(name);
-            log::debug!(
+            tracing::debug!(
                 "[selection_manager] Trying provider '{}' (priority {})",
                 name,
                 provider.priority()
@@ -91,7 +91,7 @@ impl SelectionProviderManager {
             match provider.get_selection().await {
                 Some(result) => {
                     if !result.text.trim().is_empty() {
-                        log::info!(
+                        tracing::info!(
                             "[selection_manager] Provider '{}' succeeded: {} chars from '{}'",
                             name,
                             result.text.len(),
@@ -99,18 +99,18 @@ impl SelectionProviderManager {
                         );
                         return Some(result);
                     } else {
-                        log::debug!(
+                        tracing::debug!(
                             "[selection_manager] Provider '{}' returned empty text",
                             name
                         );
                     }
                 }
                 None => {
-                    log::debug!("[selection_manager] Provider '{}' returned None", name);
+                    tracing::debug!("[selection_manager] Provider '{}' returned None", name);
                 }
             }
         }
-        log::warn!(
+        tracing::warn!(
             "[selection_manager] All providers failed. Tried: {:?}, Skipped: {:?}",
             tried,
             skipped

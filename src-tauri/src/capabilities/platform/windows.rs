@@ -100,7 +100,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                     GlobalUnlock(h_data);
                     Some(saved)
                 } else {
-                    log::warn!("[replace] save clipboard: GlobalLock failed");
+                    tracing::warn!("[replace] save clipboard: GlobalLock failed");
                     None
                 }
             } else {
@@ -109,13 +109,13 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             CloseClipboard();
             saved
         } else {
-            log::warn!("[replace] save clipboard: OpenClipboard failed");
+            tracing::warn!("[replace] save clipboard: OpenClipboard failed");
             None
         };
 
         // Set translated text to clipboard — this is the critical path
         set_clipboard_text(text).map_err(|e| {
-            log::error!("[replace] set translated clipboard failed: {}", e);
+            tracing::error!("[replace] set translated clipboard failed: {}", e);
             format!("set translated clipboard failed: {}", e)
         })?;
 
@@ -155,7 +155,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             std::mem::size_of::<INPUT>() as i32,
         );
         if sent == 0 {
-            log::warn!("[replace] paste delivery uncertain: SendInput returned 0");
+            tracing::warn!("[replace] paste delivery uncertain: SendInput returned 0");
         }
 
         // Adaptive wait: poll clipboard to confirm paste completed, 30ms intervals, max 300ms
@@ -189,7 +189,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             confirmed
         };
         if !paste_confirmed {
-            log::debug!("[replace] paste delivery uncertain: not confirmed after 300ms");
+            tracing::debug!("[replace] paste delivery uncertain: not confirmed after 300ms");
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
 
@@ -211,20 +211,20 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                         GlobalUnlock(h_mem);
                         SetClipboardData(CF_UNICODETEXT, h_mem);
                     } else {
-                        log::warn!("[replace] restore clipboard: GlobalLock failed");
+                        tracing::warn!("[replace] restore clipboard: GlobalLock failed");
                     }
                 } else {
-                    log::warn!("[replace] restore clipboard: GlobalAlloc failed");
+                    tracing::warn!("[replace] restore clipboard: GlobalAlloc failed");
                 }
             }
 
             CloseClipboard();
         } else {
-            log::warn!("[replace] restore clipboard: OpenClipboard failed");
+            tracing::warn!("[replace] restore clipboard: OpenClipboard failed");
         }
     }
 
-    log::info!(
+    tracing::info!(
         "[replace] Replace-via-clipboard completed for {} chars",
         text.len()
     );

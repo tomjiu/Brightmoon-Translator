@@ -6,11 +6,20 @@ use crate::glossary::Glossary;
 use crate::memory::HistoryStore;
 use crate::metrics::MetricsCollector;
 use crate::models::error::TranslationError;
+use crate::post_process::PostProcessor;
 use crate::pre_process::PreProcessor;
 pub use crate::models::translation::BatchTranslationResult;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
+
+/// Result of text preparation before engine call
+struct PreparedText {
+    text: String,
+    glossary_hint: String,
+    blacklist: Option<(BlacklistProcessor, HashMap<String, String>)>,
+}
 
 /// Service layer for translation operations
 /// Handles pre-processing, glossary, blacklist, cache, history, and engine orchestration
@@ -22,6 +31,7 @@ pub struct TranslationService {
     engine_router: Arc<RwLock<Router>>,
     metrics: Arc<MetricsCollector>,
     pre_processor: Arc<PreProcessor>,
+    post_processor: Arc<Mutex<PostProcessor>>,
 }
 
 impl TranslationService {
@@ -33,6 +43,7 @@ impl TranslationService {
         engine_router: Arc<RwLock<Router>>,
         metrics: Arc<MetricsCollector>,
         pre_processor: Arc<PreProcessor>,
+        post_processor: Arc<Mutex<PostProcessor>>,
     ) -> Self {
         Self {
             config,
@@ -42,6 +53,75 @@ impl TranslationService {
             engine_router,
             metrics,
             pre_processor,
+            post_processor,
+        }
+    }
+
+    /// Prepare text for translation: pre-process -> glossary -> blacklist protect
+    async fn prepare(&self, text: &str, from: &str, to: &str) -> PreparedText {
+        let lang_pair = format!("{}-{}", from, to);
+        let mut processed_text = self.pre_processor.process(text, Some(&lang_pair));
+
+        let glossary = self.glossary.lock().await;
+        glossary.apply_glossary(&mut processed_text, &lang_pair);
+        let glossary_hint = glossary.format_hint(&lang_pair);
+        drop(glossary);
+
+        let config = self.config.lock().await;
+        let blacklist_processor = BlacklistProcessor::new(config.translation_blacklist.clone());
+        drop(config);
+
+        let (protected_text, placeholder_map) = blacklist_processor.protect(&processed_text);
+
+        PreparedText {
+            text: protected_text,
+            glossary_hint,
+            blacklist: if placeholder_map.is_empty() {
+                None
+            } else {
+                Some((blacklist_processor, placeholder_map))
+            },
+        }
+    }
+
+    /// Finalize single translation result: restore blacklist -> post-process -> auto-correct
+    async fn finalize(
+        &self,
+        translated: &str,
+        source: &str,
+        from: &str,
+        to: &str,
+        blacklist: &Option<(BlacklistProcessor, HashMap<String, String>)>,
+    ) -> String {
+        let restored = if let Some((bp, pm)) = blacklist {
+            bp.restore(translated, pm)
+        } else {
+            translated.to_string()
+        };
+
+        let pp = self.post_processor.lock().await;
+        let processed = pp.process(&restored);
+        let ac = pp.auto_correct(&processed, source, from, to);
+        if !ac.warnings.is_empty() {
+            tracing::warn!("[Translation] Auto-correct warnings: {:?}", ac.warnings);
+        }
+        ac.corrected
+    }
+
+    /// Apply post-processing + auto-correct to batch results (no blacklist)
+    async fn finalize_batch(&self, results: &mut [BatchTranslationResult], from: &str, to: &str) {
+        let pp = self.post_processor.lock().await;
+        for result in results.iter_mut() {
+            result.translated = pp.process(&result.translated);
+            let ac = pp.auto_correct(&result.translated, &result.original, from, to);
+            if !ac.warnings.is_empty() {
+                tracing::warn!(
+                    "[Translation] Auto-correct warnings for batch segment {}: {:?}",
+                    result.index,
+                    ac.warnings
+                );
+            }
+            result.translated = ac.corrected;
         }
     }
 
@@ -52,43 +132,27 @@ impl TranslationService {
         from: &str,
         to: &str,
     ) -> Result<TranslateResponse, TranslationError> {
-        log::info!("[Translation] Input text ({} chars): {:?}", text.len(), &text[..text.len().min(200)]);
+        tracing::info!("[Translation] Input text ({} chars): {:?}", text.len(), &text[..text.len().min(200)]);
 
-        // Apply pre-processing (regex rules, unicode normalization, etc.)
-        let lang_pair = format!("{}-{}", from, to);
-        let mut processed_text = self.pre_processor.process(text, Some(&lang_pair));
+        let prepared = self.prepare(text, from, to).await;
 
-        // Apply glossary
-        let glossary = self.glossary.lock().await;
-        glossary.apply_glossary(&mut processed_text, &lang_pair);
-        let glossary_hint = glossary.format_hint(&lang_pair);
-        drop(glossary);
-
-        // Apply blacklist protection
-        let config = self.config.lock().await;
-        let blacklist_processor = BlacklistProcessor::new(config.translation_blacklist.clone());
-        let tm_enabled = config.tm_enabled;
-        let tm_threshold = config.tm_threshold;
-        drop(config);
-
-        let (protected_text, placeholder_map) = blacklist_processor.protect(&processed_text);
-        let has_blacklist = !placeholder_map.is_empty();
+        // Get TM config
+        let (tm_enabled, tm_threshold) = {
+            let config = self.config.lock().await;
+            (config.tm_enabled, config.tm_threshold)
+        };
 
         // Check Translation Memory before cache
         if tm_enabled {
             let history = self.history.lock().await;
-            if let Some(tm_match) = history.fuzzy_match(&protected_text, from, to, tm_threshold) {
+            if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold) {
                 drop(history);
-                self.metrics.record_cache_hit().await; // Reuse cache hit metric for TM
-                log::info!(
+                self.metrics.record_cache_hit().await;
+                tracing::info!(
                     "[TM] Hit: similarity={:.2}, engine={}, stored_source={:?}",
                     tm_match.similarity, tm_match.engine, &tm_match.source_text[..tm_match.source_text.len().min(50)]
                 );
-                let final_text = if has_blacklist {
-                    blacklist_processor.restore(&tm_match.translated_text, &placeholder_map)
-                } else {
-                    tm_match.translated_text
-                };
+                let final_text = self.finalize(&tm_match.translated_text, text, from, to, &prepared.blacklist).await;
                 return Ok(TranslateResponse {
                     results: vec![TranslationResult {
                         engine: format!("TM ({})", tm_match.engine),
@@ -101,24 +165,17 @@ impl TranslationService {
         }
 
         // Check cache first
-        if let Some(cached) = self.cache.get(&protected_text, from, to).await {
+        if let Some(cached) = self.cache.get(&prepared.text, from, to).await {
             self.metrics.record_cache_hit().await;
-            let results = cached
-                .results
-                .into_iter()
-                .map(|(engine, text)| {
-                    let final_text = if has_blacklist {
-                        blacklist_processor.restore(&text, &placeholder_map)
-                    } else {
-                        text
-                    };
-                    TranslationResult {
-                        engine,
-                        text: final_text,
-                        latency_ms: None,
-                    }
-                })
-                .collect();
+            let mut results = Vec::with_capacity(cached.results.len());
+            for (engine, cached_text) in cached.results {
+                let final_text = self.finalize(&cached_text, text, from, to, &prepared.blacklist).await;
+                results.push(TranslationResult {
+                    engine,
+                    text: final_text,
+                    latency_ms: None,
+                });
+            }
             return Ok(TranslateResponse {
                 results,
                 detected_language: None,
@@ -129,37 +186,35 @@ impl TranslationService {
         // Call translation engines with timing
         let start = Instant::now();
         let router = self.engine_router.read().await;
-        let mut response = if glossary_hint.is_empty() {
-            router.translate_all(&protected_text, from, to).await
+        let mut response = if prepared.glossary_hint.is_empty() {
+            router.translate_all(&prepared.text, from, to).await
         } else {
-            // Primary engine gets glossary hint injected into system prompt;
-            // other engines use standard text-replacement glossary
             let primary_result = router
-                .translate_primary_with_glossary(&protected_text, from, to, &glossary_hint)
+                .translate_primary_with_glossary(&prepared.text, from, to, &prepared.glossary_hint)
                 .await;
-            let mut resp = router.translate_rest(&protected_text, from, to).await;
+            let mut resp = router.translate_rest(&prepared.text, from, to).await;
             match primary_result {
-                Ok(text) => {
+                Ok(translated) => {
                     let engine_name = router.primary_engine_name().unwrap_or("LLM").to_string();
                     resp.results.insert(
                         0,
                         TranslationResult {
                             engine: engine_name,
-                            text,
+                            text: translated,
                             latency_ms: None,
                         },
                     );
                 }
                 Err(e) => {
-                    log::warn!("[translate] Primary engine with glossary failed: {}, falling back", e);
-                    let fallback = router.translate_primary(&protected_text, from, to).await;
-                    if let Ok(text) = fallback {
+                    tracing::warn!("[translate] Primary engine with glossary failed: {}, falling back", e);
+                    let fallback = router.translate_primary(&prepared.text, from, to).await;
+                    if let Ok(translated) = fallback {
                         let engine_name = router.primary_engine_name().unwrap_or("primary").to_string();
                         resp.results.insert(
                             0,
                             TranslationResult {
                                 engine: engine_name,
-                                text,
+                                text: translated,
                                 latency_ms: None,
                             },
                         );
@@ -170,44 +225,34 @@ impl TranslationService {
         };
         let elapsed_ms = start.elapsed().as_millis() as u64;
 
-        // Record failures for empty results (check before dropping router)
+        // Record failures for empty results
         let engine_names = router.engine_names();
         drop(router);
 
-        // Record engine latency for each result
         for result in &response.results {
-            self.metrics
-                .record_engine_latency(&result.engine, elapsed_ms)
-                .await;
+            self.metrics.record_engine_latency(&result.engine, elapsed_ms).await;
         }
 
         if response.results.is_empty() {
             let detail = if engine_names.is_empty() {
                 "No engines are configured".to_string()
             } else {
-                format!(
-                    "No engine returned a result (configured: {})",
-                    engine_names.join(", ")
-                )
+                format!("No engine returned a result (configured: {})", engine_names.join(", "))
             };
-            self.metrics
-                .record_failure("all", &detail)
-                .await;
+            self.metrics.record_failure("all", &detail).await;
             return Err(TranslationError::AllEnginesFailed {
                 errors: vec![detail],
             });
         }
 
-        // Restore blacklist words in results
-        if has_blacklist {
-            for result in &mut response.results {
-                result.text = blacklist_processor.restore(&result.text, &placeholder_map);
-            }
+        // Finalize all results: restore blacklist -> post-process -> auto-correct
+        for result in &mut response.results {
+            result.text = self.finalize(&result.text, text, from, to, &prepared.blacklist).await;
         }
 
         // Log translation results
         for result in &response.results {
-            log::info!("[Translation] Engine: {}, Result ({} chars): {:?}", result.engine, result.text.len(), &result.text[..result.text.len().min(200)]);
+            tracing::info!("[Translation] Engine: {}, Result ({} chars): {:?}", result.engine, result.text.len(), &result.text[..result.text.len().min(200)]);
         }
 
         // Cache the results
@@ -217,9 +262,7 @@ impl TranslationService {
                 .iter()
                 .map(|r| (r.engine.clone(), r.text.clone()))
                 .collect();
-            self.cache
-                .set(&protected_text, from, to, cache_results)
-                .await;
+            self.cache.set(&prepared.text, from, to, cache_results).await;
         }
 
         // Save to history
@@ -239,33 +282,13 @@ impl TranslationService {
         to: &str,
         tx: tokio::sync::mpsc::Sender<String>,
     ) -> Result<String, TranslationError> {
-        // Apply pre-processing
-        let lang_pair = format!("{}-{}", from, to);
-        let mut processed_text = self.pre_processor.process(text, Some(&lang_pair));
-
-        // Apply glossary
-        let glossary = self.glossary.lock().await;
-        glossary.apply_glossary(&mut processed_text, &lang_pair);
-        let glossary_hint = glossary.format_hint(&lang_pair);
-        drop(glossary);
-
-        // Apply blacklist protection
-        let config = self.config.lock().await;
-        let blacklist_processor = BlacklistProcessor::new(config.translation_blacklist.clone());
-        drop(config);
-
-        let (protected_text, placeholder_map) = blacklist_processor.protect(&processed_text);
-        let has_blacklist = !placeholder_map.is_empty();
+        let prepared = self.prepare(text, from, to).await;
 
         // Check cache first
-        if let Some(cached) = self.cache.get(&protected_text, from, to).await {
-            if let Some((_, cached_text)) = cached.results.first() {
+        if let Some(cached) = self.cache.get(&prepared.text, from, to).await {
+            if let Some((_, cached_text)) = cached.results.into_iter().next() {
                 self.metrics.record_cache_hit().await;
-                let final_text = if has_blacklist {
-                    blacklist_processor.restore(cached_text, &placeholder_map)
-                } else {
-                    cached_text.clone()
-                };
+                let final_text = self.finalize(&cached_text, text, from, to, &prepared.blacklist).await;
                 let _ = tx.send(final_text.clone()).await;
                 return Ok(final_text);
             }
@@ -275,10 +298,10 @@ impl TranslationService {
         // Stream translation using primary engine
         let start = Instant::now();
         let router = self.engine_router.read().await;
-        let result = if glossary_hint.is_empty() {
-            router.translate_stream(&protected_text, from, to, tx).await
+        let result = if prepared.glossary_hint.is_empty() {
+            router.translate_stream(&prepared.text, from, to, tx).await
         } else {
-            router.translate_stream_with_glossary(&protected_text, from, to, tx, &glossary_hint).await
+            router.translate_stream_with_glossary(&prepared.text, from, to, tx, &prepared.glossary_hint).await
         };
         drop(router);
 
@@ -287,25 +310,12 @@ impl TranslationService {
                 let elapsed_ms = start.elapsed().as_millis() as u64;
                 self.metrics.record_engine_latency("LLM", elapsed_ms).await;
 
-                // Restore blacklist words
-                let final_text = if has_blacklist {
-                    blacklist_processor.restore(&full_text, &placeholder_map)
-                } else {
-                    full_text
-                };
+                let final_text = self.finalize(&full_text, text, from, to, &prepared.blacklist).await;
 
-                // Cache the result (with blacklist protection applied)
                 if !final_text.is_empty() {
                     self.cache
-                        .set(
-                            &protected_text,
-                            from,
-                            to,
-                            vec![("LLM".to_string(), final_text.clone())],
-                        )
+                        .set(&prepared.text, from, to, vec![("LLM".to_string(), final_text.clone())])
                         .await;
-
-                    // Save to history
                     let history = self.history.lock().await;
                     history.add(text, &final_text, from, to, "LLM");
                 }
@@ -329,64 +339,39 @@ impl TranslationService {
         from: &str,
         to: &str,
     ) -> Result<String, TranslationError> {
-        // Apply pre-processing
-        let lang_pair = format!("{}-{}", from, to);
-        let mut processed_text = self.pre_processor.process(text, Some(&lang_pair));
-
-        // Apply glossary
-        let glossary = self.glossary.lock().await;
-        glossary.apply_glossary(&mut processed_text, &lang_pair);
-        let glossary_hint = glossary.format_hint(&lang_pair);
-        drop(glossary);
-
-        // Apply blacklist protection
-        let config = self.config.lock().await;
-        let blacklist_processor = BlacklistProcessor::new(config.translation_blacklist.clone());
-        let tm_enabled = config.tm_enabled;
-        let tm_threshold = config.tm_threshold;
-        drop(config);
-
-        let (protected_text, placeholder_map) = blacklist_processor.protect(&processed_text);
-        let has_blacklist = !placeholder_map.is_empty();
+        let prepared = self.prepare(text, from, to).await;
 
         // Check Translation Memory
+        let (tm_enabled, tm_threshold) = {
+            let config = self.config.lock().await;
+            (config.tm_enabled, config.tm_threshold)
+        };
+
         if tm_enabled {
             let history = self.history.lock().await;
-            if let Some(tm_match) = history.fuzzy_match(&protected_text, from, to, tm_threshold) {
+            if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold) {
                 drop(history);
                 self.metrics.record_cache_hit().await;
-                let final_text = if has_blacklist {
-                    blacklist_processor.restore(&tm_match.translated_text, &placeholder_map)
-                } else {
-                    tm_match.translated_text
-                };
+                let final_text = self.finalize(&tm_match.translated_text, text, from, to, &prepared.blacklist).await;
                 return Ok(final_text);
             }
         }
 
         let start = Instant::now();
-
         let router = self.engine_router.read().await;
-        let result = if glossary_hint.is_empty() {
-            router.translate_primary(&protected_text, from, to).await
+        let result = if prepared.glossary_hint.is_empty() {
+            router.translate_primary(&prepared.text, from, to).await
         } else {
-            router.translate_primary_with_glossary(&protected_text, from, to, &glossary_hint).await
+            router.translate_primary_with_glossary(&prepared.text, from, to, &prepared.glossary_hint).await
         };
         drop(router);
 
         match result {
             Ok(translated) => {
                 let elapsed_ms = start.elapsed().as_millis() as u64;
-                self.metrics
-                    .record_engine_latency("primary", elapsed_ms)
-                    .await;
+                self.metrics.record_engine_latency("primary", elapsed_ms).await;
 
-                // Restore blacklist words
-                let final_text = if has_blacklist {
-                    blacklist_processor.restore(&translated, &placeholder_map)
-                } else {
-                    translated
-                };
+                let final_text = self.finalize(&translated, text, from, to, &prepared.blacklist).await;
                 Ok(final_text)
             }
             Err(e) => {
@@ -420,7 +405,7 @@ impl TranslationService {
     /// Returns results in the same order as input
     pub async fn translate_batch(
         &self,
-        lines: &[(usize, &str)], // (original_index, text)
+        lines: &[(usize, &str)],
         from: &str,
         to: &str,
         concurrency: usize,
@@ -429,14 +414,12 @@ impl TranslationService {
             return Vec::new();
         }
 
-        let concurrency = concurrency.max(1).min(10); // Clamp to 1-10
+        let concurrency = concurrency.max(1).min(10);
         let mut results = Vec::with_capacity(lines.len());
         let mut context: Vec<TranslationContext> = Vec::new();
 
-        // Record batch chunk size
         self.metrics.record_chunk_size(lines.len()).await;
 
-        // Process in chunks with concurrency
         for chunk in lines.chunks(concurrency) {
             let mut handles = Vec::new();
 
@@ -455,7 +438,7 @@ impl TranslationService {
                     {
                         Ok(t) => t,
                         Err(e) => {
-                            log::warn!("[translate_batch] Translation failed for segment {}: {}", idx, e);
+                            tracing::warn!("[translate_batch] Translation failed for segment {}: {}", idx, e);
                             String::new()
                         }
                     };
@@ -471,10 +454,8 @@ impl TranslationService {
                 handles.push(handle);
             }
 
-            // Wait for all in this chunk
             for handle in handles {
                 if let Ok(result) = handle.await {
-                    // Add to context for consistency (keep last 5)
                     context.push(TranslationContext {
                         source: result.original.clone(),
                         translation: result.translated.clone(),
@@ -487,8 +468,8 @@ impl TranslationService {
             }
         }
 
-        // Sort by original index to maintain order
         results.sort_by_key(|r| r.index);
+        self.finalize_batch(&mut results, from, to).await;
         results
     }
 
@@ -521,10 +502,8 @@ impl TranslationService {
         let mut context: Vec<TranslationContext> = Vec::new();
         let mut completed = 0;
 
-        // Record batch chunk size
         self.metrics.record_chunk_size(total).await;
 
-        // Process in chunks with concurrency
         for chunk in lines.chunks(concurrency) {
             let mut handles = Vec::new();
 
@@ -543,7 +522,7 @@ impl TranslationService {
                     {
                         Ok(t) => t,
                         Err(e) => {
-                            log::warn!("[translate_batch] Translation failed for segment {}: {}", idx, e);
+                            tracing::warn!("[translate_batch] Translation failed for segment {}: {}", idx, e);
                             String::new()
                         }
                     };
@@ -559,10 +538,8 @@ impl TranslationService {
                 handles.push(handle);
             }
 
-            // Wait for all in this chunk
             for handle in handles {
                 if let Ok(result) = handle.await {
-                    // Add to context for consistency (keep last 5)
                     context.push(TranslationContext {
                         source: result.original.clone(),
                         translation: result.translated.clone(),
@@ -577,8 +554,8 @@ impl TranslationService {
             }
         }
 
-        // Sort by original index to maintain order
         results.sort_by_key(|r| r.index);
+        self.finalize_batch(&mut results, from, to).await;
         results
     }
 }
