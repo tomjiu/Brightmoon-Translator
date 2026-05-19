@@ -15,7 +15,8 @@
     "settings": "设置",
     "tools": "工具",
     "plugins": "插件",
-    "hook": "Hook翻译"
+    "hook": "Hook翻译",
+    "batch": "批量翻译"
   },
   "translator": {
     "placeholder": "输入要翻译的文本...",
@@ -127,6 +128,11 @@
       "translationMaskHint": "遮挡原文，先看译文尝试理解，点击显示原文",
       "furigana": "日语振假名注音",
       "furiganaHint": "在日语汉字上方显示假名读音（仅日译时生效）"
+    },
+    "tts": {
+      "title": "语音合成 (TTS)",
+      "autoPlay": "翻译后自动朗读",
+      "autoPlayHint": "翻译完成后自动朗读译文（使用 Edge TTS）"
     },
     "blacklist": {
       "title": "禁翻表",
@@ -392,7 +398,27 @@
     "source.uia": "UI Automation - 适用于支持文本模式的应用",
     "source.clipboard": "剪贴板监听 - 检测复制操作",
     "source.ocr": "OCR截图识别 - 通用后备方案",
-    "source.hook": "Win32事件钩子 - 系统级文本变化监听"
+    "source.hook": "Win32事件钩子 - 系统级文本变化监听",
+    "hcode": {
+      "title": "H-Code DLL注入",
+      "description": "通过DLL注入钩取游戏/应用程序的文本渲染API（TextOut/DrawText），直接获取程序内部文本。",
+      "pid": "进程PID",
+      "pidPlaceholder": "输入目标进程PID",
+      "processName": "进程名",
+      "inject": "注入",
+      "eject": "卸载",
+      "injecting": "注入中...",
+      "status": "状态",
+      "injected": "已注入",
+      "notInjected": "未注入",
+      "messagesRead": "已捕获消息",
+      "selectProcess": "选择进程",
+      "refreshProcesses": "刷新进程列表",
+      "noDllFound": "未找到 moon_hook.dll",
+      "injectSuccess": "注入成功",
+      "injectFailed": "注入失败",
+      "ejectSuccess": "已卸载DLL"
+    }
   },
   "compare": {
     "title": "多引擎对比",
@@ -404,6 +430,47 @@
     "empty": "输入文本开始对比",
     "emptyHint": "按 Ctrl+Enter 快速翻译",
     "copy": "复制"
+  },
+  "batch": {
+    "title": "批量翻译",
+    "description": "输入多行文本，每行将作为独立段落进行翻译。支持大批量处理和并发翻译。",
+    "concurrency": "并发数:",
+    "continueOnError": "出错时继续",
+    "segmentCount": "共 {count} 段文本",
+    "start": "开始翻译",
+    "stop": "停止",
+    "pause": "暂停",
+    "resume": "继续",
+    "retry": "重试失败",
+    "reset": "重置",
+    "copyAll": "复制全部",
+    "export": "导出",
+    "completed": "完成",
+    "failed": "失败",
+    "noResults": "暂无翻译结果",
+    "noResultsHint": "输入文本并点击\"开始翻译\"",
+    "progress": "{completed}/{total}",
+    "failedCount": "({count} failed)"
+  },
+  "tm": {
+    "title": "翻译记忆",
+    "statistics": "统计",
+    "totalEntries": "总条目",
+    "languagePairs": "语言对",
+    "entries": "条记录",
+    "exportTm": "导出TM",
+    "importTm": "导入TM",
+    "exporting": "导出中...",
+    "importing": "导入中...",
+    "searchTitle": "搜索翻译记忆",
+    "searchPlaceholder": "搜索原文或译文...",
+    "anySourceLang": "任意源语言",
+    "anyTargetLang": "任意目标语言",
+    "resultsFound": "找到 {count} 条结果",
+    "pageInfo": "第 {current} 页，共 {total} 页",
+    "noResults": "未找到结果",
+    "aboutTitle": "关于翻译记忆",
+    "aboutDesc": "翻译记忆存储您的翻译历史以便复用。导出TM可备份或分享给他人。导入TM文件可恢复翻译或从其他设备合并。"
   },
   "replace": {
     "hardFail": "替换失败",

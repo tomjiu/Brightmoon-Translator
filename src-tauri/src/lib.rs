@@ -1,5 +1,6 @@
 pub mod api_server;
 pub mod app_context;
+pub mod batch;
 pub mod blacklist;
 pub mod cache;
 pub mod capabilities;
@@ -11,6 +12,7 @@ pub mod epub_reader;
 pub mod furigana;
 pub mod glossary;
 pub mod hotkey;
+pub mod hook_inject;
 pub mod hook_profile;
 pub mod lang_detect;
 pub mod memory;
@@ -28,6 +30,7 @@ pub mod subtitle;
 pub mod tts;
 
 use app_context::Contexts;
+use batch::BatchManager;
 use capabilities::{
     DefaultInputReplacement, DefaultSelectionTranslation, InputReplacement, SelectionTranslation,
 };
@@ -53,6 +56,9 @@ pub struct AppState {
     // Capability cells (initialized in setup() after AppHandle is available)
     pub selection_translation: TokioOnceCell<Arc<dyn SelectionTranslation>>,
     pub input_replacement: TokioOnceCell<Arc<dyn InputReplacement>>,
+
+    // Batch translation manager
+    pub batch: Arc<BatchManager>,
 }
 
 pub fn run() {
@@ -66,6 +72,7 @@ pub fn run() {
         system: ctx.system,
         selection_translation: TokioOnceCell::new(),
         input_replacement: TokioOnceCell::new(),
+        batch: Arc::new(BatchManager::new()),
     };
 
     tauri::Builder::default()
@@ -73,6 +80,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .manage(state)
+        .manage(commands::hook_inject_cmd::HookState::new())
         .setup(|app| {
             // Restore window position from config
             if let Some(window) = app.get_webview_window("main") {
@@ -130,7 +138,7 @@ pub fn run() {
 
             // Create system tray
             let icon = app.default_window_icon().cloned().unwrap_or_else(|| {
-                log::warn!("No default window icon found, using empty icon");
+                tracing::warn!("No default window icon found, using empty icon");
                 tauri::image::Image::new(&[], 0, 0)
             });
             let _tray = TrayIconBuilder::new()
@@ -258,6 +266,11 @@ pub fn run() {
             commands::capture::detect_foreground_hwnd,
             commands::capture::get_window_rect_cmd,
             commands::capture::get_window_title_cmd,
+            commands::capture::detect_text_regions,
+            commands::hook_inject_cmd::hook_inject,
+            commands::hook_inject_cmd::hook_eject,
+            commands::hook_inject_cmd::hook_status,
+            commands::hook_inject_cmd::hook_read_messages,
             commands::glossary_cmd::get_glossary,
             commands::glossary_cmd::get_all_glossary,
             commands::glossary_cmd::add_glossary_entry,
@@ -311,6 +324,19 @@ pub fn run() {
             commands::furigana_cmd::add_furigana,
             commands::furigana_cmd::add_furigana_html,
             commands::furigana_cmd::add_furigana_text,
+            commands::batch_cmd::batch_submit,
+            commands::batch_cmd::batch_cancel,
+            commands::batch_cmd::batch_pause,
+            commands::batch_cmd::batch_resume,
+            commands::batch_cmd::batch_retry_failed,
+            commands::batch_cmd::batch_get_progress,
+            commands::batch_cmd::batch_get_results,
+            commands::batch_cmd::batch_get_status,
+            commands::batch_cmd::batch_reset,
+            commands::batch_cmd::tm_export,
+            commands::batch_cmd::tm_import,
+            commands::batch_cmd::tm_get_stats,
+            commands::batch_cmd::tm_search,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -334,9 +360,9 @@ fn start_api_server(app: &tauri::App) {
     if api_enabled {
         tokio::spawn(async move {
             if let Err(e) = api_server::start_server(api_port, api_state).await {
-                log::error!("API server error: {}", e);
+                tracing::error!("API server error: {}", e);
             }
         });
-        log::info!("API server starting on port {}", api_port);
+        tracing::info!("API server starting on port {}", api_port);
     }
 }

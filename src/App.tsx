@@ -14,6 +14,7 @@ import SubtitleViewer from "./pages/SubtitleViewer";
 import Plugins from "./pages/Plugins";
 import HookMonitor from "./components/HookMonitor";
 import CompareView from "./components/CompareView";
+import BatchTranslator from "./components/BatchTranslator";
 import ErrorBoundary from "./components/ErrorBoundary";
 import OcrScreenshotSelector from "./components/OcrScreenshotSelector";
 import OcrScreenshotTranslator from "./components/OcrScreenshotTranslator";
@@ -41,9 +42,10 @@ import {
   Subtitles,
   Zap,
   BarChart3,
+  Layers,
 } from "lucide-react";
 
-type Page = "translator" | "settings" | "history" | "glossary" | "tools" | "wordbook" | "pdf" | "epub" | "subtitle" | "plugins" | "ocr" | "hook" | "compare";
+type Page = "translator" | "settings" | "history" | "glossary" | "tools" | "wordbook" | "pdf" | "epub" | "subtitle" | "plugins" | "ocr" | "hook" | "compare" | "batch";
 
 interface NavItem {
   id: Page;
@@ -110,6 +112,7 @@ function MainApp() {
         plugins: "plugins",
         ocr: "ocr",
         hook: "hook",
+        batch: "batch",
       };
       if (pageMap[event.payload]) {
         setPage(pageMap[event.payload]);
@@ -235,6 +238,7 @@ function MainApp() {
   const navItems: NavItem[] = [
     // Core translation features
     { id: "translator", icon: Languages, label: t("nav.translator"), group: "core" },
+    { id: "batch", icon: Layers, label: t("nav.batch"), group: "core" },
     { id: "compare", icon: BarChart3, label: t("nav.compare"), group: "core" },
     { id: "ocr", icon: Scan, label: t("nav.ocr"), group: "core" },
     { id: "hook", icon: Zap, label: t("nav.hook"), group: "core" },
@@ -334,6 +338,7 @@ function MainApp() {
       <main className="flex-1 overflow-hidden">
         <ErrorBoundary key={page}>
           {page === "translator" && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
+          {page === "batch" && <BatchTranslator />}
           {page === "ocr" && (
             <div className="flex flex-col h-full gap-4 p-4 overflow-y-auto">
               <OcrScreenshotTranslator launchNonce={ocrLaunchNonce} />

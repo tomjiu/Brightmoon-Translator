@@ -15,7 +15,8 @@
     "settings": "Settings",
     "tools": "Tools",
     "plugins": "Plugins",
-    "hook": "Hook Translate"
+    "hook": "Hook Translate",
+    "batch": "Batch Translate"
   },
   "translator": {
     "placeholder": "Enter text to translate...",
@@ -127,6 +128,11 @@
       "translationMaskHint": "Hide original text, try to understand from translation first, click to show original",
       "furigana": "Japanese Furigana Annotations",
       "furiganaHint": "Show hiragana readings above kanji characters (Japanese translations only)"
+    },
+    "tts": {
+      "title": "Text-to-Speech (TTS)",
+      "autoPlay": "Auto-play after translation",
+      "autoPlayHint": "Automatically speak the translated text after translation (uses Edge TTS)"
     },
     "blacklist": {
       "title": "Translation Blacklist",
@@ -392,7 +398,27 @@
     "source.uia": "UI Automation - for apps with text pattern support",
     "source.clipboard": "Clipboard - detect copy operations",
     "source.ocr": "OCR Screenshot - universal fallback",
-    "source.hook": "Win32 Event Hook - system-level text change monitor"
+    "source.hook": "Win32 Event Hook - system-level text change monitor",
+    "hcode": {
+      "title": "H-Code DLL Injection",
+      "description": "Inject DLL to hook text rendering APIs (TextOut/DrawText) in games/applications, directly capturing internal program text.",
+      "pid": "Process PID",
+      "pidPlaceholder": "Enter target process PID",
+      "processName": "Process Name",
+      "inject": "Inject",
+      "eject": "Eject",
+      "injecting": "Injecting...",
+      "status": "Status",
+      "injected": "Injected",
+      "notInjected": "Not Injected",
+      "messagesRead": "Messages Captured",
+      "selectProcess": "Select Process",
+      "refreshProcesses": "Refresh Process List",
+      "noDllFound": "moon_hook.dll not found",
+      "injectSuccess": "Injection successful",
+      "injectFailed": "Injection failed",
+      "ejectSuccess": "DLL ejected"
+    }
   },
   "compare": {
     "title": "Multi-Engine Compare",
@@ -404,6 +430,47 @@
     "empty": "Enter text to start comparing",
     "emptyHint": "Press Ctrl+Enter to translate quickly",
     "copy": "Copy"
+  },
+  "batch": {
+    "title": "Batch Translate",
+    "description": "Enter multi-line text, each line will be translated as an independent paragraph. Supports bulk processing and concurrent translation.",
+    "concurrency": "Concurrency:",
+    "continueOnError": "Continue on error",
+    "segmentCount": "{count} segments total",
+    "start": "Start Translate",
+    "stop": "Stop",
+    "pause": "Pause",
+    "resume": "Resume",
+    "retry": "Retry Failed",
+    "reset": "Reset",
+    "copyAll": "Copy All",
+    "export": "Export",
+    "completed": "Completed",
+    "failed": "Failed",
+    "noResults": "No translation results yet",
+    "noResultsHint": "Enter text and click \"Start Translate\"",
+    "progress": "{completed}/{total}",
+    "failedCount": "({count} failed)"
+  },
+  "tm": {
+    "title": "Translation Memory",
+    "statistics": "Statistics",
+    "totalEntries": "Total Entries",
+    "languagePairs": "Language Pairs",
+    "entries": "entries",
+    "exportTm": "Export TM",
+    "importTm": "Import TM",
+    "exporting": "Exporting...",
+    "importing": "Importing...",
+    "searchTitle": "Search Translation Memory",
+    "searchPlaceholder": "Search source or translation...",
+    "anySourceLang": "Any source language",
+    "anyTargetLang": "Any target language",
+    "resultsFound": "{count} results found",
+    "pageInfo": "Page {current} of {total}",
+    "noResults": "No results found",
+    "aboutTitle": "About Translation Memory",
+    "aboutDesc": "Translation Memory stores your translation history for reuse. Export your TM to back it up or share with others. Import TM files to restore translations or merge from other devices."
   },
   "replace": {
     "hardFail": "Replace failed",

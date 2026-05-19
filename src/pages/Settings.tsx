@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { invokeOrThrow } from "../services/invoke";
 import { useConfigStore } from "../stores/configStore";
 import { useI18n } from "../i18n";
-import { Save, Check, Trash2, Database, Power, Clipboard, Eye, EyeOff, Globe, Keyboard, Plus, X, Download, Upload, Languages, Wand2, MousePointer, Brain, BookOpen } from "lucide-react";
+import { Save, Check, Trash2, Database, Power, Clipboard, Eye, EyeOff, Globe, Keyboard, Plus, X, Download, Upload, Languages, Wand2, MousePointer, Brain, BookOpen, Volume2 } from "lucide-react";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import type { AutoCopyMode } from "../types";
+import TmManager from "../components/TmManager";
 
 function Settings() {
   const {
@@ -1184,6 +1185,46 @@ function Settings() {
           </div>
         </section>
 
+        {/* TTS Section */}
+        <section className="bg-bg-secondary border border-border rounded-xl p-5 mb-5">
+          <h2 className="text-base font-semibold text-primary mb-4 flex items-center gap-2">
+            <Volume2 size={18} />
+            {t("settings.tts.title")}
+          </h2>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-text-primary font-medium flex items-center gap-1.5">
+                  <Volume2 size={14} />
+                  {t("settings.tts.autoPlay")}
+                </p>
+                <p className="text-xs text-text-secondary mt-1">
+                  {t("settings.tts.autoPlayHint")}
+                </p>
+              </div>
+              <button
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  config.ttsAutoPlay ? "bg-primary" : "bg-bg-tertiary"
+                }`}
+                onClick={() =>
+                  updateConfig((prev) => ({
+                    ...prev,
+                    ttsAutoPlay: !prev.ttsAutoPlay,
+                  }))
+                }
+              >
+                <div
+                  className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                    config.ttsAutoPlay
+                      ? "translate-x-6"
+                      : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </section>
+
         {/* Translation Blacklist Section */}
         <section className="bg-bg-secondary border border-border rounded-xl p-5 mb-5">
           <h2 className="text-base font-semibold text-primary mb-4 flex items-center gap-2">
@@ -1924,6 +1965,11 @@ function Settings() {
               导入配置
             </button>
           </div>
+        </section>
+
+        {/* Translation Memory Section */}
+        <section className="bg-bg-secondary border border-border rounded-xl p-5 mb-5">
+          <TmManager />
         </section>
 
         {/* Save Button */}

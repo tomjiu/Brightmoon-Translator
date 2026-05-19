@@ -95,6 +95,8 @@ export interface AppConfig {
   tmEnabled?: boolean;
   tmThreshold?: number;
   furiganaEnabled?: boolean;
+  ttsAutoPlay?: boolean;
+  ttsVoice?: string;
 }
 
 interface HookConfig {
@@ -129,6 +131,16 @@ export interface DetectionResult {
   language: string;
   confidence: number;
   name: string;
+}
+
+// OCR text region detection types
+export interface TextRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  lineCount: number;
+  textPreview: string;
 }
 
 // Embedded translation types
@@ -177,3 +189,56 @@ export const VARIABLE_FORMATS: VariableFormat[] = [
   "dot.notation",
   "Title Case",
 ];
+
+// Batch translation types
+export type BatchTaskStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+export type BatchJobStatus = "idle" | "running" | "paused" | "completed" | "cancelled" | "failed";
+
+export interface BatchConfig {
+  concurrency: number;
+  fromLang: string;
+  toLang: string;
+  engine?: string;
+  continueOnError: boolean;
+}
+
+export interface BatchTask {
+  id: string;
+  index: number;
+  text: string;
+  fromLang: string;
+  toLang: string;
+  status: BatchTaskStatus;
+  result?: string;
+  error?: string;
+}
+
+export interface BatchProgress {
+  jobId: string;
+  total: number;
+  completed: number;
+  failed: number;
+  currentIndex?: number;
+  status: BatchJobStatus;
+}
+
+// TM (Translation Memory) types
+export interface TmExportEntry {
+  source: string;
+  target: string;
+  fromLang: string;
+  toLang: string;
+  engine: string;
+  timestamp: number;
+}
+
+export interface TmExportData {
+  version: number;
+  entries: TmExportEntry[];
+  exportedAt: number;
+}
+
+export interface TmStats {
+  total: number;
+  langPairs: [string, string, number][];
+}
