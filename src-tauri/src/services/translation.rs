@@ -132,7 +132,8 @@ impl TranslationService {
         from: &str,
         to: &str,
     ) -> Result<TranslateResponse, TranslationError> {
-        tracing::info!("[Translation] Input text ({} chars): {:?}", text.len(), &text[..text.len().min(200)]);
+        let preview: String = text.chars().take(100).collect();
+        tracing::info!("[Translation] Input text ({} chars): {:?}", text.len(), preview);
 
         let prepared = self.prepare(text, from, to).await;
 
@@ -148,9 +149,10 @@ impl TranslationService {
             if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold) {
                 drop(history);
                 self.metrics.record_cache_hit().await;
+                let tm_preview: String = tm_match.source_text.chars().take(50).collect();
                 tracing::info!(
                     "[TM] Hit: similarity={:.2}, engine={}, stored_source={:?}",
-                    tm_match.similarity, tm_match.engine, &tm_match.source_text[..tm_match.source_text.len().min(50)]
+                    tm_match.similarity, tm_match.engine, tm_preview
                 );
                 let final_text = self.finalize(&tm_match.translated_text, text, from, to, &prepared.blacklist).await;
                 return Ok(TranslateResponse {
