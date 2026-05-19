@@ -556,7 +556,7 @@ pub async fn create_ocr_region_frame(
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 
-    log::info!(
+    tracing::info!(
         "Creating OCR region frame at ({}, {}) {}x{}",
         x, y, width, height
     );
@@ -590,13 +590,13 @@ pub async fn create_ocr_region_frame(
         {
             Ok(window) => {
                 let _ = window;
-                log::info!("OCR region frame created successfully (attempt {})", attempt);
+                tracing::info!("OCR region frame created successfully (attempt {})", attempt);
                 return Ok(());
             }
             Err(e) => {
                 let err_str = e.to_string();
                 last_error = err_str.clone();
-                log::warn!(
+                tracing::warn!(
                     "OCR region frame creation attempt {} failed: {}",
                     attempt,
                     err_str
@@ -628,9 +628,10 @@ pub async fn create_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(),
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 
-    log::info!("Creating OCR screenshot selector window");
+    tracing::info!("Creating OCR screenshot selector window");
 
     // Get primary screen dimensions for explicit sizing
+    // On Windows, GetSystemMetrics returns physical pixels, but Tauri expects logical pixels
     #[cfg(target_os = "windows")]
     let (screen_w, screen_h) = {
         extern "system" {
@@ -638,19 +639,25 @@ pub async fn create_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(),
         }
         const SM_CXSCREEN: i32 = 0;
         const SM_CYSCREEN: i32 = 1;
-        unsafe {
-            (
-                GetSystemMetrics(SM_CXSCREEN) as f64,
-                GetSystemMetrics(SM_CYSCREEN) as f64,
-            )
-        }
+        let physical_w = unsafe { GetSystemMetrics(SM_CXSCREEN) } as f64;
+        let physical_h = unsafe { GetSystemMetrics(SM_CYSCREEN) } as f64;
+
+        // Get DPI scale factor from primary monitor
+        let scale_factor = app.primary_monitor()
+            .ok()
+            .flatten()
+            .map(|m| m.scale_factor())
+            .unwrap_or(1.0);
+
+        // Convert physical pixels to logical pixels for Tauri window sizing
+        (physical_w / scale_factor, physical_h / scale_factor)
     };
 
     #[cfg(not(target_os = "windows"))]
     let (screen_w, screen_h) = (1920.0, 1080.0);
 
-    log::info!(
-        "OCR selector screen size: {}x{}",
+    tracing::info!(
+        "OCR selector screen size (logical): {}x{}",
         screen_w,
         screen_h
     );
@@ -676,7 +683,7 @@ pub async fn create_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(),
     // Also try to enter fullscreen as a secondary measure
     let _ = window.set_fullscreen(true);
 
-    log::info!("OCR screenshot selector window created successfully");
+    tracing::info!("OCR screenshot selector window created successfully");
     Ok(())
 }
 

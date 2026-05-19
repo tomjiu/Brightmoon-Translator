@@ -67,14 +67,15 @@ export default function OcrRegionFrame() {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
 
-    // Timeout: show error if no data received within 8 seconds
+    // Timeout: show error if no data received within 15 seconds
+    // OCR + translation pipeline can take several seconds on first run
     const timeout = window.setTimeout(() => {
       if (cancelled) return;
       if (!data) {
-        setError("等待数据超时，请重试");
+        setError("等待数据超时，请点击重试");
         setLoading(false);
       }
-    }, 8000);
+    }, 15000);
 
     listen<OcrRegionData>("ocr-region-update-data", (event) => {
       if (cancelled) return;
