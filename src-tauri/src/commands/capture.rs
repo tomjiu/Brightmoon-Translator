@@ -957,7 +957,9 @@ pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Opti
     // For OCR, input is empty string
     let sign = youdao_sign(&app_key, "", &salt, &curtime, &app_secret);
 
-    tracing::info!("[Youdao OCR] Signing params: appKey={}, salt={}, curtime={}", &app_key[..8], &salt[..8], curtime);
+    let key_preview: String = app_key.chars().take(8).collect();
+    let salt_preview: String = salt.chars().take(8).collect();
+    tracing::info!("[Youdao OCR] Signing params: appKey={}, salt={}, curtime={}", key_preview, salt_preview, curtime);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -1447,7 +1449,8 @@ fn build_region(cluster: &[(i32, i32, i32, i32, String)], offset_x: i32, offset_
         height: max_y - min_y,
         line_count: cluster.len(),
         text_preview: if preview.len() > 80 {
-            format!("{}...", &preview[..80])
+            let truncated: String = preview.chars().take(80).collect();
+            format!("{}...", truncated)
         } else {
             preview
         },

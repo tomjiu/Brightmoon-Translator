@@ -23,10 +23,13 @@ use crate::cache::TranslationCache;
 
 /// Mask a secret string, keeping first 4 and last 4 chars visible.
 fn mask_secret(s: &str) -> String {
-    if s.len() <= 12 {
-        return "*".repeat(s.len());
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= 12 {
+        return "*".repeat(chars.len());
     }
-    format!("{}...{}", &s[..4], &s[s.len() - 4..])
+    let prefix: String = chars[..4].iter().collect();
+    let suffix: String = chars[chars.len() - 4..].iter().collect();
+    format!("{}...{}", prefix, suffix)
 }
 
 /// Return a sanitized copy of config with all secret fields masked.

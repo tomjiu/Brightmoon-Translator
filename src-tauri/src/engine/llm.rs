@@ -9,12 +9,8 @@ use tokio::sync::mpsc;
 /// Sanitize LLM error messages before sending to frontend.
 /// Strips content that could contain API keys or sensitive request details.
 fn sanitize_llm_error(status: reqwest::StatusCode, body: &str) -> String {
-    // Truncate long error bodies
-    let truncated = if body.len() > 200 {
-        &body[..200]
-    } else {
-        body
-    };
+    // Truncate long error bodies (use chars to avoid UTF-8 boundary issues)
+    let truncated: String = body.chars().take(200).collect();
     // Strip patterns that look like API keys (sk-..., Bearer ..., key=...)
     let sanitized = truncated
         .split(|c: char| c == ',' || c == '"' || c == '\'')
