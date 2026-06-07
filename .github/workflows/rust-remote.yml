@@ -57,6 +57,23 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend dist
+        run: pnpm build
+
       - name: Cargo check
         if: ${{ github.event_name == 'push' || inputs.run_check }}
         working-directory: src-tauri
@@ -71,23 +88,6 @@ jobs:
         if: ${{ inputs.run_clippy }}
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
-
-      - name: Setup pnpm
-        if: ${{ inputs.run_tauri_build }}
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Setup Node.js
-        if: ${{ inputs.run_tauri_build }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install frontend dependencies
-        if: ${{ inputs.run_tauri_build }}
-        run: pnpm install --frozen-lockfile
 
       - name: Build Tauri app
         if: ${{ inputs.run_tauri_build }}
