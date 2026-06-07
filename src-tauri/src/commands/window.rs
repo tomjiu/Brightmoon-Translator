@@ -5,6 +5,126 @@ use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 static ALWAYS_ON_TOP: AtomicBool = AtomicBool::new(false);
 
+#[derive(Clone, Copy, Debug)]
+struct MonitorBounds {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    scale_factor: f64,
+}
+
+fn monitor_scale_for_rect_center(
+    monitors: &[MonitorBounds],
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    fallback_scale: f64,
+) -> f64 {
+    let center_x = x + width / 2.0;
+    let center_y = y + height / 2.0;
+
+    monitors
+        .iter()
+        .find_map(|monitor| {
+            let right = monitor.x + monitor.width;
+            let bottom = monitor.y + monitor.height;
+
+            if center_x >= monitor.x
+                && center_x < right
+                && center_y >= monitor.y
+                && center_y < bottom
+            {
+                Some(monitor.scale_factor)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(fallback_scale)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{monitor_scale_for_rect_center, MonitorBounds};
+
+    #[test]
+    fn selects_scale_from_monitor_containing_rect_center() {
+        let monitors = [
+            MonitorBounds {
+                x: -1280.0,
+                y: 0.0,
+                width: 1280.0,
+                height: 1024.0,
+                scale_factor: 1.25,
+            },
+            MonitorBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 1920.0,
+                height: 1080.0,
+                scale_factor: 1.5,
+            },
+        ];
+
+        let scale = monitor_scale_for_rect_center(&monitors, -900.0, 100.0, 300.0, 200.0, 1.0);
+
+        assert_eq!(scale, 1.25);
+    }
+
+    #[test]
+    fn falls_back_to_primary_scale_when_rect_center_is_outside_all_monitors() {
+        let monitors = [MonitorBounds {
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+            scale_factor: 1.5,
+        }];
+
+        let scale = monitor_scale_for_rect_center(&monitors, -500.0, -500.0, 100.0, 100.0, 2.0);
+
+        assert_eq!(scale, 2.0);
+    }
+}
+
+fn monitor_scale_for_physical_rect(
+    app: &tauri::AppHandle,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> f64 {
+    let fallback_scale = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|monitor| monitor.scale_factor())
+        .unwrap_or(1.0);
+
+    app.available_monitors()
+        .ok()
+        .map(|monitors| {
+            let bounds = monitors
+                .into_iter()
+                .map(|monitor| {
+                    let pos = monitor.position();
+                    let size = monitor.size();
+                    MonitorBounds {
+                        x: f64::from(pos.x),
+                        y: f64::from(pos.y),
+                        width: f64::from(size.width),
+                        height: f64::from(size.height),
+                        scale_factor: monitor.scale_factor(),
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            monitor_scale_for_rect_center(&bounds, x, y, width, height, fallback_scale)
+        })
+        .unwrap_or(fallback_scale)
+}
+
 #[command]
 pub async fn hide_main_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
@@ -57,8 +177,10 @@ pub async fn get_selected_text() -> Result<String, String> {
                 fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
                 fn CloseClipboard() -> i32;
                 fn EmptyClipboard() -> i32;
-                fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void)
-                    -> *mut std::ffi::c_void;
+                fn SetClipboardData(
+                    uFormat: u32,
+                    hMem: *mut std::ffi::c_void,
+                ) -> *mut std::ffi::c_void;
                 fn GetClipboardData(uFormat: u32) -> *mut std::ffi::c_void;
                 fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut std::ffi::c_void;
                 fn GlobalLock(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
@@ -81,6 +203,7 @@ pub async fn get_selected_text() -> Result<String, String> {
                     time: 0,
                     dwExtraInfo: 0,
                 };
+                // SAFETY: copy_nonoverlapping for KEYBDINPUT into INPUT union.
                 unsafe {
                     std::ptr::copy_nonoverlapping(
                         &ki as *const _ as *const u8,
@@ -91,6 +214,9 @@ pub async fn get_selected_text() -> Result<String, String> {
                 input
             }
 
+            // SAFETY: Win32 clipboard and input simulation APIs.
+            // Clipboard is saved/restored properly. SendInput simulates Ctrl+C.
+            // SAFETY: GetSystemMetrics is a standard Win32 API.
             unsafe {
                 // Save current clipboard content
                 let mut clipboard_was_opened = false;
@@ -214,6 +340,7 @@ pub async fn get_cursor_position() -> Result<(f64, f64), String> {
         }
 
         let mut point = POINT { x: 0, y: 0 };
+        // SAFETY: GetCursorPos is a standard Win32 API. Buffer is stack-allocated.
         unsafe {
             if GetCursorPos(&mut point) != 0 {
                 return Ok((point.x as f64, point.y as f64));
@@ -283,7 +410,8 @@ pub async fn translate_selection(
     drop(config);
 
     let response = state
-        .translation.service
+        .translation
+        .service
         .translate(&text, &from, &to)
         .await
         .map_err(|e| e.to_string())?;
@@ -394,6 +522,7 @@ pub async fn move_window_to_cursor(app: tauri::AppHandle) -> Result<(), String> 
             const SM_CXSCREEN: i32 = 0;
             const SM_CYSCREEN: i32 = 1;
 
+            // SAFETY: GetSystemMetrics is a standard Win32 API.
             unsafe {
                 let screen_w = GetSystemMetrics(SM_CXSCREEN) as f64;
                 let screen_h = GetSystemMetrics(SM_CYSCREEN) as f64;
@@ -556,9 +685,18 @@ pub async fn create_ocr_region_frame(
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 
+    let scale_factor = monitor_scale_for_physical_rect(&app, x, y, width, height);
+    let toolbar_h_physical = 32.0 * scale_factor;
+    let window_x = x.round() as i32;
+    let window_y = (y - toolbar_h_physical).round() as i32;
+    let window_w = width.max(80.0).round() as u32;
+    let window_h = (height + toolbar_h_physical).max(60.0).round() as u32;
+    let initial_logical_w = (window_w as f64 / scale_factor).max(80.0);
+    let initial_logical_h = (window_h as f64 / scale_factor).max(60.0);
+
     tracing::info!(
-        "Creating OCR region frame at ({}, {}) {}x{}",
-        x, y, width, height
+        "Creating OCR region frame for capture ({}, {}) {}x{} (window physical: ({}, {}) {}x{}, scale: {})",
+        x, y, width, height, window_x, window_y, window_w, window_h, scale_factor
     );
 
     // Retry loop: Tauri may not release the window label immediately after close()
@@ -577,8 +715,8 @@ pub async fn create_ocr_region_frame(
             WebviewUrl::App("index.html?window=ocr-region-frame".into()),
         )
         .title("OCR Region")
-        .inner_size(width.max(80.0), height.max(60.0))
-        .position(x, y)
+        .inner_size(initial_logical_w, initial_logical_h)
+        .position(0.0, 0.0)
         .decorations(false)
         .always_on_top(true)
         .skip_taskbar(true)
@@ -589,10 +727,22 @@ pub async fn create_ocr_region_frame(
         .build()
         {
             Ok(window) => {
-                let _ = window;
-                tracing::info!("OCR region frame created successfully (attempt {})", attempt);
+                window
+                    .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+                        window_x, window_y,
+                    )))
+                    .map_err(|e| format!("Failed to position OCR region frame: {}", e))?;
+                window
+                    .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+                        window_w, window_h,
+                    )))
+                    .map_err(|e| format!("Failed to size OCR region frame: {}", e))?;
+                tracing::info!(
+                    "OCR region frame created successfully (attempt {})",
+                    attempt
+                );
                 return Ok(());
-            }
+            },
             Err(e) => {
                 let err_str = e.to_string();
                 last_error = err_str.clone();
@@ -606,7 +756,7 @@ pub async fn create_ocr_region_frame(
                     return Err(format!("Failed to create OCR region frame: {}", err_str));
                 }
                 // Otherwise retry with longer delay
-            }
+            },
         }
     }
 
@@ -630,36 +780,44 @@ pub async fn create_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(),
 
     tracing::info!("Creating OCR screenshot selector window");
 
-    // Get primary screen dimensions for explicit sizing
-    // On Windows, GetSystemMetrics returns physical pixels, but Tauri expects logical pixels
+    // Get virtual desktop dimensions in physical pixels so negative-origin
+    // monitor layouts line up with the screenshot snapshot.
     #[cfg(target_os = "windows")]
-    let (screen_w, screen_h) = {
+    let (screen_x, screen_y, screen_w, screen_h) = {
         extern "system" {
             fn GetSystemMetrics(nIndex: i32) -> i32;
         }
-        const SM_CXSCREEN: i32 = 0;
-        const SM_CYSCREEN: i32 = 1;
-        let physical_w = unsafe { GetSystemMetrics(SM_CXSCREEN) } as f64;
-        let physical_h = unsafe { GetSystemMetrics(SM_CYSCREEN) } as f64;
+        const SM_XVIRTUALSCREEN: i32 = 76;
+        const SM_YVIRTUALSCREEN: i32 = 77;
+        const SM_CXVIRTUALSCREEN: i32 = 78;
+        const SM_CYVIRTUALSCREEN: i32 = 79;
+        let physical_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) } as f64;
+        let physical_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) } as f64;
+        let physical_w = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) } as f64;
+        let physical_h = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) } as f64;
 
-        // Get DPI scale factor from primary monitor
-        let scale_factor = app.primary_monitor()
-            .ok()
-            .flatten()
-            .map(|m| m.scale_factor())
-            .unwrap_or(1.0);
-
-        // Convert physical pixels to logical pixels for Tauri window sizing
-        (physical_w / scale_factor, physical_h / scale_factor)
+        (physical_x, physical_y, physical_w, physical_h)
     };
 
     #[cfg(not(target_os = "windows"))]
-    let (screen_w, screen_h) = (1920.0, 1080.0);
+    let (screen_x, screen_y, screen_w, screen_h) = (0.0, 0.0, 1920.0, 1080.0);
+
+    let scale_factor =
+        monitor_scale_for_physical_rect(&app, screen_x, screen_y, screen_w, screen_h);
+    let initial_logical_w = (screen_w / scale_factor).max(100.0);
+    let initial_logical_h = (screen_h / scale_factor).max(100.0);
+    let physical_x = screen_x.round() as i32;
+    let physical_y = screen_y.round() as i32;
+    let physical_w = screen_w.max(100.0).round() as u32;
+    let physical_h = screen_h.max(100.0).round() as u32;
 
     tracing::info!(
-        "OCR selector screen size (logical): {}x{}",
-        screen_w,
-        screen_h
+        "OCR selector bounds (physical): ({}, {}) {}x{} (scale: {})",
+        physical_x,
+        physical_y,
+        physical_w,
+        physical_h,
+        scale_factor
     );
 
     let window = WebviewWindowBuilder::new(
@@ -668,7 +826,7 @@ pub async fn create_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(),
         WebviewUrl::App("index.html?window=ocr-screenshot".into()),
     )
     .title("OCR Screenshot")
-    .inner_size(screen_w, screen_h)
+    .inner_size(initial_logical_w, initial_logical_h)
     .position(0.0, 0.0)
     .decorations(false)
     .always_on_top(true)
@@ -680,8 +838,16 @@ pub async fn create_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(),
     .build()
     .map_err(|e| format!("Failed to create OCR screenshot selector: {}", e))?;
 
-    // Also try to enter fullscreen as a secondary measure
-    let _ = window.set_fullscreen(true);
+    window
+        .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+            physical_x, physical_y,
+        )))
+        .map_err(|e| format!("Failed to position OCR screenshot selector: {}", e))?;
+    window
+        .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+            physical_w, physical_h,
+        )))
+        .map_err(|e| format!("Failed to size OCR screenshot selector: {}", e))?;
 
     tracing::info!("OCR screenshot selector window created successfully");
     Ok(())
@@ -706,6 +872,23 @@ pub async fn close_ocr_region_frame(app: tauri::AppHandle) -> Result<(), String>
         // Wait for the window to be fully destroyed before returning
         // This prevents ghost windows and "already exists" label conflicts
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    Ok(())
+}
+
+/// Show or hide the OCR region frame window.
+/// Used to hide the frame before capturing screenshots to avoid capturing the frame itself.
+#[command]
+pub async fn set_ocr_region_frame_visible(
+    app: tauri::AppHandle,
+    visible: bool,
+) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("ocr-region-frame") {
+        if visible {
+            let _ = window.show();
+        } else {
+            let _ = window.hide();
+        }
     }
     Ok(())
 }

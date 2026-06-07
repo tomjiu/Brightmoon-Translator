@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { emitTo } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { loadScreenshotSnapshot, type ScreenshotSnapshot } from "../services/ocr";
+import { useEffect, useRef, useState } from 'react';
+import { emitTo } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { loadScreenshotSnapshot, type ScreenshotSnapshot } from '../services/ocr';
+import { useI18n } from '../i18n';
 
 interface Point {
   x: number;
@@ -31,6 +32,7 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export default function OcrScreenshotSelector() {
+  const { t } = useI18n();
   const imgRef = useRef<HTMLImageElement>(null);
   const [snapshot, setSnapshot] = useState<ScreenshotSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,20 +46,20 @@ export default function OcrScreenshotSelector() {
         // Show window after snapshot is loaded to avoid black flash
         return getCurrentWindow().show();
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         setError(String(err));
         // Show window even on error so user can see the error message
         return getCurrentWindow().show();
       });
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        void emitTo("main", "ocr-screenshot-cancelled");
+      if (event.key === 'Escape') {
+        void emitTo('main', 'ocr-screenshot-cancelled');
         void getCurrentWindow().close();
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   const finishSelection = async (end: Point) => {
@@ -85,7 +87,7 @@ export default function OcrScreenshotSelector() {
       height: Math.round((bottom - top) * scaleY),
     };
 
-    await emitTo("main", "ocr-screenshot-selected", payload);
+    await emitTo('main', 'ocr-screenshot-selected', payload);
     await getCurrentWindow().close();
   };
 
@@ -117,7 +119,7 @@ export default function OcrScreenshotSelector() {
       )}
 
       <div className="absolute left-1/2 top-5 -translate-x-1/2 rounded-full bg-black/70 px-4 py-2 text-sm shadow-lg">
-        拖拽选择要 OCR 翻译的区域，按 Esc 取消
+        {t('ocr.selectHint') || '拖拽选择要 OCR 翻译的区域，按 Esc 取消'}
       </div>
 
       {error && (

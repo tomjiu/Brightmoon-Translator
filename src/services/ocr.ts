@@ -1,7 +1,11 @@
 import { invokeOrThrow } from "./invoke";
-import { createWorker, Worker } from "tesseract.js";
 
-let worker: Worker | null = null;
+/** Minimal interface for the tesseract.js worker — only the methods we use. */
+interface TesseractWorker {
+  recognize(image: string): Promise<{ data: { text: string } }>;
+}
+
+let worker: TesseractWorker | null = null;
 
 export interface ScreenshotSnapshotInfo {
   screenX: number;
@@ -25,8 +29,9 @@ export interface ScreenshotRegion {
   height: number;
 }
 
-async function getWorker(): Promise<Worker> {
+async function getWorker(): Promise<TesseractWorker> {
   if (!worker) {
+    const { createWorker } = await import("tesseract.js");
     worker = await createWorker("chi_sim+eng", 1);
   }
   return worker;
@@ -54,15 +59,6 @@ export async function loadScreenshotSnapshot(): Promise<ScreenshotSnapshot> {
   return await invokeOrThrow<ScreenshotSnapshot>("load_screenshot_snapshot");
 }
 
-export async function cropScreenshotSnapshot(region: ScreenshotRegion): Promise<string> {
-  return await invokeOrThrow<string>("crop_screenshot_snapshot", {
-    left: Math.round(region.left),
-    top: Math.round(region.top),
-    width: Math.round(region.width),
-    height: Math.round(region.height),
-  });
-}
-
 export async function captureScreenshotRegion(region: ScreenshotRegion): Promise<string> {
   return await invokeOrThrow<string>("capture_screenshot_region", {
     left: Math.round(region.left),
@@ -78,26 +74,6 @@ export async function ocrImage(imageDataUrl: string): Promise<string> {
     data: { text },
   } = await w.recognize(imageDataUrl);
   return text.trim();
-}
-
-export async function createOverlay(
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  text: string
-): Promise<void> {
-  await invokeOrThrow("create_overlay", {
-    x: Math.round(x),
-    y: Math.round(y),
-    width: Math.round(width),
-    height: Math.round(height),
-    text,
-  });
-}
-
-export async function closeOverlay(): Promise<void> {
-  await invokeOrThrow("close_overlay");
 }
 
 // ── Detailed OCR with per-line bounding boxes ──────────────────────────────
@@ -151,7 +127,7 @@ export async function youdaoOcrDetailed(
 }
 
 /** Prefer WinRT OCR, fall back to Youdao, then tesseract.js.
- *  Runs WinRT and Youdao in parallel for faster results. */
+ *  Runs WinRT and Youdao in parallel, returns as soon as first succeeds. */
 export async function ocrImagePreferNativeDetailed(
   imageDataUrl: string,
   lang = "auto",
@@ -167,17 +143,34 @@ export async function ocrImagePreferNativeDetailed(
     return null;
   });
 
-  // Wait for both to complete
-  const [youdaoResult, winrtResult] = await Promise.all([youdaoPromise, winrtPromise]);
+  // Race: return as soon as the first successful result is available
+  // This avoids waiting for slow/failing OCR engines (e.g. Youdao timeout)
+  const firstSuccess = new Promise<OcrResultDetailed | null>((resolve) => {
+    let resolved = false;
 
-  // Prefer WinRT first (local, fast, reliable)
-  if (winrtResult?.text?.trim()) {
-    return winrtResult;
-  }
+    const check = (result: OcrResultDetailed | null) => {
+      if (!resolved && result?.text?.trim()) {
+        resolved = true;
+        resolve(result);
+      }
+    };
 
-  // Fallback to Youdao if WinRT fails or returns empty
-  if (youdaoResult?.text?.trim()) {
-    return youdaoResult;
+    winrtPromise.then(check);
+    youdaoPromise.then(check);
+
+    // If both fail or return empty, resolve with null after both complete
+    Promise.all([winrtPromise, youdaoPromise]).then(([w, y]) => {
+      if (!resolved) {
+        resolved = true;
+        resolve(w || y);
+      }
+    });
+  });
+
+  const result = await firstSuccess;
+
+  if (result?.text?.trim()) {
+    return result;
   }
 
   console.warn("[OCR] Both Youdao and WinRT returned empty or failed");
@@ -188,4 +181,33 @@ export async function ocrImagePreferNativeDetailed(
     ? [{ text, x: 0, y: 0, width: 0, height: 0, words: [] }]
     : [];
   return { text, lines };
+}
+
+/** OCR with configurable engine preference.
+ *  engine: "auto" | "winrt" | "youdao" | "tesseract"
+ */
+export async function ocrWithEngine(
+  imageDataUrl: string,
+  engine: string = "auto",
+  lang = "auto",
+): Promise<OcrResultDetailed> {
+  switch (engine) {
+    case "winrt":
+      return await ocrImageDetailed(imageDataUrl, lang);
+
+    case "youdao":
+      return await youdaoOcrDetailed(imageDataUrl, lang);
+
+    case "tesseract": {
+      const text = await ocrImage(imageDataUrl);
+      const lines: OcrLineResult[] = text
+        ? [{ text, x: 0, y: 0, width: 0, height: 0, words: [] }]
+        : [];
+      return { text, lines };
+    }
+
+    case "auto":
+    default:
+      return await ocrImagePreferNativeDetailed(imageDataUrl, lang);
+  }
 }

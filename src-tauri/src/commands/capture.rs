@@ -1,7 +1,7 @@
 use base64::Engine;
+#[cfg(not(target_os = "windows"))]
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
 use std::io::Cursor;
 use std::path::PathBuf;
 use tauri::command;
@@ -67,8 +67,9 @@ impl Drop for TempFileGuard {
 // ── In-memory snapshot cache ───────────────────────────────────────────────
 // Avoids slow disk I/O when the selector window loads the screenshot.
 
-static SNAPSHOT_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<(Vec<u8>, ScreenshotSnapshotInfo)>>> =
-    std::sync::OnceLock::new();
+static SNAPSHOT_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<Option<(Vec<u8>, ScreenshotSnapshotInfo)>>,
+> = std::sync::OnceLock::new();
 
 fn snapshot_cache() -> &'static std::sync::Mutex<Option<(Vec<u8>, ScreenshotSnapshotInfo)>> {
     SNAPSHOT_CACHE.get_or_init(|| std::sync::Mutex::new(None))
@@ -108,6 +109,7 @@ pub fn capture_area_gdi(
         return Err("Capture area is empty".to_string());
     }
 
+    // SAFETY: GDI screen capture. All GDI objects are properly cleaned up on error paths.
     unsafe {
         let hwnd = HWND(std::ptr::null_mut());
         let screen_dc = GetDC(hwnd);
@@ -199,19 +201,48 @@ pub fn capture_area_gdi(
 }
 
 #[cfg(target_os = "windows")]
-fn primary_screen_info() -> Result<ScreenshotSnapshotInfo, String> {
-    let screens = Screen::all().map_err(|e| format!("Failed to get screens: {}", e))?;
-    let screen = screens
-        .first()
-        .ok_or_else(|| "No screen found".to_string())?;
+fn virtual_screen_info() -> Result<ScreenshotSnapshotInfo, String> {
+    // Use Windows virtual-screen metrics so OCR selection can span monitors
+    // positioned left of or above the primary display.
+    extern "system" {
+        fn GetSystemMetrics(nIndex: i32) -> i32;
+        fn GetDpiForSystem() -> u32;
+    }
+
+    const SM_XVIRTUALSCREEN: i32 = 76;
+    const SM_YVIRTUALSCREEN: i32 = 77;
+    const SM_CXVIRTUALSCREEN: i32 = 78;
+    const SM_CYVIRTUALSCREEN: i32 = 79;
+
+    let screen_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+    let screen_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+    let physical_w = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+    let physical_h = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+    if physical_w <= 0 || physical_h <= 0 {
+        return Err("Virtual screen has invalid dimensions".to_string());
+    }
+
+    let dpi = unsafe { GetDpiForSystem() };
+    let scale_factor = dpi as f32 / 96.0;
+
+    tracing::info!(
+        "virtual_screen_info: origin=({}, {}), physical={}x{}, dpi={}, scale={}",
+        screen_x,
+        screen_y,
+        physical_w,
+        physical_h,
+        dpi,
+        scale_factor
+    );
+
     Ok(ScreenshotSnapshotInfo {
-        screen_x: screen.display_info.x,
-        screen_y: screen.display_info.y,
-        screen_width: screen.display_info.width,
-        screen_height: screen.display_info.height,
-        scale_factor: screen.display_info.scale_factor,
-        image_width: screen.display_info.width,
-        image_height: screen.display_info.height,
+        screen_x,
+        screen_y,
+        screen_width: physical_w as u32,
+        screen_height: physical_h as u32,
+        scale_factor,
+        image_width: physical_w as u32,
+        image_height: physical_h as u32,
     })
 }
 
@@ -274,7 +305,7 @@ pub async fn capture_full_screen() -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
-            let info = primary_screen_info()?;
+            let info = virtual_screen_info()?;
             let img = capture_area_gdi(
                 info.screen_x,
                 info.screen_y,
@@ -312,8 +343,8 @@ pub async fn prepare_screenshot_snapshot() -> Result<ScreenshotSnapshotInfo, Str
         // Capture the screen (platform-specific)
         #[cfg(target_os = "windows")]
         let (info, png_bytes) = {
-            tracing::info!("prepare_screenshot_snapshot: capturing primary screen");
-            let mut info = primary_screen_info()?;
+            tracing::info!("prepare_screenshot_snapshot: capturing virtual screen");
+            let mut info = virtual_screen_info()?;
             tracing::info!("prepare_screenshot_snapshot: screen info {:?}", info);
             let img = capture_area_gdi(
                 info.screen_x,
@@ -437,8 +468,8 @@ pub async fn crop_screenshot_snapshot(
 
 #[command]
 pub async fn capture_screenshot_region(
-    left: u32,
-    top: u32,
+    left: i32,
+    top: i32,
     width: u32,
     height: u32,
 ) -> Result<String, String> {
@@ -446,7 +477,7 @@ pub async fn capture_screenshot_region(
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
-            let img = capture_area_gdi(left as i32, top as i32, width, height)?;
+            let img = capture_area_gdi(left, top, width, height)?;
             return image_to_base64_png(&img);
         }
 
@@ -460,7 +491,7 @@ pub async fn capture_screenshot_region(
                 .capture()
                 .map_err(|e| format!("Failed to capture screen: {}", e))?;
             let image = screenshots::image::DynamicImage::ImageRgba8(buffer);
-            crop_image_to_base64(&image, left, top, width, height)
+            crop_image_to_base64(&image, left.max(0) as u32, top.max(0) as u32, width, height)
         }
     })
     .await
@@ -476,6 +507,9 @@ pub async fn detect_foreground_hwnd() -> Result<isize, String> {
         extern "system" {
             fn GetForegroundWindow() -> *mut std::ffi::c_void;
         }
+        // SAFETY: GetForegroundWindow returns valid HWND or NULL.
+        // SAFETY: GetWindowRect is a standard Win32 API. Buffer is stack-allocated.
+        // SAFETY: GetWindowRect is a standard Win32 API.
         unsafe {
             let hwnd = GetForegroundWindow();
             if !hwnd.is_null() {
@@ -494,7 +528,10 @@ pub async fn get_window_title_cmd(hwnd: isize) -> Result<String, String> {
     {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
+        // SAFETY: GetWindowTextW is a standard Win32 API. Buffer is stack-allocated.
 
+        // SAFETY: GetWindowRect is a standard Win32 API. Buffer is stack-allocated.
+        // SAFETY: GetWindowRect is a standard Win32 API.
         unsafe {
             let hwnd = HWND(hwnd as *mut _);
             let mut buf = [0u16; 512];
@@ -523,6 +560,8 @@ pub async fn get_window_rect_cmd(hwnd: isize) -> Result<Option<serde_json::Value
         extern "system" {
             fn GetWindowRect(hWnd: *mut std::ffi::c_void, lpRect: *mut RECT) -> i32;
         }
+        // SAFETY: GetWindowRect is a standard Win32 API. Buffer is stack-allocated.
+        // SAFETY: GetWindowRect is a standard Win32 API.
         unsafe {
             let mut rect = RECT {
                 left: 0,
@@ -587,6 +626,149 @@ pub struct OcrResultDetailed {
     pub text: String,
 }
 
+/// Run WinRT OCR on raw PNG bytes (for use by other modules).
+pub async fn run_winrt_ocr_detailed_from_bytes(
+    png_bytes: &[u8],
+    lang: Option<&str>,
+) -> Result<OcrResultDetailed, String> {
+    let base64_data = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png_bytes);
+    let data_url = format!("data:image/png;base64,{}", base64_data);
+    system_ocr_detailed(data_url, lang.map(|s| s.to_string())).await
+}
+
+/// Run Youdao OCR on raw PNG bytes (for use by other modules).
+/// Uses simpler ocrtransapi endpoint (no signing required).
+pub async fn run_youdao_ocr_from_bytes(
+    png_bytes: &[u8],
+    lang: Option<String>,
+    _app_key: Option<String>,
+    _app_secret: Option<String>,
+    _timeout_secs: u64,
+) -> Result<OcrResultDetailed, String> {
+    let base64_data = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png_bytes);
+    let data_url = format!("data:image/png;base64,{}", base64_data);
+
+    // Create a minimal state for the Youdao OCR function
+    // Since we can't easily create a Tauri State outside of Tauri, we'll call the internal implementation directly
+    let raw = decode_base64_png(&data_url)?;
+
+    // Compress image if too large
+    let image_bytes = if raw.len() > 500 * 1024 {
+        tracing::info!(
+            "[Youdao OCR] Image too large ({}KB), compressing...",
+            raw.len() / 1024
+        );
+        let img = screenshots::image::load_from_memory(&raw)
+            .map_err(|e| format!("Failed to load image for compression: {}", e))?;
+
+        let max_dim = 2000u32;
+        let (w, h) = (img.width(), img.height());
+        let scale = if w > h {
+            max_dim as f64 / w as f64
+        } else {
+            max_dim as f64 / h as f64
+        };
+
+        let resized = if scale < 1.0 {
+            let new_w = (w as f64 * scale) as u32;
+            let new_h = (h as f64 * scale) as u32;
+            img.resize(
+                new_w,
+                new_h,
+                screenshots::image::imageops::FilterType::Lanczos3,
+            )
+        } else {
+            img
+        };
+
+        let mut buf = std::io::Cursor::new(Vec::new());
+        resized
+            .write_to(&mut buf, screenshots::image::ImageFormat::Jpeg)
+            .map_err(|e| format!("Failed to compress image: {}", e))?;
+        let compressed = buf.into_inner();
+        tracing::info!("[Youdao OCR] Compressed to {}KB", compressed.len() / 1024);
+        compressed
+    } else {
+        raw
+    };
+
+    // Use simpler ocrtransapi endpoint (no signing required)
+    let image_base64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
+    let lang_str = lang.unwrap_or_else(|| "auto".to_string());
+    let form = reqwest::multipart::Form::new()
+        .text("img", image_base64)
+        .text("lang", lang_str)
+        .text("type", "1")
+        .text("docType", "json");
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("https://ocrtran.youdao.com/ocrtranapi")
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| format!("Youdao OCR request failed: {}", e))?;
+
+    let status = resp.status();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("Youdao OCR returned status {}: {}", status, body));
+    }
+
+    let json: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| format!("Failed to parse Youdao OCR response: {}", e))?;
+
+    let mut lines = Vec::new();
+    if let Some(regions) = json.get("regions").and_then(|r| r.as_array()) {
+        for region in regions {
+            if let Some(line_texts) = region.get("lines").and_then(|l| l.as_array()) {
+                for line in line_texts {
+                    let text = line
+                        .get("text")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let x = line.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    let y = line.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    let width = line.get("width").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    let height = line.get("height").and_then(|v| v.as_f64()).unwrap_or(0.0);
+
+                    lines.push(OcrLineResult {
+                        text: text.clone(),
+                        x,
+                        y,
+                        width,
+                        height,
+                        words: vec![OcrWordResult {
+                            text,
+                            x,
+                            y,
+                            width,
+                            height,
+                        }],
+                    });
+                }
+            }
+        }
+    }
+
+    let full_text = lines
+        .iter()
+        .map(|l| l.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Ok(OcrResultDetailed {
+        lines,
+        text: full_text,
+    })
+}
+
 /// Run Windows.Media.Ocr on a base64 PNG data-URL.
 /// Returns recognized text or error.
 #[command]
@@ -640,7 +822,7 @@ pub async fn system_ocr(base64_data: String, lang: Option<String>) -> Result<Str
                     .map_err(|e| format!("Language: {}", e))?;
                 OcrEngine::TryCreateFromLanguage(&language)
                     .map_err(|e| format!("OcrEngine: {}", e))?
-            }
+            },
             _ => OcrEngine::TryCreateFromUserProfileLanguages()
                 .map_err(|e| format!("OcrEngine: {}", e))?,
         };
@@ -726,7 +908,7 @@ pub async fn system_ocr_detailed(
                     .map_err(|e| format!("Language: {}", e))?;
                 OcrEngine::TryCreateFromLanguage(&language)
                     .map_err(|e| format!("OcrEngine: {}", e))?
-            }
+            },
             _ => OcrEngine::TryCreateFromUserProfileLanguages()
                 .map_err(|e| format!("OcrEngine: {}", e))?,
         };
@@ -737,9 +919,7 @@ pub async fn system_ocr_detailed(
             .get()
             .map_err(|e| format!("RecognizeAsync await: {}", e))?;
 
-        let lines_vec = result
-            .Lines()
-            .map_err(|e| format!("Lines: {}", e))?;
+        let lines_vec = result.Lines().map_err(|e| format!("Lines: {}", e))?;
 
         let count = lines_vec.Size().map_err(|e| format!("Lines.Size: {}", e))?;
         let mut line_results = Vec::with_capacity(count as usize);
@@ -754,9 +934,7 @@ pub async fn system_ocr_detailed(
                 .map_err(|e| format!("Line.Text: {}", e))?
                 .to_string_lossy();
 
-            let words_vec = line
-                .Words()
-                .map_err(|e| format!("Words: {}", e))?;
+            let words_vec = line.Words().map_err(|e| format!("Words: {}", e))?;
             let word_count = words_vec.Size().map_err(|e| format!("Words.Size: {}", e))?;
 
             let mut word_results = Vec::with_capacity(word_count as usize);
@@ -782,10 +960,18 @@ pub async fn system_ocr_detailed(
                 let wh = wrect.Height as f64;
 
                 // Track line bounding box (union of word rects)
-                if wx < min_x { min_x = wx; }
-                if wy < min_y { min_y = wy; }
-                if wx + ww > max_r { max_r = wx + ww; }
-                if wy + wh > max_b { max_b = wy + wh; }
+                if wx < min_x {
+                    min_x = wx;
+                }
+                if wy < min_y {
+                    min_y = wy;
+                }
+                if wx + ww > max_r {
+                    max_r = wx + ww;
+                }
+                if wy + wh > max_b {
+                    max_b = wy + wh;
+                }
 
                 word_results.push(OcrWordResult {
                     text: wtext,
@@ -823,7 +1009,11 @@ pub async fn system_ocr_detailed(
             return Err("OCR returned empty text".to_string());
         }
 
-        tracing::info!("[WinRT OCR Detailed] Success: {} lines, {} chars total", line_results.len(), full_text.len());
+        tracing::info!(
+            "[WinRT OCR Detailed] Success: {} lines, {} chars total",
+            line_results.len(),
+            full_text.len()
+        );
         Ok(OcrResultDetailed {
             text: full_text,
             lines: line_results,
@@ -837,46 +1027,20 @@ pub async fn system_ocr_detailed(
 
 // ── Youdao OCR ─────────────────────────────────────────────────────────────
 
-fn youdao_truncate(q: &str) -> String {
-    let chars: Vec<char> = q.chars().collect();
-    let size = chars.len();
-    if size <= 20 {
-        return format!("{}{}{}", q, size, q);
-    }
-    let first: String = chars[..10].iter().collect();
-    let last: String = chars[size - 10..].iter().collect();
-    format!("{}{}{}", first, size, last)
-}
-
-fn youdao_sign(app_key: &str, input: &str, salt: &str, curtime: &str, app_secret: &str) -> String {
-    let sign_input = format!(
-        "{}{}{}{}{}",
-        app_key,
-        youdao_truncate(input),
-        salt,
-        curtime,
-        app_secret
-    );
-    let hash = sha2::Sha256::digest(sign_input.as_bytes());
-    format!("{:x}", hash)
-}
-
-fn youdao_curtime() -> String {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-        .to_string()
-}
-
 fn extract_bounding_box(item: &serde_json::Value) -> (f64, f64, f64, f64) {
     // Try various bounding box formats
     if let Some(bounding) = item.get("bounding") {
         // Format: { "bounding": { "x": 0, "y": 0, "width": 100, "height": 20 } }
         let x = bounding.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let y = bounding.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let w = bounding.get("width").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let h = bounding.get("height").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let w = bounding
+            .get("width")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let h = bounding
+            .get("height")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         return (x, y, w, h);
     }
     if let Some(rect) = item.get("rect") {
@@ -895,15 +1059,25 @@ fn extract_bounding_box(item: &serde_json::Value) -> (f64, f64, f64, f64) {
     (x, y, w, h)
 }
 
-/// Run Youdao OCR using ocrtran.youdao.com endpoint (same as YoudaoDict).
+/// Run Youdao OCR using ocrtransapi endpoint (no signing required).
 /// Returns per-line details with bounding boxes.
 #[command]
-pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Option<String>, app_secret: Option<String>) -> Result<OcrResultDetailed, String> {
+pub async fn youdao_ocr(
+    base64_data: String,
+    lang: Option<String>,
+    _app_key: Option<String>,
+    _app_secret: Option<String>,
+    _state: tauri::State<'_, crate::AppState>,
+) -> Result<OcrResultDetailed, String> {
     let raw = decode_base64_png(&base64_data)?;
 
     // Compress image if too large
-    let image_bytes = if raw.len() > 500 * 1024 {  // > 500KB
-        tracing::info!("[Youdao OCR] Image too large ({}KB), compressing...", raw.len() / 1024);
+    let image_bytes = if raw.len() > 500 * 1024 {
+        // > 500KB
+        tracing::info!(
+            "[Youdao OCR] Image too large ({}KB), compressing...",
+            raw.len() / 1024
+        );
         let img = screenshots::image::load_from_memory(&raw)
             .map_err(|e| format!("Failed to load image for compression: {}", e))?;
 
@@ -918,13 +1092,18 @@ pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Opti
         let resized = if scale < 1.0 {
             let new_w = (w as f64 * scale) as u32;
             let new_h = (h as f64 * scale) as u32;
-            img.resize(new_w, new_h, screenshots::image::imageops::FilterType::Lanczos3)
+            img.resize(
+                new_w,
+                new_h,
+                screenshots::image::imageops::FilterType::Lanczos3,
+            )
         } else {
             img
         };
 
         let mut buf = std::io::Cursor::new(Vec::new());
-        resized.write_to(&mut buf, screenshots::image::ImageFormat::Jpeg)
+        resized
+            .write_to(&mut buf, screenshots::image::ImageFormat::Jpeg)
             .map_err(|e| format!("Failed to compress image: {}", e))?;
         let compressed = buf.into_inner();
         tracing::info!("[Youdao OCR] Compressed to {}KB", compressed.len() / 1024);
@@ -933,59 +1112,37 @@ pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Opti
         raw
     };
 
-    // Use YoudaoDict's OCR endpoint: https://ocrtran.youdao.com/ocr/imgtranocr
-    let endpoint = "https://ocrtran.youdao.com/ocr/imgtranocr";
+    // Use simpler ocrtransapi endpoint (no signing required)
+    let endpoint = "https://ocrtran.youdao.com/ocrtranapi";
 
     let lang_from = match lang.as_deref() {
-        Some("zh") | Some("zh-CN") | Some("zh-CHS") => "zh-CHS",
+        Some("zh" | "zh-CN" | "zh-CHS") => "zh-CHS",
         Some("en") => "en",
         Some("ja") => "ja",
         Some("ko") => "ko",
-        _ => "AUTO",
+        _ => "auto",
     };
 
-    tracing::info!("[Youdao OCR] Using ocrtran.youdao.com endpoint");
-    tracing::info!("[Youdao OCR] Image size: {}KB, lang: {}", image_bytes.len() / 1024, lang_from);
-
-    // Generate signing parameters
-    let salt = uuid::Uuid::new_v4().to_string();
-    let curtime = youdao_curtime();
-    // Use provided keys or fall back to defaults (YoudaoDict built-in keys)
-    let app_key = app_key.unwrap_or_else(|| "3d9fa94028675971".to_string());
-    let app_secret = app_secret.unwrap_or_else(|| "5X2CJlMERfGOkOP0PFqokVJkSgDIOD0p".to_string());
-
-    // For OCR, input is empty string
-    let sign = youdao_sign(&app_key, "", &salt, &curtime, &app_secret);
-
-    let key_preview: String = app_key.chars().take(8).collect();
-    let salt_preview: String = salt.chars().take(8).collect();
-    tracing::info!("[Youdao OCR] Signing params: appKey={}, salt={}, curtime={}", key_preview, salt_preview, curtime);
+    tracing::info!("[Youdao OCR] Using ocrtranapi endpoint");
+    tracing::info!(
+        "[Youdao OCR] Image size: {}KB, lang: {}",
+        image_bytes.len() / 1024,
+        lang_from
+    );
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("HTTP client: {}", e))?;
 
-    // Build multipart form data with all required parameters
-    // Convert image to base64 for the request
-    let image_base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
-    let mystic_time = curtime.clone();
-    let key_id = "ocr-web";
-
+    // Build form data - simpler format for ocrtransapi
+    let image_base64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
     let form = reqwest::multipart::Form::new()
-        .text("langFrom", lang_from.to_string())
-        .text("langTo", "auto".to_string())
-        .text("product", "pc".to_string())
-        .text("clientele", "pc".to_string())
-        .text("appVersion", "11.2.12.0".to_string())
-        .text("appKey", app_key.to_string())
-        .text("salt", salt)
-        .text("curtime", curtime)
-        .text("sign", sign)
-        .text("signType", "v3".to_string())
-        .text("keyid", key_id.to_string())
-        .text("mysticTime", mystic_time)
-        .text("imageBase64", image_base64);
+        .text("img", image_base64)
+        .text("lang", lang_from.to_string())
+        .text("type", "1".to_string())
+        .text("docType", "json".to_string());
 
     tracing::info!("[Youdao OCR] Sending request to {}", endpoint);
 
@@ -995,18 +1152,22 @@ pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Opti
             let err_msg = format!("Request failed: {}", e);
             tracing::error!("[Youdao OCR] {}", err_msg);
             return Err(err_msg);
-        }
+        },
     };
 
     let status = resp.status();
     tracing::info!("[Youdao OCR] Response status: {}", status);
 
     let body = resp.text().await.map_err(|e| format!("Body read: {}", e))?;
-    tracing::info!("[Youdao OCR] Response body ({} bytes): {}", body.len(), &body[..body.len().min(500)]);
+    tracing::info!(
+        "[Youdao OCR] Response body ({} bytes): {}",
+        body.len(),
+        &body[..body.len().min(500)]
+    );
 
     // Parse response - try multiple formats
-    let json: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| format!("JSON parse: {}", e))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("JSON parse: {}", e))?;
 
     // Check for error codes
     if let Some(code) = json.get("errorCode").and_then(|v| v.as_str()) {
@@ -1058,10 +1219,15 @@ pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Opti
                         let (x, y, w, h) = extract_bounding_box(item);
                         lines.push(OcrLineResult {
                             text: text.to_string(),
-                            x, y, width: w, height: h,
+                            x,
+                            y,
+                            width: w,
+                            height: h,
                             words: vec![],
                         });
-                        if !full_text.is_empty() { full_text.push('\n'); }
+                        if !full_text.is_empty() {
+                            full_text.push('\n');
+                        }
                         full_text.push_str(text);
                     }
                 }
@@ -1075,10 +1241,15 @@ pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Opti
                             let (x, y, w, h) = extract_bounding_box(region);
                             lines.push(OcrLineResult {
                                 text: text.to_string(),
-                                x, y, width: w, height: h,
+                                x,
+                                y,
+                                width: w,
+                                height: h,
                                 words: vec![],
                             });
-                            if !full_text.is_empty() { full_text.push('\n'); }
+                            if !full_text.is_empty() {
+                                full_text.push('\n');
+                            }
                             full_text.push_str(text);
                         }
                     }
@@ -1088,17 +1259,25 @@ pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Opti
     }
     // Format 3: { "lines": [...] }
     else if let Some(lines_arr) = json.get("lines").and_then(|v| v.as_array()) {
-        tracing::info!("[Youdao OCR] Parsing lines array ({} items)", lines_arr.len());
+        tracing::info!(
+            "[Youdao OCR] Parsing lines array ({} items)",
+            lines_arr.len()
+        );
         for line in lines_arr {
             if let Some(text) = line.get("text").and_then(|v| v.as_str()) {
                 if !text.trim().is_empty() {
                     let (x, y, w, h) = extract_bounding_box(line);
                     lines.push(OcrLineResult {
                         text: text.to_string(),
-                        x, y, width: w, height: h,
+                        x,
+                        y,
+                        width: w,
+                        height: h,
                         words: vec![],
                     });
-                    if !full_text.is_empty() { full_text.push('\n'); }
+                    if !full_text.is_empty() {
+                        full_text.push('\n');
+                    }
                     full_text.push_str(text);
                 }
             }
@@ -1110,7 +1289,10 @@ pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Opti
         if !text.trim().is_empty() {
             lines.push(OcrLineResult {
                 text: text.to_string(),
-                x: 0.0, y: 0.0, width: 0.0, height: 0.0,
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
                 words: vec![],
             });
             full_text = text.to_string();
@@ -1125,10 +1307,15 @@ pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Opti
                     let (x, y, w, h) = extract_bounding_box(item);
                     lines.push(OcrLineResult {
                         text: text.to_string(),
-                        x, y, width: w, height: h,
+                        x,
+                        y,
+                        width: w,
+                        height: h,
                         words: vec![],
                     });
-                    if !full_text.is_empty() { full_text.push('\n'); }
+                    if !full_text.is_empty() {
+                        full_text.push('\n');
+                    }
                     full_text.push_str(text);
                 }
             }
@@ -1136,13 +1323,22 @@ pub async fn youdao_ocr(base64_data: String, lang: Option<String>, app_key: Opti
     }
 
     if lines.is_empty() {
-        tracing::warn!("[Youdao OCR] No text extracted, response keys: {:?}",
-            json.as_object().map(|m| m.keys().collect::<Vec<_>>()));
+        tracing::warn!(
+            "[Youdao OCR] No text extracted, response keys: {:?}",
+            json.as_object().map(|m| m.keys().collect::<Vec<_>>())
+        );
         return Err("OCR returned empty result".to_string());
     }
 
-    tracing::info!("[Youdao OCR] Success: {} lines, {} chars total", lines.len(), full_text.len());
-    Ok(OcrResultDetailed { text: full_text, lines })
+    tracing::info!(
+        "[Youdao OCR] Success: {} lines, {} chars total",
+        lines.len(),
+        full_text.len()
+    );
+    Ok(OcrResultDetailed {
+        text: full_text,
+        lines,
+    })
 }
 
 /// A detected text region in screen coordinates.
@@ -1167,6 +1363,7 @@ pub async fn detect_text_regions(hwnd: Option<isize>) -> Result<Vec<TextRegion>,
         #[cfg(target_os = "windows")]
         {
             use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+            // SAFETY: GetForegroundWindow returns valid HWND or NULL.
             unsafe { GetForegroundWindow().0 as isize }
         }
         #[cfg(not(target_os = "windows"))]
@@ -1183,8 +1380,9 @@ pub async fn detect_text_regions(hwnd: Option<isize>) -> Result<Vec<TextRegion>,
     #[cfg(target_os = "windows")]
     let rect = {
         use windows::Win32::Foundation::HWND;
-        use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
         use windows::Win32::Foundation::RECT;
+        use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+        // SAFETY: GetWindowRect is a standard Win32 API.
         unsafe {
             let mut rc = RECT::default();
             let hwnd = HWND(target_hwnd as *mut _);
@@ -1208,8 +1406,8 @@ pub async fn detect_text_regions(hwnd: Option<isize>) -> Result<Vec<TextRegion>,
     let h = (win_h as u32).min(max_dim);
 
     // 3. Capture window screenshot
-    let image = capture_area_gdi(win_x, win_y, w, h)
-        .map_err(|e| format!("Screenshot failed: {}", e))?;
+    let image =
+        capture_area_gdi(win_x, win_y, w, h).map_err(|e| format!("Screenshot failed: {}", e))?;
 
     // 4. Run OCR detailed
     let base64 = image_to_base64_png(&image)?;
@@ -1268,7 +1466,10 @@ pub async fn detect_text_regions(hwnd: Option<isize>) -> Result<Vec<TextRegion>,
     // Filter out tiny regions (likely noise)
     regions.retain(|r| r.width > 30 && r.height > 15);
 
-    tracing::info!("[detect_text_regions] Found {} regions in window", regions.len());
+    tracing::info!(
+        "[detect_text_regions] Found {} regions in window",
+        regions.len()
+    );
     Ok(regions)
 }
 
@@ -1289,7 +1490,8 @@ fn system_ocr_detailed_inner<'a>(
 
             let raw = decode_base64_png(base64_data)?;
             let temp_path = unique_ocr_temp_path();
-            std::fs::write(&temp_path, &raw).map_err(|e| format!("Failed to write temp file: {}", e))?;
+            std::fs::write(&temp_path, &raw)
+                .map_err(|e| format!("Failed to write temp file: {}", e))?;
 
             let path_str = temp_path.to_string_lossy().to_string();
             let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(&path_str))
@@ -1323,7 +1525,7 @@ fn system_ocr_detailed_inner<'a>(
                         .map_err(|e| format!("Language: {}", e))?;
                     OcrEngine::TryCreateFromLanguage(&language)
                         .map_err(|e| format!("OcrEngine: {}", e))?
-                }
+                },
                 _ => OcrEngine::TryCreateFromUserProfileLanguages()
                     .map_err(|e| format!("OcrEngine: {}", e))?,
             };
@@ -1377,10 +1579,18 @@ fn system_ocr_detailed_inner<'a>(
                     let ww = wrect.Width as f64;
                     let wh = wrect.Height as f64;
 
-                    if wx < min_x { min_x = wx; }
-                    if wy < min_y { min_y = wy; }
-                    if wx + ww > max_r { max_r = wx + ww; }
-                    if wy + wh > max_b { max_b = wy + wh; }
+                    if wx < min_x {
+                        min_x = wx;
+                    }
+                    if wy < min_y {
+                        min_y = wy;
+                    }
+                    if wx + ww > max_r {
+                        max_r = wx + ww;
+                    }
+                    if wy + wh > max_b {
+                        max_b = wy + wh;
+                    }
 
                     word_results.push(OcrWordResult {
                         text: wtext,
@@ -1429,7 +1639,11 @@ fn system_ocr_detailed_inner<'a>(
 }
 
 /// Build a TextRegion from a cluster of lines (in screen coordinates)
-fn build_region(cluster: &[(i32, i32, i32, i32, String)], offset_x: i32, offset_y: i32) -> TextRegion {
+fn build_region(
+    cluster: &[(i32, i32, i32, i32, String)],
+    offset_x: i32,
+    offset_y: i32,
+) -> TextRegion {
     let min_x = cluster.iter().map(|l| l.0).min().unwrap_or(0);
     let min_y = cluster.iter().map(|l| l.1).min().unwrap_or(0);
     let max_x = cluster.iter().map(|l| l.0 + l.2).max().unwrap_or(0);
