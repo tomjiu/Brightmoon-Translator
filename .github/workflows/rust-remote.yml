@@ -89,6 +89,8 @@ jobs:
         working-directory: src-tauri
         shell: pwsh
         run: |
+          $manifestDependency = "/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"
+          $env:CARGO_ENCODED_RUSTFLAGS = "-C$([char]0x1f)link-arg=$manifestDependency"
           cargo test --lib -- --nocapture 2>&1 | Tee-Object -FilePath rust-test-output.log
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
