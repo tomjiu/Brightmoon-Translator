@@ -42,6 +42,8 @@ tmpclaude-*
 *.tmp
 *.temp
 nul
+.playwright-mcp/
+docs/superpowers/
 
 # Third party tools
 YodaoDict/
