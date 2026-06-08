@@ -1,6 +1,6 @@
 use axum::{
     extract::State as AxumState,
-    http::StatusCode,
+    http::{header, StatusCode},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -8,7 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::capabilities::handle_browser_request;
 use crate::config::AppConfig;
@@ -19,7 +19,69 @@ use crate::models::browser_protocol::BrowserTranslateRequest;
 use crate::models::error::{ApiError, TranslationError};
 use crate::models::glossary::GlossaryEntry;
 use crate::services::TranslationService;
-use crate::TranslationCache;
+use crate::cache::TranslationCache;
+
+/// Mask a secret string, keeping first 4 and last 4 bytes visible.
+/// Safe for ASCII secrets (API keys, tokens). Uses byte slicing for performance.
+fn mask_secret(s: &str) -> String {
+    let len = s.len();
+    if len <= 12 {
+        return "*".repeat(len);
+    }
+    format!("{}...{}", &s[..4], &s[len - 4..])
+}
+
+/// Return a sanitized copy of config with all secret fields masked.
+/// Used for API responses to avoid leaking credentials to external callers.
+fn sanitize_config(config: &AppConfig) -> serde_json::Value {
+    let mut v = serde_json::to_value(config).unwrap_or_default();
+    // Mask LLM keys
+    if let Some(llm) = v.get_mut("llm") {
+        if let Some(key) = llm.get_mut("apiKey").and_then(|v| v.as_str().map(|s| s.to_string())) {
+            if let Some(obj) = llm.as_object_mut() {
+                obj.insert("apiKey".into(), serde_json::Value::String(mask_secret(&key)));
+            }
+        }
+        if let Some(keys) = llm.get_mut("apiKeys").and_then(|v| v.as_array().cloned()) {
+            let masked: Vec<_> = keys.iter().map(|k| {
+                k.as_str().map(|s| serde_json::Value::String(mask_secret(s))).unwrap_or(k.clone())
+            }).collect();
+            if let Some(obj) = llm.as_object_mut() {
+                obj.insert("apiKeys".into(), serde_json::Value::Array(masked));
+            }
+        }
+    }
+    // Mask engine secrets
+    if let Some(engines) = v.get_mut("engines") {
+        for field in &["deepl", "deeplx", "baidu"] {
+            if let Some(engine_cfg) = engines.get_mut(field) {
+                for secret_field in &["apiKey", "secret"] {
+                    if let Some(val) = engine_cfg.get(*secret_field).and_then(|v| v.as_str().map(|s| s.to_string())) {
+                        if let Some(obj) = engine_cfg.as_object_mut() {
+                            obj.insert(secret_field.to_string(), serde_json::Value::String(mask_secret(&val)));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(youdao) = engines.get_mut("youdao") {
+            if let Some(val) = youdao.get("ocrAppSecret").and_then(|v| v.as_str().map(|s| s.to_string())) {
+                if let Some(obj) = youdao.as_object_mut() {
+                    obj.insert("ocrAppSecret".into(), serde_json::Value::String(mask_secret(&val)));
+                }
+            }
+        }
+    }
+    // Mask proxy password
+    if let Some(proxy) = v.get_mut("proxy") {
+        if let Some(val) = proxy.get("password").and_then(|v| v.as_str().map(|s| s.to_string())) {
+            if let Some(obj) = proxy.as_object_mut() {
+                obj.insert("password".into(), serde_json::Value::String(mask_secret(&val)));
+            }
+        }
+    }
+    v
+}
 
 #[derive(Clone)]
 pub struct ApiState {
@@ -31,15 +93,15 @@ pub struct ApiState {
     pub translation_service: Arc<TranslationService>,
 }
 
-impl From<&crate::AppState> for ApiState {
-    fn from(state: &crate::AppState) -> Self {
+impl ApiState {
+    pub fn from_app_state(state: &crate::AppState) -> Self {
         Self {
-            config: state.config.clone(),
-            history: state.history.clone(),
-            engine_router: state.engine_router.clone(),
-            cache: state.cache.clone(),
-            glossary: state.glossary.clone(),
-            translation_service: state.translation_service.clone(),
+            config: state.system.config.clone(),
+            history: state.document.history.clone(),
+            engine_router: state.translation.engine_router.clone(),
+            cache: state.translation.cache.clone(),
+            glossary: state.translation.glossary.clone(),
+            translation_service: state.translation.service.clone(),
         }
     }
 }
@@ -78,12 +140,28 @@ async fn translate(
             .into_response();
     }
 
+    if req.text.len() > 50_000 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError {
+                error: "Text exceeds maximum length of 50,000 characters".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     // Use TranslationService for the full pipeline (glossary, blacklist, cache, history, metrics)
-    match state.translation_service.translate(&req.text, &req.from, &req.to).await {
+    match state
+        .translation_service
+        .translate(&req.text, &req.from, &req.to)
+        .await
+    {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(e) => {
             let status = match &e {
-                TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => StatusCode::SERVICE_UNAVAILABLE,
+                TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => {
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
                 TranslationError::InvalidInput(_) => StatusCode::BAD_REQUEST,
                 TranslationError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
@@ -108,6 +186,16 @@ async fn translate_primary(
             .into_response();
     }
 
+    if req.text.len() > 50_000 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError {
+                error: "Text exceeds maximum length of 50,000 characters".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     #[derive(Serialize)]
     struct PrimaryResult {
         engine: String,
@@ -115,7 +203,11 @@ async fn translate_primary(
     }
 
     // Use TranslationService for the full pipeline
-    match state.translation_service.translate_primary(&req.text, &req.from, &req.to).await {
+    match state
+        .translation_service
+        .translate_primary(&req.text, &req.from, &req.to)
+        .await
+    {
         Ok(translated) => (
             StatusCode::OK,
             Json(PrimaryResult {
@@ -126,7 +218,9 @@ async fn translate_primary(
             .into_response(),
         Err(e) => {
             let status = match &e {
-                TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => StatusCode::SERVICE_UNAVAILABLE,
+                TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => {
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
                 TranslationError::InvalidInput(_) => StatusCode::BAD_REQUEST,
                 TranslationError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
@@ -136,10 +230,10 @@ async fn translate_primary(
     }
 }
 
-// GET /config
+// GET /config - Returns sanitized config (secrets masked)
 async fn get_config(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
     let config = state.config.lock().await;
-    Json(config.clone()).into_response()
+    Json(sanitize_config(&config)).into_response()
 }
 
 // POST /config - Partial update
@@ -173,14 +267,16 @@ async fn update_config(
     match serde_json::from_value::<AppConfig>(merged) {
         Ok(new_config) => {
             new_config.save();
-            *config = new_config.clone();
 
             // Hot-reload: rebuild engine router with new config
             let new_router = engine::Router::new(&new_config);
+            let response = Json(sanitize_config(&new_config)).into_response();
+
             let mut router = state.engine_router.write().await;
             *router = new_router;
+            *config = new_config; // move instead of clone
 
-            Json(new_config).into_response()
+            response
         }
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -286,7 +382,7 @@ async fn add_glossary_entry(
             target: req.target,
             context: req.context,
         },
-    );
+    ).await;
     StatusCode::OK.into_response()
 }
 
@@ -303,7 +399,7 @@ async fn remove_glossary_entry(
     Json(req): Json<RemoveGlossaryRequest>,
 ) -> impl IntoResponse {
     let mut glossary = state.glossary.lock().await;
-    if glossary.remove_entry(&req.lang_pair, &req.source) {
+    if glossary.remove_entry(&req.lang_pair, &req.source).await {
         StatusCode::OK.into_response()
     } else {
         StatusCode::NOT_FOUND.into_response()
@@ -346,9 +442,16 @@ async fn clear_cache(AxumState(state): AxumState<ApiState>) -> impl IntoResponse
 
 pub fn create_router(state: ApiState) -> Router {
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::predicate(|origin, _parts| {
+            // Allow browser extensions and localhost origins
+            let o = origin.as_bytes();
+            o.starts_with(b"chrome-extension://")
+                || o.starts_with(b"moz-extension://")
+                || o.starts_with(b"http://localhost")
+                || o.starts_with(b"http://127.0.0.1")
+        }))
+        .allow_methods(tower_http::cors::Any)
+        .allow_headers([header::CONTENT_TYPE, header::ACCEPT]);
 
     Router::new()
         .route("/health", get(health))
@@ -360,7 +463,9 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/browser/translate", post(browser_translate))
         .route(
             "/glossary",
-            get(get_glossary).post(add_glossary_entry).delete(remove_glossary_entry),
+            get(get_glossary)
+                .post(add_glossary_entry)
+                .delete(remove_glossary_entry),
         )
         .route("/blacklist", get(get_blacklist).post(update_blacklist))
         .route("/cache/stats", get(cache_stats))
@@ -376,7 +481,7 @@ pub async fn start_server(port: u16, state: ApiState) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to bind to {}: {}", addr, e))?;
 
-    log::info!("API server listening on http://{}", addr);
+    tracing::info!("API server listening on http://{}", addr);
 
     axum::serve(listener, app)
         .await

@@ -156,8 +156,7 @@ impl FollowController {
 
                 let should_move = match last_pos {
                     Some((lx, ly)) => {
-                        (nx - lx).abs() > MOVE_THRESHOLD
-                            || (ny - ly).abs() > MOVE_THRESHOLD
+                        (nx - lx).abs() > MOVE_THRESHOLD || (ny - ly).abs() > MOVE_THRESHOLD
                     }
                     None => true,
                 };
@@ -246,6 +245,7 @@ fn get_cursor_position() -> CursorPos {
         extern "system" {
             fn GetCursorPos(lpPoint: *mut POINT) -> i32;
         }
+        // SAFETY: GetCursorPos is a standard Win32 API. Buffer is stack-allocated.
         unsafe {
             let mut point = POINT { x: 0, y: 0 };
             if GetCursorPos(&mut point) != 0 {
@@ -256,8 +256,5 @@ fn get_cursor_position() -> CursorPos {
             }
         }
     }
-    CursorPos {
-        x: 100.0,
-        y: 100.0,
-    }
+    CursorPos { x: 100.0, y: 100.0 }
 }

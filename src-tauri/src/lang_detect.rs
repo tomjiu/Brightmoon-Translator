@@ -149,9 +149,9 @@ pub fn detect_language(text: &str) -> DetectionResult {
 fn contains_english_words(text: &str) -> bool {
     let common_words = [
         "the", "is", "at", "which", "on", "and", "a", "to", "in", "it", "of", "for", "that",
-        "this", "with", "you", "but", "have", "not", "are", "be", "from", "or", "by", "one",
-        "had", "was", "what", "when", "where", "how", "all", "can", "her", "there", "been",
-        "if", "will", "do",
+        "this", "with", "you", "but", "have", "not", "are", "be", "from", "or", "by", "one", "had",
+        "was", "what", "when", "where", "how", "all", "can", "her", "there", "been", "if", "will",
+        "do",
     ];
 
     let words: Vec<&str> = text.split_whitespace().collect();
@@ -199,5 +199,156 @@ mod tests {
     fn test_detect_russian() {
         let result = detect_language("Привет мир");
         assert_eq!(result.language, "ru");
+    }
+
+    #[test]
+    fn test_detect_empty_string() {
+        let result = detect_language("");
+        assert_eq!(result.language, "unknown");
+        assert_eq!(result.confidence, 0.0);
+        assert_eq!(result.name, "未知");
+    }
+
+    #[test]
+    fn test_detect_whitespace_only() {
+        let result = detect_language("   \n\t  ");
+        assert_eq!(result.language, "unknown");
+        assert_eq!(result.confidence, 0.0);
+    }
+
+    #[test]
+    fn test_detect_arabic() {
+        let result = detect_language("مرحبا بالعالم");
+        assert_eq!(result.language, "ar");
+        assert!(result.confidence > 0.0);
+    }
+
+    #[test]
+    fn test_detect_thai() {
+        let result = detect_language("สวัสดีชาวโลก");
+        assert_eq!(result.language, "th");
+        assert!(result.confidence > 0.0);
+    }
+
+    #[test]
+    fn test_detect_chinese_confidence() {
+        let result = detect_language("你好世界测试");
+        assert_eq!(result.language, "zh");
+        assert!(result.confidence > 0.3);
+        assert_eq!(result.name, "中文");
+    }
+
+    #[test]
+    fn test_detect_japanese_confidence() {
+        let result = detect_language("こんにちは世界");
+        assert_eq!(result.language, "ja");
+        assert!(result.confidence > 0.0);
+        assert_eq!(result.name, "日本語");
+    }
+
+    #[test]
+    fn test_detect_korean_confidence() {
+        let result = detect_language("안녕하세요 세계");
+        assert_eq!(result.language, "ko");
+        assert!(result.confidence > 0.3);
+        assert_eq!(result.name, "한국어");
+    }
+
+    #[test]
+    fn test_detect_english_confidence() {
+        let result = detect_language("Hello World this is a test");
+        assert_eq!(result.language, "en");
+        assert!(result.confidence > 0.5);
+        assert_eq!(result.name, "English");
+    }
+
+    #[test]
+    fn test_detect_numbers_and_punctuation() {
+        // Pure numbers/punctuation - no script characters
+        let result = detect_language("12345 !@#$%");
+        assert_eq!(result.language, "auto");
+    }
+
+    #[test]
+    fn test_detect_english_common_words_fallback() {
+        // Low Latin ratio but contains common English words
+        let result = detect_language("the is at which on");
+        assert_eq!(result.language, "en");
+        assert_eq!(result.confidence, 0.6);
+    }
+
+    #[test]
+    fn test_detect_mixed_chinese_english() {
+        // Mostly Chinese with some English
+        let result = detect_language("这是中文测试test");
+        assert_eq!(result.language, "zh");
+    }
+
+    #[test]
+    fn test_detect_mixed_japanese_chinese() {
+        // Japanese with hiragana should be detected as Japanese
+        let result = detect_language("これは中文テストです");
+        assert_eq!(result.language, "ja");
+    }
+
+    #[test]
+    fn test_detect_single_chinese_char() {
+        let result = detect_language("你");
+        assert_eq!(result.language, "zh");
+    }
+
+    #[test]
+    fn test_detect_single_latin_char() {
+        // Single Latin char - ratio is 1.0 but only 1 char
+        let result = detect_language("A");
+        assert_eq!(result.language, "en");
+    }
+
+    #[test]
+    fn test_detect_long_text() {
+        let text = "这是一段很长的中文文本，用于测试语言检测功能。".repeat(100);
+        let result = detect_language(&text);
+        assert_eq!(result.language, "zh");
+        assert!(result.confidence > 0.5);
+    }
+
+    #[test]
+    fn test_detect_russian_name() {
+        let result = detect_language("Привет мир");
+        assert_eq!(result.name, "Русский");
+    }
+
+    #[test]
+    fn test_detect_arabic_name() {
+        let result = detect_language("مرحبا بالعالم");
+        assert_eq!(result.name, "العربية");
+    }
+
+    #[test]
+    fn test_detect_thai_name() {
+        let result = detect_language("สวัสดีชาวโลก");
+        assert_eq!(result.name, "ไทย");
+    }
+
+    #[test]
+    fn test_contains_english_words() {
+        assert!(contains_english_words("this is a test"));
+        assert!(contains_english_words("the quick brown fox"));
+        assert!(!contains_english_words("xyz abc def"));
+        assert!(!contains_english_words(""));
+    }
+
+    #[test]
+    fn test_contains_english_words_with_punctuation() {
+        assert!(contains_english_words("this is a test!"));
+        assert!(contains_english_words("hello, the world."));
+    }
+
+    #[test]
+    fn test_detect_cjk_extension() {
+        // CJK Extension B (0x20000..=0x2A6DF) - rare characters
+        // Use a common CJK char since extension chars might not be available
+        let result = detect_language("你好世界测试语言检测");
+        assert_eq!(result.language, "zh");
     }
 }

@@ -1,10 +1,12 @@
 pub mod follow_controller;
 pub mod html_builder;
+pub mod http_server;
 pub mod interaction;
 pub mod positioner;
 pub mod window_manager;
 
 pub use follow_controller::{FollowController, FollowMode, TargetBounds};
+pub use http_server::OverlayHttpServer;
 
 use serde::{Deserialize, Serialize};
 
@@ -84,7 +86,12 @@ pub struct OverlayPosition {
 
 impl OverlayPosition {
     pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// Create position at cursor + offset

@@ -35,10 +35,11 @@ pub struct TranslatedEpub {
 }
 
 pub fn extract_text_from_epub(file_path: &str) -> Result<EpubDocument, String> {
-    let mut epub = EpubDoc::new(file_path)
-        .map_err(|e| format!("Failed to open EPUB file: {}", e))?;
+    let mut epub =
+        EpubDoc::new(file_path).map_err(|e| format!("Failed to open EPUB file: {}", e))?;
 
-    let title = epub.mdata("title")
+    let title = epub
+        .mdata("title")
         .map(|m| m.value.clone())
         .unwrap_or_else(|| "Unknown".to_string());
 
@@ -76,7 +77,9 @@ pub fn extract_text_from_epub(file_path: &str) -> Result<EpubDocument, String> {
                     chapter_num += 1;
                     chapters.push(EpubChapter {
                         chapter_number: chapter_num,
-                        title: epub.get_title().unwrap_or_else(|| format!("Chapter {}", chapter_num)),
+                        title: epub
+                            .get_title()
+                            .unwrap_or_else(|| format!("Chapter {}", chapter_num)),
                         text: extracted,
                     });
                 }
@@ -128,7 +131,10 @@ fn extract_text_from_html(html: &str) -> String {
                     in_style = true;
                 } else if tag_lower.starts_with("/style") {
                     in_style = false;
-                } else if tag_lower.starts_with("p") || tag_lower.starts_with("br") || tag_lower.starts_with("div") {
+                } else if tag_lower.starts_with("p")
+                    || tag_lower.starts_with("br")
+                    || tag_lower.starts_with("div")
+                {
                     text.push('\n');
                 }
 

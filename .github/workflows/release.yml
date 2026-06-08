@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    outputs:
+      releaseId: ${{ steps.tauri_build.outputs.releaseId }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build Tauri app
+        id: tauri_build
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Moon Translator ${{ github.ref_name }}
+          releaseBody: |
+            ## Moon Translator ${{ github.ref_name }}
+
+            See the assets below to download the installer and browser extensions.
+          releaseDraft: true
+          prerelease: false
+
+  build-extension:
+    name: Build Extensions
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build extensions
+        working-directory: extension
+        run: node build.js
+
+      - name: Create Chrome zip
+        working-directory: extension/dist
+        run: |
+          Compress-Archive -Path chrome/* -DestinationPath moontranslator-chrome.zip
+
+      - name: Create Firefox xpi
+        working-directory: extension/dist
+        run: |
+          Compress-Archive -Path firefox/* -DestinationPath moontranslator-firefox.xpi
+
+      - name: Upload Chrome extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: moontranslator-chrome
+          path: extension/dist/moontranslator-chrome.zip
+
+      - name: Upload Firefox extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: moontranslator-firefox
+          path: extension/dist/moontranslator-firefox.xpi
+
+  upload-extensions:
+    name: Upload Extensions to Release
+    needs: [build-windows, build-extension]
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Chrome extension
+        uses: actions/download-artifact@v4
+        with:
+          name: moontranslator-chrome
+
+      - name: Download Firefox extension
+        uses: actions/download-artifact@v4
+        with:
+          name: moontranslator-firefox
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          $PREV_TAG = git tag --sort=-creatordate | Select-Object -Skip 1 | Select-Object -First 1
+          if ($PREV_TAG) {
+            $LOG = git log "$PREV_TAG..HEAD" --pretty=format:"- %s (%h)" --no-merges
+          } else {
+            $LOG = git log --pretty=format:"- %s (%h)" --no-merges
+          }
+          $CHANGELOG = @"
+          ## Changes
+
+          $LOG
+
+          ## Browser Extensions
+
+          - Chrome: moontranslator-chrome.zip
+          - Firefox: moontranslator-firefox.xpi
+          "@
+          $CHANGELOG | Out-File -FilePath changelog.md -Encoding utf8
+        shell: pwsh
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            moontranslator-chrome.zip
+            moontranslator-firefox.xpi
+          body_path: changelog.md
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

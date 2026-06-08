@@ -12,20 +12,22 @@ name = "moontranslator"
 path = "src/main.rs"
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "webview-data-url"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2"
-reqwest = { version = "0.12", features = ["json", "stream", "deflate", "gzip", "brotli"] }
+reqwest = { version = "0.12", features = ["json", "stream", "deflate", "gzip", "brotli", "multipart"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "io-util", "fs"] }
 tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+zip = "2"
 base64 = "0.22"
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
+thiserror = "2"
 async-trait = "0.1"
 futures = "0.3"
 dirs = "5"
@@ -37,25 +39,90 @@ tower-http = { version = "0.5", features = ["cors"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 pdf-extract = "0.7"
 epub = "2"
-zip = "0.6"
 regex = "1"
 md5 = "0.7"
+lindera-ipadic = "0.28"
+lindera-tokenizer = "0.28"
+lindera-dictionary = "0.28"
+lindera-core = "0.28"
 rand = "0.8"
-log = "0.4"
-env_logger = "0.11"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
+zeroize = { version = "1", features = ["derive"] }
+aes-gcm = "0.10"
+docx-rs = "0.4"
+calamine = "0.26"
+rust_xlsxwriter = "0.62"
+quick-xml = "0.31"
+image = "0.25"
+ab_glyph = "0.2"
+imageproc = "0.24"
 
 [dependencies.windows]
 version = "0.58"
 features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Security_Cryptography",
     "Win32_System_Com",
+    "Win32_System_DataExchange",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
     "Win32_UI_Accessibility",
     "Win32_UI_WindowsAndMessaging",
+    "Globalization",
+    "Graphics_Imaging",
+    "Foundation_Collections",
+    "Media_Ocr",
+    "Storage",
+    "Storage_Streams",
+    "Data_Pdf",
 ]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
+[[bench]]
+name = "translation_bench"
+harness = false
+
+[[bench]]
+name = "cache_bench"
+harness = false
+
+[[bench]]
+name = "ocr_bench"
+harness = false
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
+
+[lints.clippy]
+# Deny these lints (will cause compilation error)
+enum_glob_use = "deny"
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+
+# Pedantic lints
+pedantic = { level = "warn", priority = -1 }
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+module_name_repetitions = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+wildcard_imports = "allow"
 
 [features]
 default = ["custom-protocol"]

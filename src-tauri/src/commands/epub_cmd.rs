@@ -1,9 +1,11 @@
 use crate::epub_reader::{self, EpubDocument, TranslatedChapter, TranslatedEpub};
+use crate::security;
 use crate::AppState;
 use tauri::State;
 
 #[tauri::command]
 pub async fn open_epub(file_path: String) -> Result<EpubDocument, String> {
+    security::validate_file_path(&file_path)?;
     epub_reader::extract_text_from_epub(&file_path)
 }
 
@@ -14,6 +16,9 @@ pub async fn translate_epub(
     from_lang: String,
     to_lang: String,
 ) -> Result<TranslatedEpub, String> {
+    security::validate_file_path(&file_path)?;
+    security::validate_language_code(&from_lang)?;
+    security::validate_language_code(&to_lang)?;
     let doc = epub_reader::extract_text_from_epub(&file_path)?;
 
     // Collect non-empty chapters for batch translation
@@ -27,7 +32,7 @@ pub async fn translate_epub(
 
     // Use batch translation
     let batch_results = state
-        .translation_service
+        .translation.service
         .translate_batch(&chapters_to_translate, &from_lang, &to_lang, 2)
         .await;
 

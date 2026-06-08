@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import zh from "./zh.json";
 import en from "./en.json";
+import ja from "./ja.json";
+import ko from "./ko.json";
 
-export type Locale = "zh" | "en";
+export type Locale = "zh" | "en" | "ja" | "ko";
 
-const locales: Record<Locale, Record<string, unknown>> = { zh, en };
+const locales: Record<Locale, Record<string, unknown>> = { zh, en, ja, ko };
 
 interface I18nState {
   locale: Locale;

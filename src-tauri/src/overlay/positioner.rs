@@ -16,13 +16,3 @@ pub fn calculate_position(
         OverlayPosition::at_cursor(cursor_x, cursor_y)
     }
 }
-
-/// Clamp overlay position to stay within screen bounds
-pub fn clamp_to_screen(pos: OverlayPosition, screen_w: f64, screen_h: f64) -> OverlayPosition {
-    OverlayPosition {
-        x: pos.x.max(0.0).min(screen_w - pos.width - 20.0),
-        y: pos.y.max(0.0).min(screen_h - pos.height - 20.0),
-        width: pos.width,
-        height: pos.height,
-    }
-}
