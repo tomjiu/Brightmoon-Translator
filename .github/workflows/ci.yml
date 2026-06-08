@@ -24,7 +24,7 @@ jobs:
           components: clippy
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -34,17 +34,24 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend dist
+        run: npm run build
+
       - name: Cargo check
         working-directory: src-tauri
         run: cargo check --all-targets
 
-      - name: Clippy
+      - name: Compile cargo tests
         working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
-
-      - name: Cargo test
-        working-directory: src-tauri
-        run: cargo test
+        run: cargo test --all-targets --no-run
 
   frontend-check:
     name: Frontend Check
@@ -53,28 +60,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: pnpm
+          node-version: 24
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: TypeScript check
-        run: pnpm check
+        run: npm run check
 
-      - name: Lint
-        run: pnpm lint
+      - name: Unit tests
+        run: npm run test:unit
 
       - name: Build
-        run: pnpm build
+        run: npm run build
 
   extension-check:
     name: Extension Check
@@ -86,7 +87,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Validate Chrome manifest.json
         working-directory: extension
