@@ -36,6 +36,9 @@ concurrency:
   group: rust-remote-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   rust:
     name: Rust on Windows
