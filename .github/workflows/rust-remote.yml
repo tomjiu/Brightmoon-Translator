@@ -113,18 +113,48 @@ jobs:
           if (Test-Path rust-test-output.log) {
             Copy-Item rust-test-output.log diagnostics/rust-test-output.log
           }
+          "`nTool lookup:" | Out-File diagnostics/environment.txt -Append
+          where.exe dumpbin.exe 2>&1 | Out-File diagnostics/environment.txt -Append
+          where.exe llvm-objdump.exe 2>&1 | Out-File diagnostics/environment.txt -Append
+
           $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
-          if ($dumpbin) {
-            Get-ChildItem -Path target/debug/deps -Filter "moontranslator_lib-*.exe" -ErrorAction SilentlyContinue |
-              Sort-Object LastWriteTime -Descending |
-              Select-Object -First 3 |
-              ForEach-Object {
-                $safeName = $_.BaseName
-                & $dumpbin.Source /dependents $_.FullName 2>&1 |
-                  Out-File "diagnostics/dependents-$safeName.txt"
+          if (-not $dumpbin) {
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            if (Test-Path $vswhere) {
+              $vsInstall = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+              if ($vsInstall) {
+                $dumpbinPath = Get-ChildItem -Path (Join-Path $vsInstall "VC\Tools\MSVC") -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue |
+                  Where-Object { $_.FullName -like "*\bin\Hostx64\x64\dumpbin.exe" } |
+                  Sort-Object FullName -Descending |
+                  Select-Object -First 1
+                if ($dumpbinPath) {
+                  $dumpbin = $dumpbinPath
+                }
               }
+            }
+          }
+          $testExecutables = Get-ChildItem -Path target/debug/deps -Filter "moontranslator_lib-*.exe" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 3
+          if ($dumpbin) {
+            "Using dumpbin: $($dumpbin.Source ?? $dumpbin.FullName)" | Out-File diagnostics/dumpbin.txt
+            $testExecutables | ForEach-Object {
+              $safeName = $_.BaseName
+              & ($dumpbin.Source ?? $dumpbin.FullName) /dependents $_.FullName 2>&1 |
+                Out-File "diagnostics/dependents-$safeName.txt"
+              & ($dumpbin.Source ?? $dumpbin.FullName) /imports $_.FullName 2>&1 |
+                Out-File "diagnostics/imports-$safeName.txt"
+            }
           } else {
             "dumpbin.exe was not found on PATH." | Out-File diagnostics/dumpbin-missing.txt
+          }
+          $llvmObjdump = Get-Command llvm-objdump.exe -ErrorAction SilentlyContinue
+          if ($llvmObjdump) {
+            $testExecutables | ForEach-Object {
+              $safeName = $_.BaseName
+              & $llvmObjdump.Source -p $_.FullName 2>&1 |
+                Out-File "diagnostics/llvm-objdump-$safeName.txt"
+            }
           }
 
       - name: Upload Rust test diagnostics
