@@ -1,5 +1,5 @@
 {
   "src/**/*.{ts,tsx}": ["eslint --fix", "prettier --write"],
   "src/**/*.{css,json,md}": ["prettier --write"],
-  "src-tauri/**/*.rs": ["cargo fmt --manifest-path src-tauri/Cargo.toml --check"]
+  "src-tauri/**/*.rs": ["rustfmt --edition 2021 --check"]
 }
