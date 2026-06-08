@@ -1,5 +1,6 @@
 // Content script: Full page translator for Moon Translator
 // Injected on demand via context menu or button
+// Performance optimized with: caching, lazy loading, batch merging, Web Worker
 
 (function() {
   "use strict";
@@ -8,6 +9,35 @@
   let originalTexts = new Map();
   let translateBtn = null;
   let isProcessing = false;
+
+  // Cache reference (loaded async)
+  let cache = null;
+  let workerManager = null;
+
+  // IntersectionObserver for lazy loading
+  let intersectionObserver = null;
+  let visibleNodes = new Set();
+  let pendingNodes = new Set();
+
+  // Batch translation queue
+  let translationQueue = [];
+  let batchTimeout = null;
+  const BATCH_DELAY_MS = 100; // Wait time to collect multiple requests
+  const MAX_BATCH_SIZE = 10;  // Maximum texts per batch request
+
+  // Initialize modules
+  async function initModules() {
+    // Wait for cache module
+    if (window.MoonTranslationCache) {
+      cache = window.MoonTranslationCache;
+    }
+
+    // Wait for worker manager
+    if (window.MoonWorkerManager) {
+      workerManager = window.MoonWorkerManager;
+      await workerManager.initPromise;
+    }
+  }
 
   // Create floating translate button
   function createTranslateButton() {
@@ -65,6 +95,56 @@
     return nodes;
   }
 
+  // Setup IntersectionObserver for lazy loading
+  function setupIntersectionObserver() {
+    if (intersectionObserver) {
+      intersectionObserver.disconnect();
+    }
+
+    intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          const node = entry.target;
+          if (entry.isIntersecting) {
+            visibleNodes.add(node);
+            // If node is pending translation, translate it
+            if (pendingNodes.has(node)) {
+              pendingNodes.delete(node);
+              translateNode(node);
+            }
+          } else {
+            visibleNodes.delete(node);
+          }
+        });
+      },
+      {
+        root: null, // viewport
+        rootMargin: "200px", // Pre-load slightly outside viewport
+        threshold: 0.1
+      }
+    );
+  }
+
+  // Observe text nodes for visibility
+  function observeNodes(nodes) {
+    if (!intersectionObserver) return;
+
+    nodes.forEach(node => {
+      if (node.parentElement) {
+        intersectionObserver.observe(node.parentElement);
+      }
+    });
+  }
+
+  // Unobserve all nodes
+  function unobserveAll() {
+    if (intersectionObserver) {
+      intersectionObserver.disconnect();
+    }
+    visibleNodes.clear();
+    pendingNodes.clear();
+  }
+
   // Send message to background
   function sendMessage(message) {
     return new Promise((resolve, reject) => {
@@ -112,13 +192,200 @@
     return parts.join(" > ") || "body";
   }
 
-  // Translate text in batches
+  // Translate a single node (with cache check)
+  async function translateNode(node) {
+    const text = node.textContent.trim();
+    if (text.length < 2) return;
+
+    // Check cache first
+    if (cache) {
+      const cached = cache.get(text, "auto", "zh");
+      if (cached) {
+        const translatedText = cached.primary?.text || cached.results?.[0]?.text;
+        if (translatedText) {
+          originalTexts.set(node, node.textContent);
+          node.textContent = translatedText;
+          return;
+        }
+      }
+    }
+
+    // Add to translation queue
+    addToQueue(node, text);
+  }
+
+  // Add node to translation queue for batch processing
+  function addToQueue(node, text) {
+    translationQueue.push({ node, text });
+
+    // Clear existing timeout
+    if (batchTimeout) {
+      clearTimeout(batchTimeout);
+    }
+
+    // Process batch when size limit reached or after delay
+    if (translationQueue.length >= MAX_BATCH_SIZE) {
+      processBatch();
+    } else {
+      batchTimeout = setTimeout(processBatch, BATCH_DELAY_MS);
+    }
+  }
+
+  // Process queued translations as a batch
+  async function processBatch() {
+    if (translationQueue.length === 0 || isProcessing) return;
+
+    const batch = translationQueue.splice(0, MAX_BATCH_SIZE);
+    const texts = batch.map(item => item.text);
+    const nodes = batch.map(item => item.node);
+
+    try {
+      // Try batch translation
+      const results = await translateBatch(texts);
+
+      // Apply results
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const result = results[i];
+
+        if (result && node.parentElement) {
+          originalTexts.set(node, node.textContent);
+          const translatedText = result.primary?.text || result.results?.[0]?.text;
+          if (translatedText) {
+            node.textContent = translatedText;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Batch translation failed:", e);
+    }
+
+    // Process remaining queue
+    if (translationQueue.length > 0) {
+      setTimeout(processBatch, 50);
+    }
+  }
+
+  // Translate a batch of texts
+  async function translateBatch(texts) {
+    if (texts.length === 0) return [];
+
+    // Check cache for each text
+    const results = new Array(texts.length);
+    const uncachedTexts = [];
+    const uncachedIndices = [];
+
+    if (cache) {
+      for (let i = 0; i < texts.length; i++) {
+        const cached = cache.get(texts[i], "auto", "zh");
+        if (cached) {
+          results[i] = cached;
+        } else {
+          uncachedTexts.push(texts[i]);
+          uncachedIndices.push(i);
+        }
+      }
+    } else {
+      uncachedTexts.push(...texts);
+      uncachedIndices.push(...texts.map((_, i) => i));
+    }
+
+    // If all cached, return immediately
+    if (uncachedTexts.length === 0) return results;
+
+    // Try desktop batch translation first
+    try {
+      const desktopResults = await translateBatchDesktop(uncachedTexts);
+      if (desktopResults) {
+        for (let i = 0; i < uncachedTexts.length; i++) {
+          const idx = uncachedIndices[i];
+          results[idx] = desktopResults[i];
+
+          // Cache result
+          if (cache && desktopResults[i]) {
+            cache.set(uncachedTexts[i], "auto", "zh", null, desktopResults[i]);
+          }
+        }
+        return results;
+      }
+    } catch (e) {
+      console.warn("Desktop batch translation failed:", e);
+    }
+
+    // Fallback: translate individually with parallel requests
+    const promises = uncachedTexts.map(async (text, i) => {
+      try {
+        const response = await sendMessage({
+          type: "translate",
+          text,
+          from: "auto",
+          to: "zh"
+        });
+
+        const idx = uncachedIndices[i];
+        results[idx] = response;
+
+        // Cache result
+        if (cache && response) {
+          cache.set(text, "auto", "zh", null, response);
+        }
+      } catch (e) {
+        console.warn("Translation failed for text:", e);
+      }
+    });
+
+    await Promise.all(promises);
+    return results;
+  }
+
+  // Try desktop batch translation
+  async function translateBatchDesktop(texts) {
+    const segments = texts.map((text, index) => ({
+      text: text.trim(),
+      index
+    })).filter(s => s.text.length >= 2);
+
+    if (segments.length === 0) return null;
+
+    try {
+      const response = await sendMessage({
+        type: "translatePageDesktop",
+        segments,
+        from: "auto",
+        to: "zh"
+      });
+
+      if (!response.success) return null;
+
+      const translations = response.translations;
+      if (!translations || translations.length === 0) return null;
+
+      // Map results back to original indices
+      const results = new Array(texts.length);
+      for (const t of translations) {
+        if (t.translated) {
+          results[t.index] = {
+            primary: { engine: "desktop", text: t.translated },
+            results: [{ engine: "desktop", text: t.translated }]
+          };
+        }
+      }
+
+      return results;
+    } catch (e) {
+      console.warn("Desktop batch translation error:", e);
+      return null;
+    }
+  }
+
+  // Translate text in batches (legacy method, now uses queue)
   async function translatePage() {
     if (isProcessing) return;
     isProcessing = true;
 
+    showProgress(0, 1);
+
     const textNodes = getTextNodes();
-    const batchSize = 3;
 
     // Store original texts
     textNodes.forEach(node => {
@@ -133,60 +400,88 @@
       return;
     }
 
-    // Fallback: group text by parent to maintain context, translate per-group
-    const groups = new Map();
+    // Setup lazy loading with IntersectionObserver
+    setupIntersectionObserver();
+    observeNodes(textNodes);
+
+    // Separate visible and non-visible nodes
+    const visibleNow = [];
+    const deferred = [];
+
     textNodes.forEach(node => {
+      const parent = node.parentElement;
+      if (parent && isElementInViewport(parent)) {
+        visibleNow.push(node);
+      } else {
+        deferred.push(node);
+        pendingNodes.add(node);
+      }
+    });
+
+    // Translate visible nodes immediately
+    const totalNodes = textNodes.length;
+    let processed = 0;
+
+    // Group by parent for better context
+    const groups = groupByParent(visibleNow);
+    const totalGroups = groups.size;
+
+    for (const [parent, nodes] of groups) {
+      const fullText = nodes.map(n => n.textContent).join("").trim();
+      if (fullText.length < 2) continue;
+
+      try {
+        const results = await translateBatch([fullText]);
+        if (results[0]) {
+          const translatedText = results[0].primary?.text || results[0].results?.[0]?.text;
+          if (translatedText && nodes[0].parentElement) {
+            nodes[0].textContent = translatedText;
+            for (let j = 1; j < nodes.length; j++) {
+              if (nodes[j].parentElement) {
+                nodes[j].textContent = "";
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Translation failed:", e);
+      }
+
+      processed++;
+      updateProgress(processed, totalGroups + deferred.length);
+    }
+
+    // Deferred nodes will be translated when they become visible
+    updateProgress(totalGroups, totalGroups + deferred.length);
+
+    isProcessing = false;
+
+    // Hide progress after a short delay
+    setTimeout(hideProgress, 1000);
+  }
+
+  // Group text nodes by parent element
+  function groupByParent(nodes) {
+    const groups = new Map();
+    nodes.forEach(node => {
       const parent = node.parentElement;
       if (!groups.has(parent)) {
         groups.set(parent, []);
       }
       groups.get(parent).push(node);
     });
+    return groups;
+  }
 
-    const totalParents = groups.size;
-    let processed = 0;
-
-    const parents = Array.from(groups.keys());
-    for (let i = 0; i < parents.length; i += batchSize) {
-      const batch = parents.slice(i, i + batchSize);
-      const promises = batch.map(async (parent) => {
-        const nodes = groups.get(parent);
-        const fullText = nodes.map(n => n.textContent).join("").trim();
-
-        if (fullText.length < 2) return;
-
-        try {
-          const response = await sendMessage({
-            type: "translate",
-            text: fullText,
-            from: "auto",
-            to: "zh"
-          });
-
-          if (response.success) {
-            const translatedText = response.primary?.text || response.results?.[0]?.text;
-            if (translatedText) {
-              if (nodes.length > 0) {
-                nodes[0].textContent = translatedText;
-                for (let j = 1; j < nodes.length; j++) {
-                  nodes[j].textContent = "";
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn("Translation failed for node:", e);
-        }
-
-        processed++;
-        updateProgress(processed, totalParents);
-      });
-
-      await Promise.all(promises);
-    }
-
-    isProcessing = false;
-    hideProgress();
+  // Check if element is in viewport
+  function isElementInViewport(el) {
+    const rect = el.getBoundingClientRect();
+    return (
+      rect.top < (window.innerHeight || document.documentElement.clientHeight) + 200 &&
+      rect.bottom > -200 &&
+      rect.left < (window.innerWidth || document.documentElement.clientWidth) + 200 &&
+      rect.right > -200
+    );
   }
 
   // Try desktop batch translation. Returns true if successful, false to fall back.
@@ -223,6 +518,14 @@
         const node = nodeByIndex.get(t.index);
         if (node && t.translated) {
           node.textContent = t.translated;
+
+          // Cache the translation
+          if (cache) {
+            cache.set(node.textContent, "auto", "zh", null, {
+              primary: { engine: "desktop", text: t.translated },
+              results: [{ engine: "desktop", text: t.translated }]
+            });
+          }
         }
       }
 
@@ -235,6 +538,17 @@
 
   // Restore original text
   function restorePage() {
+    // Stop lazy loading
+    unobserveAll();
+
+    // Clear translation queue
+    translationQueue = [];
+    if (batchTimeout) {
+      clearTimeout(batchTimeout);
+      batchTimeout = null;
+    }
+
+    // Restore original texts
     originalTexts.forEach((text, node) => {
       if (node.parentElement) {
         node.textContent = text;
@@ -265,32 +579,33 @@
   // Progress indicator
   let progressEl = null;
 
-  function showProgress() {
-    if (progressEl) return;
+  function showProgress(current, total) {
+    if (!progressEl) {
+      progressEl = document.createElement("div");
+      progressEl.id = "moon-translate-progress";
+      progressEl.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 13px;
+        z-index: 2147483647;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      `;
+      document.body.appendChild(progressEl);
+    }
 
-    progressEl = document.createElement("div");
-    progressEl.id = "moon-translate-progress";
-    progressEl.style.cssText = `
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.8);
-      color: white;
-      padding: 8px 16px;
-      border-radius: 20px;
-      font-size: 13px;
-      z-index: 2147483647;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    `;
-    document.body.appendChild(progressEl);
-  }
-
-  function updateProgress(current, total) {
-    showProgress();
     if (progressEl) {
       progressEl.textContent = `翻译中... ${current}/${total}`;
     }
+  }
+
+  function updateProgress(current, total) {
+    showProgress(current, total);
   }
 
   function hideProgress() {
@@ -311,19 +626,8 @@
             const text = node.textContent;
             originalTexts.set(node, text);
 
-            sendMessage({
-              type: "translate",
-              text: text,
-              from: "auto",
-              to: "zh"
-            }).then(response => {
-              if (response.success) {
-                const translatedText = response.primary?.text || response.results?.[0]?.text;
-                if (translatedText) {
-                  node.textContent = translatedText;
-                }
-              }
-            }).catch(() => {});
+            // Add to queue instead of immediate translation
+            addToQueue(node, text);
           }
         });
       });
@@ -340,6 +644,11 @@
   // Create button when script loads
   createTranslateButton();
   setupObserver();
+
+  // Initialize modules asynchronously
+  initModules().then(() => {
+    console.log("Moon Translator page translator loaded (with cache and worker support)");
+  });
 
   // Expose functions for content script communication
   window.moonTranslatePage = translatePage;

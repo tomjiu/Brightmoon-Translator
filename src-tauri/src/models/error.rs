@@ -13,7 +13,10 @@ pub enum TranslationError {
     /// Engine-specific error
     EngineError { engine: String, message: String },
     /// Rate limited by engine
-    RateLimited { engine: String, retry_after_ms: Option<u64> },
+    RateLimited {
+        engine: String,
+        retry_after_ms: Option<u64>,
+    },
     /// Invalid input text
     InvalidInput(String),
     /// Configuration error
@@ -40,7 +43,10 @@ impl fmt::Display for TranslationError {
             Self::EngineError { engine, message } => {
                 write!(f, "{} engine error: {}", engine, message)
             }
-            Self::RateLimited { engine, retry_after_ms } => {
+            Self::RateLimited {
+                engine,
+                retry_after_ms,
+            } => {
                 write!(f, "{} rate limited", engine)?;
                 if let Some(ms) = retry_after_ms {
                     write!(f, " (retry after {}ms)", ms)?;

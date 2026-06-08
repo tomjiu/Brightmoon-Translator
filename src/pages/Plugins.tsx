@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
 import { Puzzle, FolderOpen, RefreshCw, ExternalLink } from "lucide-react";
 
@@ -36,7 +36,7 @@ function Plugins() {
   const loadPlugins = async () => {
     setLoading(true);
     try {
-      const result = await invoke<PluginInfo[]>("get_plugins");
+      const result = await invokeOrThrow<PluginInfo[]>("get_plugins");
       setPlugins(result);
     } catch (err) {
       console.error("Failed to load plugins:", err);
@@ -46,7 +46,7 @@ function Plugins() {
 
   const loadPluginsDir = async () => {
     try {
-      const dir = await invoke<string>("get_plugins_dir");
+      const dir = await invokeOrThrow<string>("get_plugins_dir");
       setPluginsDir(dir);
     } catch (err) {
       console.error("Failed to get plugins dir:", err);
@@ -55,7 +55,7 @@ function Plugins() {
 
   const togglePlugin = async (pluginName: string, enabled: boolean) => {
     try {
-      await invoke("set_plugin_enabled", { pluginName, enabled });
+      await invokeOrThrow("set_plugin_enabled", { pluginName, enabled });
       await loadPlugins();
     } catch (err) {
       console.error("Failed to toggle plugin:", err);
@@ -64,7 +64,7 @@ function Plugins() {
 
   const openPluginsDir = async () => {
     try {
-      await invoke("open_plugins_dir");
+      await invokeOrThrow("open_plugins_dir");
     } catch (err) {
       console.error("Failed to open plugins dir:", err);
     }

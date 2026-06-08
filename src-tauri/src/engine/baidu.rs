@@ -62,15 +62,16 @@ impl TranslationEngine for BaiduEngine {
             .send()
             .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(anyhow::anyhow!("Baidu API error: {}", status));
-        }
+        super::check_response(&resp, "Baidu")?;
 
         let body: BaiduResponse = resp.json().await?;
 
         if let Some(code) = body.error_code {
-            return Err(anyhow::anyhow!("Baidu error {}: {}", code, body.error_msg.unwrap_or_default()));
+            return Err(anyhow::anyhow!(
+                "Baidu error {}: {}",
+                code,
+                body.error_msg.unwrap_or_default()
+            ));
         }
 
         let translated = body

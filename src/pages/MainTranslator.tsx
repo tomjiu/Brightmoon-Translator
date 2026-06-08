@@ -1,16 +1,19 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { speakText as ttsSpeak } from "../services/tts";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslateStore } from "../stores/translateStore";
 import { useConfigStore } from "../stores/configStore";
 import { useI18n } from "../i18n";
 import { LANGUAGES } from "../types";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
+import { normalizeTranslatorInput } from "../services/translatorText";
+import { RubyText } from "../components/RubyText";
 import {
   ArrowLeftRight,
   Copy,
   Check,
   X,
+  Scan,
   Volume2,
   Clipboard,
   Eye,
@@ -28,21 +31,25 @@ import {
   MicOff,
   Sparkles,
 } from "lucide-react";
-import OcrSelector from "../components/OcrSelector";
 
-function MainTranslator() {
+interface MainTranslatorProps {
+  onOcrScreenshot: () => void;
+}
+
+function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
+  // Split high-frequency streaming state from stable state to reduce re-renders
+  const streamingText = useTranslateStore((s) => s.streamingText);
+  const isStreaming = useTranslateStore((s) => s.isStreaming);
+  const loading = useTranslateStore((s) => s.loading);
+  const sourceText = useTranslateStore((s) => s.sourceText);
+  const results = useTranslateStore((s) => s.results);
   const {
-    sourceText,
-    results,
     dictionaryResults,
     backTranslation,
     fromLang,
     toLang,
-    loading,
     detectedLang,
     error,
-    streamingText,
-    isStreaming,
     incrementalMode,
     incrementalEntries,
     translationHistory,
@@ -72,8 +79,16 @@ function MainTranslator() {
     toggleEmbeddedMode,
   } = useTranslateStore();
 
-  const { config } = useConfigStore();
-  const { t } = useI18n();
+  const config = useConfigStore((s) => s.config);
+  const { t, locale } = useI18n();
+
+  const localeMap: Record<string, string> = {
+    zh: "zh-CN",
+    en: "en-US",
+    ja: "ja-JP",
+    ko: "ko-KR",
+  };
+  const browserLocale = localeMap[locale] || locale;
 
   // Speech recognition
   const {
@@ -110,15 +125,19 @@ function MainTranslator() {
 
   const handleInput = useCallback(
     (value: string) => {
-      setSourceText(value);
+      const normalizedValue = normalizeTranslatorInput(value, deleteNewlines);
+      setSourceText(normalizedValue);
       setMaskRevealed(false);
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
       }
       debounceTimer.current = setTimeout(() => {
-        if (value.trim()) {
-          detectLanguage(value);
-          if (useTranslateStore.getState().embeddedMode) {
+        if (normalizedValue.trim()) {
+          detectLanguage(normalizedValue);
+          // Auto-enable embedded mode for multi-line text
+          const isMultiLine = normalizedValue.includes("\n");
+          const store = useTranslateStore.getState();
+          if (store.embeddedMode || isMultiLine) {
             translateEmbedded();
           } else {
             translateStream();
@@ -127,7 +146,7 @@ function MainTranslator() {
         }
       }, 500);
     },
-    [setSourceText, translateStream, lookupDictionary, detectLanguage]
+    [deleteNewlines, setSourceText, translateStream, translateEmbedded, lookupDictionary, detectLanguage]
   );
 
   const copyResult = (text: string, index: number) => {
@@ -139,22 +158,10 @@ function MainTranslator() {
   const speakText = async (text: string, lang: string, index: number) => {
     try {
       setSpeakingIndex(index);
-      const base64Audio = await invoke<string>("text_to_speech", { text, lang });
-      const audioBytes = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
-      const audioBlob = new Blob([audioBytes], { type: "audio/mp3" });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      audio.onended = () => {
-        setSpeakingIndex(null);
-        URL.revokeObjectURL(audioUrl);
-      };
-      audio.onerror = () => {
-        setSpeakingIndex(null);
-        URL.revokeObjectURL(audioUrl);
-      };
-      await audio.play();
+      await ttsSpeak(text, lang);
     } catch (err) {
       console.error("TTS failed:", err);
+    } finally {
       setSpeakingIndex(null);
     }
   };
@@ -200,9 +207,21 @@ function MainTranslator() {
     };
   }, [config.windowFollowMode, moveWindowToCursor]);
 
+  // Auto-play TTS after translation completes
+  useEffect(() => {
+    if (config.ttsAutoPlay && results.length > 0 && !loading) {
+      const lastResult = results[results.length - 1];
+      if (lastResult?.text) {
+        ttsSpeak(lastResult.text, toLang).catch((e) => {
+          console.warn("TTS auto-play failed:", e);
+        });
+      }
+    }
+  }, [results, loading, config.ttsAutoPlay, toLang]);
+
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
-    return date.toLocaleString("zh-CN", {
+    return date.toLocaleString(browserLocale, {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
@@ -210,127 +229,143 @@ function MainTranslator() {
   };
 
   return (
-    <div className="flex flex-col h-full p-4 gap-3">
+    <div className="flex flex-col h-full p-3 gap-2">
       {/* Language Bar */}
-      <div className="flex items-center justify-center gap-3">
-        <select
-          value={fromLang}
-          onChange={(e) => setFromLang(e.target.value)}
-          className="bg-bg-secondary text-text-primary border border-border rounded-lg px-4 py-2 text-sm cursor-pointer min-w-[120px] focus:border-primary"
-        >
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.name}
-            </option>
-          ))}
-        </select>
-
-        {detectedLang && fromLang === "auto" && (
-          <span className="text-xs text-text-secondary">
-            {t("translator.detected")}: {detectedLang}
-          </span>
-        )}
-
-        <button
-          className="bg-bg-tertiary border border-border text-text-primary rounded-lg px-4 py-2 text-lg hover:bg-primary hover:text-white transition-colors"
-          onClick={swapLanguages}
-          title={t("translator.swapLang")}
-        >
-          <ArrowLeftRight size={18} />
-        </button>
-
-        <select
-          value={toLang}
-          onChange={(e) => setToLang(e.target.value)}
-          className="bg-bg-secondary text-text-primary border border-border rounded-lg px-4 py-2 text-sm cursor-pointer min-w-[120px] focus:border-primary"
-        >
-          {LANGUAGES.filter((l) => l.code !== "auto").map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.name}
-            </option>
-          ))}
-        </select>
-
-        <div className="ml-2 flex items-center gap-2">
-          <OcrSelector />
-
-          {/* Incremental Mode Toggle */}
-          <button
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              incrementalMode
-                ? "bg-accent text-white"
-                : "bg-bg-tertiary text-text-secondary hover:bg-bg-tertiary/80"
-            }`}
-            onClick={toggleIncrementalMode}
-            title={t(incrementalMode ? "translator.incrementalModeOn" : "translator.incrementalModeOff")}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 basis-[280px] items-center justify-center gap-1.5">
+          <select
+            value={fromLang}
+            onChange={(e) => setFromLang(e.target.value)}
+            className="h-8 min-w-0 w-[clamp(96px,22vw,132px)] bg-bg-secondary text-text-primary border border-border rounded-md px-2 py-1 text-xs cursor-pointer focus:border-primary"
           >
-            <Layers size={16} />
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+
+          {detectedLang && fromLang === "auto" && (
+            <span
+              className="max-w-[112px] truncate text-xs text-text-secondary"
+              title={`${t("translator.detected")}: ${detectedLang}`}
+            >
+              {t("translator.detected")}: {detectedLang}
+            </span>
+          )}
+
+          <button
+            className="h-8 w-8 shrink-0 bg-bg-tertiary border border-border text-text-primary rounded-md hover:bg-primary hover:text-white transition-colors flex items-center justify-center"
+            onClick={swapLanguages}
+            title={t("translator.swapLang")}
+          >
+            <ArrowLeftRight size={16} />
           </button>
 
-          {/* Delete Newlines Toggle */}
-          <button
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              deleteNewlines
-                ? "bg-warning text-white"
-                : "bg-bg-tertiary text-text-secondary hover:bg-bg-tertiary/80"
-            }`}
-            onClick={() => setDeleteNewlines(!deleteNewlines)}
-            title={t(deleteNewlines ? "translator.keepNewlines" : "translator.deleteNewlines")}
+          <select
+            value={toLang}
+            onChange={(e) => setToLang(e.target.value)}
+            className="h-8 min-w-0 w-[clamp(96px,22vw,132px)] bg-bg-secondary text-text-primary border border-border rounded-md px-2 py-1 text-xs cursor-pointer focus:border-primary"
           >
-            <Eraser size={16} />
+            {LANGUAGES.filter((l) => l.code !== "auto").map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            className="h-8 w-8 shrink-0 bg-primary text-white rounded-md hover:bg-primary-hover transition-colors flex items-center justify-center shadow-sm shadow-primary/20"
+            onClick={onOcrScreenshot}
+            title={t("ocr.screenshotTranslate") || "OCR截图翻译"}
+          >
+            <Scan size={16} />
           </button>
 
-          {/* Clipboard Monitor Toggle */}
-          <button
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              clipboardMonitorEnabled
-                ? "bg-primary text-white"
-                : "bg-bg-tertiary text-text-secondary hover:bg-bg-tertiary/80"
-            }`}
-            onClick={toggleClipboardMonitor}
-            title={t(clipboardMonitorEnabled ? "translator.stopClipboardMonitor" : "translator.startClipboardMonitor")}
-          >
-            <Clipboard size={16} />
-          </button>
+          {/* Mode Toggles Group */}
+          <div className="flex items-center gap-0.5 bg-bg-tertiary/50 rounded-md p-0.5">
+            {/* Incremental Mode Toggle */}
+            <button
+              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+                incrementalMode
+                  ? "bg-accent text-white"
+                  : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+              }`}
+              onClick={toggleIncrementalMode}
+              title={t(incrementalMode ? "translator.incrementalModeOn" : "translator.incrementalModeOff")}
+            >
+              <Layers size={14} />
+            </button>
 
-          {/* Bilingual Mode Toggle */}
-          <button
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              bilingualMode
-                ? "bg-accent text-white"
-                : "bg-bg-tertiary text-text-secondary hover:bg-bg-tertiary/80"
-            }`}
-            onClick={() => setBilingualMode(!bilingualMode)}
-            title={t(bilingualMode ? "translator.bilingualOff" : "translator.bilingualOn")}
-          >
-            <Columns size={16} />
-          </button>
+            {/* Delete Newlines Toggle */}
+            <button
+              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+                deleteNewlines
+                  ? "bg-warning text-white"
+                  : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+              }`}
+              onClick={() => setDeleteNewlines(!deleteNewlines)}
+              title={t(deleteNewlines ? "translator.keepNewlines" : "translator.deleteNewlines")}
+            >
+              <Eraser size={14} />
+            </button>
 
-          {/* Embedded Translation Mode Toggle */}
-          <button
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-              embeddedMode
-                ? "bg-primary text-white"
-                : "bg-bg-tertiary text-text-secondary hover:bg-bg-tertiary/80"
-            }`}
-            onClick={toggleEmbeddedMode}
-            title={t(embeddedMode ? "translator.embeddedOff" : "translator.embeddedOn")}
-          >
-            <BookOpen size={16} />
-          </button>
+            {/* Clipboard Monitor Toggle */}
+            <button
+              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+                clipboardMonitorEnabled
+                  ? "bg-primary text-white"
+                  : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+              }`}
+              onClick={toggleClipboardMonitor}
+              title={t(clipboardMonitorEnabled ? "translator.stopClipboardMonitor" : "translator.startClipboardMonitor")}
+            >
+              <Clipboard size={14} />
+            </button>
+
+            {/* Bilingual Mode Toggle */}
+            <button
+              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+                bilingualMode
+                  ? "bg-accent text-white"
+                  : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+              }`}
+              onClick={() => setBilingualMode(!bilingualMode)}
+              title={t(bilingualMode ? "translator.bilingualOff" : "translator.bilingualOn")}
+            >
+              <Columns size={14} />
+            </button>
+
+            {/* Embedded Translation Mode Toggle */}
+            <button
+              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+                embeddedMode
+                  ? "bg-primary text-white"
+                  : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+              }`}
+              onClick={() => {
+                toggleEmbeddedMode();
+              }}
+              title={t(embeddedMode ? "translator.embeddedOff" : "translator.embeddedOn")}
+            >
+              <BookOpen size={14} />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Translation Area */}
-      <div className="flex gap-3 flex-1 min-h-0">
+      <div className="flex gap-2 flex-1 min-h-0">
         {/* Source Panel */}
-        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-xl overflow-hidden">
+        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-lg overflow-hidden">
           <div className="flex-1 relative">
             <textarea
               value={sourceText}
               onChange={(e) => handleInput(e.target.value)}
               placeholder={t("translator.placeholder")}
-              className="w-full h-full bg-transparent text-text-primary p-4 text-sm leading-relaxed resize-none outline-none placeholder:text-text-secondary"
+              className="w-full h-full bg-transparent text-text-primary p-3 text-sm leading-relaxed resize-none outline-none placeholder:text-text-secondary"
               autoFocus
             />
             {isListening && interimTranscript && (
@@ -339,7 +374,7 @@ function MainTranslator() {
               </div>
             )}
           </div>
-          <div className="flex justify-between items-center px-4 py-2 border-t border-border">
+          <div className="flex justify-between items-center px-3 py-1.5 border-t border-border">
             <div className="flex items-center gap-2">
               <span className="text-xs text-text-secondary">
                 {sourceText.length} {t("translator.chars")}
@@ -402,7 +437,7 @@ function MainTranslator() {
         </div>
 
         {/* Result Panel */}
-        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-xl overflow-hidden">
+        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-lg overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             {/* Incremental Entries */}
             {incrementalMode && incrementalEntries.length > 0 && (
@@ -446,29 +481,75 @@ function MainTranslator() {
             )}
 
             {/* Embedded Translation Mode */}
-            {embeddedMode && embeddedLines.length > 0 && (
+            {embeddedMode && (
               <div className="p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <BookOpen size={14} className="text-primary" />
-                  <span className="text-xs text-primary font-semibold uppercase">
-                    {t("translator.embeddedTitle")}
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  {embeddedLines.map((line) => (
-                    <div
-                      key={line.lineNumber}
-                      className="border-l-2 border-primary/30 pl-3"
-                    >
-                      <p className="text-sm text-text-secondary leading-relaxed select-text">
-                        {line.original}
-                      </p>
-                      <p className="text-sm text-text-primary leading-relaxed select-text mt-1">
-                        {line.translated}
-                      </p>
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-pulse text-sm text-text-secondary">
+                      {t("translator.translating")}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ) : embeddedLines.length > 0 ? (
+                  <>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <BookOpen size={14} className="text-primary" />
+                        <span className="text-xs text-primary font-semibold uppercase">
+                          {t("translator.embeddedTitle")}
+                        </span>
+                        <span className="text-xs text-text-secondary">
+                          {embeddedLines.length} {t("translator.chars")}
+                        </span>
+                      </div>
+                      <button
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-tertiary rounded transition-colors"
+                        onClick={() => {
+                          const text = embeddedLines
+                            .map((l) => `${l.lineNumber}. ${l.original}\n   ${l.translated}`)
+                            .join("\n");
+                          navigator.clipboard.writeText(text);
+                        }}
+                        title={t("translator.copy")}
+                      >
+                        <Copy size={12} />
+                        {t("translator.copy")}
+                      </button>
+                    </div>
+                    <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                      {embeddedLines.map((line) => (
+                        <div
+                          key={line.lineNumber}
+                          className="group flex gap-3 py-2 px-3 rounded-lg border-l-2 border-primary/30 hover:bg-bg-tertiary/50 transition-colors"
+                        >
+                          <span className="text-xs text-text-secondary font-mono w-6 shrink-0 text-right pt-0.5">
+                            {line.lineNumber}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-text-secondary leading-relaxed select-text">
+                              {line.original}
+                            </p>
+                            <p className="text-sm text-text-primary leading-relaxed select-text mt-1">
+                              {line.translated}
+                            </p>
+                          </div>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 shrink-0 p-1 text-text-secondary hover:text-primary transition-all"
+                            onClick={() => navigator.clipboard.writeText(`${line.original}\n${line.translated}`)}
+                            title={t("translator.copy")}
+                          >
+                            <Copy size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-text-secondary">
+                    <BookOpen size={32} className="mb-3 opacity-30" />
+                    <p className="text-sm">{t("translator.embeddedEmpty")}</p>
+                    <p className="text-xs mt-1">{t("translator.embeddedEmptyHint")}</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -603,7 +684,7 @@ function MainTranslator() {
                     </div>
                   ) : (
                     <div className="text-sm leading-relaxed text-text-primary select-text">
-                      {r.text}
+                      <RubyText text={r.text} enabled={config.furiganaEnabled && toLang === "ja"} />
                     </div>
                   )}
                 </div>

@@ -1,4 +1,3 @@
-use base64::Engine;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -13,19 +12,71 @@ pub struct TtsVoice {
 // Default voices for common languages
 pub fn default_voices() -> Vec<TtsVoice> {
     vec![
-        TtsVoice { name: "zh-CN-XiaoxiaoNeural".to_string(), locale: "zh-CN".to_string(), gender: "Female".to_string() },
-        TtsVoice { name: "zh-CN-YunxiNeural".to_string(), locale: "zh-CN".to_string(), gender: "Male".to_string() },
-        TtsVoice { name: "zh-CN-YunjianNeural".to_string(), locale: "zh-CN".to_string(), gender: "Male".to_string() },
-        TtsVoice { name: "en-US-JennyNeural".to_string(), locale: "en-US".to_string(), gender: "Female".to_string() },
-        TtsVoice { name: "en-US-GuyNeural".to_string(), locale: "en-US".to_string(), gender: "Male".to_string() },
-        TtsVoice { name: "en-GB-SoniaNeural".to_string(), locale: "en-GB".to_string(), gender: "Female".to_string() },
-        TtsVoice { name: "ja-JP-NanamiNeural".to_string(), locale: "ja-JP".to_string(), gender: "Female".to_string() },
-        TtsVoice { name: "ko-KR-SunHiNeural".to_string(), locale: "ko-KR".to_string(), gender: "Female".to_string() },
-        TtsVoice { name: "fr-FR-DeniseNeural".to_string(), locale: "fr-FR".to_string(), gender: "Female".to_string() },
-        TtsVoice { name: "de-DE-KatjaNeural".to_string(), locale: "de-DE".to_string(), gender: "Female".to_string() },
-        TtsVoice { name: "es-ES-ElviraNeural".to_string(), locale: "es-ES".to_string(), gender: "Female".to_string() },
-        TtsVoice { name: "ru-RU-SvetlanaNeural".to_string(), locale: "ru-RU".to_string(), gender: "Female".to_string() },
-        TtsVoice { name: "pt-BR-FranciscaNeural".to_string(), locale: "pt-BR".to_string(), gender: "Female".to_string() },
+        TtsVoice {
+            name: "zh-CN-XiaoxiaoNeural".to_string(),
+            locale: "zh-CN".to_string(),
+            gender: "Female".to_string(),
+        },
+        TtsVoice {
+            name: "zh-CN-YunxiNeural".to_string(),
+            locale: "zh-CN".to_string(),
+            gender: "Male".to_string(),
+        },
+        TtsVoice {
+            name: "zh-CN-YunjianNeural".to_string(),
+            locale: "zh-CN".to_string(),
+            gender: "Male".to_string(),
+        },
+        TtsVoice {
+            name: "en-US-JennyNeural".to_string(),
+            locale: "en-US".to_string(),
+            gender: "Female".to_string(),
+        },
+        TtsVoice {
+            name: "en-US-GuyNeural".to_string(),
+            locale: "en-US".to_string(),
+            gender: "Male".to_string(),
+        },
+        TtsVoice {
+            name: "en-GB-SoniaNeural".to_string(),
+            locale: "en-GB".to_string(),
+            gender: "Female".to_string(),
+        },
+        TtsVoice {
+            name: "ja-JP-NanamiNeural".to_string(),
+            locale: "ja-JP".to_string(),
+            gender: "Female".to_string(),
+        },
+        TtsVoice {
+            name: "ko-KR-SunHiNeural".to_string(),
+            locale: "ko-KR".to_string(),
+            gender: "Female".to_string(),
+        },
+        TtsVoice {
+            name: "fr-FR-DeniseNeural".to_string(),
+            locale: "fr-FR".to_string(),
+            gender: "Female".to_string(),
+        },
+        TtsVoice {
+            name: "de-DE-KatjaNeural".to_string(),
+            locale: "de-DE".to_string(),
+            gender: "Female".to_string(),
+        },
+        TtsVoice {
+            name: "es-ES-ElviraNeural".to_string(),
+            locale: "es-ES".to_string(),
+            gender: "Female".to_string(),
+        },
+        TtsVoice {
+            name: "ru-RU-SvetlanaNeural".to_string(),
+            locale: "ru-RU".to_string(),
+            gender: "Female".to_string(),
+        },
+        TtsVoice {
+            name: "pt-BR-FranciscaNeural".to_string(),
+            locale: "pt-BR".to_string(),
+            gender: "Female".to_string(),
+        },
     ]
 }
 
@@ -48,12 +99,31 @@ pub fn get_voice_for_lang(lang: &str) -> &str {
     }
 }
 
-const TRUSTED_CLIENT_TOKEN: &str = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
+const DEFAULT_EDGE_TTS_TOKEN: &str = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
 const EDGE_TTS_URL: &str = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken={}";
 
+/// Get the Edge TTS token: config value > env var > built-in default
+fn get_edge_tts_token(config_token: &str) -> String {
+    if !config_token.is_empty() {
+        return config_token.to_string();
+    }
+    if let Ok(env_token) = std::env::var("EDGE_TTS_TOKEN") {
+        if !env_token.is_empty() {
+            return env_token;
+        }
+    }
+    DEFAULT_EDGE_TTS_TOKEN.to_string()
+}
+
 pub async fn synthesize(text: &str, voice: &str) -> anyhow::Result<Vec<u8>> {
-    let url = format!("{}&ConnectionId={}",
-        EDGE_TTS_URL.replace("{}", TRUSTED_CLIENT_TOKEN),
+    synthesize_with_token(text, voice, "").await
+}
+
+pub async fn synthesize_with_token(text: &str, voice: &str, config_token: &str) -> anyhow::Result<Vec<u8>> {
+    let token = get_edge_tts_token(config_token);
+    let url = format!(
+        "{}&ConnectionId={}",
+        EDGE_TTS_URL.replace("{}", &token),
         uuid::Uuid::new_v4().to_string().replace("-", "")
     );
 

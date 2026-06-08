@@ -23,29 +23,34 @@
     "https://api.cognitive.microsofttranslator.com/*"
   ],
   "background": {
-    "service_worker": "background/service-worker.js",
-    "scripts": ["background/service-worker.js"]
+    "service_worker": "background/service-worker.js"
   },
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
-      "16": "icons/icon-16.png",
-      "48": "icons/icon-48.png",
-      "96": "icons/icon-96.png"
+      "16": "icons/icon.svg",
+      "48": "icons/icon.svg",
+      "96": "icons/icon.svg"
     }
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content/selector.js", "content/page-translator.js"],
-      "css": ["content/selector.css"],
+      "js": ["content/translation-cache.js", "content/worker-manager.js", "content/selector.js", "content/page-translator.js", "content/hover-translator.js"],
+      "css": ["content/selector.css", "content/hover-translator.css"],
       "run_at": "document_idle"
     }
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content/translation-worker.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "icons": {
-    "16": "icons/icon-16.png",
-    "48": "icons/icon-48.png",
-    "96": "icons/icon-96.png"
+    "16": "icons/icon.svg",
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg"
   },
   "commands": {
     "translate-selection": {

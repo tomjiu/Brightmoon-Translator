@@ -16,7 +16,13 @@ const DEFAULT_CONFIG = {
     microsoft: { enabled: false }
   },
   targetLang: "zh",
-  sourceLang: "auto"
+  sourceLang: "auto",
+  hover: {
+    enabled: true,
+    delay: 300,
+    minTextLength: 2,
+    modifierKey: "none"
+  }
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -83,10 +89,17 @@ function updateUI() {
   document.getElementById("deeplxApiKey").value = config.engines?.deeplx?.apiKey || "";
   document.getElementById("deeplxPro").checked = config.engines?.deeplx?.pro ?? false;
 
+  // Hover settings
+  document.getElementById("hoverEnabled").checked = config.hover?.enabled !== false;
+  document.getElementById("hoverDelay").value = config.hover?.delay || 300;
+  document.getElementById("hoverMinLength").value = config.hover?.minTextLength || 2;
+  document.getElementById("hoverModifierKey").value = config.hover?.modifierKey || "none";
+
   // Show/hide settings sections
   toggleLlmSettings();
   toggleDeeplSettings();
   toggleDeeplxSettings();
+  toggleHoverSettings();
 }
 
 function toggleLlmSettings() {
@@ -102,6 +115,11 @@ function toggleDeeplSettings() {
 function toggleDeeplxSettings() {
   const enabled = document.getElementById("engineDeeplx").checked;
   document.getElementById("deeplxSettings").style.display = enabled ? "flex" : "none";
+}
+
+function toggleHoverSettings() {
+  const enabled = document.getElementById("hoverEnabled").checked;
+  document.getElementById("hoverSettings").style.display = enabled ? "flex" : "none";
 }
 
 function showNotification(message, isError = false) {
@@ -282,6 +300,7 @@ function setupEventListeners() {
   document.getElementById("engineLlm").addEventListener("change", toggleLlmSettings);
   document.getElementById("engineDeepl").addEventListener("change", toggleDeeplSettings);
   document.getElementById("engineDeeplx").addEventListener("change", toggleDeeplxSettings);
+  document.getElementById("hoverEnabled").addEventListener("change", toggleHoverSettings);
 
   // LLM Provider change
   document.getElementById("llmProvider").addEventListener("change", (e) => {
@@ -323,6 +342,13 @@ function setupEventListeners() {
 
     config.engines.deeplx.apiKey = document.getElementById("deeplxApiKey").value;
     config.engines.deeplx.pro = document.getElementById("deeplxPro").checked;
+
+    config.hover = {
+      enabled: document.getElementById("hoverEnabled").checked,
+      delay: parseInt(document.getElementById("hoverDelay").value, 10) || 300,
+      minTextLength: parseInt(document.getElementById("hoverMinLength").value, 10) || 2,
+      modifierKey: document.getElementById("hoverModifierKey").value
+    };
 
     await saveConfig();
   });

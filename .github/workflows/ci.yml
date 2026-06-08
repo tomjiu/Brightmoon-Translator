@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [master, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-check:
+    name: Rust Check
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cargo check
+        working-directory: src-tauri
+        run: cargo check --all-targets
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Cargo test
+        working-directory: src-tauri
+        run: cargo test
+
+  frontend-check:
+    name: Frontend Check
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript check
+        run: pnpm check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+  extension-check:
+    name: Extension Check
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate Chrome manifest.json
+        working-directory: extension
+        run: |
+          node -e "
+          const fs = require('fs');
+          const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+          if (!manifest.manifest_version || !manifest.name || !manifest.version) {
+            console.error('Invalid manifest.json: missing required fields');
+            process.exit(1);
+          }
+          if (manifest.manifest_version !== 3) {
+            console.error('Chrome manifest_version should be 3');
+            process.exit(1);
+          }
+          console.log('Chrome manifest.json is valid');
+          "
+
+      - name: Check JavaScript syntax
+        working-directory: extension
+        run: |
+          node --check background/service-worker.js
+          node --check content/selector.js
+          node --check content/page-translator.js
+          node --check content/hover-translator.js
+          node --check popup/popup.js
+          echo "All JS files have valid syntax"

@@ -1,0 +1,52 @@
+# Clippy configuration for strict linting
+# https://doc.rust-lang.org/clippy/configuration.html
+
+# Cognitive complexity threshold
+cognitive-complexity-threshold = 30
+
+# Max function lines
+too-many-lines-threshold = 200
+
+# Type complexity threshold
+type-complexity-threshold = 350
+
+# Max struct boolean fields
+max-struct-bools = 3
+
+# Max function arguments
+too-many-arguments-threshold = 10
+
+# Wording configuration
+disallowed-names = ["foo", "baz", "quux"]
+
+# Single char variable names allowed
+# Allow 'e' for errors, 'x'/'y' for coordinates, 'i'/'j'/'k' for loops, 'n' for count
+allowed-idents-below-min-chars = ["e", "i", "j", "k", "n", "x", "y", "z"]
+
+# Doc valid idents
+doc-valid-idents = [
+    "MiB",
+    "KiB",
+    "GiB",
+    "TiB",
+    "PiB",
+    "EiB",
+    "WebSocket",
+    "OpenAI",
+    "API",
+    "ID",
+    "URL",
+    "HTML",
+    "CSS",
+    "JSON",
+    "XML",
+    "YAML",
+    "TOML",
+    "SQL",
+    "HTTP",
+    "HTTPS",
+    "UTF",
+    "ASCII",
+    "RGBA",
+    "RGB",
+]

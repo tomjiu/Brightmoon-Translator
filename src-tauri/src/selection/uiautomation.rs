@@ -1,18 +1,23 @@
 use super::{SelectionBounds, SelectionProvider, SelectionResult};
+use windows::core::Interface;
 use windows::Win32::Foundation::HWND;
-use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+};
 use windows::Win32::UI::Accessibility::{
-    IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern, CUIAutomation,
-    UIA_TextPatternId,
+    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern, UIA_TextPatternId,
 };
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-use windows::core::Interface;
 
 // SAFEARRAY helpers for reading GetBoundingRectangles output
 #[cfg(target_os = "windows")]
 extern "system" {
     fn SafeArrayGetUBound(psa: *mut std::ffi::c_void, nDim: u32, plUbound: *mut i32) -> i32;
-    fn SafeArrayGetElement(psa: *mut std::ffi::c_void, rgIndices: *const i32, pv: *mut std::ffi::c_void) -> i32;
+    fn SafeArrayGetElement(
+        psa: *mut std::ffi::c_void,
+        rgIndices: *const i32,
+        pv: *mut std::ffi::c_void,
+    ) -> i32;
 }
 
 /// Uses Windows UI Automation to read selected text from the focused control.
@@ -23,7 +28,9 @@ pub struct UiAutomationSelectionProvider;
 impl SelectionProvider for UiAutomationSelectionProvider {
     async fn get_selection(&self) -> Option<SelectionResult> {
         // UIA calls are blocking, run on a dedicated thread
-        tokio::task::spawn_blocking(|| get_uia_selection()).await.ok()?
+        tokio::task::spawn_blocking(|| get_uia_selection())
+            .await
+            .ok()?
     }
 
     fn name(&self) -> &'static str {
@@ -35,12 +42,14 @@ impl SelectionProvider for UiAutomationSelectionProvider {
     }
 }
 
+/// Get selected text via UI Automation.
+/// SAFETY: COM and UI Automation API calls. All COM objects are reference-counted.
 fn get_uia_selection() -> Option<SelectionResult> {
     unsafe {
         // Initialize COM on this thread
         let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         if hr.is_err() {
-            log::error!("[uiautomation] CoInitializeEx failed: {:?}", hr);
+            tracing::error!("[uiautomation] CoInitializeEx failed: {:?}", hr);
             return None;
         }
 
@@ -48,7 +57,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
         let automation: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL) {
             Ok(a) => a,
             Err(e) => {
-                log::error!("[uiautomation] CoCreateInstance failed: {}", e);
+                tracing::error!("[uiautomation] CoCreateInstance failed: {}", e);
                 return None;
             }
         };
@@ -57,7 +66,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
         let element = match automation.GetFocusedElement() {
             Ok(e) => e,
             Err(e) => {
-                log::warn!("[uiautomation] GetFocusedElement failed: {}", e);
+                tracing::warn!("[uiautomation] GetFocusedElement failed: {}", e);
                 return None;
             }
         };
@@ -68,7 +77,8 @@ fn get_uia_selection() -> Option<SelectionResult> {
 
         // Get app name from element's class name or window title
         let source_app = {
-            let class_name = element.CurrentClassName()
+            let class_name = element
+                .CurrentClassName()
                 .ok()
                 .map(|s| s.to_string())
                 .unwrap_or_default();
@@ -82,32 +92,44 @@ fn get_uia_selection() -> Option<SelectionResult> {
         // Try patterns in order: TextPattern -> ValuePattern with selection -> ValuePattern full -> children
         let (text, bounds) = match try_text_pattern(&element) {
             Ok(result) => {
-                log::info!("[uiautomation] TextPattern success: {} chars", result.0.len());
+                tracing::info!(
+                    "[uiautomation] TextPattern success: {} chars",
+                    result.0.len()
+                );
                 result
             }
             Err(e) => {
-                log::debug!("[uiautomation] TextPattern failed: {}", e);
+                tracing::debug!("[uiautomation] TextPattern failed: {}", e);
                 match try_value_pattern_with_selection(&element, &automation) {
                     Ok(result) => {
-                        log::info!("[uiautomation] ValuePattern+selection success: {} chars", result.0.len());
+                        tracing::info!(
+                            "[uiautomation] ValuePattern+selection success: {} chars",
+                            result.0.len()
+                        );
                         result
                     }
                     Err(e2) => {
-                        log::debug!("[uiautomation] ValuePattern+selection failed: {}", e2);
+                        tracing::debug!("[uiautomation] ValuePattern+selection failed: {}", e2);
                         match try_value_pattern_full(&element) {
                             Ok(result) => {
-                                log::info!("[uiautomation] ValuePattern(full) success: {} chars", result.0.len());
+                                tracing::info!(
+                                    "[uiautomation] ValuePattern(full) success: {} chars",
+                                    result.0.len()
+                                );
                                 result
                             }
                             Err(e3) => {
-                                log::debug!("[uiautomation] ValuePattern(full) failed: {}", e3);
+                                tracing::debug!("[uiautomation] ValuePattern(full) failed: {}", e3);
                                 match find_text_in_children(&element, &automation, 0) {
                                     Some(result) => {
-                                        log::info!("[uiautomation] Children walk success: {} chars", result.0.len());
+                                        tracing::info!(
+                                            "[uiautomation] Children walk success: {} chars",
+                                            result.0.len()
+                                        );
                                         result
                                     }
                                     None => {
-                                        log::debug!("[uiautomation] All patterns exhausted for focused element");
+                                        tracing::debug!("[uiautomation] All patterns exhausted for focused element");
                                         return None;
                                     }
                                 }
@@ -119,7 +141,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
         };
 
         if text.trim().is_empty() {
-            log::debug!("[uiautomation] Got text but it's empty after trim");
+            tracing::debug!("[uiautomation] Got text but it's empty after trim");
             return None;
         }
 
@@ -136,6 +158,8 @@ fn get_uia_selection() -> Option<SelectionResult> {
 
 /// Try to read selected text via the TextPattern (rich text controls, browsers, etc.)
 /// Concatenates all selected ranges and merges their bounds.
+/// Try to read selected text via TextPattern.
+/// SAFETY: UI Automation COM interface calls.
 unsafe fn try_text_pattern(
     element: &IUIAutomationElement,
 ) -> Result<(String, Option<SelectionBounds>), Box<dyn std::error::Error>> {
@@ -199,6 +223,8 @@ unsafe fn try_text_pattern(
 
 /// Try ValuePattern to get full value, then cross-reference with TextPattern
 /// to extract the selected portion.
+/// Try ValuePattern with TextPattern cross-reference.
+/// SAFETY: UI Automation COM interface calls.
 unsafe fn try_value_pattern_with_selection(
     element: &IUIAutomationElement,
     _automation: &IUIAutomation,
@@ -231,15 +257,14 @@ unsafe fn try_value_pattern_with_selection(
                         }
                         if !selected.is_empty() && full_text.contains(&selected) {
                             // Found the selected portion within the full value
-                            let bounds = element
-                                .CurrentBoundingRectangle()
-                                .ok()
-                                .map(|rect| SelectionBounds {
+                            let bounds = element.CurrentBoundingRectangle().ok().map(|rect| {
+                                SelectionBounds {
                                     x: rect.left as f64,
                                     y: rect.top as f64,
                                     width: (rect.right - rect.left) as f64,
                                     height: (rect.bottom - rect.top) as f64,
-                                });
+                                }
+                            });
                             return Ok((selected, bounds));
                         }
                     }
@@ -250,11 +275,13 @@ unsafe fn try_value_pattern_with_selection(
 
     // TextPattern cross-reference didn't confirm a real selection.
     // Only full value is available — that's not a selection success.
-    log::debug!("[uiautomation] ValuePattern: only full value available ({} chars), no confirmed selection — falling through", full_text.len());
+    tracing::debug!("[uiautomation] ValuePattern: only full value available ({} chars), no confirmed selection — falling through", full_text.len());
     Err("ValuePattern: no confirmed selection, only full text available".into())
 }
 
 /// Pure ValuePattern fallback — returns the full value (no selection info).
+/// Pure ValuePattern fallback.
+/// SAFETY: UI Automation COM interface calls.
 unsafe fn try_value_pattern_full(
     element: &IUIAutomationElement,
 ) -> Result<(String, Option<SelectionBounds>), Box<dyn std::error::Error>> {
@@ -280,6 +307,8 @@ unsafe fn try_value_pattern_full(
 
 /// Walk the UIA tree to find a child (or descendant) that supports TextPattern.
 /// Max depth: 5, max children per level: 10.
+/// Walk UIA tree to find child with TextPattern.
+/// SAFETY: UI Automation COM interface calls. Max depth: 5.
 unsafe fn find_text_in_children(
     element: &IUIAutomationElement,
     automation: &IUIAutomation,
@@ -292,7 +321,7 @@ unsafe fn find_text_in_children(
     let true_cond = match automation.CreateTrueCondition() {
         Ok(c) => c,
         Err(e) => {
-            log::debug!("[uiautomation] CreateTrueCondition failed: {}", e);
+            tracing::debug!("[uiautomation] CreateTrueCondition failed: {}", e);
             return None;
         }
     };
@@ -303,7 +332,11 @@ unsafe fn find_text_in_children(
     ) {
         Ok(c) => c,
         Err(e) => {
-            log::debug!("[uiautomation] FindAll children failed at depth {}: {}", depth, e);
+            tracing::debug!(
+                "[uiautomation] FindAll children failed at depth {}: {}",
+                depth,
+                e
+            );
             return None;
         }
     };
@@ -362,6 +395,8 @@ fn merge_bounds(a: &SelectionBounds, b: &SelectionBounds) -> SelectionBounds {
 }
 
 /// Get window title from HWND
+/// Get window title from HWND.
+/// SAFETY: GetWindowTextW is a standard Win32 API.
 unsafe fn get_window_title(hwnd: HWND) -> String {
     let mut buf = [0u16; 512];
     let len = windows::Win32::UI::WindowsAndMessaging::GetWindowTextW(hwnd, &mut buf);

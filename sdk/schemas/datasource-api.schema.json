@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://moontranslator.dev/schemas/datasource-api.schema.json",
+  "title": "Moon Translator - DataSource Plugin API",
+  "description": "Schema for data source plugin HTTP API (TM, glossary, dictionary lookups)",
+
+  "definitions": {
+    "LookupRequest": {
+      "type": "object",
+      "required": ["query", "from", "to"],
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query text"
+        },
+        "from": {
+          "type": "string",
+          "description": "Source language code"
+        },
+        "to": {
+          "type": "string",
+          "description": "Target language code"
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.8,
+          "description": "Minimum similarity threshold for fuzzy matches"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 10,
+          "description": "Max number of results to return"
+        }
+      }
+    },
+    "LookupResponse": {
+      "type": "object",
+      "required": ["matches"],
+      "properties": {
+        "matches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Match"
+          }
+        }
+      }
+    },
+    "Match": {
+      "type": "object",
+      "required": ["source", "target"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Source text"
+        },
+        "target": {
+          "type": "string",
+          "description": "Target/translated text"
+        },
+        "similarity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Match similarity score"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional metadata (engine, timestamp, etc.)"
+        }
+      }
+    },
+    "MemoryAddRequest": {
+      "type": "object",
+      "required": ["source", "target", "from", "to"],
+      "properties": {
+        "source": { "type": "string" },
+        "target": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "engine": { "type": "string" }
+      }
+    },
+    "GlossaryRequest": {
+      "type": "object",
+      "required": ["langPair"],
+      "properties": {
+        "langPair": {
+          "type": "string",
+          "description": "Language pair (e.g. 'en-zh')"
+        },
+        "source": { "type": "string" },
+        "target": { "type": "string" }
+      }
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": { "type": "string" },
+        "code": { "type": "string" }
+      }
+    }
+  }
+}

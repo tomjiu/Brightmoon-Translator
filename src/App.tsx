@@ -1,39 +1,43 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect, lazy, Suspense, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke, invokeOrThrow } from "./services/invoke";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import MainTranslator from "./pages/MainTranslator";
-import Settings from "./pages/Settings";
-import History from "./pages/History";
-import Glossary from "./pages/Glossary";
-import Tools from "./pages/Tools";
-import WordBook from "./pages/WordBook";
-import PdfViewer from "./pages/PdfViewer";
-import EpubViewer from "./pages/EpubViewer";
-import SubtitleViewer from "./pages/SubtitleViewer";
-import Plugins from "./pages/Plugins";
-import OcrMonitor from "./components/OcrMonitor";
+const MainTranslator = lazy(() => import("./pages/MainTranslator"));
+const Settings = lazy(() => import("./pages/Settings"));
+const DocumentsViewer = lazy(() => import("./pages/DocumentsViewer"));
+const Vocabulary = lazy(() => import("./pages/Vocabulary"));
+const Plugins = lazy(() => import("./pages/Plugins"));
+const PluginMarketplace = lazy(() => import("./pages/PluginMarketplace"));
+const MetricsDashboard = lazy(() => import("./pages/MetricsDashboard"));
+const TmManager = lazy(() => import("./pages/TmManager"));
+const HookMonitor = lazy(() => import("./components/HookMonitor"));
+import ErrorBoundary from "./components/ErrorBoundary";
+import OcrScreenshotSelector from "./components/OcrScreenshotSelector";
+import OcrRegionFrame from "./components/OcrRegionFrame";
+import OcrScreenshotTranslator from "./components/OcrScreenshotTranslator";
 import { useThemeStore } from "./stores/themeStore";
 import { useTranslateStore } from "./stores/translateStore";
+import { useToastStore } from "./stores/toastStore";
+import { useConfigStore } from "./stores/configStore";
+import ToastContainer from "./components/Toast";
 import { useI18n } from "./i18n";
 import {
   Languages,
-  History as HistoryIcon,
   Settings as SettingsIcon,
-  Book,
   Sun,
   Moon,
-  Wrench,
   Pin,
-  Bookmark,
   FileText,
-  BookOpen,
   Puzzle,
-  Scan,
-  Subtitles,
+  Zap,
+  BookOpen,
+  BarChart3,
+  ShoppingBag,
+  Database,
+  Loader2,
 } from "lucide-react";
 
-type Page = "translator" | "settings" | "history" | "glossary" | "tools" | "wordbook" | "pdf" | "epub" | "subtitle" | "plugins" | "ocr";
+type Page = "translator" | "hook" | "documents" | "vocabulary" | "plugins" | "marketplace" | "metrics" | "tm" | "settings";
 
 interface NavItem {
   id: Page;
@@ -42,50 +46,81 @@ interface NavItem {
   group: "core" | "read" | "data" | "system";
 }
 
+const windowMode = new URLSearchParams(window.location.search).get("window");
+
 function App() {
+  if (windowMode === "ocr-screenshot") {
+    return <OcrScreenshotSelector />;
+  }
+  if (windowMode === "ocr-region-frame") {
+    return <OcrRegionFrame />;
+  }
+
+  return <MainApp />;
+}
+
+function MainApp() {
   const [page, setPage] = useState<Page>("translator");
   const [pinned, setPinned] = useState(false);
+  const [ocrLaunchNonce, setOcrLaunchNonce] = useState(0);
   const { theme, toggleTheme } = useThemeStore();
-  const { setSourceText } = useTranslateStore();
+  const setSourceText = useTranslateStore((s) => s.setSourceText);
+  const addToast = useToastStore((s) => s.addToast);
+  const loadDefaults = useConfigStore((s) => s.loadDefaults);
   const { t } = useI18n();
 
-  const togglePin = async () => {
+  // Fetch authoritative defaults from Rust backend on mount
+  useEffect(() => {
+    loadDefaults();
+  }, [loadDefaults]);
+
+  const startOcrScreenshot = useCallback(() => {
+    setOcrLaunchNonce((n) => n + 1);
+  }, []);
+
+  const togglePin = useCallback(async () => {
     try {
-      const result = await invoke<boolean>("toggle_always_on_top");
+      const result = await invokeOrThrow<boolean>("toggle_always_on_top");
       setPinned(result);
     } catch (err) {
       console.error("Failed to toggle pin:", err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     // Listen for navigation events from tray
     const unlistenNav = listen<string>("navigate", (event) => {
       const pageMap: Record<string, Page> = {
         settings: "settings",
-        history: "history",
         translator: "translator",
-        glossary: "glossary",
-        tools: "tools",
-        wordbook: "wordbook",
-        pdf: "pdf",
-        epub: "epub",
-        subtitle: "subtitle",
+        hook: "hook",
+        documents: "documents",
+        vocabulary: "vocabulary",
         plugins: "plugins",
-        ocr: "ocr",
+        marketplace: "marketplace",
+        metrics: "metrics",
+        tm: "tm",
       };
       if (pageMap[event.payload]) {
         setPage(pageMap[event.payload]);
       }
     });
 
+    const unlistenOcrScreenshot = listen("trigger-ocr-screenshot", () => {
+      startOcrScreenshot();
+    });
+
     // Listen for translate-selection shortcut (Ctrl+Shift+Y)
     const unlistenTranslateSelection = listen("trigger-translate-selection", async () => {
-      try {
-        // Unified pipeline: selection provider → translate → overlay
-        await invoke("trigger_selection_translate");
-      } catch (err) {
+      const [_, err] = await safeInvoke("trigger_selection_translate");
+      if (err) {
         console.error("Failed to translate selection:", err);
+        const msg = err.message;
+        if (msg.includes("No text selected")) {
+          addToast({ type: "warning", message: t("selection.noSelection"), duration: 3000 });
+        } else {
+          addToast({ type: "error", message: t("selection.translateFailed"), detail: msg, duration: 5000 });
+        }
       }
     });
 
@@ -101,10 +136,50 @@ function App() {
     // Listen for replace-translate shortcut (Ctrl+Shift+R)
     // Backend uses SelectionProviderManager to get selection, no frontend clipboard read needed
     const unlistenReplaceTranslate = listen("trigger-replace-translate", async () => {
-      try {
-        await invoke("replace_translate");
-      } catch (err) {
+      const [result, err] = await safeInvoke<{
+        original: string;
+        replacement: string;
+        success: boolean;
+        error: string | null;
+        fallbackToOverlay: boolean;
+      }>("replace_translate");
+      if (err) {
         console.error("Failed to replace translate:", err);
+        const msg = err.message;
+        if (msg.includes("No text selected")) {
+          addToast({ type: "warning", message: t("replace.noSelection"), duration: 3000 });
+        } else {
+          addToast({ type: "error", message: t("replace.hardFail"), detail: msg, duration: 5000 });
+        }
+        return;
+      }
+      if (result!.success) {
+        addToast({ type: "success", message: t("replace.success"), duration: 2000 });
+      } else {
+        // Soft failure: clipboard paste failed but translation exists
+        const errMsg = result!.error || t("replace.unknownError");
+        const isClipboardLocked = errMsg.includes("OpenClipboard") || errMsg.includes("clipboard");
+        addToast({
+          type: "warning",
+          message: isClipboardLocked ? t("replace.clipboardLocked") : t("replace.softFail"),
+          detail: result!.replacement,
+          duration: 5000,
+        });
+        // Show overlay fallback so the user can still see the translation
+        if (result!.fallbackToOverlay && result!.replacement) {
+          const [cursorPos, cursorErr] = await safeInvoke<[number, number]>("get_cursor_position");
+          if (!cursorErr && cursorPos) {
+            await invokeOrThrow("update_overlay", {
+              x: cursorPos[0] + 20,
+              y: cursorPos[1] + 20,
+              width: 350,
+              height: 200,
+              text: result!.replacement,
+              source: result!.original,
+              showControls: true,
+            });
+          }
+        }
       }
     });
 
@@ -116,12 +191,12 @@ function App() {
       try {
         const size = await appWindow.outerSize();
         const pos = await appWindow.outerPosition();
-        await invoke("save_window_position", {
+        await safeInvoke("save_window_position", {
           x: pos.x,
           y: pos.y,
           width: size.width,
           height: size.height,
-        });
+        }, { silent: true });
       } catch (err) {
         // Ignore
       }
@@ -140,37 +215,30 @@ function App() {
       unlistenMoved.then((fn) => fn());
       unlistenResized.then((fn) => fn());
       unlistenNav.then((fn) => fn());
+      unlistenOcrScreenshot.then((fn) => fn());
       unlistenTranslateSelection.then((fn) => fn());
       unlistenAutoCopy.then((fn) => fn());
       unlistenReplaceTranslate.then((fn) => fn());
     };
-  }, [setSourceText]);
+  }, [setSourceText, startOcrScreenshot]);
 
-  const navItems: NavItem[] = [
-    // Core translation features
+  const navItems: NavItem[] = useMemo(() => [
     { id: "translator", icon: Languages, label: t("nav.translator"), group: "core" },
-    { id: "ocr", icon: Scan, label: t("nav.ocr"), group: "core" },
-    // Reading & document translation
-    { id: "pdf", icon: FileText, label: t("nav.pdf"), group: "read" },
-    { id: "epub", icon: BookOpen, label: t("nav.epub"), group: "read" },
-    { id: "subtitle", icon: Subtitles, label: t("nav.subtitle"), group: "read" },
-    // Data & vocabulary
-    { id: "history", icon: HistoryIcon, label: t("nav.history"), group: "data" },
-    { id: "wordbook", icon: Bookmark, label: t("nav.wordbook"), group: "data" },
-    { id: "glossary", icon: Book, label: t("nav.glossary"), group: "data" },
-    // System & tools
-    { id: "tools", icon: Wrench, label: t("nav.tools"), group: "system" },
+    { id: "hook", icon: Zap, label: t("nav.hook"), group: "core" },
+    { id: "documents", icon: FileText, label: t("nav.documents"), group: "core" },
+    { id: "vocabulary", icon: BookOpen, label: t("nav.vocabulary"), group: "core" },
     { id: "plugins", icon: Puzzle, label: t("nav.plugins"), group: "system" },
+    { id: "marketplace", icon: ShoppingBag, label: t("nav.marketplace"), group: "system" },
+    { id: "metrics", icon: BarChart3, label: t("nav.metrics"), group: "system" },
+    { id: "tm", icon: Database, label: t("nav.tm") || "TM", group: "system" },
     { id: "settings", icon: SettingsIcon, label: t("nav.settings"), group: "system" },
-  ];
+  ], [t]);
 
   // Group nav items for rendering with separators
-  const navGroups = [
+  const navGroups = useMemo(() => [
     { key: "core", items: navItems.filter((i) => i.group === "core") },
-    { key: "read", items: navItems.filter((i) => i.group === "read") },
-    { key: "data", items: navItems.filter((i) => i.group === "data") },
     { key: "system", items: navItems.filter((i) => i.group === "system") },
-  ];
+  ], [navItems]);
 
   return (
     <div className="flex h-screen bg-bg-primary">
@@ -244,22 +312,32 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
-        {page === "translator" && <MainTranslator />}
-        {page === "ocr" && (
-          <div className="flex flex-col h-full p-4 overflow-y-auto">
-            <OcrMonitor />
-          </div>
-        )}
-        {page === "settings" && <Settings />}
-        {page === "history" && <History />}
-        {page === "wordbook" && <WordBook />}
-        {page === "pdf" && <PdfViewer />}
-        {page === "epub" && <EpubViewer />}
-        {page === "subtitle" && <SubtitleViewer />}
-        {page === "glossary" && <Glossary />}
-        {page === "tools" && <Tools />}
-        {page === "plugins" && <Plugins />}
+        <ErrorBoundary key={page}>
+          <Suspense
+            fallback={
+              <div className="flex-1 flex items-center justify-center h-full">
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+              </div>
+            }
+          >
+            {page === "translator" && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
+            {page === "documents" && <DocumentsViewer />}
+            {page === "vocabulary" && <Vocabulary />}
+            {page === "settings" && <Settings />}
+            {page === "plugins" && <Plugins />}
+            {page === "marketplace" && <PluginMarketplace />}
+            {page === "metrics" && <MetricsDashboard />}
+            {page === "tm" && <TmManager />}
+            {page === "hook" && <HookMonitor />}
+          </Suspense>
+        </ErrorBoundary>
       </main>
+
+      {/* Headless OCR controller - handles screenshot selection and region-frame updates */}
+      <OcrScreenshotTranslator launchNonce={ocrLaunchNonce} />
+
+      {/* Toast Notifications */}
+      <ToastContainer />
     </div>
   );
 }

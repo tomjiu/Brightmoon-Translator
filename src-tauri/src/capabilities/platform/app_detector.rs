@@ -18,7 +18,8 @@ impl TargetAppDetector for WindowsTargetAppDetector {
     async fn detect(&self) -> Option<AppContext> {
         let info = super::windows::detect_foreground_app()?;
 
-        let embedded_type = super::windows::classify_embedded_app(&info.app_name, &info.window_class);
+        let embedded_type =
+            super::windows::classify_embedded_app(&info.app_name, &info.window_class);
 
         Some(AppContext {
             app_name: info.app_name,
