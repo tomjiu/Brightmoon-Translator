@@ -1,0 +1,88 @@
+name: Rust Remote
+
+on:
+  push:
+    branches:
+      - "codex/**"
+  workflow_dispatch:
+    inputs:
+      run_check:
+        description: Run cargo check
+        required: true
+        type: boolean
+        default: true
+      run_tests:
+        description: Run cargo test
+        required: true
+        type: boolean
+        default: true
+      run_clippy:
+        description: Run cargo clippy -D warnings
+        required: true
+        type: boolean
+        default: false
+      run_tauri_build:
+        description: Run full Tauri build
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: rust-remote-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust on Windows
+    runs-on: windows-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend dist
+        run: npm run build
+
+      - name: Cargo check
+        if: ${{ github.event_name == 'push' || inputs.run_check }}
+        working-directory: src-tauri
+        run: cargo check --all-targets
+
+      - name: Cargo test
+        if: ${{ github.event_name == 'push' || inputs.run_tests }}
+        working-directory: src-tauri
+        run: cargo test --all-targets
+
+      - name: Clippy
+        if: ${{ inputs.run_clippy }}
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build Tauri app
+        if: ${{ inputs.run_tauri_build }}
+        run: npm run tauri -- build
