@@ -16,6 +16,11 @@ on:
         required: true
         type: boolean
         default: true
+      run_test_binaries:
+        description: Run Rust library tests and upload diagnostics on failure
+        required: true
+        type: boolean
+        default: false
       run_clippy:
         description: Run cargo clippy -D warnings
         required: true
@@ -77,6 +82,57 @@ jobs:
         if: ${{ github.event_name == 'push' || inputs.run_tests }}
         working-directory: src-tauri
         run: cargo test --all-targets --no-run
+
+      - name: Run Rust library tests
+        if: ${{ inputs.run_test_binaries }}
+        id: rust_test_binaries
+        working-directory: src-tauri
+        shell: pwsh
+        run: |
+          cargo test --lib -- --nocapture 2>&1 | Tee-Object -FilePath rust-test-output.log
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Collect Rust test diagnostics
+        if: ${{ failure() && inputs.run_test_binaries && steps.rust_test_binaries.outcome == 'failure' }}
+        working-directory: src-tauri
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path diagnostics | Out-Null
+          "Windows version:" | Out-File diagnostics/environment.txt
+          Get-ComputerInfo -Property WindowsProductName, WindowsVersion, OsHardwareAbstractionLayer |
+            Format-List | Out-File diagnostics/environment.txt -Append
+          "`nPATH:" | Out-File diagnostics/environment.txt -Append
+          $env:PATH -split ';' | Out-File diagnostics/environment.txt -Append
+          "`nRust test executables:" | Out-File diagnostics/environment.txt -Append
+          Get-ChildItem -Path target/debug/deps -Filter "moontranslator_lib-*.exe" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object FullName, Length, LastWriteTime |
+            Format-List | Out-File diagnostics/environment.txt -Append
+          if (Test-Path rust-test-output.log) {
+            Copy-Item rust-test-output.log diagnostics/rust-test-output.log
+          }
+          $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
+          if ($dumpbin) {
+            Get-ChildItem -Path target/debug/deps -Filter "moontranslator_lib-*.exe" -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending |
+              Select-Object -First 3 |
+              ForEach-Object {
+                $safeName = $_.BaseName
+                & $dumpbin.Source /dependents $_.FullName 2>&1 |
+                  Out-File "diagnostics/dependents-$safeName.txt"
+              }
+          } else {
+            "dumpbin.exe was not found on PATH." | Out-File diagnostics/dumpbin-missing.txt
+          }
+
+      - name: Upload Rust test diagnostics
+        if: ${{ failure() && inputs.run_test_binaries && steps.rust_test_binaries.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-test-diagnostics
+          path: src-tauri/diagnostics
 
       - name: Clippy
         if: ${{ inputs.run_clippy }}
