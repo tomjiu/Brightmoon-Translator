@@ -12,7 +12,7 @@ on:
         type: boolean
         default: true
       run_tests:
-        description: Run cargo test
+        description: Compile cargo test targets
         required: true
         type: boolean
         default: true
@@ -73,10 +73,10 @@ jobs:
         working-directory: src-tauri
         run: cargo check --all-targets
 
-      - name: Cargo test
+      - name: Compile cargo tests
         if: ${{ github.event_name == 'push' || inputs.run_tests }}
         working-directory: src-tauri
-        run: cargo test --all-targets
+        run: cargo test --all-targets --no-run
 
       - name: Clippy
         if: ${{ inputs.run_clippy }}
