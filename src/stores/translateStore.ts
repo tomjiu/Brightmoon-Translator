@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "../services/invoke";
 import { listen } from "@tauri-apps/api/event";
 import type { TranslationResult, TranslateResponse, DictionaryResult, DetectionResult, EmbeddedLine } from "../types";
 
@@ -38,6 +38,8 @@ interface TranslateState {
   embeddedLines: EmbeddedLine[];
   embeddedMode: boolean;
   polishing: boolean;
+  realtimeTranslate: boolean;
+  realtimeDelayMs: number;
 
   setSourceText: (text: string) => void;
   setFromLang: (lang: string) => void;
@@ -61,6 +63,8 @@ interface TranslateState {
   moveWindowToCursor: () => Promise<void>;
   translateEmbedded: () => Promise<void>;
   toggleEmbeddedMode: () => void;
+  toggleRealtimeTranslate: () => void;
+  initRealtimeFromConfig: (enabled: boolean, delayMs: number) => void;
 }
 
 export const useTranslateStore = create<TranslateState>((set, get) => ({
@@ -84,6 +88,8 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   embeddedLines: [],
   embeddedMode: false,
   polishing: false,
+  realtimeTranslate: false,
+  realtimeDelayMs: 1000,
 
   setSourceText: (text) => set({ sourceText: text }),
 
@@ -116,55 +122,56 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
     set({ loading: true, error: null });
 
-    try {
-      const response = await invoke<TranslateResponse>("translate", {
-        request: {
-          text: sourceText.trim(),
-          from: fromLang,
-          to: toLang,
-        },
-      });
+    const [response, error] = await safeInvoke<TranslateResponse>("translate", {
+      request: {
+        text: sourceText.trim(),
+        from: fromLang,
+        to: toLang,
+      },
+    });
 
-      // Add to translation history
-      const historyEntry: HistoryEntry = {
+    if (error || !response) {
+      set({
+        error: error?.message || "Translation failed",
+        loading: false,
+      });
+      return;
+    }
+
+    // Add to translation history
+    const historyEntry: HistoryEntry = {
+      sourceText: sourceText.trim(),
+      results: response.results,
+      fromLang,
+      toLang,
+    };
+    const newHistory = [...translationHistory, historyEntry];
+    // Keep only last 100 entries
+    if (newHistory.length > 100) newHistory.shift();
+
+    if (incrementalMode) {
+      // Append to incremental entries
+      const entry: IncrementalEntry = {
+        id: Date.now().toString(),
         sourceText: sourceText.trim(),
         results: response.results,
-        fromLang,
-        toLang,
+        timestamp: Date.now(),
       };
-      const newHistory = [...translationHistory, historyEntry];
-      // Keep only last 100 entries
-      if (newHistory.length > 100) newHistory.shift();
-
-      if (incrementalMode) {
-        // Append to incremental entries
-        const entry: IncrementalEntry = {
-          id: Date.now().toString(),
-          sourceText: sourceText.trim(),
-          results: response.results,
-          timestamp: Date.now(),
-        };
-        set({
-          results: response.results,
-          incrementalEntries: [...incrementalEntries, entry],
-          detectedLang: response.detectedLanguage || "",
-          loading: false,
-          translationHistory: newHistory,
-          historyIndex: newHistory.length - 1,
-        });
-      } else {
-        set({
-          results: response.results,
-          detectedLang: response.detectedLanguage || "",
-          loading: false,
-          translationHistory: newHistory,
-          historyIndex: newHistory.length - 1,
-        });
-      }
-    } catch (err) {
       set({
-        error: String(err),
+        results: response.results,
+        incrementalEntries: [...incrementalEntries, entry],
+        detectedLang: response.detectedLanguage || "",
         loading: false,
+        translationHistory: newHistory,
+        historyIndex: newHistory.length - 1,
+      });
+    } else {
+      set({
+        results: response.results,
+        detectedLang: response.detectedLanguage || "",
+        loading: false,
+        translationHistory: newHistory,
+        historyIndex: newHistory.length - 1,
       });
     }
   },
@@ -228,24 +235,23 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       }
     });
 
-    try {
-      // Invoke backend streaming (returns when complete)
-      await invoke<string>("translate_stream", {
-        request: {
-          text: sourceText.trim(),
-          from: fromLang,
-          to: toLang,
-        },
-      });
-    } catch (err) {
+    // Invoke backend streaming (returns when complete)
+    const [, error] = await safeInvoke<string>("translate_stream", {
+      request: {
+        text: sourceText.trim(),
+        from: fromLang,
+        to: toLang,
+      },
+    });
+
+    if (error) {
       set({
-        error: String(err),
+        error: error.message,
         loading: false,
         isStreaming: false,
       });
-    } finally {
-      unlisten();
     }
+    unlisten();
   },
 
   lookupDictionary: async () => {
@@ -255,16 +261,15 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       return;
     }
 
-    try {
-      const results = await invoke<DictionaryResult[]>("lookup_dictionary", {
-        text: sourceText.trim(),
-      });
-      set({ dictionaryResults: results });
-    } catch (err) {
-      // Dictionary lookup is optional, don't show error
-      console.error("Dictionary lookup failed:", err);
+    const [results, error] = await safeInvoke<DictionaryResult[]>("lookup_dictionary", {
+      text: sourceText.trim(),
+    }, { silent: true });
+
+    if (error || !results) {
       set({ dictionaryResults: [] });
+      return;
     }
+    set({ dictionaryResults: results });
   },
 
   backTranslate: async (text: string) => {
@@ -274,17 +279,17 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       return;
     }
 
-    try {
-      const result = await invoke<string>("back_translate", {
-        text: text.trim(),
-        from: fromLang,
-        to: toLang,
-      });
-      set({ backTranslation: result });
-    } catch (err) {
-      console.error("Back-translation failed:", err);
+    const [result, error] = await safeInvoke<string>("back_translate", {
+      text: text.trim(),
+      from: fromLang,
+      to: toLang,
+    }, { silent: true });
+
+    if (error || !result) {
       set({ backTranslation: null });
+      return;
     }
+    set({ backTranslation: result });
   },
 
   polishTranslation: async () => {
@@ -295,24 +300,24 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
     set({ polishing: true });
 
-    try {
-      const translatedText = results[0].text;
-      const polished = await invoke<string>("polish_translation", {
-        sourceText: sourceText.trim(),
-        translatedText,
-        fromLang,
-        toLang,
-      });
+    const translatedText = results[0].text;
+    const [polished, error] = await safeInvoke<string>("polish_translation", {
+      sourceText: sourceText.trim(),
+      translatedText,
+      fromLang,
+      toLang,
+    });
 
+    if (error || !polished) {
+      console.error("Polish failed:", error);
+    } else {
       // Update the first result with polished text
       const newResults = [...results];
       newResults[0] = { ...newResults[0], text: polished };
       set({ results: newResults });
-    } catch (err) {
-      console.error("Polish failed:", err);
-    } finally {
-      set({ polishing: false });
     }
+
+    set({ polishing: false });
   },
 
   detectLanguage: async (text: string) => {
@@ -321,19 +326,15 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       return;
     }
 
-    try {
-      const result = await invoke<DetectionResult>("detect_language", {
-        text: text.trim(),
-      });
-      if (result.language !== "auto") {
-        set({ detectedLang: result.name });
-      } else {
-        set({ detectedLang: "" });
-      }
-    } catch (err) {
-      console.error("Language detection failed:", err);
+    const [result, error] = await safeInvoke<DetectionResult>("detect_language", {
+      text: text.trim(),
+    }, { silent: true });
+
+    if (error || !result || result.language === "auto") {
       set({ detectedLang: "" });
+      return;
     }
+    set({ detectedLang: result.name });
   },
 
   clear: () =>
@@ -374,50 +375,50 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   },
 
   startClipboardMonitor: async () => {
-    try {
-      // Clean up existing listener if any
-      const { clipboardUnlisten } = get();
-      if (clipboardUnlisten) {
-        clipboardUnlisten();
-      }
-
-      await invoke("start_clipboard_monitor");
-
-      // Listen for clipboard read events and save unlisten function
-      const unlisten = await listen("read-clipboard", async () => {
-        try {
-          const text = await navigator.clipboard.readText();
-          const { sourceText } = get();
-          if (text && text !== sourceText) {
-            set({ sourceText: text });
-            // Auto-translate clipboard content
-            setTimeout(() => get().translate(), 100);
-          }
-        } catch (err) {
-          // Clipboard read failed silently
-        }
-      });
-
-      set({ clipboardMonitorEnabled: true, clipboardUnlisten: unlisten });
-    } catch (err) {
-      console.error("Failed to start clipboard monitor:", err);
+    // Clean up existing listener if any
+    const { clipboardUnlisten } = get();
+    if (clipboardUnlisten) {
+      clipboardUnlisten();
     }
+
+    const [, error] = await safeInvoke("start_clipboard_monitor");
+    if (error) {
+      console.error("Failed to start clipboard monitor:", error);
+      return;
+    }
+
+    // Listen for clipboard read events and save unlisten function
+    const unlisten = await listen("read-clipboard", async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        const { sourceText } = get();
+        if (text && text !== sourceText) {
+          set({ sourceText: text });
+          // Auto-translate clipboard content
+          setTimeout(() => get().translate(), 100);
+        }
+      } catch {
+        // Clipboard read failed silently
+      }
+    });
+
+    set({ clipboardMonitorEnabled: true, clipboardUnlisten: unlisten });
   },
 
   stopClipboardMonitor: async () => {
-    try {
-      await invoke("stop_clipboard_monitor");
-
-      // Clean up event listener
-      const { clipboardUnlisten } = get();
-      if (clipboardUnlisten) {
-        clipboardUnlisten();
-      }
-
-      set({ clipboardMonitorEnabled: false, clipboardUnlisten: null });
-    } catch (err) {
-      console.error("Failed to stop clipboard monitor:", err);
+    const [, error] = await safeInvoke("stop_clipboard_monitor");
+    if (error) {
+      console.error("Failed to stop clipboard monitor:", error);
+      return;
     }
+
+    // Clean up event listener
+    const { clipboardUnlisten } = get();
+    if (clipboardUnlisten) {
+      clipboardUnlisten();
+    }
+
+    set({ clipboardMonitorEnabled: false, clipboardUnlisten: null });
   },
 
   goToPreviousTranslation: () => {
@@ -451,10 +452,9 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   },
 
   moveWindowToCursor: async () => {
-    try {
-      await invoke("move_window_to_cursor");
-    } catch (err) {
-      console.error("Failed to move window to cursor:", err);
+    const [, error] = await safeInvoke("move_window_to_cursor", undefined, { silent: true });
+    if (error) {
+      console.error("Failed to move window to cursor:", error);
     }
   },
 
@@ -467,24 +467,33 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
     set({ loading: true, error: null });
 
-    try {
-      const results = await invoke<EmbeddedLine[]>("translate_embedded", {
-        text: sourceText.trim(),
-        from: fromLang,
-        to: toLang,
-      });
-      set({ embeddedLines: results, loading: false });
-    } catch (err) {
-      set({ error: String(err), loading: false });
+    const [results, error] = await safeInvoke<EmbeddedLine[]>("translate_embedded", {
+      text: sourceText.trim(),
+      from: fromLang,
+      to: toLang,
+    });
+
+    if (error || !results) {
+      set({ error: error?.message || "Embedded translation failed", loading: false });
+      return;
     }
+    set({ embeddedLines: results, loading: false });
   },
 
   toggleEmbeddedMode: () => {
-    const { embeddedMode } = get();
+    const { embeddedMode, sourceText } = get();
     set({ embeddedMode: !embeddedMode });
     // If switching to embedded mode and we have source text, translate
-    if (!embeddedMode && get().sourceText.trim()) {
+    if (!embeddedMode && sourceText.trim()) {
       get().translateEmbedded();
     }
+  },
+
+  toggleRealtimeTranslate: () => {
+    set((state) => ({ realtimeTranslate: !state.realtimeTranslate }));
+  },
+
+  initRealtimeFromConfig: (enabled: boolean, delayMs: number) => {
+    set({ realtimeTranslate: enabled, realtimeDelayMs: delayMs });
   },
 }));

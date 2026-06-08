@@ -162,6 +162,37 @@
       <button id="saveSettings" class="btn-primary">保存设置</button>
     </div>
 
+    <!-- Hover Translation Settings -->
+    <div class="divider"></div>
+    <div class="section">
+      <div class="setting-group">
+        <label class="setting-label">悬停翻译 (Hover)</label>
+        <label class="checkbox">
+          <input type="checkbox" id="hoverEnabled" checked>
+          <span>启用悬停翻译</span>
+        </label>
+        <div id="hoverSettings" class="hover-settings">
+          <div class="input-field">
+            <label>触发延迟 (ms)</label>
+            <input type="number" id="hoverDelay" min="100" max="2000" step="50" value="300">
+          </div>
+          <div class="input-field">
+            <label>最小文本长度</label>
+            <input type="number" id="hoverMinLength" min="1" max="100" value="2">
+          </div>
+          <div class="input-field">
+            <label>修饰键触发</label>
+            <select id="hoverModifierKey">
+              <option value="none">无 (直接悬停)</option>
+              <option value="alt">Alt 键</option>
+              <option value="ctrl">Ctrl 键</option>
+              <option value="shift">Shift 键</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Footer -->
     <div class="footer">
       <span>Alt+T 划词翻译</span>

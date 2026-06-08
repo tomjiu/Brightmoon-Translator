@@ -34,7 +34,7 @@ impl MicrosoftEngine {
 impl TranslationEngine for MicrosoftEngine {
     async fn translate(&self, text: &str, from: &str, to: &str) -> anyhow::Result<String> {
         // Use Bing Translator API (free, no key required)
-        let from_code = if from == "auto" { "" } else { from };
+        let _from_code = if from == "auto" { "" } else { from };
         let to_code = match to {
             "zh" => "zh-Hans",
             "ja" => "ja",
@@ -66,10 +66,7 @@ impl TranslationEngine for MicrosoftEngine {
             .send()
             .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(anyhow::anyhow!("Microsoft API error: {}", status));
-        }
+        super::check_response(&resp, "Microsoft")?;
 
         let result: Vec<MicrosoftResponse> = resp.json().await?;
 
@@ -77,7 +74,7 @@ impl TranslationEngine for MicrosoftEngine {
             .first()
             .and_then(|r| r.translations.first())
             .map(|t| t.text.clone())
-            .unwrap_or_default();
+            .ok_or_else(|| anyhow::anyhow!("Microsoft API returned empty translation result"))?;
 
         Ok(translated)
     }

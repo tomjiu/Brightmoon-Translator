@@ -1,9 +1,11 @@
+use crate::security;
 use crate::subtitle::{self, SubtitleDocument, TranslatedSubtitle};
 use crate::AppState;
 use tauri::{Emitter, State, Window};
 
 #[tauri::command]
 pub async fn open_subtitle(file_path: String) -> Result<SubtitleDocument, String> {
+    security::validate_file_path(&file_path)?;
     subtitle::extract_text_from_subtitle(&file_path)
 }
 
@@ -15,6 +17,9 @@ pub async fn translate_subtitle(
     from_lang: String,
     to_lang: String,
 ) -> Result<TranslatedSubtitle, String> {
+    security::validate_file_path(&file_path)?;
+    security::validate_language_code(&from_lang)?;
+    security::validate_language_code(&to_lang)?;
     let mut doc = subtitle::extract_text_from_subtitle(&file_path)?;
 
     // Collect non-empty entries for batch translation
@@ -31,7 +36,7 @@ pub async fn translate_subtitle(
     // Use batch translation with progress
     let window_clone = window.clone();
     let batch_results = state
-        .translation_service
+        .translation.service
         .translate_embedded_batch(
             &entries_to_translate
                 .iter()
@@ -42,11 +47,14 @@ pub async fn translate_subtitle(
             &to_lang,
             3, // concurrency
             |completed, _total| {
-                let _ = window_clone.emit("subtitle-progress", serde_json::json!({
-                    "current": completed,
-                    "total": total,
-                    "text": format!("Translating... {}/{}", completed, total),
-                }));
+                let _ = window_clone.emit(
+                    "subtitle-progress",
+                    serde_json::json!({
+                        "current": completed,
+                        "total": total,
+                        "text": format!("Translating... {}/{}", completed, total),
+                    }),
+                );
             },
         )
         .await;
@@ -59,11 +67,14 @@ pub async fn translate_subtitle(
     }
 
     // Emit completion event
-    let _ = window.emit("subtitle-progress", serde_json::json!({
-        "current": total,
-        "total": total,
-        "text": "Done",
-    }));
+    let _ = window.emit(
+        "subtitle-progress",
+        serde_json::json!({
+            "current": total,
+            "total": total,
+            "text": "Done",
+        }),
+    );
 
     Ok(TranslatedSubtitle {
         entries: doc.entries,
@@ -78,6 +89,9 @@ pub async fn export_subtitle_file(
     output_path: String,
     bilingual: bool,
 ) -> Result<String, String> {
+    security::validate_file_path(&file_path)?;
+    security::validate_output_path(&output_path)?;
+
     let doc = subtitle::extract_text_from_subtitle(&file_path)?;
     let content = subtitle::export_subtitle(&doc, bilingual);
 
@@ -95,7 +109,7 @@ pub async fn translate_subtitle_text(
     to_lang: String,
 ) -> Result<String, String> {
     state
-        .translation_service
+        .translation.service
         .translate_primary(&text, &from_lang, &to_lang)
         .await
         .map_err(|e| e.to_string())

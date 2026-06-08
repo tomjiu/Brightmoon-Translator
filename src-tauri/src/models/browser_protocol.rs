@@ -175,33 +175,3 @@ pub struct BrowserTranslateError {
     /// User-facing error message
     pub message: String,
 }
-
-// ─── Action payloads (desktop → extension) ────────────────────────────
-
-/// Instruction to show an overlay in the browser page.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BrowserOverlayPayload {
-    /// The translated text to display
-    pub translated: String,
-    /// The original source text
-    pub source: String,
-    /// Where to position the overlay (near the selection)
-    pub bounds: Option<ProtocolBounds>,
-    /// Overlay level (1=minimal, 2=standard, 3=full)
-    pub level: u8,
-    /// Auto-dismiss timeout in milliseconds (0 = no auto-dismiss)
-    pub dismiss_ms: u64,
-}
-
-/// Instruction to replace text inline in the browser page.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BrowserReplacePayload {
-    /// CSS selector of the element to replace
-    pub selector: String,
-    /// The translated text to insert
-    pub translated: String,
-    /// The original text (for verification)
-    pub original: String,
-}

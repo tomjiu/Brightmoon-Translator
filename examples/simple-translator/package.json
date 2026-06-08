@@ -1,0 +1,10 @@
+{
+  "name": "simple-translator-example",
+  "version": "1.0.0",
+  "description": "Example translation plugin for Moon Translator",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": ["moontranslator", "plugin", "translation"]
+}

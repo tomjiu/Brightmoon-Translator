@@ -3,7 +3,8 @@ use async_trait::async_trait;
 use crate::models::error::TranslationError;
 
 /// Result from an input replacement operation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReplacementResult {
     /// Original text that was replaced
     pub original: String,
@@ -13,13 +14,15 @@ pub struct ReplacementResult {
     pub success: bool,
     /// Error message if replacement failed
     pub error: Option<String>,
+    /// Whether the frontend should show an overlay fallback (set when clipboard paste fails)
+    pub fallback_to_overlay: bool,
 }
 
 /// Input Replacement capability.
 /// Composes: get selection -> translate -> replace text in target app.
 ///
 /// This is the interface for "select text, translate, and replace in-place".
-/// Used for inline translation in editors, terminals, etc.
+/// Used for replace translate in editors, terminals, etc.
 #[async_trait]
 pub trait InputReplacement: Send + Sync {
     /// Get the currently selected text in the target application

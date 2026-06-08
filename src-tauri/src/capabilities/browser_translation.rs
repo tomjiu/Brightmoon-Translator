@@ -152,9 +152,12 @@ pub fn mock_handle_browser_request(
     // Extract text from the payload based on mode
     let text = match &request.payload {
         BrowserTranslatePayload::Selection(p) => p.text.clone(),
-        BrowserTranslatePayload::FullPage(p) => {
-            p.segments.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join(" ")
-        }
+        BrowserTranslatePayload::FullPage(p) => p
+            .segments
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" "),
         BrowserTranslatePayload::Hover(p) => p.text.clone(),
     };
 
@@ -170,6 +173,7 @@ pub fn mock_handle_browser_request(
         results: vec![TranslationResult {
             engine: "mock".to_string(),
             text: format!("[translated] {}", text),
+            latency_ms: None,
         }],
         detected_language: Some("en".to_string()),
     };
@@ -212,14 +216,8 @@ pub async fn handle_browser_request(
     translation_service: &TranslationService,
     config: &AppConfig,
 ) -> Result<BrowserTranslateResponse, BrowserTranslateError> {
-    let from = request
-        .from
-        .as_deref()
-        .unwrap_or(&config.default_from);
-    let to = request
-        .to
-        .as_deref()
-        .unwrap_or(&config.default_to);
+    let from = request.from.as_deref().unwrap_or(&config.default_from);
+    let to = request.to.as_deref().unwrap_or(&config.default_to);
 
     match &request.payload {
         BrowserTranslatePayload::Selection(sel) => {
@@ -284,6 +282,7 @@ pub async fn handle_browser_request(
                     results: vec![TranslationResult {
                         engine: "batch".into(),
                         text: combined_text,
+                        latency_ms: None,
                     }],
                     detected_language: None,
                 },

@@ -25,8 +25,6 @@ struct DeepLResponse {
 #[derive(Deserialize)]
 struct DeepLTranslation {
     text: String,
-    #[serde(default)]
-    detected_source_language: Option<String>,
 }
 
 impl DeepLEngine {
@@ -94,7 +92,11 @@ impl TranslationEngine for DeepLEngine {
         let status = resp.status();
         if !status.is_success() {
             let error_text = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("DeepL API error {}: {}", status, error_text));
+            return Err(anyhow::anyhow!(
+                "DeepL API error {}: {}",
+                status,
+                error_text
+            ));
         }
 
         let body: DeepLResponse = resp.json().await?;
@@ -103,7 +105,7 @@ impl TranslationEngine for DeepLEngine {
             .translations
             .first()
             .map(|t| t.text.clone())
-            .unwrap_or_default();
+            .ok_or_else(|| anyhow::anyhow!("DeepL API returned empty translations"))?;
 
         Ok(translated)
     }

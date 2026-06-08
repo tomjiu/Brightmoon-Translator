@@ -2,13 +2,18 @@ use serde::{Deserialize, Serialize};
 
 /// Result from a single translation engine
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TranslationResult {
     pub engine: String,
     pub text: String,
+    /// Optional latency in milliseconds (populated by LatencyFirst strategy)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u64>,
 }
 
 /// Response from translation containing results from one or more engines
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TranslateResponse {
     pub results: Vec<TranslationResult>,
     pub detected_language: Option<String>,
@@ -135,4 +140,26 @@ pub struct BatchTranslationResult {
     pub index: usize,
     pub original: String,
     pub translated: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn translate_response_serializes_detected_language_as_camel_case() {
+        let response = TranslateResponse {
+            results: vec![TranslationResult {
+                engine: "test".to_string(),
+                text: "你好".to_string(),
+                latency_ms: None,
+            }],
+            detected_language: Some("en".to_string()),
+        };
+
+        let json = serde_json::to_value(response).unwrap();
+
+        assert_eq!(json["detectedLanguage"], "en");
+        assert!(json.get("detected_language").is_none());
+    }
 }
