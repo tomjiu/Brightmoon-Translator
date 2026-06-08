@@ -53,7 +53,8 @@ pub fn score_translation(
     let length = calculate_length_score(original, translated, lang_pair, &mut details);
 
     // 3. Terminology consistency
-    let terminology = calculate_terminology_score(original, translated, lang_pair, glossary, &mut details);
+    let terminology =
+        calculate_terminology_score(original, translated, lang_pair, glossary, &mut details);
 
     // 4. Fluency check
     let fluency = calculate_fluency_score(translated, lang_pair, &mut details);
@@ -127,10 +128,7 @@ fn extract_char_ngrams(text: &str, n: usize) -> Vec<String> {
     if chars.len() < n {
         return vec![text.to_string()];
     }
-    chars
-        .windows(n)
-        .map(|w| w.iter().collect())
-        .collect()
+    chars.windows(n).map(|w| w.iter().collect()).collect()
 }
 
 /// Length ratio score - penalize too short or too long translations
@@ -207,7 +205,7 @@ fn calculate_terminology_score(
         None => {
             details.push("No glossary loaded, terminology score neutral".to_string());
             return 75.0; // Neutral score when no glossary
-        }
+        },
     };
 
     let entries = match glossary.get(lang_pair) {
@@ -215,7 +213,7 @@ fn calculate_terminology_score(
         _ => {
             details.push(format!("No glossary entries for {}", lang_pair));
             return 75.0;
-        }
+        },
     };
 
     // Find terms that appear in original
@@ -240,9 +238,7 @@ fn calculate_terminology_score(
     let score = (matched as f64 / total as f64) * 100.0;
     details.push(format!(
         "Glossary terms: {}/{} matched ({:.0}%)",
-        matched,
-        total,
-        score
+        matched, total, score
     ));
 
     score
@@ -269,7 +265,7 @@ fn calculate_fluency_score(translated: &str, lang_pair: &str, details: &mut Vec<
         }
     }
     if max_repeat > 5 {
-        penalties += 20.0;
+        penalties += 25.0;
         details.push(format!("Excessive character repetition ({})", max_repeat));
     }
 
@@ -286,7 +282,7 @@ fn calculate_fluency_score(translated: &str, lang_pair: &str, details: &mut Vec<
             } else {
                 0.0
             }
-        }
+        },
         "en" | "fr" | "de" | "es" | "ru" => {
             // For European target, CJK characters are usually wrong
             if has_cjk {
@@ -294,7 +290,7 @@ fn calculate_fluency_score(translated: &str, lang_pair: &str, details: &mut Vec<
             } else {
                 0.0
             }
-        }
+        },
         _ => 0.0,
     };
 
@@ -302,7 +298,6 @@ fn calculate_fluency_score(translated: &str, lang_pair: &str, details: &mut Vec<
         penalties += mixed_penalty;
         details.push("Mixed language issue detected".to_string());
     }
-
 
     // 3. Check for common punctuation issues
     let has_double_space = translated.contains("  ");
@@ -345,18 +340,18 @@ fn check_bracket_balance(text: &str) -> bool {
                 if stack.pop() != Some('(') {
                     return true;
                 }
-            }
+            },
             ']' => {
                 if stack.pop() != Some('[') {
                     return true;
                 }
-            }
+            },
             '}' => {
                 if stack.pop() != Some('{') {
                     return true;
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
     !stack.is_empty()
@@ -447,12 +442,7 @@ mod tests {
 
     #[test]
     fn test_overall_score() {
-        let score = score_translation(
-            "Hello, how are you?",
-            "你好，你怎么样？",
-            "en-zh",
-            None,
-        );
+        let score = score_translation("Hello, how are you?", "你好，你怎么样？", "en-zh", None);
         assert!(score.overall >= 1.0 && score.overall <= 5.0);
         assert!(score.fluency > 0.0);
     }
