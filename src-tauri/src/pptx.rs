@@ -161,27 +161,27 @@ fn extract_text_from_xml(xml: &str, slide_index: usize) -> Vec<PptxTextBlock> {
         match reader.read_event() {
             Ok(Event::Start(ref e)) => {
                 let tag = e.name().as_ref().to_vec();
-                match tag.as_slice() {
-                    b"a:txBody" => {
+                match local_tag_name(&tag) {
+                    b"txBody" => {
                         in_text_body = true;
-                    }
-                    b"a:p" if in_text_body => {
+                    },
+                    b"p" if in_text_body => {
                         in_paragraph = true;
                         current_text.clear();
-                    }
-                    b"a:t" if in_paragraph => {
+                    },
+                    b"t" if in_paragraph => {
                         in_text_elem = true;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
-            }
+            },
             Ok(Event::End(ref e)) => {
                 let tag = e.name().as_ref().to_vec();
-                match tag.as_slice() {
-                    b"a:txBody" => {
+                match local_tag_name(&tag) {
+                    b"txBody" => {
                         in_text_body = false;
-                    }
-                    b"a:p" if in_text_body => {
+                    },
+                    b"p" if in_text_body => {
                         in_paragraph = false;
                         let trimmed = current_text.trim().to_string();
                         if !trimmed.is_empty() {
@@ -192,21 +192,21 @@ fn extract_text_from_xml(xml: &str, slide_index: usize) -> Vec<PptxTextBlock> {
                             });
                             block_id += 1;
                         }
-                    }
-                    b"a:t" if in_paragraph => {
+                    },
+                    b"t" if in_paragraph => {
                         in_text_elem = false;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
-            }
+            },
             Ok(Event::Text(ref e)) if in_text_elem => {
                 if let Ok(text) = e.unescape() {
                     current_text.push_str(&text);
                 }
-            }
+            },
             Ok(Event::Eof) => break,
             Err(_) => break,
-            _ => {}
+            _ => {},
         }
     }
 
@@ -216,19 +216,27 @@ fn extract_text_from_xml(xml: &str, slide_index: usize) -> Vec<PptxTextBlock> {
 /// Count words in text (handles both CJK and Latin)
 fn count_words(text: &str) -> usize {
     let mut count = 0;
-    let mut in_word = false;
+    let mut current_kind: Option<bool> = None;
+    let has_latin_word = text.chars().any(|ch| ch.is_ascii_alphanumeric());
 
     for ch in text.chars() {
         if ch.is_ascii_alphanumeric() {
-            if !in_word {
+            if current_kind != Some(false) {
                 count += 1;
-                in_word = true;
+                current_kind = Some(false);
             }
         } else if is_cjk(ch) {
-            count += 1;
-            in_word = false;
+            if has_latin_word {
+                if current_kind != Some(true) {
+                    count += 1;
+                    current_kind = Some(true);
+                }
+            } else {
+                count += 1;
+                current_kind = None;
+            }
         } else {
-            in_word = false;
+            current_kind = None;
         }
     }
 
@@ -245,6 +253,10 @@ fn is_cjk(ch: char) -> bool {
         || (0xFF00..=0xFFEF).contains(&code) // Halfwidth and Fullwidth Forms
 }
 
+fn local_tag_name(tag: &[u8]) -> &[u8] {
+    tag.rsplit(|b| *b == b':').next().unwrap_or(tag)
+}
+
 /// Write translated content back to PPTX file
 pub fn write_translated_pptx(
     input_path: &str,
@@ -253,8 +265,8 @@ pub fn write_translated_pptx(
 ) -> Result<PptxTranslationResult, String> {
     let input_file =
         File::open(input_path).map_err(|e| format!("Failed to open PPTX file: {}", e))?;
-    let mut archive = ZipArchive::new(input_file)
-        .map_err(|e| format!("Failed to read PPTX archive: {}", e))?;
+    let mut archive =
+        ZipArchive::new(input_file).map_err(|e| format!("Failed to read PPTX archive: {}", e))?;
 
     let output_file =
         File::create(output_path).map_err(|e| format!("Failed to create output file: {}", e))?;
@@ -355,7 +367,16 @@ fn translate_slide_xml(
 
     for block in &blocks {
         if let Some(translated) = translations.get(&block.id) {
-            paragraph_translations.insert(block.id.split('_').nth(1).unwrap_or("0").parse().unwrap_or(0), translated.as_str());
+            paragraph_translations.insert(
+                block
+                    .id
+                    .split('_')
+                    .nth(1)
+                    .unwrap_or("0")
+                    .parse()
+                    .unwrap_or(0),
+                translated.as_str(),
+            );
             blocks_translated += 1;
             words_translated += count_words(&block.text);
         }
@@ -377,22 +398,22 @@ fn translate_slide_xml(
         match reader.read_event() {
             Ok(Event::Start(ref e)) => {
                 let tag = e.name().as_ref().to_vec();
-                match tag.as_slice() {
-                    b"a:txBody" => {
+                match local_tag_name(&tag) {
+                    b"txBody" => {
                         in_text_body = true;
                         writer
                             .write_event(Event::Start(e.clone()))
                             .map_err(|e| format!("Write error: {}", e))?;
-                    }
-                    b"a:p" if in_text_body => {
+                    },
+                    b"p" if in_text_body => {
                         in_paragraph = true;
                         current_text.clear();
                         para_has_translation = paragraph_translations.contains_key(&para_index);
                         writer
                             .write_event(Event::Start(e.clone()))
                             .map_err(|e| format!("Write error: {}", e))?;
-                    }
-                    b"a:t" if in_paragraph => {
+                    },
+                    b"t" if in_paragraph => {
                         in_text_elem = true;
                         // We'll decide whether to write the start tag based on translation state
                         if !para_has_translation {
@@ -402,61 +423,75 @@ fn translate_slide_xml(
                         }
                         // If paragraph has translation, we skip individual a:t starts
                         // and handle them at paragraph end
-                    }
+                    },
                     _ => {
                         writer
                             .write_event(Event::Start(e.clone()))
                             .map_err(|e| format!("Write error: {}", e))?;
-                    }
+                    },
                 }
-            }
+            },
             Ok(Event::End(ref e)) => {
                 let tag = e.name().as_ref().to_vec();
-                match tag.as_slice() {
-                    b"a:txBody" => {
+                match local_tag_name(&tag) {
+                    b"txBody" => {
                         in_text_body = false;
                         writer
                             .write_event(Event::End(e.clone()))
                             .map_err(|e| format!("Write error: {}", e))?;
-                    }
-                    b"a:p" if in_text_body => {
+                    },
+                    b"p" if in_text_body => {
                         in_paragraph = false;
                         // If this paragraph had a translation, write the translated text now
                         if para_has_translation {
                             if let Some(translated) = paragraph_translations.get(&para_index) {
                                 // Write: <a:r><a:rPr/><a:t>translated</a:t></a:r>
                                 let r_start = BytesStart::new("a:r");
-                                writer.write_event(Event::Start(r_start)).map_err(|e| format!("Write error: {}", e))?;
+                                writer
+                                    .write_event(Event::Start(r_start))
+                                    .map_err(|e| format!("Write error: {}", e))?;
                                 let rpr_start = BytesStart::new("a:rPr");
-                                writer.write_event(Event::Start(rpr_start)).map_err(|e| format!("Write error: {}", e))?;
-                                writer.write_event(Event::End(BytesEnd::new("a:rPr"))).map_err(|e| format!("Write error: {}", e))?;
+                                writer
+                                    .write_event(Event::Start(rpr_start))
+                                    .map_err(|e| format!("Write error: {}", e))?;
+                                writer
+                                    .write_event(Event::End(BytesEnd::new("a:rPr")))
+                                    .map_err(|e| format!("Write error: {}", e))?;
                                 let t_start = BytesStart::new("a:t");
-                                writer.write_event(Event::Start(t_start)).map_err(|e| format!("Write error: {}", e))?;
-                                writer.write_event(Event::Text(BytesText::new(translated))).map_err(|e| format!("Write error: {}", e))?;
-                                writer.write_event(Event::End(BytesEnd::new("a:t"))).map_err(|e| format!("Write error: {}", e))?;
-                                writer.write_event(Event::End(BytesEnd::new("a:r"))).map_err(|e| format!("Write error: {}", e))?;
+                                writer
+                                    .write_event(Event::Start(t_start))
+                                    .map_err(|e| format!("Write error: {}", e))?;
+                                writer
+                                    .write_event(Event::Text(BytesText::new(translated)))
+                                    .map_err(|e| format!("Write error: {}", e))?;
+                                writer
+                                    .write_event(Event::End(BytesEnd::new("a:t")))
+                                    .map_err(|e| format!("Write error: {}", e))?;
+                                writer
+                                    .write_event(Event::End(BytesEnd::new("a:r")))
+                                    .map_err(|e| format!("Write error: {}", e))?;
                             }
                         }
                         writer
                             .write_event(Event::End(e.clone()))
                             .map_err(|e| format!("Write error: {}", e))?;
                         para_index += 1;
-                    }
-                    b"a:t" if in_paragraph => {
+                    },
+                    b"t" if in_paragraph => {
                         in_text_elem = false;
                         if !para_has_translation {
                             writer
                                 .write_event(Event::End(e.clone()))
                                 .map_err(|e| format!("Write error: {}", e))?;
                         }
-                    }
+                    },
                     _ => {
                         writer
                             .write_event(Event::End(e.clone()))
                             .map_err(|e| format!("Write error: {}", e))?;
-                    }
+                    },
                 }
-            }
+            },
             Ok(Event::Text(ref e)) if in_text_elem => {
                 if !para_has_translation {
                     // Write original text if no translation for this paragraph
@@ -465,18 +500,19 @@ fn translate_slide_xml(
                         .map_err(|e| format!("Write error: {}", e))?;
                 }
                 // If paragraph has translation, we skip original text
-            }
+            },
             Ok(Event::Eof) => break,
             Ok(ref other) => {
                 writer
                     .write_event(other.clone())
                     .map_err(|e| format!("Write error: {}", e))?;
-            }
+            },
             Err(e) => return Err(format!("XML parse error: {}", e)),
         }
     }
 
-    let output = String::from_utf8(writer.into_inner()).map_err(|e| format!("UTF-8 error: {}", e))?;
+    let output =
+        String::from_utf8(writer.into_inner()).map_err(|e| format!("UTF-8 error: {}", e))?;
     Ok((output, blocks_translated, words_translated))
 }
 
@@ -484,7 +520,9 @@ fn translate_slide_xml(
 pub async fn translate_pptx_file(
     input_path: &str,
     output_path: &str,
-    translate_fn: impl for<'a> Fn(&'a [(usize, &'a str)]) -> futures::future::BoxFuture<'a, Vec<(usize, String)>>,
+    translate_fn: impl for<'a> Fn(
+        &'a [(usize, &'a str)],
+    ) -> futures::future::BoxFuture<'a, Vec<(usize, String)>>,
 ) -> Result<PptxTranslationResult, String> {
     // Extract text
     let doc = extract_text_from_pptx(input_path)?;
