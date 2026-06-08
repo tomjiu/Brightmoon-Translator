@@ -20,7 +20,6 @@ struct EcDict {
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 struct EcWord {
     #[serde(default)]
     trs: Vec<EcTr>,
@@ -30,10 +29,6 @@ struct EcWord {
     usphone: Option<String>,
     #[serde(default)]
     phone: Option<String>,
-    #[serde(default)]
-    ukspeech: Option<String>,
-    #[serde(default)]
-    usspeech: Option<String>,
 }
 
 #[derive(Deserialize)]

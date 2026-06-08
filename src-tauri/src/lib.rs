@@ -1,3 +1,5 @@
+pub mod ai_enhanced;
+pub mod alignment;
 pub mod api_server;
 pub mod app_context;
 pub mod batch;
@@ -7,13 +9,17 @@ pub mod capabilities;
 pub mod commands;
 pub mod config;
 pub mod dictionary;
+pub mod docx;
 pub mod engine;
 pub mod epub_reader;
+pub mod error;
+pub mod excel;
 pub mod furigana;
 pub mod glossary;
 pub mod hotkey;
 pub mod hook_inject;
 pub mod hook_profile;
+pub mod image_translate;
 pub mod lang_detect;
 pub mod memory;
 pub mod metrics;
@@ -22,11 +28,20 @@ pub mod ocr_engine;
 pub mod overlay;
 pub mod pdf;
 pub mod plugin;
+pub mod plugin_sandbox;
 pub mod post_process;
+pub mod pptx;
 pub mod pre_process;
+pub mod project;
+pub mod quality;
+pub mod security;
 pub mod selection;
 pub mod services;
+pub mod speech;
 pub mod subtitle;
+pub mod sync;
+pub mod tbx;
+pub mod tmx;
 pub mod tts;
 
 use app_context::Contexts;
@@ -34,13 +49,14 @@ use batch::BatchManager;
 use capabilities::{
     DefaultInputReplacement, DefaultSelectionTranslation, InputReplacement, SelectionTranslation,
 };
+use speech::SpeechState;
 use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
-use tokio::sync::OnceCell as TokioOnceCell;
+use tokio::sync::{Mutex, OnceCell as TokioOnceCell};
 
 /// Top-level application state.
 /// Composed of sub-contexts for separation of concerns.
@@ -59,10 +75,15 @@ pub struct AppState {
 
     // Batch translation manager
     pub batch: Arc<BatchManager>,
+
+    // Speech recognition state
+    pub speech_state: Arc<Mutex<SpeechState>>,
 }
 
 pub fn run() {
-    let ctx = build_contexts();
+    let ctx = tokio::runtime::Runtime::new()
+        .expect("Failed to create tokio runtime")
+        .block_on(build_contexts());
 
     let state = AppState {
         translation: ctx.translation,
@@ -73,6 +94,7 @@ pub fn run() {
         selection_translation: TokioOnceCell::new(),
         input_replacement: TokioOnceCell::new(),
         batch: Arc::new(BatchManager::new()),
+        speech_state: Arc::new(Mutex::new(SpeechState::new())),
     };
 
     tauri::Builder::default()
@@ -109,6 +131,26 @@ pub fn run() {
 
                 // Initialize the follow controller with the AppHandle
                 app_state.overlay.follow_controller.init(app_handle.clone());
+
+                // Start the overlay HTTP server for optimized content delivery
+                let http_server_handle = app_state.overlay.http_server.clone();
+                tauri::async_runtime::spawn(async move {
+                    match overlay::OverlayHttpServer::start().await {
+                        Ok(server) => {
+                            tracing::info!(
+                                "Overlay HTTP server started on port {}",
+                                server.port
+                            );
+                            *http_server_handle.write().await = Some(server);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to start overlay HTTP server (falling back to data URI): {}",
+                                e
+                            );
+                        }
+                    }
+                });
 
                 let sel_translation: Arc<dyn SelectionTranslation> =
                     Arc::new(DefaultSelectionTranslation::new(
@@ -195,6 +237,10 @@ pub fn run() {
             // Start API server if enabled
             start_api_server(app);
 
+            // Initialize plugin sandbox and start health check task
+            plugin_sandbox::init_sandbox();
+            plugin_sandbox::spawn_health_check_task();
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -238,6 +284,7 @@ pub fn run() {
             commands::window::close_ocr_screenshot_selector,
             commands::window::create_ocr_region_frame,
             commands::window::close_ocr_region_frame,
+            commands::window::set_ocr_region_frame_visible,
             commands::config_cmd::get_config,
             commands::config_cmd::get_default_config,
             commands::config_cmd::save_config,
@@ -275,6 +322,11 @@ pub fn run() {
             commands::glossary_cmd::get_all_glossary,
             commands::glossary_cmd::add_glossary_entry,
             commands::glossary_cmd::remove_glossary_entry,
+            commands::glossary_cmd::import_glossary_tmx,
+            commands::glossary_cmd::export_glossary_tmx,
+            commands::glossary_cmd::import_glossary_tbx,
+            commands::glossary_cmd::export_glossary_tbx,
+            commands::glossary_cmd::align_text,
             commands::tools_cmd::transform_variable_name,
             commands::tools_cmd::cycle_variable_name,
             commands::tts_cmd::text_to_speech,
@@ -289,6 +341,7 @@ pub fn run() {
             commands::wordbook_cmd::export_wordbook_csv,
             commands::pdf_cmd::open_pdf,
             commands::pdf_cmd::translate_pdf,
+            commands::pdf_cmd::ocr_scanned_pdf,
             commands::epub_cmd::open_epub,
             commands::epub_cmd::translate_epub,
             commands::subtitle_cmd::open_subtitle,
@@ -311,6 +364,21 @@ pub fn run() {
             commands::plugin_cmd::set_plugin_enabled,
             commands::plugin_cmd::get_plugins_dir,
             commands::plugin_cmd::open_plugins_dir,
+            commands::plugin_cmd::install_plugin,
+            commands::plugin_cmd::uninstall_plugin,
+            commands::plugin_cmd::enable_plugin,
+            commands::plugin_cmd::disable_plugin,
+            commands::plugin_cmd::check_plugin_update,
+            commands::plugin_cmd::get_plugin_errors,
+            commands::plugin_cmd::start_plugin_sandbox,
+            commands::plugin_cmd::stop_plugin_sandbox,
+            commands::plugin_cmd::get_plugin_sandbox_status,
+            commands::plugin_cmd::get_all_plugin_sandbox_status,
+            commands::plugin_cmd::sandbox_translate,
+            commands::plugin_cmd::plugin_list_marketplace,
+            commands::plugin_cmd::plugin_install_marketplace,
+            commands::plugin_cmd::plugin_uninstall_marketplace,
+            commands::plugin_cmd::plugin_update_marketplace,
             commands::hook_cmd::start_hook_monitor,
             commands::hook_cmd::stop_hook_monitor,
             commands::hook_cmd::get_hook_monitor_status,
@@ -337,14 +405,55 @@ pub fn run() {
             commands::batch_cmd::tm_import,
             commands::batch_cmd::tm_get_stats,
             commands::batch_cmd::tm_search,
+            commands::batch_cmd::tm_export_tmx,
+            commands::batch_cmd::tm_import_tmx,
+            commands::batch_cmd::tm_delete,
+            commands::batch_cmd::tm_batch_delete,
+            commands::metrics_cmd::get_metrics_summary,
+            commands::metrics_cmd::get_metrics_timeline,
+            commands::metrics_cmd::get_metrics_hourly_stats,
+            commands::metrics_cmd::export_metrics_csv,
+            commands::metrics_cmd::export_metrics_json,
+            commands::metrics_cmd::clear_metrics,
+            commands::metrics_cmd::prune_metrics,
+            commands::ai_cmd::ai_polish_translation,
+            commands::ai_cmd::ai_extract_terms,
+            commands::ai_cmd::ai_learn_style,
+            commands::ai_cmd::ai_context_translate,
+            commands::ai_cmd::ai_multi_round_translate,
+            commands::offline_cmd::get_offline_models,
+            commands::offline_cmd::download_offline_model,
+            commands::offline_cmd::delete_offline_model,
+            commands::offline_cmd::toggle_offline_engine,
+            commands::offline_cmd::update_offline_settings,
+            commands::offline_cmd::generate_sample_offline_models,
+            commands::offline_cmd::get_offline_status,
+            commands::project_cmd::create_project,
+            commands::project_cmd::get_project,
+            commands::project_cmd::get_all_projects,
+            commands::project_cmd::update_project,
+            commands::project_cmd::delete_project,
+            commands::project_cmd::add_file_to_project,
+            commands::project_cmd::get_project_files,
+            commands::project_cmd::delete_file,
+            commands::project_cmd::update_file_status,
+            commands::project_cmd::add_segments,
+            commands::project_cmd::get_file_segments,
+            commands::project_cmd::update_segment,
+            commands::project_cmd::export_project,
+            commands::project_cmd::export_project_json,
+            commands::sync_cmd::test_webdav_connection,
+            commands::sync_cmd::sync_now,
+            commands::sync_cmd::get_sync_config,
+            commands::sync_cmd::save_sync_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 /// Build all sub-contexts from configuration
-fn build_contexts() -> Contexts {
-    app_context::build_contexts()
+async fn build_contexts() -> Contexts {
+    app_context::build_contexts().await
 }
 
 
@@ -358,7 +467,7 @@ fn start_api_server(app: &tauri::App) {
     drop(config);
 
     if api_enabled {
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             if let Err(e) = api_server::start_server(api_port, api_state).await {
                 tracing::error!("API server error: {}", e);
             }

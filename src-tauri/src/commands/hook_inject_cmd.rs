@@ -4,6 +4,7 @@
  * Commands for managing DLL injection and reading captured text.
  */
 
+use crate::error::AppError;
 use crate::hook_inject::{CapturedText, HookManager, HookStatus};
 use std::sync::Mutex;
 use tauri::State;
@@ -27,13 +28,14 @@ impl HookState {
 pub async fn hook_inject(
     state: State<'_, HookState>,
     pid: u32,
-) -> Result<HookStatus, String> {
+) -> Result<HookStatus, AppError> {
     let target_pid = if pid == 0 {
         // Get foreground window's process ID
         #[cfg(target_os = "windows")]
         {
             use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
             use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+            // SAFETY: GetForegroundWindow and GetWindowThreadProcessId are standard Win32 APIs.
             unsafe {
                 let hwnd = GetForegroundWindow();
                 let mut process_id = 0u32;
@@ -43,18 +45,18 @@ pub async fn hook_inject(
         }
         #[cfg(not(target_os = "windows"))]
         {
-            return Err("Not supported on this platform".to_string());
+            return Err(AppError::PlatformNotSupported);
         }
     } else {
         pid
     };
 
     if target_pid == 0 {
-        return Err("No target process found".to_string());
+        return Err(AppError::Hook("No target process found".to_string()));
     }
 
-    let mut manager = state.manager.lock().map_err(|e| e.to_string())?;
-    manager.inject(target_pid)?;
+    let mut manager = state.manager.lock()?;
+    manager.inject(target_pid).map_err(AppError::HookInjection)?;
     Ok(manager.status())
 }
 
@@ -62,9 +64,9 @@ pub async fn hook_inject(
 #[tauri::command]
 pub async fn hook_eject(
     state: State<'_, HookState>,
-) -> Result<HookStatus, String> {
-    let mut manager = state.manager.lock().map_err(|e| e.to_string())?;
-    manager.eject()?;
+) -> Result<HookStatus, AppError> {
+    let mut manager = state.manager.lock()?;
+    manager.eject().map_err(AppError::Hook)?;
     Ok(manager.status())
 }
 
@@ -72,8 +74,8 @@ pub async fn hook_eject(
 #[tauri::command]
 pub async fn hook_status(
     state: State<'_, HookState>,
-) -> Result<HookStatus, String> {
-    let manager = state.manager.lock().map_err(|e| e.to_string())?;
+) -> Result<HookStatus, AppError> {
+    let manager = state.manager.lock()?;
     Ok(manager.status())
 }
 
@@ -81,7 +83,7 @@ pub async fn hook_status(
 #[tauri::command]
 pub async fn hook_read_messages(
     state: State<'_, HookState>,
-) -> Result<Vec<CapturedText>, String> {
-    let mut manager = state.manager.lock().map_err(|e| e.to_string())?;
+) -> Result<Vec<CapturedText>, AppError> {
+    let mut manager = state.manager.lock()?;
     Ok(manager.read_messages())
 }

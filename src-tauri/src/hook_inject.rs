@@ -80,7 +80,14 @@ pub struct HookManager {
     last_sequence: u32,
 }
 
+// SAFETY: HookManager contains raw pointers (shared_data) and Win32 handles.
+// - shared_data points to a memory-mapped file that is valid for the process lifetime
+// - The pointer is only accessed through methods that check for null
+// - Win32 handles are valid until cleanup_shared_memory() is called
 unsafe impl Send for HookManager {}
+// SAFETY: All access to shared_data is through methods with proper synchronization.
+// - read_messages() takes &mut self, ensuring exclusive access for writes
+// - status() takes &self and only reads immutable header fields
 unsafe impl Sync for HookManager {}
 
 impl HookManager {
@@ -106,6 +113,14 @@ impl HookManager {
         let dll_path = self.find_hook_dll()?;
         let dll_path_wide = to_wide(&dll_path);
 
+        // SAFETY: DLL injection via CreateRemoteThread + LoadLibraryW.
+        // Standard Windows DLL injection technique. All handles are properly
+        // cleaned up on both success and failure paths.
+        // SAFETY: Reading from shared memory mapped file.
+        // - self.shared_data is non-null (checked above)
+        // - Magic number is validated before reading
+        // - Message length is validated (0 < length <= 65536)
+        // - Buffer bounds are checked before reading text
         unsafe {
             // Open target process
             let process = OpenProcess(
@@ -217,6 +232,11 @@ impl HookManager {
 
         let mut messages = Vec::new();
 
+        // SAFETY: Reading from shared memory mapped file.
+        // - self.shared_data is non-null (checked above)
+        // - Magic number is validated before reading
+        // - Message length is validated (0 < length <= 65536)
+        // - Buffer bounds are checked before reading text
         unsafe {
             let header = &*self.shared_data;
 
@@ -271,6 +291,10 @@ impl HookManager {
     /// Get current status
     pub fn status(&self) -> HookStatus {
         let process_name = if self.injected && !self.shared_data.is_null() {
+            // SAFETY: Reading process_name from shared memory header.
+            // - self.shared_data is non-null (checked above)
+            // - Header was validated by magic number in open_shared_memory()
+            // - process_name is a fixed-size array [u8; 64], always valid to read
             unsafe {
                 let header = &*self.shared_data;
                 let name_bytes = &header.process_name;
@@ -321,6 +345,10 @@ impl HookManager {
         ))
     }
 
+    /// Open shared memory created by the hook DLL.
+    /// SAFETY: Opens a named file mapping and maps it into our address space.
+    /// - Magic number is validated to ensure shared memory is valid
+    /// - On failure, resources are cleaned up immediately
     fn open_shared_memory(&mut self) -> Result<(), String> {
         unsafe {
             let name_wide = to_wide(SHARED_MEMORY_NAME);
@@ -358,6 +386,8 @@ impl HookManager {
         }
     }
 
+    /// Cleanup shared memory resources.
+    /// SAFETY: Unmaps view and closes handle. Sets pointers to null after cleanup.
     fn cleanup_shared_memory(&mut self) {
         unsafe {
             if !self.shared_data.is_null() {

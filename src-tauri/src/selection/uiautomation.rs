@@ -42,6 +42,8 @@ impl SelectionProvider for UiAutomationSelectionProvider {
     }
 }
 
+/// Get selected text via UI Automation.
+/// SAFETY: COM and UI Automation API calls. All COM objects are reference-counted.
 fn get_uia_selection() -> Option<SelectionResult> {
     unsafe {
         // Initialize COM on this thread
@@ -156,6 +158,8 @@ fn get_uia_selection() -> Option<SelectionResult> {
 
 /// Try to read selected text via the TextPattern (rich text controls, browsers, etc.)
 /// Concatenates all selected ranges and merges their bounds.
+/// Try to read selected text via TextPattern.
+/// SAFETY: UI Automation COM interface calls.
 unsafe fn try_text_pattern(
     element: &IUIAutomationElement,
 ) -> Result<(String, Option<SelectionBounds>), Box<dyn std::error::Error>> {
@@ -219,6 +223,8 @@ unsafe fn try_text_pattern(
 
 /// Try ValuePattern to get full value, then cross-reference with TextPattern
 /// to extract the selected portion.
+/// Try ValuePattern with TextPattern cross-reference.
+/// SAFETY: UI Automation COM interface calls.
 unsafe fn try_value_pattern_with_selection(
     element: &IUIAutomationElement,
     _automation: &IUIAutomation,
@@ -274,6 +280,8 @@ unsafe fn try_value_pattern_with_selection(
 }
 
 /// Pure ValuePattern fallback — returns the full value (no selection info).
+/// Pure ValuePattern fallback.
+/// SAFETY: UI Automation COM interface calls.
 unsafe fn try_value_pattern_full(
     element: &IUIAutomationElement,
 ) -> Result<(String, Option<SelectionBounds>), Box<dyn std::error::Error>> {
@@ -299,6 +307,8 @@ unsafe fn try_value_pattern_full(
 
 /// Walk the UIA tree to find a child (or descendant) that supports TextPattern.
 /// Max depth: 5, max children per level: 10.
+/// Walk UIA tree to find child with TextPattern.
+/// SAFETY: UI Automation COM interface calls. Max depth: 5.
 unsafe fn find_text_in_children(
     element: &IUIAutomationElement,
     automation: &IUIAutomation,
@@ -385,6 +395,8 @@ fn merge_bounds(a: &SelectionBounds, b: &SelectionBounds) -> SelectionBounds {
 }
 
 /// Get window title from HWND
+/// Get window title from HWND.
+/// SAFETY: GetWindowTextW is a standard Win32 API.
 unsafe fn get_window_title(hwnd: HWND) -> String {
     let mut buf = [0u16; 512];
     let len = windows::Win32::UI::WindowsAndMessaging::GetWindowTextW(hwnd, &mut buf);

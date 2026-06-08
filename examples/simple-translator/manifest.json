@@ -1,0 +1,23 @@
+{
+  "name": "Simple Translator Example",
+  "version": "1.0.0",
+  "description": "Example translation plugin using the Moon Translator Plugin SDK",
+  "author": "Moon Translator",
+  "type": "translation",
+  "enabled": true,
+  "minApiVersion": 1,
+  "permissions": ["network"],
+  "sandbox": {
+    "enabled": true,
+    "maxMemoryMb": 128,
+    "maxCpuPercent": 30,
+    "maxConnections": 5,
+    "maxRestarts": 3
+  },
+  "entryPoint": "index.js",
+  "translation": {
+    "endpoint": "http://localhost:3001/translate",
+    "supportedLanguages": [],
+    "headers": {}
+  }
+}

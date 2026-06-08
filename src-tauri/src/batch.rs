@@ -1,4 +1,4 @@
-/**
+/*!
  * Batch Translation Queue System
  *
  * Manages translation of multiple text segments with:
@@ -179,9 +179,10 @@ impl BatchManager {
 
     /// Start processing the batch queue
     pub async fn process(&self, service: Arc<TranslationService>) -> Result<(), String> {
-        let config = self.config.read().await.clone();
-        let concurrency = config.concurrency.max(1);
-        let continue_on_error = config.continue_on_error;
+        let (concurrency, continue_on_error) = {
+            let cfg = self.config.read().await;
+            (cfg.concurrency.max(1), cfg.continue_on_error)
+        };
 
         let mut handles = Vec::new();
 
@@ -257,22 +258,23 @@ impl BatchManager {
                     }
 
                     // Store result and emit progress
-                    results.lock().await.push(task.clone());
+                    let task_index = task.index;
                     let current_job_id = job_id.read().await.clone();
+                    let mut all_done = false;
                     if let Some(jid) = current_job_id {
                         let handle_guard = app_handle.read().await;
                         if let Some(handle) = handle_guard.as_ref() {
                             let completed = completed_count.load(Ordering::SeqCst);
                             let failed = failed_count.load(Ordering::SeqCst);
                             let total = total_count.load(Ordering::SeqCst);
-                            let all_done = completed + failed >= total;
+                            all_done = completed + failed >= total;
 
                             let progress = BatchProgress {
                                 job_id: jid.clone(),
                                 total,
                                 completed,
                                 failed,
-                                current_index: Some(task.index),
+                                current_index: Some(task_index),
                                 status: if all_done {
                                     BatchJobStatus::Completed
                                 } else {
@@ -282,12 +284,13 @@ impl BatchManager {
 
                             let _ = handle.emit("batch-progress", &progress);
                             let _ = handle.emit("batch-task-complete", &task);
-
-                            if all_done {
-                                let mut s = status.write().await;
-                                *s = BatchJobStatus::Completed;
-                            }
                         }
+                    }
+                    results.lock().await.push(task); // move instead of clone
+
+                    if all_done {
+                        let mut s = status.write().await;
+                        *s = BatchJobStatus::Completed;
                     }
                 }
             });

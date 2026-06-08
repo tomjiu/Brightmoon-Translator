@@ -12,11 +12,12 @@ const INITIAL_CONFIG: AppConfig = {
   engines: {
     google: { enabled: false },
     baidu: { enabled: false, appId: "", secret: "" },
-    youdao: { enabled: false, useAi: false },
+    youdao: { enabled: false, useAi: false, ocrAppKey: "", ocrAppSecret: "" },
     deepl: { enabled: false, apiKey: "", pro: false },
     deeplx: { enabled: false, pro: false },
     microsoft: { enabled: false },
     yandex: { enabled: false },
+    offline: { enabled: false, autoSwitch: true, downloadedModels: [], modelDir: "" },
   },
   defaultFrom: "auto",
   defaultTo: "zh",
@@ -32,19 +33,56 @@ const INITIAL_CONFIG: AppConfig = {
   proxy: { enabled: false, proxyType: "http", host: "", port: 7890, username: "", password: "" },
   windowFollowMode: "none",
   translationBlacklist: [],
+  routingStrategy: "FallbackOnError",
+  ocrEngine: "auto",
+  overlayLevel: 2,
+  overlayAutoDismissMs: 3000,
+  overlayFollowMode: "none",
   hook: { enabledSources: [], showOverlay: true, autoCopy: false, enabled: true, uiaIntervalMs: 500, ocrIntervalMs: 5000 },
   tmEnabled: false,
   tmThreshold: 0.8,
   furiganaEnabled: false,
   ttsAutoPlay: false,
   ttsVoice: "",
+  sync: {
+    enabled: false,
+    serverUrl: "",
+    username: "",
+    password: "",
+    remoteDir: "moontranslator",
+    intervalMins: 30,
+    syncConfig: true,
+    syncGlossary: true,
+    syncHistory: true,
+    syncWordbook: true,
+    lastSyncAt: 0,
+    lastSyncStatus: "",
+  },
 };
+
+interface EngineCacheStats {
+  engine: string;
+  entries: number;
+  hits: number;
+}
+
+interface CacheStats {
+  total_entries: number;
+  memory_entries: number;
+  memory_capacity: number;
+  disk_entries: number;
+  hit_rate: number;
+  total_hits: number;
+  total_misses: number;
+  engine_stats: EngineCacheStats[];
+}
 
 interface ConfigState {
   config: AppConfig;
   loaded: boolean;
   saved: boolean;
   cacheSize: number;
+  cacheStats: CacheStats | null;
 
   loadDefaults: () => Promise<void>;
   loadConfig: () => Promise<void>;
@@ -53,6 +91,7 @@ interface ConfigState {
   updateLlm: (field: keyof AppConfig["llm"], value: string) => void;
   loadCacheSize: () => Promise<void>;
   clearCache: () => Promise<void>;
+  loadCacheStats: () => Promise<void>;
 }
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
@@ -60,6 +99,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   loaded: false,
   saved: false,
   cacheSize: 0,
+  cacheStats: null,
 
   /**
    * Fetch authoritative defaults from Rust backend.
@@ -129,5 +169,14 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       return;
     }
     set({ cacheSize: 0 });
+  },
+
+  loadCacheStats: async () => {
+    const [stats, error] = await safeInvoke<CacheStats>("cache_stats");
+    if (error || !stats) {
+      console.error("Failed to load cache stats:", error);
+      return;
+    }
+    set({ cacheStats: stats });
   },
 }));

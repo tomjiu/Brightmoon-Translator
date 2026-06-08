@@ -31,10 +31,7 @@ impl TranslationEngine for GoogleEngine {
         );
 
         let resp = self.client.get(&url).send().await?;
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(anyhow::anyhow!("Google API error: {}", status));
-        }
+        super::check_response(&resp, "Google")?;
 
         let body: serde_json::Value = resp.json().await?;
 

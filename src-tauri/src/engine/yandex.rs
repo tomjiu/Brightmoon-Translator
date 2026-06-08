@@ -44,10 +44,7 @@ impl TranslationEngine for YandexEngine {
             .send()
             .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(anyhow::anyhow!("Yandex API error: {}", status));
-        }
+        super::check_response(&resp, "Yandex")?;
 
         let body: YandexResponse = resp.json().await?;
 

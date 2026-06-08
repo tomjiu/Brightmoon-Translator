@@ -4,6 +4,7 @@ pub mod deeplx;
 pub mod google;
 pub mod llm;
 pub mod microsoft;
+pub mod offline;
 pub mod yandex;
 pub mod youdao;
 
@@ -16,6 +17,16 @@ use std::time::Instant;
 
 // Re-export shared translation types from models
 pub use crate::models::translation::{RoutingStrategy, TranslateResponse, TranslationResult};
+
+/// Check HTTP response status. Returns error if not successful.
+/// Borrows the response so the caller can still read the body afterward.
+pub(crate) fn check_response(resp: &reqwest::Response, engine_name: &str) -> anyhow::Result<()> {
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(anyhow::anyhow!("{} API error: {}", engine_name, status));
+    }
+    Ok(())
+}
 
 /// A translation engine backed by an external plugin HTTP endpoint
 pub struct PluginEngine {
@@ -61,10 +72,7 @@ impl TranslationEngine for PluginEngine {
         });
 
         let resp = req.json(&body).send().await?;
-
-        if !resp.status().is_success() {
-            return Err(anyhow::anyhow!("Plugin returned status: {}", resp.status()));
-        }
+        check_response(&resp, "Plugin")?;
 
         let result: serde_json::Value = resp.json().await?;
 
@@ -100,10 +108,19 @@ impl Router {
     pub fn new(config: &AppConfig) -> Self {
         let mut engines: Vec<Arc<dyn TranslationEngine>> = Vec::new();
 
-        // Create shared HTTP client with proxy support
+        // Create shared HTTP client with proxy support and configurable timeout
         let client = config
             .proxy
             .to_client_builder()
+            .timeout(std::time::Duration::from_secs(config.http_timeout_secs))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
+        // LLM client with longer timeout for LLM requests
+        let llm_client = config
+            .proxy
+            .to_client_builder()
+            .timeout(std::time::Duration::from_secs(config.llm_timeout_secs))
             .build()
             .unwrap_or_else(|_| Client::new());
 
@@ -115,7 +132,7 @@ impl Router {
                 &config.llm.base_url,
                 &config.llm.model,
             )
-            .with_client(client.clone());
+            .with_client(llm_client.clone());
             let engine = if !config.custom_prompt.is_empty() {
                 engine.with_custom_prompt(&config.custom_prompt)
             } else {
@@ -187,11 +204,22 @@ impl Router {
             ));
         }
 
+        // Offline engine (local translation models)
+        if config.engines.offline.enabled {
+            let model_dir = if config.engines.offline.model_dir.is_empty() {
+                None
+            } else {
+                Some(config.engines.offline.model_dir.as_str())
+            };
+            let offline_engine = offline::OfflineEngine::new(model_dir);
+            engines.push(Arc::new(offline_engine));
+        }
+
         // Fallback: if no engines configured, add a default LLM
         if engines.is_empty() {
             engines.push(Arc::new(
                 llm::LlmEngine::new("", "https://api.deepseek.com/v1", "deepseek-chat")
-                    .with_client(client.clone()),
+                    .with_client(llm_client),
             ));
         }
 
@@ -222,8 +250,8 @@ impl Router {
     }
 
     /// Get the list of available engine names
-    pub fn engine_names(&self) -> Vec<String> {
-        self.engines.iter().map(|e| e.name().to_string()).collect()
+    pub fn engine_names(&self) -> Vec<&str> {
+        self.engines.iter().map(|e| e.name()).collect()
     }
 
     /// Get the primary engine's name
@@ -260,12 +288,16 @@ impl Router {
             };
         }
 
+        let text: Arc<str> = Arc::from(text);
+        let from: Arc<str> = Arc::from(from);
+        let to: Arc<str> = Arc::from(to);
+
         let mut handles = Vec::new();
         for engine in engines {
             let engine = engine.clone();
-            let text = text.to_string();
-            let from = from.to_string();
-            let to = to.to_string();
+            let text = Arc::clone(&text);
+            let from = Arc::clone(&from);
+            let to = Arc::clone(&to);
             handles.push(tokio::spawn(async move {
                 let name = engine.name().to_string();
                 match engine.translate(&text, &from, &to).await {
@@ -366,12 +398,16 @@ impl Router {
         from: &str,
         to: &str,
     ) -> TranslateResponse {
+        let text: Arc<str> = Arc::from(text);
+        let from: Arc<str> = Arc::from(from);
+        let to: Arc<str> = Arc::from(to);
+
         let mut handles = Vec::new();
 
         for engine in &self.engines {
-            let text = text.to_string();
-            let from = from.to_string();
-            let to = to.to_string();
+            let text = Arc::clone(&text);
+            let from = Arc::clone(&from);
+            let to = Arc::clone(&to);
             let engine = Arc::clone(engine);
 
             let handle = tokio::spawn(async move {
@@ -407,11 +443,11 @@ impl Router {
 
     /// Strategy: Cost Aware - prefer free engines (Google, Microsoft, Yandex, DeepLX)
     async fn translate_cost_aware(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
-        let free_engines: Vec<&str> = vec!["Google", "Microsoft", "Yandex", "DeepLX"];
+        const FREE_ENGINES: &[&str] = &["Google", "Microsoft", "Yandex", "DeepLX"];
 
         // Try free engines first
         for engine in &self.engines {
-            if free_engines.contains(&engine.name()) {
+            if FREE_ENGINES.contains(&engine.name()) {
                 let name = engine.name().to_string();
                 match engine.translate(text, from, to).await {
                     Ok(translated) => {
@@ -434,7 +470,7 @@ impl Router {
 
         // Fallback to paid engines
         for engine in &self.engines {
-            if !free_engines.contains(&engine.name()) {
+            if !FREE_ENGINES.contains(&engine.name()) {
                 let name = engine.name().to_string();
                 match engine.translate(text, from, to).await {
                     Ok(translated) => {
@@ -463,12 +499,16 @@ impl Router {
 
     /// Strategy: Latency First - run all in parallel, return first success
     async fn translate_latency_first(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
+        let text: Arc<str> = Arc::from(text);
+        let from: Arc<str> = Arc::from(from);
+        let to: Arc<str> = Arc::from(to);
+
         let mut handles = Vec::new();
 
         for engine in &self.engines {
-            let text = text.to_string();
-            let from = from.to_string();
-            let to = to.to_string();
+            let text = Arc::clone(&text);
+            let from = Arc::clone(&from);
+            let to = Arc::clone(&to);
             let engine = Arc::clone(engine);
 
             let handle = tokio::spawn(async move {
@@ -494,7 +534,6 @@ impl Router {
         }
 
         // Use select to get first completed result (not sequential await)
-        let results = Vec::new();
         let mut remaining = handles;
 
         while !remaining.is_empty() {
@@ -510,7 +549,7 @@ impl Router {
         }
 
         TranslateResponse {
-            results,
+            results: vec![],
             detected_language: None,
         }
     }

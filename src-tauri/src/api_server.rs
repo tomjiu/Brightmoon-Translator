@@ -21,15 +21,14 @@ use crate::models::glossary::GlossaryEntry;
 use crate::services::TranslationService;
 use crate::cache::TranslationCache;
 
-/// Mask a secret string, keeping first 4 and last 4 chars visible.
+/// Mask a secret string, keeping first 4 and last 4 bytes visible.
+/// Safe for ASCII secrets (API keys, tokens). Uses byte slicing for performance.
 fn mask_secret(s: &str) -> String {
-    let chars: Vec<char> = s.chars().collect();
-    if chars.len() <= 12 {
-        return "*".repeat(chars.len());
+    let len = s.len();
+    if len <= 12 {
+        return "*".repeat(len);
     }
-    let prefix: String = chars[..4].iter().collect();
-    let suffix: String = chars[chars.len() - 4..].iter().collect();
-    format!("{}...{}", prefix, suffix)
+    format!("{}...{}", &s[..4], &s[len - 4..])
 }
 
 /// Return a sanitized copy of config with all secret fields masked.
@@ -268,14 +267,16 @@ async fn update_config(
     match serde_json::from_value::<AppConfig>(merged) {
         Ok(new_config) => {
             new_config.save();
-            *config = new_config.clone();
 
             // Hot-reload: rebuild engine router with new config
             let new_router = engine::Router::new(&new_config);
+            let response = Json(sanitize_config(&new_config)).into_response();
+
             let mut router = state.engine_router.write().await;
             *router = new_router;
+            *config = new_config; // move instead of clone
 
-            Json(sanitize_config(&new_config)).into_response()
+            response
         }
         Err(e) => (
             StatusCode::BAD_REQUEST,
@@ -381,7 +382,7 @@ async fn add_glossary_entry(
             target: req.target,
             context: req.context,
         },
-    );
+    ).await;
     StatusCode::OK.into_response()
 }
 
@@ -398,7 +399,7 @@ async fn remove_glossary_entry(
     Json(req): Json<RemoveGlossaryRequest>,
 ) -> impl IntoResponse {
     let mut glossary = state.glossary.lock().await;
-    if glossary.remove_entry(&req.lang_pair, &req.source) {
+    if glossary.remove_entry(&req.lang_pair, &req.source).await {
         StatusCode::OK.into_response()
     } else {
         StatusCode::NOT_FOUND.into_response()

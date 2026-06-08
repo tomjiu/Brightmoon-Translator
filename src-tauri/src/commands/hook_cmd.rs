@@ -6,6 +6,7 @@ use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect
 /// Returns [x, y, width, height] in physical pixels.
 #[tauri::command]
 pub async fn get_foreground_window_rect() -> Result<[i32; 4], String> {
+    // SAFETY: GetForegroundWindow and GetWindowRect are standard Win32 APIs.
     tokio::task::spawn_blocking(|| unsafe {
         let hwnd = GetForegroundWindow();
         let mut rect = windows::Win32::Foundation::RECT::default();

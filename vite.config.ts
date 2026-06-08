@@ -6,6 +6,9 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
   clearScreen: false,
+  optimizeDeps: {
+    exclude: ["src-tauri"],
+  },
   server: {
     port: 5173,
     strictPort: true,
@@ -19,6 +22,9 @@ export default defineConfig(async () => ({
       : undefined,
     watch: {
       ignored: ["**/src-tauri/**"],
+    },
+    fs: {
+      deny: ["**/src-tauri/**"],
     },
   },
 }));

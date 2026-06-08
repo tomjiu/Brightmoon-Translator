@@ -5,6 +5,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Minimum interval (in milliseconds) between expired-entry cleanup sweeps.
+/// Cleanup is skipped if the last sweep was less than this many ms ago.
+const CLEANUP_INTERVAL_MS: i64 = 60_000; // 1 minute
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedTranslation {
     pub results: Vec<(String, String)>, // (engine, text)
@@ -16,6 +20,8 @@ pub struct TranslationCache {
     conn: Arc<Mutex<Connection>>,
     max_size: usize,
     ttl_hours: i64,
+    /// Timestamp (millis) of the last expired-entry cleanup sweep.
+    last_cleanup: Arc<Mutex<i64>>,
 }
 
 fn cache_path() -> PathBuf {
@@ -62,6 +68,7 @@ impl TranslationCache {
             conn: Arc::new(Mutex::new(conn)),
             max_size,
             ttl_hours: 72, // 3 days default TTL
+            last_cleanup: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -71,18 +78,28 @@ impl TranslationCache {
 
     pub async fn get(&self, text: &str, from: &str, to: &str) -> Option<CachedTranslation> {
         let key = Self::make_key(text, from, to);
-        let conn = self.conn.lock().await;
 
-        // Delete expired entries
-        let cutoff = Utc::now().timestamp_millis() - (self.ttl_hours * 3600 * 1000);
-        if let Err(e) = conn.execute(
-            "DELETE FROM translations WHERE timestamp < ?1",
-            params![cutoff],
-        ) {
-            tracing::warn!("Failed to evict expired cache entries: {}", e);
+        // Conditional cleanup: only sweep expired entries once per CLEANUP_INTERVAL_MS
+        {
+            let now = Utc::now().timestamp_millis();
+            let mut last = self.last_cleanup.lock().await;
+            if now - *last > CLEANUP_INTERVAL_MS {
+                *last = now;
+                drop(last);
+                let conn = self.conn.lock().await;
+                let cutoff = now - (self.ttl_hours * 3600 * 1000);
+                if let Err(e) = conn.execute(
+                    "DELETE FROM translations WHERE timestamp < ?1",
+                    params![cutoff],
+                ) {
+                    tracing::warn!("Failed to evict expired cache entries: {}", e);
+                }
+            }
         }
 
-        // Query for cached results
+        let conn = self.conn.lock().await;
+
+        // Single query for all cached results with metadata from first row
         let mut stmt = conn
             .prepare(
                 "SELECT engine, translated_text, timestamp, hits
@@ -92,24 +109,34 @@ impl TranslationCache {
             )
             .ok()?;
 
-        let results: Vec<(String, String)> = stmt
-            .query_map(params![key], |row| Ok((row.get(0)?, row.get(1)?)))
-            .ok()?
-            .filter_map(|r| r.ok())
-            .collect();
+        let mut results: Vec<(String, String)> = Vec::new();
+        let mut timestamp: i64 = 0;
+        let mut hits: i64 = 0;
+
+        let rows = stmt
+            .query_map(params![key], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })
+            .ok()?;
+
+        for (i, row) in rows.enumerate() {
+            if let Ok((engine, translated, ts, h)) = row {
+                if i == 0 {
+                    timestamp = ts;
+                    hits = h;
+                }
+                results.push((engine, translated));
+            }
+        }
 
         if results.is_empty() {
             return None;
         }
-
-        // Get timestamp and hits from first row
-        let mut stmt = conn
-            .prepare("SELECT timestamp, hits FROM translations WHERE cache_key = ?1 LIMIT 1")
-            .ok()?;
-
-        let (timestamp, hits): (i64, i64) = stmt
-            .query_row(params![key], |row| Ok((row.get(0)?, row.get(1)?)))
-            .ok()?;
 
         // Increment hit count
         if let Err(e) = conn.execute(

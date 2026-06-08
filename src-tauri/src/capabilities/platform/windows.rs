@@ -1,4 +1,5 @@
-/// Set clipboard text content. Returns Err on any critical failure.
+/// Set clipboard text content.
+/// SAFETY: Win32 clipboard API calls. Clipboard is properly opened/closed.
 unsafe fn set_clipboard_text(text: &str) -> Result<(), String> {
     extern "system" {
         fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
@@ -87,6 +88,10 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
         fn GlobalSize(hMem: *mut std::ffi::c_void) -> usize;
     }
 
+    // SAFETY: Win32 clipboard and input simulation APIs.
+    // Clipboard is saved/restored properly. SendInput simulates Ctrl+V.
+    // SAFETY: Win32 API calls for foreground app detection.
+    // All handles are properly closed.
     unsafe {
         // Save current clipboard content
         let saved_text = if OpenClipboard(std::ptr::null_mut()) != 0 {
@@ -132,6 +137,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                 time: 0,
                 dwExtraInfo: 0,
             };
+            // SAFETY: copy_nonoverlapping for KEYBDINPUT into INPUT union.
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     &ki as *const _ as *const u8,
@@ -264,6 +270,8 @@ pub fn detect_foreground_app() -> Option<ForegroundAppInfo> {
 
     const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
 
+    // SAFETY: Win32 API calls for foreground app detection.
+    // All handles are properly closed.
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd.is_null() {

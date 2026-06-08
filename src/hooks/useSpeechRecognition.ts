@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useI18n } from "../i18n";
 
 interface SpeechRecognitionHook {
   isListening: boolean;
@@ -135,18 +136,19 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
     };
 
     recognition.onerror = (event: { error: string }) => {
+      const t = useI18n.getState().t;
       console.error("Speech recognition error:", event.error);
       if (event.error === "not-allowed") {
-        setError("麦克风访问被拒绝，请允许麦克风权限");
+        setError(t("speech.micDenied"));
         isListeningRef.current = false;
       } else if (event.error === "no-speech") {
         // No speech detected, continue
       } else if (event.error === "network") {
-        setError("网络错误，请检查网络连接");
+        setError(t("speech.networkError"));
       } else if (event.error === "aborted") {
         // Intentional abort, ignore
       } else {
-        setError(`语音识别错误: ${event.error}`);
+        setError(t("speech.error", { error: event.error }));
       }
     };
 
@@ -172,7 +174,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
       return recognition;
     } catch (err) {
       console.error("Failed to start speech recognition:", err);
-      setError("启动语音识别失败");
+      setError(useI18n.getState().t("speech.startFailed"));
       return null;
     }
   }, []);

@@ -7,25 +7,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::mpsc;
 
 /// Sanitize LLM error messages before sending to frontend.
-/// Strips content that could contain API keys or sensitive request details.
+/// Uses the centralized sanitization from the security module to strip
+/// API keys, tokens, and other sensitive patterns.
 fn sanitize_llm_error(status: reqwest::StatusCode, body: &str) -> String {
     // Truncate long error bodies (use chars to avoid UTF-8 boundary issues)
     let truncated: String = body.chars().take(200).collect();
-    // Strip patterns that look like API keys (sk-..., Bearer ..., key=...)
-    let sanitized = truncated
-        .split(|c: char| c == ',' || c == '"' || c == '\'')
-        .map(|part| {
-            let trimmed = part.trim();
-            if (trimmed.starts_with("sk-") || trimmed.starts_with("Bearer ") || trimmed.contains("api_key"))
-                && trimmed.len() > 10
-            {
-                "***"
-            } else {
-                part
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(",");
+    // Use centralized sanitization
+    let sanitized = crate::security::sanitize_log_message(&truncated);
     format!("LLM API error {}: {}", status, sanitized)
 }
 
@@ -120,16 +108,6 @@ impl LlmEngine {
         self
     }
 
-    /// Get next API key using round-robin rotation
-    #[allow(dead_code)]
-    fn next_key(&self) -> Option<&str> {
-        if self.api_keys.is_empty() {
-            return None;
-        }
-        let idx = self.key_index.fetch_add(1, Ordering::Relaxed) % self.api_keys.len();
-        Some(&self.api_keys[idx])
-    }
-
     fn build_system_prompt(&self, from: &str, to: &str, glossary_hint: Option<&str>) -> String {
         let lang_map = |code: &str| -> String {
             match code {
@@ -181,237 +159,33 @@ impl LlmEngine {
         }
     }
 
-    pub async fn translate_stream(
-        &self,
-        text: &str,
-        from: &str,
-        to: &str,
-        tx: mpsc::Sender<String>,
-    ) -> anyhow::Result<String> {
-        let system_prompt = self.build_system_prompt(from, to, None);
-        let total_keys = self.api_keys.len();
-
-        let request = ChatRequest {
+    /// Build a standard 2-message chat request (system + user)
+    fn build_request(&self, system_prompt: &str, user_text: &str, stream: bool) -> ChatRequest {
+        ChatRequest {
             model: self.model.clone(),
             messages: vec![
                 Message {
                     role: "system".to_string(),
-                    content: system_prompt,
+                    content: system_prompt.to_string(),
                 },
                 Message {
                     role: "user".to_string(),
-                    content: text.to_string(),
+                    content: user_text.to_string(),
                 },
             ],
             temperature: 0.3,
             max_tokens: 4096,
-            stream: true,
-        };
-
-        let url = format!("{}/chat/completions", self.base_url);
-        let mut last_error = String::new();
-
-        // Try each key on failure
-        for attempt in 0..total_keys.max(1) {
-            let key = if total_keys > 0 {
-                let idx = (self.key_index.fetch_add(1, Ordering::Relaxed)) % total_keys;
-                &self.api_keys[idx]
-            } else {
-                ""
-            };
-
-            let mut req = self.client.post(&url).json(&request);
-            if !key.is_empty() {
-                req = req.bearer_auth(key);
-            }
-
-            match req.send().await {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        // Log full error body to backend log (may contain API details)
-                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
-                        // Sanitize error for frontend: strip anything that looks like an API key
-                        let sanitized = sanitize_llm_error(status, &body);
-                        last_error = sanitized;
-                        continue;
-                    }
-
-                    let mut stream = resp.bytes_stream();
-                    let mut full_text = String::new();
-                    let mut buffer = String::new();
-
-                    while let Some(chunk) = stream.next().await {
-                        let chunk = chunk?;
-                        let text = String::from_utf8_lossy(&chunk);
-                        buffer.push_str(&text);
-
-                        while let Some(line_end) = buffer.find('\n') {
-                            let line = buffer[..line_end].trim().to_string();
-                            buffer = buffer[line_end + 1..].to_string();
-
-                            if line.starts_with("data: ") {
-                                let data = &line[6..];
-                                if data == "[DONE]" {
-                                    break;
-                                }
-
-                                if let Ok(resp) = serde_json::from_str::<StreamResponse>(data) {
-                                    if let Some(choice) = resp.choices.first() {
-                                        if let Some(content) = &choice.delta.content {
-                                            full_text.push_str(content);
-                                            let _ = tx.send(content.clone()).await;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    return Ok(full_text);
-                }
-                Err(e) => {
-                    last_error = format!("Request failed: {}", e);
-                    tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
-                    continue;
-                }
-            }
+            stream,
         }
-
-        Err(anyhow::anyhow!(
-            "All {} API keys failed. Last error: {}",
-            total_keys,
-            last_error
-        ))
     }
 
-    /// Stream translation with glossary hint injected into the system prompt
-    pub async fn translate_stream_with_glossary(
-        &self,
-        text: &str,
-        from: &str,
-        to: &str,
-        tx: mpsc::Sender<String>,
-        glossary_hint: &str,
-    ) -> anyhow::Result<String> {
-        if glossary_hint.is_empty() {
-            return self.translate_stream(text, from, to, tx).await;
-        }
-        let system_prompt = self.build_system_prompt(from, to, Some(glossary_hint));
+    /// Shared non-streaming LLM call logic with key rotation.
+    /// Accepts pre-built messages so callers can customize the conversation.
+    async fn call_llm_with_messages(&self, messages: Vec<Message>) -> anyhow::Result<String> {
         let total_keys = self.api_keys.len();
-
         let request = ChatRequest {
             model: self.model.clone(),
-            messages: vec![
-                Message {
-                    role: "system".to_string(),
-                    content: system_prompt,
-                },
-                Message {
-                    role: "user".to_string(),
-                    content: text.to_string(),
-                },
-            ],
-            temperature: 0.3,
-            max_tokens: 4096,
-            stream: true,
-        };
-
-        let url = format!("{}/chat/completions", self.base_url);
-        let mut last_error = String::new();
-
-        for attempt in 0..total_keys.max(1) {
-            let key = if total_keys > 0 {
-                let idx = (self.key_index.fetch_add(1, Ordering::Relaxed)) % total_keys;
-                &self.api_keys[idx]
-            } else {
-                ""
-            };
-
-            let mut req = self.client.post(&url).json(&request);
-            if !key.is_empty() {
-                req = req.bearer_auth(key);
-            }
-
-            match req.send().await {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
-                        let sanitized = sanitize_llm_error(status, &body);
-                        last_error = sanitized;
-                        continue;
-                    }
-
-                    let mut stream = resp.bytes_stream();
-                    let mut full_text = String::new();
-                    let mut buffer = String::new();
-
-                    while let Some(chunk) = stream.next().await {
-                        let chunk = chunk?;
-                        let text = String::from_utf8_lossy(&chunk);
-                        buffer.push_str(&text);
-
-                        while let Some(line_end) = buffer.find('\n') {
-                            let line = buffer[..line_end].trim().to_string();
-                            buffer = buffer[line_end + 1..].to_string();
-
-                            if line.starts_with("data: ") {
-                                let data = &line[6..];
-                                if data == "[DONE]" {
-                                    break;
-                                }
-
-                                if let Ok(resp) = serde_json::from_str::<StreamResponse>(data) {
-                                    if let Some(choice) = resp.choices.first() {
-                                        if let Some(content) = &choice.delta.content {
-                                            full_text.push_str(content);
-                                            let _ = tx.send(content.clone()).await;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    return Ok(full_text);
-                }
-                Err(e) => {
-                    last_error = format!("Request failed: {}", e);
-                    tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
-                    continue;
-                }
-            }
-        }
-
-        Err(anyhow::anyhow!(
-            "All {} API keys failed. Last error: {}",
-            total_keys,
-            last_error
-        ))
-    }
-}
-
-#[async_trait]
-impl TranslationEngine for LlmEngine {
-    async fn translate(&self, text: &str, from: &str, to: &str) -> anyhow::Result<String> {
-        let system_prompt = self.build_system_prompt(from, to, None);
-        let total_keys = self.api_keys.len();
-
-        let request = ChatRequest {
-            model: self.model.clone(),
-            messages: vec![
-                Message {
-                    role: "system".to_string(),
-                    content: system_prompt,
-                },
-                Message {
-                    role: "user".to_string(),
-                    content: text.to_string(),
-                },
-            ],
+            messages,
             temperature: 0.3,
             max_tokens: 4096,
             stream: false,
@@ -420,7 +194,6 @@ impl TranslationEngine for LlmEngine {
         let url = format!("{}/chat/completions", self.base_url);
         let mut last_error = String::new();
 
-        // Try each key on failure
         for attempt in 0..total_keys.max(1) {
             let key = if total_keys > 0 {
                 let idx = (self.key_index.fetch_add(1, Ordering::Relaxed)) % total_keys;
@@ -439,9 +212,7 @@ impl TranslationEngine for LlmEngine {
                     let status = resp.status();
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
-                        // Log full error body to backend log (may contain API details)
-                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
-                        // Sanitize error for frontend: strip anything that looks like an API key
+                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, crate::security::sanitize_log_message(&body));
                         let sanitized = sanitize_llm_error(status, &body);
                         last_error = sanitized;
                         continue;
@@ -469,6 +240,211 @@ impl TranslationEngine for LlmEngine {
             total_keys,
             last_error
         ))
+    }
+
+    /// Non-streaming LLM call with system_prompt and user_text convenience wrapper
+    async fn call_llm(&self, system_prompt: &str, user_text: &str) -> anyhow::Result<String> {
+        let messages = self.build_request(system_prompt, user_text, false).messages;
+        self.call_llm_with_messages(messages).await
+    }
+
+    /// Non-streaming LLM call with a custom temperature value.
+    async fn call_llm_with_temperature(&self, system_prompt: &str, user_text: &str, temperature: f32) -> anyhow::Result<String> {
+        let total_keys = self.api_keys.len();
+        let request = ChatRequest {
+            model: self.model.clone(),
+            messages: vec![
+                Message {
+                    role: "system".to_string(),
+                    content: system_prompt.to_string(),
+                },
+                Message {
+                    role: "user".to_string(),
+                    content: user_text.to_string(),
+                },
+            ],
+            temperature,
+            max_tokens: 4096,
+            stream: false,
+        };
+
+        let url = format!("{}/chat/completions", self.base_url);
+        let mut last_error = String::new();
+
+        for attempt in 0..total_keys.max(1) {
+            let key = if total_keys > 0 {
+                let idx = (self.key_index.fetch_add(1, Ordering::Relaxed)) % total_keys;
+                &self.api_keys[idx]
+            } else {
+                ""
+            };
+
+            let mut req = self.client.post(&url).json(&request);
+            if !key.is_empty() {
+                req = req.bearer_auth(key);
+            }
+
+            match req.send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if !status.is_success() {
+                        let body = resp.text().await.unwrap_or_default();
+                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, crate::security::sanitize_log_message(&body));
+                        let sanitized = sanitize_llm_error(status, &body);
+                        last_error = sanitized;
+                        continue;
+                    }
+
+                    let chat_resp: ChatResponse = resp.json().await?;
+                    let content = chat_resp
+                        .choices
+                        .first()
+                        .map(|c| c.message.content.trim().to_string())
+                        .ok_or_else(|| anyhow::anyhow!("LLM API returned no choices in response"))?;
+
+                    return Ok(content);
+                }
+                Err(e) => {
+                    last_error = format!("Request failed: {}", e);
+                    tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    continue;
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "All {} API keys failed. Last error: {}",
+            total_keys,
+            last_error
+        ))
+    }
+
+    /// Shared streaming LLM call logic with key rotation.
+    /// Accepts pre-built messages so callers can customize the conversation.
+    async fn stream_llm(
+        &self,
+        messages: Vec<Message>,
+        tx: mpsc::Sender<String>,
+    ) -> anyhow::Result<String> {
+        let total_keys = self.api_keys.len();
+        let request = ChatRequest {
+            model: self.model.clone(),
+            messages,
+            temperature: 0.3,
+            max_tokens: 4096,
+            stream: true,
+        };
+
+        let url = format!("{}/chat/completions", self.base_url);
+        let mut last_error = String::new();
+
+        for attempt in 0..total_keys.max(1) {
+            let key = if total_keys > 0 {
+                let idx = (self.key_index.fetch_add(1, Ordering::Relaxed)) % total_keys;
+                &self.api_keys[idx]
+            } else {
+                ""
+            };
+
+            let mut req = self.client.post(&url).json(&request);
+            if !key.is_empty() {
+                req = req.bearer_auth(key);
+            }
+
+            match req.send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if !status.is_success() {
+                        let body = resp.text().await.unwrap_or_default();
+                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, crate::security::sanitize_log_message(&body));
+                        let sanitized = sanitize_llm_error(status, &body);
+                        last_error = sanitized;
+                        continue;
+                    }
+
+                    let mut stream = resp.bytes_stream();
+                    let mut full_text = String::new();
+                    let mut buffer = String::new();
+
+                    while let Some(chunk) = stream.next().await {
+                        let chunk = chunk?;
+                        let text = String::from_utf8_lossy(&chunk);
+                        buffer.push_str(&text);
+
+                        while let Some(line_end) = buffer.find('\n') {
+                            // Use drain() to avoid allocating a new String for the remaining buffer
+                            let line: String = buffer.drain(..=line_end).collect();
+                            let line = line.trim();
+
+                            if let Some(data) = line.strip_prefix("data: ") {
+                                if data == "[DONE]" {
+                                    break;
+                                }
+
+                                if let Ok(resp) = serde_json::from_str::<StreamResponse>(data) {
+                                    if let Some(choice) = resp.choices.first() {
+                                        if let Some(content) = &choice.delta.content {
+                                            full_text.push_str(content);
+                                            let _ = tx.send(content.clone()).await;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    return Ok(full_text);
+                }
+                Err(e) => {
+                    last_error = format!("Request failed: {}", e);
+                    tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
+                    continue;
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "All {} API keys failed. Last error: {}",
+            total_keys,
+            last_error
+        ))
+    }
+
+    pub async fn translate_stream(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+        tx: mpsc::Sender<String>,
+    ) -> anyhow::Result<String> {
+        let system_prompt = self.build_system_prompt(from, to, None);
+        let messages = self.build_request(&system_prompt, text, true).messages;
+        self.stream_llm(messages, tx).await
+    }
+
+    /// Stream translation with glossary hint injected into the system prompt
+    pub async fn translate_stream_with_glossary(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+        tx: mpsc::Sender<String>,
+        glossary_hint: &str,
+    ) -> anyhow::Result<String> {
+        if glossary_hint.is_empty() {
+            return self.translate_stream(text, from, to, tx).await;
+        }
+        let system_prompt = self.build_system_prompt(from, to, Some(glossary_hint));
+        let messages = self.build_request(&system_prompt, text, true).messages;
+        self.stream_llm(messages, tx).await
+    }
+}
+
+#[async_trait]
+impl TranslationEngine for LlmEngine {
+    async fn translate(&self, text: &str, from: &str, to: &str) -> anyhow::Result<String> {
+        let system_prompt = self.build_system_prompt(from, to, None);
+        self.call_llm(&system_prompt, text).await
     }
 
     fn name(&self) -> &str {
@@ -501,7 +477,6 @@ impl LlmEngine {
         }
 
         let system_prompt = self.build_system_prompt(from, to, None);
-        let total_keys = self.api_keys.len();
 
         // Build context message
         let mut context_lines = Vec::new();
@@ -515,82 +490,26 @@ impl LlmEngine {
             ));
         }
 
-        let request = ChatRequest {
-            model: self.model.clone(),
-            messages: vec![
-                Message {
-                    role: "system".to_string(),
-                    content: system_prompt,
-                },
-                Message {
-                    role: "user".to_string(),
-                    content: context_lines.join("\n"),
-                },
-                Message {
-                    role: "assistant".to_string(),
-                    content: "好的，我会参考之前的翻译保持一致性。".to_string(),
-                },
-                Message {
-                    role: "user".to_string(),
-                    content: text.to_string(),
-                },
-            ],
-            temperature: 0.3,
-            max_tokens: 4096,
-            stream: false,
-        };
+        let messages = vec![
+            Message {
+                role: "system".to_string(),
+                content: system_prompt,
+            },
+            Message {
+                role: "user".to_string(),
+                content: context_lines.join("\n"),
+            },
+            Message {
+                role: "assistant".to_string(),
+                content: "好的，我会参考之前的翻译保持一致性。".to_string(),
+            },
+            Message {
+                role: "user".to_string(),
+                content: text.to_string(),
+            },
+        ];
 
-        let url = format!("{}/chat/completions", self.base_url);
-        let mut last_error = String::new();
-
-        for attempt in 0..total_keys.max(1) {
-            let key = if total_keys > 0 {
-                let idx = (self.key_index.fetch_add(1, Ordering::Relaxed)) % total_keys;
-                &self.api_keys[idx]
-            } else {
-                ""
-            };
-
-            let mut req = self.client.post(&url).json(&request);
-            if !key.is_empty() {
-                req = req.bearer_auth(key);
-            }
-
-            match req.send().await {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        // Log full error body to backend log (may contain API details)
-                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
-                        // Sanitize error for frontend: strip anything that looks like an API key
-                        let sanitized = sanitize_llm_error(status, &body);
-                        last_error = sanitized;
-                        continue;
-                    }
-
-                    let chat_resp: ChatResponse = resp.json().await?;
-                    let content = chat_resp
-                        .choices
-                        .first()
-                        .map(|c| c.message.content.trim().to_string())
-                        .ok_or_else(|| anyhow::anyhow!("LLM API returned no choices in response"))?;
-
-                    return Ok(content);
-                }
-                Err(e) => {
-                    last_error = format!("Request failed: {}", e);
-                    tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
-                    continue;
-                }
-            }
-        }
-
-        Err(anyhow::anyhow!(
-            "All {} API keys failed. Last error: {}",
-            total_keys,
-            last_error
-        ))
+        self.call_llm_with_messages(messages).await
     }
 
     /// Translate with glossary terms injected into the system prompt.
@@ -609,75 +528,17 @@ impl LlmEngine {
         self.call_llm(&system_prompt, text).await
     }
 
-    /// Shared LLM call logic
-    async fn call_llm(&self, system_prompt: &str, user_text: &str) -> anyhow::Result<String> {
-        let total_keys = self.api_keys.len();
-        let request = ChatRequest {
-            model: self.model.clone(),
-            messages: vec![
-                Message {
-                    role: "system".to_string(),
-                    content: system_prompt.to_string(),
-                },
-                Message {
-                    role: "user".to_string(),
-                    content: user_text.to_string(),
-                },
-            ],
-            temperature: 0.3,
-            max_tokens: 4096,
-            stream: false,
-        };
-
-        let url = format!("{}/chat/completions", self.base_url);
-        let mut last_error = String::new();
-
-        for attempt in 0..total_keys.max(1) {
-            let key = if total_keys > 0 {
-                let idx = (self.key_index.fetch_add(1, Ordering::Relaxed)) % total_keys;
-                &self.api_keys[idx]
-            } else {
-                ""
-            };
-
-            let mut req = self.client.post(&url).json(&request);
-            if !key.is_empty() {
-                req = req.bearer_auth(key);
-            }
-
-            match req.send().await {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, body);
-                        let sanitized = sanitize_llm_error(status, &body);
-                        last_error = sanitized;
-                        continue;
-                    }
-
-                    let chat_resp: ChatResponse = resp.json().await?;
-                    let content = chat_resp
-                        .choices
-                        .first()
-                        .map(|c| c.message.content.trim().to_string())
-                        .ok_or_else(|| anyhow::anyhow!("LLM API returned no choices in response"))?;
-
-                    return Ok(content);
-                }
-                Err(e) => {
-                    last_error = format!("Request failed: {}", e);
-                    tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
-                    continue;
-                }
-            }
-        }
-
-        Err(anyhow::anyhow!(
-            "All {} API keys failed. Last error: {}",
-            total_keys,
-            last_error
-        ))
+    /// Translate with a custom temperature value.
+    /// Used by multi-round translation to produce varied outputs.
+    pub async fn translate_with_temperature(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+        temperature: f32,
+    ) -> anyhow::Result<String> {
+        let system_prompt = self.build_system_prompt(from, to, None);
+        self.call_llm_with_temperature(&system_prompt, text, temperature).await
     }
 }
 

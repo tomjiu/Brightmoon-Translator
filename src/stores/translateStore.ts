@@ -38,6 +38,8 @@ interface TranslateState {
   embeddedLines: EmbeddedLine[];
   embeddedMode: boolean;
   polishing: boolean;
+  realtimeTranslate: boolean;
+  realtimeDelayMs: number;
 
   setSourceText: (text: string) => void;
   setFromLang: (lang: string) => void;
@@ -61,6 +63,8 @@ interface TranslateState {
   moveWindowToCursor: () => Promise<void>;
   translateEmbedded: () => Promise<void>;
   toggleEmbeddedMode: () => void;
+  toggleRealtimeTranslate: () => void;
+  initRealtimeFromConfig: (enabled: boolean, delayMs: number) => void;
 }
 
 export const useTranslateStore = create<TranslateState>((set, get) => ({
@@ -84,6 +88,8 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   embeddedLines: [],
   embeddedMode: false,
   polishing: false,
+  realtimeTranslate: false,
+  realtimeDelayMs: 1000,
 
   setSourceText: (text) => set({ sourceText: text }),
 
@@ -476,12 +482,18 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
   toggleEmbeddedMode: () => {
     const { embeddedMode, sourceText } = get();
-    console.log("[Embedded] toggleEmbeddedMode called, current:", embeddedMode, "sourceText length:", sourceText.length);
     set({ embeddedMode: !embeddedMode });
     // If switching to embedded mode and we have source text, translate
     if (!embeddedMode && sourceText.trim()) {
-      console.log("[Embedded] calling translateEmbedded");
       get().translateEmbedded();
     }
+  },
+
+  toggleRealtimeTranslate: () => {
+    set((state) => ({ realtimeTranslate: !state.realtimeTranslate }));
+  },
+
+  initRealtimeFromConfig: (enabled: boolean, delayMs: number) => {
+    set({ realtimeTranslate: enabled, realtimeDelayMs: delayMs });
   },
 }));

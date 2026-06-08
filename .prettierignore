@@ -1,0 +1,20 @@
+# Build output
+dist
+build
+target
+
+# Dependencies
+node_modules
+
+# Generated files
+*.lock
+src-tauri/gen
+src-tauri/target
+
+# Config files
+package-lock.json
+pnpm-lock.yaml
+
+# Large files
+*.min.js
+*.min.css

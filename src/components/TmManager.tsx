@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
+import { useToastStore } from "../stores/toastStore";
 import type { TmStats, TmExportEntry } from "../types";
 import { LANGUAGES } from "../types";
 import {
@@ -9,6 +10,7 @@ import {
   Upload,
   RefreshCw,
   FileJson,
+  FileText,
   BarChart3,
   Search,
   ChevronLeft,
@@ -19,6 +21,7 @@ const PAGE_SIZE = 20;
 
 function TmManager() {
   const { t } = useI18n();
+  const addToast = useToastStore((state) => state.addToast);
   const [stats, setStats] = useState<TmStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -99,6 +102,38 @@ function TmManager() {
     }
   }, []);
 
+  const handleExportTmx = useCallback(async () => {
+    setExporting(true);
+    try {
+      const xml = await invokeOrThrow<string>("tm_export_tmx", {
+        fromLang: null,
+        toLang: null,
+      });
+
+      const blob = new Blob([xml], { type: "application/xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `translation-memory-${new Date().toISOString().slice(0, 10)}.tmx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      addToast({
+        type: "success",
+        message: t("tm.tmxExportSuccess") || "TMX 导出成功",
+        duration: 3000,
+      });
+    } catch (err) {
+      console.error("Failed to export TMX:", err);
+      addToast({
+        type: "error",
+        message: `${t("tm.tmxExportFailed") || "TMX 导出失败"}: ${err}`,
+        duration: 4000,
+      });
+    } finally {
+      setExporting(false);
+    }
+  }, [addToast]);
+
   const handleImport = useCallback(async () => {
     const input = document.createElement("input");
     input.type = "file";
@@ -118,16 +153,64 @@ function TmManager() {
 
         // Reload stats after import
         await loadStats();
-        console.log(`Imported TM: ${result[0]} entries, ${result[1]} duplicates skipped`);
+        addToast({
+          type: "success",
+          message: `${t("tm.importSuccess") || "导入成功"}: ${result[0]} ${t("tm.records") || "条记录"}, ${result[1]} ${t("tm.duplicatesSkipped") || "条重复跳过"}`,
+          duration: 3000,
+        });
       } catch (err) {
         console.error("Failed to import TM:", err);
+        addToast({
+          type: "error",
+          message: `${t("tm.importFailed") || "导入失败"}: ${err}`,
+          duration: 4000,
+        });
       } finally {
         setImporting(false);
       }
     };
 
     input.click();
-  }, [loadStats]);
+  }, [loadStats, addToast]);
+
+  const handleImportTmx = useCallback(async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".tmx,.xml";
+
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      setImporting(true);
+      try {
+        const text = await file.text();
+        const result = await invokeOrThrow<[number, number]>("tm_import_tmx", {
+          xml: text,
+          deduplicate: true,
+        });
+
+        // Reload stats after import
+        await loadStats();
+        addToast({
+          type: "success",
+          message: `${t("tm.tmxImportSuccess") || "TMX 导入成功"}: ${result[0]} ${t("tm.records") || "条记录"}, ${result[1]} ${t("tm.duplicatesSkipped") || "条重复跳过"}`,
+          duration: 3000,
+        });
+      } catch (err) {
+        console.error("Failed to import TMX:", err);
+        addToast({
+          type: "error",
+          message: `${t("tm.tmxImportFailed") || "TMX 导入失败"}: ${err}`,
+          duration: 4000,
+        });
+      } finally {
+        setImporting(false);
+      }
+    };
+
+    input.click();
+  }, [loadStats, addToast]);
 
   return (
     <div className="space-y-4">
@@ -195,23 +278,47 @@ function TmManager() {
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex gap-3">
+      {/* Actions - JSON */}
+      <div className="flex gap-2">
         <button
-          className="flex-1 bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2.5 text-sm hover:bg-primary hover:text-white hover:border-primary transition-colors flex items-center justify-center gap-2"
+          className="flex-1 bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-primary hover:text-white hover:border-primary transition-colors flex items-center justify-center gap-2"
           onClick={handleExport}
           disabled={exporting || !stats || stats.total === 0}
         >
           <Download size={14} />
-          {exporting ? t("tm.exporting") : t("tm.exportTm")}
+          <FileJson size={14} />
+          {exporting ? t("tm.exporting") : "JSON"}
         </button>
         <button
-          className="flex-1 bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2.5 text-sm hover:bg-accent hover:text-white hover:border-accent transition-colors flex items-center justify-center gap-2"
+          className="flex-1 bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-accent hover:text-white hover:border-accent transition-colors flex items-center justify-center gap-2"
           onClick={handleImport}
           disabled={importing}
         >
           <Upload size={14} />
-          {importing ? t("tm.importing") : t("tm.importTm")}
+          <FileJson size={14} />
+          {importing ? t("tm.importing") : "JSON"}
+        </button>
+      </div>
+
+      {/* Actions - TMX */}
+      <div className="flex gap-2">
+        <button
+          className="flex-1 bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-primary hover:text-white hover:border-primary transition-colors flex items-center justify-center gap-2"
+          onClick={handleExportTmx}
+          disabled={exporting || !stats || stats.total === 0}
+        >
+          <Download size={14} />
+          <FileText size={14} />
+          {exporting ? t("tm.exporting") : "TMX"}
+        </button>
+        <button
+          className="flex-1 bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-accent hover:text-white hover:border-accent transition-colors flex items-center justify-center gap-2"
+          onClick={handleImportTmx}
+          disabled={importing}
+        >
+          <Upload size={14} />
+          <FileText size={14} />
+          {importing ? t("tm.importing") : "TMX"}
         </button>
       </div>
 
@@ -333,6 +440,7 @@ function TmManager() {
           <div>
             <p className="font-medium mb-1">{t("tm.aboutTitle")}</p>
             <p>{t("tm.aboutDesc")}</p>
+            <p className="mt-1">{t("tm.supportedFormats") || "支持格式: JSON (原生), TMX (翻译记忆交换标准)"}</p>
           </div>
         </div>
       </div>

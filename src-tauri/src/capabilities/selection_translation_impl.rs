@@ -254,6 +254,7 @@ fn get_cursor_position() -> (f64, f64) {
         extern "system" {
             fn GetCursorPos(lpPoint: *mut POINT) -> i32;
         }
+        // SAFETY: GetCursorPos is a standard Win32 API. Buffer is stack-allocated.
         unsafe {
             let mut point = POINT { x: 0, y: 0 };
             if GetCursorPos(&mut point) != 0 {

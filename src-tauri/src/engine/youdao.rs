@@ -220,22 +220,6 @@ fn md5_hex(input: &str) -> String {
     format!("{:x}", digest)
 }
 
-/// simple_sign: only signs client, mysticTime, product + key
-#[allow(dead_code)]
-fn simple_sign(params: &mut HashMap<String, String>, key: &str) {
-    let point_params = ["client", "mysticTime", "product"];
-    let mut parts = Vec::new();
-    for p in &point_params {
-        let val = params.get(*p).map(|s| s.as_str()).unwrap_or("");
-        parts.push(format!("{}={}", p, val));
-    }
-    parts.push(format!("key={}", key));
-    let raw = parts.join("&");
-    let sig = md5_hex(&raw);
-    params.insert("sign".into(), sig);
-    params.insert("pointParam".into(), point_params.join(","));
-}
-
 /// v3_sign: sorts ALL non-empty params alphabetically, appends key, MD5
 fn v3_sign(params: &mut HashMap<String, String>, key: &str) {
     let mut valid_keys: Vec<String> = params

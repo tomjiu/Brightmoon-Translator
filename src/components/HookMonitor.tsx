@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { safeInvoke, invokeOrThrow } from "../services/invoke";
 import { speakText as ttsSpeak } from "../services/tts";
 import { listen } from "@tauri-apps/api/event";
@@ -54,17 +54,122 @@ interface CapturedText {
   timestamp: number;
 }
 
-const formatTime = (timestamp: number) => {
+const formatTime = (timestamp: number, browserLocale: string) => {
   const date = new Date(timestamp);
-  return date.toLocaleTimeString("zh-CN", {
+  return date.toLocaleTimeString(browserLocale, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
   });
 };
 
+interface HookResultItemProps {
+  item: HookTranslatedItem;
+  speakingId: number | null;
+  copiedId: number | null;
+  onSpeak: (text: string, lang: string, id: number) => void;
+  onCopy: (text: string, id: number) => void;
+  t: (key: string) => string;
+  browserLocale: string;
+}
+
+const HookResultItem = memo(function HookResultItem({
+  item,
+  speakingId,
+  copiedId,
+  onSpeak,
+  onCopy,
+  t,
+  browserLocale,
+}: HookResultItemProps) {
+  return (
+    <div
+      className="bg-bg-secondary border border-border rounded-lg p-3 group hover:border-primary/30 transition-colors"
+    >
+      {/* Header: window + engine + time */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Monitor
+            size={12}
+            className="text-text-secondary shrink-0"
+          />
+          <span className="text-xs text-text-secondary truncate max-w-[200px]">
+            {item.processName || item.windowTitle}
+          </span>
+          {item.windowTitle && item.processName && (
+            <span className="text-[10px] text-text-secondary/60 truncate max-w-[120px]">
+              — {item.windowTitle}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${
+            item.source === "clipboard"
+              ? "bg-accent/20 text-accent"
+              : item.source === "ocr"
+              ? "bg-warning/20 text-warning"
+              : item.source === "hook"
+              ? "bg-success/20 text-success"
+              : "bg-primary/20 text-primary"
+          }`}>
+            {item.source === "clipboard" ? "CB" : item.source === "ocr" ? "OCR" : item.source === "hook" ? "HOOK" : "UIA"}
+          </span>
+          <Languages size={10} className="text-primary" />
+          <span className="text-[10px] text-primary font-medium">
+            {item.engine}
+          </span>
+          <Clock size={10} className="text-text-secondary ml-1" />
+          <span className="text-[10px] text-text-secondary">
+            {formatTime(item.timestamp, browserLocale)}
+          </span>
+        </div>
+      </div>
+
+      {/* Original text */}
+      <div className="text-xs text-text-secondary mb-1.5 line-clamp-2 leading-relaxed select-text">
+        {item.original}
+      </div>
+
+      {/* Translated text */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-sm text-text-primary leading-relaxed flex-1 select-text">
+          {item.translated}
+        </div>
+        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            className="p-1 rounded hover:bg-bg-tertiary text-text-secondary"
+            onClick={() => onSpeak(item.translated, "auto", item.id)}
+            title={t("hook.speak")}
+          >
+            <Volume2 size={14} className={speakingId === item.id ? "text-primary animate-pulse" : ""} />
+          </button>
+          <button
+            className="p-1 rounded hover:bg-bg-tertiary text-text-secondary"
+            onClick={() => onCopy(item.translated, item.id)}
+            title={t("hook.copy")}
+          >
+            {copiedId === item.id ? (
+              <Check size={14} className="text-success" />
+            ) : (
+              <Copy size={14} />
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 function HookMonitor() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+
+  const localeMap: Record<string, string> = {
+    zh: "zh-CN",
+    en: "en-US",
+    ja: "ja-JP",
+    ko: "ko-KR",
+  };
+  const browserLocale = localeMap[locale] || locale;
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
@@ -75,19 +180,19 @@ function HookMonitor() {
   const [searchQuery, setSearchQuery] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
   const hookConfig = config.hook;
-  const [showOverlay, setShowOverlay] = useState(hookConfig?.showOverlay ?? true);
+  const [showOverlay, setShowOverlay] = useState(hookConfig?.showOverlay === true);
   const [autoCopy, setAutoCopy] = useState(hookConfig?.autoCopy ?? false);
   const [enabledSources, setEnabledSources] = useState<string[]>(hookConfig?.enabledSources ?? ["uia", "clipboard", "ocr", "hook"]);
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const idCounter = useRef(0);
 
-  const ALL_SOURCES = [
+  const ALL_SOURCES = useMemo(() => [
     { key: "uia", label: "UIA", desc: t("hook.source.uia") },
     { key: "clipboard", label: "CB", desc: t("hook.source.clipboard") },
     { key: "ocr", label: "OCR", desc: t("hook.source.ocr") },
     { key: "hook", label: "HOOK", desc: t("hook.source.hook") },
-  ];
+  ], [t]);
 
   // H-Code DLL Injection state
   const [hcodeExpanded, setHcodeExpanded] = useState(false);
@@ -103,7 +208,9 @@ function HookMonitor() {
       .then((running) => {
         setIsRunning(running);
       })
-      .catch(() => {});
+      .catch((e) => {
+        console.error("Failed to get hook monitor status:", e);
+      });
   }, []);
 
   // Listen for hook-text-translated events
@@ -200,7 +307,9 @@ function HookMonitor() {
       .then(([status]) => {
         if (status) setHcodeStatus(status);
       })
-      .catch(() => {});
+      .catch((e) => {
+        console.error("Failed to get H-Code injection status:", e);
+      });
   }, []);
 
   // H-Code: Poll for messages when injected
@@ -218,7 +327,9 @@ function HookMonitor() {
             const [status] = await safeInvoke<HookStatus>("hook_status", undefined, { silent: true });
             if (status) setHcodeStatus(status);
           }
-        } catch {}
+        } catch (e) {
+          console.error("H-Code message polling error:", e);
+        }
       }, 200);
     }
     return () => {
@@ -277,7 +388,7 @@ function HookMonitor() {
   const handleExport = useCallback(() => {
     const lines = results.map(
       (r) =>
-        `[${formatTime(r.timestamp)}] (${r.engine}) ${r.windowTitle}\n  ${r.original}\n  => ${r.translated}\n`
+        `[${formatTime(r.timestamp, browserLocale)}] (${r.engine}) ${r.windowTitle}\n  ${r.original}\n  => ${r.translated}\n`
     );
     const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -286,7 +397,7 @@ function HookMonitor() {
     a.download = `hook-translations-${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [results]);
+  }, [results, browserLocale]);
 
   // H-Code: Inject DLL
   const handleHcodeInject = useCallback(async () => {
@@ -619,81 +730,16 @@ function HookMonitor() {
         ) : (
           <>
             {filteredResults.map((item) => (
-              <div
+              <HookResultItem
                 key={item.id}
-                className="bg-bg-secondary border border-border rounded-lg p-3 group hover:border-primary/30 transition-colors"
-              >
-                {/* Header: window + engine + time */}
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Monitor
-                      size={12}
-                      className="text-text-secondary shrink-0"
-                    />
-                    <span className="text-xs text-text-secondary truncate max-w-[200px]">
-                      {item.processName || item.windowTitle}
-                    </span>
-                    {item.windowTitle && item.processName && (
-                      <span className="text-[10px] text-text-secondary/60 truncate max-w-[120px]">
-                        — {item.windowTitle}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${
-                      item.source === "clipboard"
-                        ? "bg-accent/20 text-accent"
-                        : item.source === "ocr"
-                        ? "bg-warning/20 text-warning"
-                        : item.source === "hook"
-                        ? "bg-success/20 text-success"
-                        : "bg-primary/20 text-primary"
-                    }`}>
-                      {item.source === "clipboard" ? "CB" : item.source === "ocr" ? "OCR" : item.source === "hook" ? "HOOK" : "UIA"}
-                    </span>
-                    <Languages size={10} className="text-primary" />
-                    <span className="text-[10px] text-primary font-medium">
-                      {item.engine}
-                    </span>
-                    <Clock size={10} className="text-text-secondary ml-1" />
-                    <span className="text-[10px] text-text-secondary">
-                      {formatTime(item.timestamp)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Original text */}
-                <div className="text-xs text-text-secondary mb-1.5 line-clamp-2 leading-relaxed select-text">
-                  {item.original}
-                </div>
-
-                {/* Translated text */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="text-sm text-text-primary leading-relaxed flex-1 select-text">
-                    {item.translated}
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      className="p-1 rounded hover:bg-bg-tertiary text-text-secondary"
-                      onClick={() => speakText(item.translated, "auto", item.id)}
-                      title={t("hook.speak")}
-                    >
-                      <Volume2 size={14} className={speakingId === item.id ? "text-primary animate-pulse" : ""} />
-                    </button>
-                    <button
-                      className="p-1 rounded hover:bg-bg-tertiary text-text-secondary"
-                      onClick={() => copyText(item.translated, item.id)}
-                      title={t("hook.copy")}
-                    >
-                      {copiedId === item.id ? (
-                        <Check size={14} className="text-success" />
-                      ) : (
-                        <Copy size={14} />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
+                item={item}
+                speakingId={speakingId}
+                copiedId={copiedId}
+                onSpeak={speakText}
+                onCopy={copyText}
+                t={t}
+                browserLocale={browserLocale}
+              />
             ))}
             <div ref={bottomRef} />
           </>

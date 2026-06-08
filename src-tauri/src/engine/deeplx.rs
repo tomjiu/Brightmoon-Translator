@@ -2,7 +2,7 @@ use super::TranslationEngine;
 use async_trait::async_trait;
 use rand::Rng;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::sleep;
 
@@ -15,20 +15,8 @@ pub struct DeepLXEngine {
     max_retries: u32,
 }
 
-#[derive(Serialize)]
-#[allow(dead_code)]
-struct JsonRpcRequest {
-    jsonrpc: String,
-    method: String,
-    id: u64,
-    params: Vec<serde_json::Value>,
-}
-
 #[derive(Deserialize)]
-#[allow(dead_code)]
 struct JsonRpcResponse {
-    #[serde(default)]
-    id: Option<u64>,
     #[serde(default)]
     result: Option<TranslateResult>,
     #[serde(default)]
@@ -36,14 +24,9 @@ struct JsonRpcResponse {
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 struct TranslateResult {
     #[serde(default)]
     translations: Option<Vec<Translation>>,
-    #[serde(default)]
-    source_lang: Option<String>,
-    #[serde(default)]
-    target_lang: Option<String>,
 }
 
 #[derive(Deserialize)]

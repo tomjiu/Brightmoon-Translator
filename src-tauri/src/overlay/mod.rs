@@ -1,10 +1,12 @@
 pub mod follow_controller;
 pub mod html_builder;
+pub mod http_server;
 pub mod interaction;
 pub mod positioner;
 pub mod window_manager;
 
 pub use follow_controller::{FollowController, FollowMode, TargetBounds};
+pub use http_server::OverlayHttpServer;
 
 use serde::{Deserialize, Serialize};
 

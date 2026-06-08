@@ -34,11 +34,22 @@ interface LlmConfig {
 interface EnginesConfig {
   google: { enabled: boolean };
   baidu: { enabled: boolean; appId: string; secret: string };
-  youdao: { enabled: boolean; useAi: boolean };
+  youdao: {
+    enabled: boolean;
+    useAi: boolean;
+    ocrAppKey?: string;
+    ocrAppSecret?: string;
+  };
   deepl: { enabled: boolean; apiKey: string; pro: boolean };
   deeplx: { enabled: boolean; apiKey?: string; pro: boolean };
   microsoft: { enabled: boolean };
   yandex: { enabled: boolean };
+  offline: {
+    enabled: boolean;
+    autoSwitch: boolean;
+    downloadedModels: string[];
+    modelDir: string;
+  };
 }
 
 interface HotkeyConfig {
@@ -63,7 +74,37 @@ interface PromptTemplate {
 }
 
 export type AutoCopyMode = "translated" | "source" | "both" | "none";
+export type RoutingStrategy =
+  | "PrimaryOnly"
+  | "FallbackOnError"
+  | "ParallelCompare"
+  | "CostAware"
+  | "LatencyFirst";
+export type OcrEngine = "auto" | "winrt" | "youdao" | "tesseract";
 type WindowFollowMode = "none" | "cursor";
+
+export interface SyncConfig {
+  enabled: boolean;
+  serverUrl: string;
+  username: string;
+  password: string;
+  remoteDir: string;
+  intervalMins: number;
+  syncConfig: boolean;
+  syncGlossary: boolean;
+  syncHistory: boolean;
+  syncWordbook: boolean;
+  lastSyncAt: number;
+  lastSyncStatus: string;
+}
+
+export interface SyncStatus {
+  success: boolean;
+  message: string;
+  syncedAt: number;
+  uploaded: string[];
+  downloaded: string[];
+}
 
 export interface AppConfig {
   llm: LlmConfig;
@@ -86,6 +127,11 @@ export interface AppConfig {
   windowHeight?: number;
   windowFollowMode: WindowFollowMode;
   translationBlacklist: string[];
+  routingStrategy?: RoutingStrategy | null;
+  ocrEngine: OcrEngine;
+  overlayLevel?: number;
+  overlayAutoDismissMs?: number;
+  overlayFollowMode?: "none" | "cursor" | "target_bounds";
   ocrInterval?: number;
   ocrClickThrough?: boolean;
   ocrAutoBindWindow?: boolean;
@@ -97,6 +143,16 @@ export interface AppConfig {
   furiganaEnabled?: boolean;
   ttsAutoPlay?: boolean;
   ttsVoice?: string;
+  autoPlayTts?: boolean;
+  speechLanguage?: string;
+  realtimeTranslate?: boolean;
+  realtimeDelayMs?: number;
+  httpTimeoutSecs?: number;
+  ocrTimeoutSecs?: number;
+  llmTimeoutSecs?: number;
+  translationTimeoutSecs?: number;
+  edgeTtsToken?: string;
+  sync?: SyncConfig;
 }
 
 interface HookConfig {
@@ -241,4 +297,30 @@ export interface TmExportData {
 export interface TmStats {
   total: number;
   langPairs: [string, string, number][];
+}
+
+// Translation quality scoring types
+export interface TranslationScoreDetail {
+  name: string;
+  score: number;
+  weight: number;
+  description: string;
+}
+
+export interface TranslationScore {
+  overall: number;
+  bleuApprox: number;
+  lengthRatio: number;
+  terminology: number;
+  fluency: number;
+  details: TranslationScoreDetail[];
+  timestamp: number;
+}
+
+export interface EngineScore {
+  engine: string;
+  score: TranslationScore;
+  latencyMs: number;
+  text: string;
+  translated: string;
 }

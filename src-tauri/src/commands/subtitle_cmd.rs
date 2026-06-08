@@ -1,9 +1,11 @@
+use crate::security;
 use crate::subtitle::{self, SubtitleDocument, TranslatedSubtitle};
 use crate::AppState;
 use tauri::{Emitter, State, Window};
 
 #[tauri::command]
 pub async fn open_subtitle(file_path: String) -> Result<SubtitleDocument, String> {
+    security::validate_file_path(&file_path)?;
     subtitle::extract_text_from_subtitle(&file_path)
 }
 
@@ -15,6 +17,9 @@ pub async fn translate_subtitle(
     from_lang: String,
     to_lang: String,
 ) -> Result<TranslatedSubtitle, String> {
+    security::validate_file_path(&file_path)?;
+    security::validate_language_code(&from_lang)?;
+    security::validate_language_code(&to_lang)?;
     let mut doc = subtitle::extract_text_from_subtitle(&file_path)?;
 
     // Collect non-empty entries for batch translation
@@ -84,21 +89,8 @@ pub async fn export_subtitle_file(
     output_path: String,
     bilingual: bool,
 ) -> Result<String, String> {
-    // Validate output path: must have a parent directory that exists
-    let out = std::path::Path::new(&output_path);
-    let parent = out
-        .parent()
-        .ok_or_else(|| "Invalid output path".to_string())?;
-    if !parent.as_os_str().is_empty() && !parent.exists() {
-        return Err(format!(
-            "Output directory does not exist: {}",
-            parent.display()
-        ));
-    }
-    // Reject paths with traversal components
-    if output_path.contains("..") {
-        return Err("Output path must not contain '..'".to_string());
-    }
+    security::validate_file_path(&file_path)?;
+    security::validate_output_path(&output_path)?;
 
     let doc = subtitle::extract_text_from_subtitle(&file_path)?;
     let content = subtitle::export_subtitle(&doc, bilingual);

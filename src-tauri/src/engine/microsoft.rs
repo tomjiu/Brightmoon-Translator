@@ -66,10 +66,7 @@ impl TranslationEngine for MicrosoftEngine {
             .send()
             .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(anyhow::anyhow!("Microsoft API error: {}", status));
-        }
+        super::check_response(&resp, "Microsoft")?;
 
         let result: Vec<MicrosoftResponse> = resp.json().await?;
 

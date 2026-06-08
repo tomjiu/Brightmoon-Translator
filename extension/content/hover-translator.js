@@ -12,6 +12,9 @@
   let isTranslating = false;
   let enabled = true;
 
+  // Cache reference
+  let cache = window.MoonTranslationCache || null;
+
   // Configurable values (loaded from storage)
   let hoverDelay = 300;
   let minTextLength = 2;
@@ -295,6 +298,23 @@
     isTranslating = true;
     showTooltip(x, y);
 
+    // Check cache first
+    if (cache) {
+      const cached = cache.get(text, config.sourceLang, config.targetLang);
+      if (cached && !isTranslating) return;
+
+      if (cached) {
+        tooltip.querySelector(".mht-loading").style.display = "none";
+        const resultDiv = tooltip.querySelector(".mht-result");
+        const primary = cached.primary || (cached.results && cached.results[0]);
+        if (primary) {
+          resultDiv.textContent = primary.text;
+          resultDiv.style.display = "block";
+        }
+        return;
+      }
+    }
+
     try {
       const response = await sendMessage({
         type: "translate",
@@ -313,6 +333,11 @@
         if (primary) {
           resultDiv.textContent = primary.text;
           resultDiv.style.display = "block";
+
+          // Cache the result
+          if (cache) {
+            cache.set(text, config.sourceLang, config.targetLang, null, response);
+          }
         } else {
           tooltip.querySelector(".mht-error").textContent = t("noResult");
           tooltip.querySelector(".mht-error").style.display = "block";

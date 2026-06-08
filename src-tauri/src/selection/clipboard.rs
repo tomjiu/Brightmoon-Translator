@@ -98,6 +98,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 time: 0,
                 dwExtraInfo: 0,
             };
+            // SAFETY: copy_nonoverlapping for KEYBDINPUT into INPUT union.
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     &ki as *const _ as *const u8,
@@ -108,6 +109,8 @@ fn get_clipboard_selection() -> Option<(String, String)> {
             input
         }
 
+        // SAFETY: Win32 clipboard and input simulation APIs.
+        // Clipboard is saved/restored properly. SendInput simulates Ctrl+C.
         unsafe {
             // Get foreground window title
             let hwnd = GetForegroundWindow();
@@ -265,6 +268,8 @@ fn get_clipboard_selection() -> Option<(String, String)> {
 
 /// Get window title from HWND
 #[cfg(target_os = "windows")]
+/// Get window title from HWND.
+/// SAFETY: GetWindowTextW is a standard Win32 API.
 unsafe fn get_window_title(hwnd: *mut std::ffi::c_void) -> String {
     extern "system" {
         fn GetWindowTextW(hWnd: *mut std::ffi::c_void, lpString: *mut u16, nMaxCount: i32) -> i32;

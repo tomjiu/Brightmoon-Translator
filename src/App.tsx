@@ -1,16 +1,20 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, lazy, Suspense, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { safeInvoke, invokeOrThrow } from "./services/invoke";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import MainTranslator from "./pages/MainTranslator";
-import Settings from "./pages/Settings";
-import DocumentsViewer from "./pages/DocumentsViewer";
-import Vocabulary from "./pages/Vocabulary";
-import Plugins from "./pages/Plugins";
-import HookMonitor from "./components/HookMonitor";
+const MainTranslator = lazy(() => import("./pages/MainTranslator"));
+const Settings = lazy(() => import("./pages/Settings"));
+const DocumentsViewer = lazy(() => import("./pages/DocumentsViewer"));
+const Vocabulary = lazy(() => import("./pages/Vocabulary"));
+const Plugins = lazy(() => import("./pages/Plugins"));
+const PluginMarketplace = lazy(() => import("./pages/PluginMarketplace"));
+const MetricsDashboard = lazy(() => import("./pages/MetricsDashboard"));
+const TmManager = lazy(() => import("./pages/TmManager"));
+const HookMonitor = lazy(() => import("./components/HookMonitor"));
 import ErrorBoundary from "./components/ErrorBoundary";
 import OcrScreenshotSelector from "./components/OcrScreenshotSelector";
 import OcrRegionFrame from "./components/OcrRegionFrame";
+import OcrScreenshotTranslator from "./components/OcrScreenshotTranslator";
 import { useThemeStore } from "./stores/themeStore";
 import { useTranslateStore } from "./stores/translateStore";
 import { useToastStore } from "./stores/toastStore";
@@ -27,9 +31,13 @@ import {
   Puzzle,
   Zap,
   BookOpen,
+  BarChart3,
+  ShoppingBag,
+  Database,
+  Loader2,
 } from "lucide-react";
 
-type Page = "translator" | "hook" | "documents" | "vocabulary" | "plugins" | "settings";
+type Page = "translator" | "hook" | "documents" | "vocabulary" | "plugins" | "marketplace" | "metrics" | "tm" | "settings";
 
 interface NavItem {
   id: Page;
@@ -38,8 +46,9 @@ interface NavItem {
   group: "core" | "read" | "data" | "system";
 }
 
+const windowMode = new URLSearchParams(window.location.search).get("window");
+
 function App() {
-  const windowMode = new URLSearchParams(window.location.search).get("window");
   if (windowMode === "ocr-screenshot") {
     return <OcrScreenshotSelector />;
   }
@@ -53,6 +62,7 @@ function App() {
 function MainApp() {
   const [page, setPage] = useState<Page>("translator");
   const [pinned, setPinned] = useState(false);
+  const [ocrLaunchNonce, setOcrLaunchNonce] = useState(0);
   const { theme, toggleTheme } = useThemeStore();
   const setSourceText = useTranslateStore((s) => s.setSourceText);
   const addToast = useToastStore((s) => s.addToast);
@@ -64,22 +74,18 @@ function MainApp() {
     loadDefaults();
   }, [loadDefaults]);
 
-  const startOcrScreenshot = useCallback(async () => {
-    try {
-      await invokeOrThrow("create_ocr_screenshot_selector");
-    } catch (err) {
-      console.error("Failed to start OCR screenshot:", err);
-    }
+  const startOcrScreenshot = useCallback(() => {
+    setOcrLaunchNonce((n) => n + 1);
   }, []);
 
-  const togglePin = async () => {
+  const togglePin = useCallback(async () => {
     try {
       const result = await invokeOrThrow<boolean>("toggle_always_on_top");
       setPinned(result);
     } catch (err) {
       console.error("Failed to toggle pin:", err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     // Listen for navigation events from tray
@@ -91,6 +97,9 @@ function MainApp() {
         documents: "documents",
         vocabulary: "vocabulary",
         plugins: "plugins",
+        marketplace: "marketplace",
+        metrics: "metrics",
+        tm: "tm",
       };
       if (pageMap[event.payload]) {
         setPage(pageMap[event.payload]);
@@ -213,20 +222,23 @@ function MainApp() {
     };
   }, [setSourceText, startOcrScreenshot]);
 
-  const navItems: NavItem[] = [
+  const navItems: NavItem[] = useMemo(() => [
     { id: "translator", icon: Languages, label: t("nav.translator"), group: "core" },
     { id: "hook", icon: Zap, label: t("nav.hook"), group: "core" },
     { id: "documents", icon: FileText, label: t("nav.documents"), group: "core" },
     { id: "vocabulary", icon: BookOpen, label: t("nav.vocabulary"), group: "core" },
     { id: "plugins", icon: Puzzle, label: t("nav.plugins"), group: "system" },
+    { id: "marketplace", icon: ShoppingBag, label: t("nav.marketplace"), group: "system" },
+    { id: "metrics", icon: BarChart3, label: t("nav.metrics"), group: "system" },
+    { id: "tm", icon: Database, label: t("nav.tm") || "TM", group: "system" },
     { id: "settings", icon: SettingsIcon, label: t("nav.settings"), group: "system" },
-  ];
+  ], [t]);
 
   // Group nav items for rendering with separators
-  const navGroups = [
+  const navGroups = useMemo(() => [
     { key: "core", items: navItems.filter((i) => i.group === "core") },
     { key: "system", items: navItems.filter((i) => i.group === "system") },
-  ];
+  ], [navItems]);
 
   return (
     <div className="flex h-screen bg-bg-primary">
@@ -301,14 +313,28 @@ function MainApp() {
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
         <ErrorBoundary key={page}>
-          {page === "translator" && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
-          {page === "documents" && <DocumentsViewer />}
-          {page === "vocabulary" && <Vocabulary />}
-          {page === "settings" && <Settings />}
-          {page === "plugins" && <Plugins />}
-          {page === "hook" && <HookMonitor />}
+          <Suspense
+            fallback={
+              <div className="flex-1 flex items-center justify-center h-full">
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+              </div>
+            }
+          >
+            {page === "translator" && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
+            {page === "documents" && <DocumentsViewer />}
+            {page === "vocabulary" && <Vocabulary />}
+            {page === "settings" && <Settings />}
+            {page === "plugins" && <Plugins />}
+            {page === "marketplace" && <PluginMarketplace />}
+            {page === "metrics" && <MetricsDashboard />}
+            {page === "tm" && <TmManager />}
+            {page === "hook" && <HookMonitor />}
+          </Suspense>
         </ErrorBoundary>
       </main>
+
+      {/* Headless OCR controller - handles screenshot selection and region-frame updates */}
+      <OcrScreenshotTranslator launchNonce={ocrLaunchNonce} />
 
       {/* Toast Notifications */}
       <ToastContainer />

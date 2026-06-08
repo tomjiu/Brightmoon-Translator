@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
+import { useTranslateStore } from "../stores/translateStore";
 import { Search, Trash2, Copy, Check, X, Download, Plus, Edit2, Save } from "lucide-react";
 
 interface WordBookItem {
@@ -13,9 +14,9 @@ interface WordBookItem {
   timestamp: number;
 }
 
-const formatTime = (timestamp: number) => {
+const formatTime = (timestamp: number, browserLocale: string) => {
   const date = new Date(timestamp);
-  return date.toLocaleString("zh-CN", {
+  return date.toLocaleString(browserLocale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -36,7 +37,17 @@ function WordBook() {
   const [newTranslation, setNewTranslation] = useState("");
   const [newNote, setNewNote] = useState("");
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const fromLang = useTranslateStore((s) => s.fromLang);
+  const toLang = useTranslateStore((s) => s.toLang);
+
+  const localeMap: Record<string, string> = {
+    zh: "zh-CN",
+    en: "en-US",
+    ja: "ja-JP",
+    ko: "ko-KR",
+  };
+  const browserLocale = localeMap[locale] || locale;
 
   useEffect(() => {
     loadWordBook();
@@ -89,8 +100,8 @@ function WordBook() {
       await invokeOrThrow("add_wordbook_entry", {
         word: newWord.trim(),
         translation: newTranslation.trim(),
-        fromLang: "auto",
-        toLang: "zh",
+        fromLang,
+        toLang,
         note: newNote.trim() || null,
       });
       setNewWord("");
@@ -183,7 +194,7 @@ function WordBook() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `生词本_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `${t("wordbook.csvFilename")}_${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -408,7 +419,7 @@ function WordBook() {
                   <span className="uppercase font-medium">
                     {item.fromLang} → {item.toLang}
                   </span>
-                  <span>{formatTime(item.timestamp)}</span>
+                  <span>{formatTime(item.timestamp, browserLocale)}</span>
                 </div>
               </div>
             ))}

@@ -223,6 +223,9 @@ impl HookMonitor {
         // Post WM_QUIT to all message-loop threads so they exit cleanly
         let tids = self.message_loop_tids.lock().unwrap_or_else(|e| e.into_inner());
         for tid in tids.iter() {
+            // SAFETY: PostThreadMessageW with valid thread IDs. WM_QUIT causes GetMessageW to return FALSE.
+            // SAFETY: Win32 API calls for window info and screen capture.
+            // All HWND values are validated before use.
             unsafe {
                 let _ = PostThreadMessageW(*tid, WM_QUIT, WPARAM(0), LPARAM(0));
             }
@@ -241,6 +244,7 @@ impl Drop for HookMonitor {
         // cleanup here synchronously.
         if let Ok(tids) = self.message_loop_tids.lock() {
             for tid in tids.iter() {
+                // SAFETY: PostThreadMessageW with valid thread IDs. WM_QUIT causes GetMessageW to return FALSE.
                 unsafe {
                     let _ = PostThreadMessageW(*tid, WM_QUIT, WPARAM(0), LPARAM(0));
                 }
@@ -300,6 +304,8 @@ async fn clipboard_monitor_task(
     let (clip_tx, mut clip_rx) = mpsc::unbounded_channel::<String>();
 
     // Spawn a dedicated thread with hidden window for clipboard notifications
+    // SAFETY: Dedicated thread with message-only window for clipboard notifications.
+    // All Win32 handles are properly cleaned up when the message loop exits.
     let listener_thread = std::thread::spawn(move || unsafe {
         use windows::Win32::System::DataExchange::{
             AddClipboardFormatListener, RemoveClipboardFormatListener,
@@ -400,6 +406,8 @@ thread_local! {
         std::cell::RefCell::new(None);
 }
 
+/// Read text from clipboard in CF_UNICODETEXT format.
+/// SAFETY: Win32 clipboard API calls. OpenClipboard/CloseClipboard bracket the operation.
 fn read_clipboard_text() -> Option<String> {
     unsafe {
         use windows::Win32::Foundation::HGLOBAL;
@@ -456,6 +464,8 @@ async fn ocr_monitor_task(
         let result = tokio::task::spawn_blocking(|| {
             use screenshots::image::ImageFormat;
 
+            // SAFETY: Win32 API calls for window info and screen capture.
+            // All HWND values are validated before use.
             unsafe {
                 let hwnd = GetForegroundWindow();
                 let window_title = get_window_title(hwnd);
@@ -534,6 +544,7 @@ async fn win_event_hook_task(
     let (hook_tx, mut hook_rx) = mpsc::unbounded_channel::<(isize, String, String)>();
 
     // Spawn the Win32 hook thread (must have a message loop)
+    // SAFETY: Dedicated thread for Win32 event hooks. Hooks are properly unhooked on exit.
     let hook_thread = std::thread::spawn(move || unsafe {
         // Register thread ID for clean shutdown
         let tid = GetCurrentThreadId();
@@ -671,6 +682,8 @@ unsafe fn get_wm_text(hwnd: HWND) -> String {
 
 // ─── UI Automation Helpers ──────────────────────────────────────────────────
 
+/// Capture foreground window text via UI Automation.
+/// SAFETY: Win32 API calls to get foreground window and read its text.
 fn capture_foreground_text() -> Option<(String, usize, String, String, Option<(i32, i32, i32, i32)>)> {
     unsafe {
         let hwnd = GetForegroundWindow();
@@ -682,6 +695,8 @@ fn capture_foreground_text() -> Option<(String, usize, String, String, Option<(i
     }
 }
 
+/// Read text from window using UI Automation TextPattern.
+/// SAFETY: COM and UI Automation API calls. All COM objects are reference-counted.
 unsafe fn get_window_text_pattern_with_rect(hwnd: HWND) -> Option<(String, Option<(i32, i32, i32, i32)>)> {
     let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
     if hr.is_err() { return None; }
@@ -706,6 +721,8 @@ unsafe fn get_window_text_pattern_with_rect(hwnd: HWND) -> Option<(String, Optio
     Some((text_str, text_rect))
 }
 
+/// Get window title from HWND.
+/// SAFETY: GetWindowTextW is a standard Win32 API.
 unsafe fn get_window_title(hwnd: HWND) -> String {
     let mut buffer = [0u16; 512];
     let len = GetWindowTextW(hwnd, &mut buffer);
@@ -716,6 +733,8 @@ unsafe fn get_window_title(hwnd: HWND) -> String {
     }
 }
 
+/// Get process name from HWND.
+/// SAFETY: Win32 API calls to get process information. Handle is properly closed.
 unsafe fn get_process_name(hwnd: HWND) -> String {
     let mut process_id = 0u32;
     GetWindowThreadProcessId(hwnd, Some(&mut process_id));

@@ -331,36 +331,37 @@ impl HistoryStore {
         })
     }
 
-    /// Export all TM entries as JSON-serializable data
+    /// Export all TM entries as JSON-serializable data.
+    /// Uses parameterized queries to prevent SQL injection.
     pub fn export_tm(&self, from: Option<&str>, to: Option<&str>) -> TmExportData {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        let query = match (from, to) {
-            (Some(f), Some(t)) => {
-                format!(
-                    "SELECT source_text, translated_text, from_lang, to_lang, engine, timestamp
-                     FROM history WHERE from_lang = '{}' AND to_lang = '{}' ORDER BY timestamp DESC",
-                    f, t
-                )
-            }
-            (Some(f), None) => {
-                format!(
-                    "SELECT source_text, translated_text, from_lang, to_lang, engine, timestamp
-                     FROM history WHERE from_lang = '{}' ORDER BY timestamp DESC",
-                    f
-                )
-            }
-            (None, Some(t)) => {
-                format!(
-                    "SELECT source_text, translated_text, from_lang, to_lang, engine, timestamp
-                     FROM history WHERE to_lang = '{}' ORDER BY timestamp DESC",
-                    t
-                )
-            }
-            (None, None) => {
+
+        // Build query with parameterized placeholders to prevent SQL injection
+        let (query, param_values): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match (from, to) {
+            (Some(f), Some(t)) => (
+                "SELECT source_text, translated_text, from_lang, to_lang, engine, timestamp
+                 FROM history WHERE from_lang = ?1 AND to_lang = ?2 ORDER BY timestamp DESC"
+                    .to_string(),
+                vec![Box::new(f.to_string()), Box::new(t.to_string())],
+            ),
+            (Some(f), None) => (
+                "SELECT source_text, translated_text, from_lang, to_lang, engine, timestamp
+                 FROM history WHERE from_lang = ?1 ORDER BY timestamp DESC"
+                    .to_string(),
+                vec![Box::new(f.to_string())],
+            ),
+            (None, Some(t)) => (
+                "SELECT source_text, translated_text, from_lang, to_lang, engine, timestamp
+                 FROM history WHERE to_lang = ?1 ORDER BY timestamp DESC"
+                    .to_string(),
+                vec![Box::new(t.to_string())],
+            ),
+            (None, None) => (
                 "SELECT source_text, translated_text, from_lang, to_lang, engine, timestamp
                  FROM history ORDER BY timestamp DESC"
-                    .to_string()
-            }
+                    .to_string(),
+                vec![],
+            ),
         };
 
         let mut stmt = match conn.prepare(&query) {
@@ -376,7 +377,7 @@ impl HistoryStore {
         };
 
         let entries: Vec<TmExportEntry> = stmt
-            .query_map([], |row| {
+            .query_map(rusqlite::params_from_iter(param_values.iter().map(|p| p.as_ref())), |row| {
                 Ok(TmExportEntry {
                     source: row.get(0)?,
                     target: row.get(1)?,
@@ -473,7 +474,8 @@ impl HistoryStore {
         TmStats { total, lang_pairs }
     }
 
-    /// Search TM entries by query text and optional language pair filter
+    /// Search TM entries by query text and optional language pair filter.
+    /// Uses parameterized queries and escaped LIKE patterns to prevent injection.
     pub fn search_tm(
         &self,
         query: &str,
@@ -483,10 +485,15 @@ impl HistoryStore {
         offset: usize,
     ) -> (Vec<TmExportEntry>, usize) {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        let query_pattern = format!("%{}%", query.to_lowercase());
+        // Escape LIKE special characters to prevent pattern injection
+        let escaped_query = query.to_lowercase()
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let query_pattern = format!("%{}%", escaped_query);
 
         let mut conditions = vec![
-            "(LOWER(source_text) LIKE ?1 OR LOWER(translated_text) LIKE ?1)".to_string(),
+            "(LOWER(source_text) LIKE ?1 ESCAPE '\\' OR LOWER(translated_text) LIKE ?1 ESCAPE '\\')".to_string(),
         ];
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
             Box::new(query_pattern.clone()),
@@ -552,6 +559,42 @@ impl HistoryStore {
             .unwrap_or_default();
 
         (entries, total)
+    }
+
+    /// Delete TM entries matching the given criteria.
+    /// Returns the number of entries deleted.
+    pub fn delete_tm(
+        &self,
+        source: &str,
+        target: &str,
+        from_lang: &str,
+        to_lang: &str,
+    ) -> usize {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        conn.execute(
+            "DELETE FROM history WHERE source_text = ?1 AND translated_text = ?2 AND from_lang = ?3 AND to_lang = ?4",
+            params![source, target, from_lang, to_lang],
+        )
+        .unwrap_or(0)
+    }
+
+    /// Bulk delete TM entries by a list of source/target/lang tuples.
+    /// Returns the total number of entries deleted.
+    pub fn batch_delete_tm(
+        &self,
+        entries: &[(String, String, String, String)],
+    ) -> usize {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut total_deleted = 0usize;
+        for (source, target, from_lang, to_lang) in entries {
+            total_deleted += conn
+                .execute(
+                    "DELETE FROM history WHERE source_text = ?1 AND translated_text = ?2 AND from_lang = ?3 AND to_lang = ?4",
+                    params![source, target, from_lang, to_lang],
+                )
+                .unwrap_or(0);
+        }
+        total_deleted
     }
 }
 
@@ -726,9 +769,11 @@ impl WordBookStore {
         }
     }
 
+    /// Search wordbook entries by query.
+    /// Uses escaped LIKE patterns to prevent pattern injection.
     pub fn search(&self, query: &str) -> Vec<WordBookItem> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        let mut stmt = match conn.prepare("SELECT id, word, translation, from_lang, to_lang, note, timestamp FROM wordbook WHERE word LIKE ?1 OR translation LIKE ?1 ORDER BY timestamp DESC") {
+        let mut stmt = match conn.prepare("SELECT id, word, translation, from_lang, to_lang, note, timestamp FROM wordbook WHERE word LIKE ?1 ESCAPE '\\' OR translation LIKE ?1 ESCAPE '\\' ORDER BY timestamp DESC") {
             Ok(stmt) => stmt,
             Err(e) => {
                 tracing::error!("Failed to prepare wordbook search: {}", e);
@@ -736,7 +781,12 @@ impl WordBookStore {
             }
         };
 
-        let pattern = format!("%{}%", query);
+        // Escape LIKE special characters to prevent pattern injection
+        let escaped = query
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let pattern = format!("%{}%", escaped);
         let result = stmt.query_map(params![pattern], |row| {
             Ok(WordBookItem {
                 id: row.get(0)?,

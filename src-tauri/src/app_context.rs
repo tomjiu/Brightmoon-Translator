@@ -6,7 +6,7 @@ use crate::glossary::Glossary;
 use crate::hook_profile::HookProfileManager;
 use crate::memory::{HistoryStore, WordBookStore};
 use crate::metrics::MetricsCollector;
-use crate::overlay::FollowController;
+use crate::overlay::{FollowController, OverlayHttpServer};
 use crate::post_process::PostProcessor;
 use crate::pre_process::PreProcessor;
 use crate::selection;
@@ -34,6 +34,8 @@ pub struct DocumentContext {
 /// Overlay window management context
 pub struct OverlayContext {
     pub follow_controller: Arc<FollowController>,
+    /// HTTP server for serving overlay content (avoids data URI overhead)
+    pub http_server: Arc<RwLock<Option<OverlayHttpServer>>>,
 }
 
 /// Hook monitor context for foreground window text capture
@@ -59,13 +61,13 @@ pub struct Contexts {
 }
 
 /// Initialize all sub-contexts from config.
-pub fn build_contexts() -> Contexts {
+pub async fn build_contexts() -> Contexts {
     let config = AppConfig::load();
     let history = HistoryStore::load();
     let wordbook = WordBookStore::load();
     let post_processor = PostProcessor::load();
     let pre_processor = PreProcessor::load();
-    let glossary = Glossary::load();
+    let glossary = Glossary::load().await;
     let engine_router = Arc::new(RwLock::new(engine::Router::new(&config)));
     let cache = Arc::new(TranslationCache::new(1000));
     let metrics = Arc::new(MetricsCollector::new());
@@ -110,6 +112,7 @@ pub fn build_contexts() -> Contexts {
         },
         overlay: OverlayContext {
             follow_controller,
+            http_server: Arc::new(RwLock::new(None)),
         },
         hook: HookContext {
             hook_monitor,

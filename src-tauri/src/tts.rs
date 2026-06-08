@@ -99,13 +99,31 @@ pub fn get_voice_for_lang(lang: &str) -> &str {
     }
 }
 
-const TRUSTED_CLIENT_TOKEN: &str = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
+const DEFAULT_EDGE_TTS_TOKEN: &str = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
 const EDGE_TTS_URL: &str = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken={}";
 
+/// Get the Edge TTS token: config value > env var > built-in default
+fn get_edge_tts_token(config_token: &str) -> String {
+    if !config_token.is_empty() {
+        return config_token.to_string();
+    }
+    if let Ok(env_token) = std::env::var("EDGE_TTS_TOKEN") {
+        if !env_token.is_empty() {
+            return env_token;
+        }
+    }
+    DEFAULT_EDGE_TTS_TOKEN.to_string()
+}
+
 pub async fn synthesize(text: &str, voice: &str) -> anyhow::Result<Vec<u8>> {
+    synthesize_with_token(text, voice, "").await
+}
+
+pub async fn synthesize_with_token(text: &str, voice: &str, config_token: &str) -> anyhow::Result<Vec<u8>> {
+    let token = get_edge_tts_token(config_token);
     let url = format!(
         "{}&ConnectionId={}",
-        EDGE_TTS_URL.replace("{}", TRUSTED_CLIENT_TOKEN),
+        EDGE_TTS_URL.replace("{}", &token),
         uuid::Uuid::new_v4().to_string().replace("-", "")
     );
 

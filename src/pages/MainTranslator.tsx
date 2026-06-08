@@ -6,6 +6,7 @@ import { useConfigStore } from "../stores/configStore";
 import { useI18n } from "../i18n";
 import { LANGUAGES } from "../types";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
+import { normalizeTranslatorInput } from "../services/translatorText";
 import { RubyText } from "../components/RubyText";
 import {
   ArrowLeftRight,
@@ -79,7 +80,15 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
   } = useTranslateStore();
 
   const config = useConfigStore((s) => s.config);
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+
+  const localeMap: Record<string, string> = {
+    zh: "zh-CN",
+    en: "en-US",
+    ja: "ja-JP",
+    ko: "ko-KR",
+  };
+  const browserLocale = localeMap[locale] || locale;
 
   // Speech recognition
   const {
@@ -116,16 +125,17 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
 
   const handleInput = useCallback(
     (value: string) => {
-      setSourceText(value);
+      const normalizedValue = normalizeTranslatorInput(value, deleteNewlines);
+      setSourceText(normalizedValue);
       setMaskRevealed(false);
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
       }
       debounceTimer.current = setTimeout(() => {
-        if (value.trim()) {
-          detectLanguage(value);
+        if (normalizedValue.trim()) {
+          detectLanguage(normalizedValue);
           // Auto-enable embedded mode for multi-line text
-          const isMultiLine = value.includes("\n");
+          const isMultiLine = normalizedValue.includes("\n");
           const store = useTranslateStore.getState();
           if (store.embeddedMode || isMultiLine) {
             translateEmbedded();
@@ -136,7 +146,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
         }
       }, 500);
     },
-    [setSourceText, translateStream, translateEmbedded, lookupDictionary, detectLanguage]
+    [deleteNewlines, setSourceText, translateStream, translateEmbedded, lookupDictionary, detectLanguage]
   );
 
   const copyResult = (text: string, index: number) => {
@@ -211,7 +221,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
-    return date.toLocaleString("zh-CN", {
+    return date.toLocaleString(browserLocale, {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
@@ -219,62 +229,66 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
   };
 
   return (
-    <div className="flex flex-col h-full p-4 gap-3">
+    <div className="flex flex-col h-full p-3 gap-2">
       {/* Language Bar */}
-      <div className="flex items-center justify-center gap-3">
-        <select
-          value={fromLang}
-          onChange={(e) => setFromLang(e.target.value)}
-          className="bg-bg-secondary text-text-primary border border-border rounded-lg px-4 py-2 text-sm cursor-pointer min-w-[120px] focus:border-primary"
-        >
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.name}
-            </option>
-          ))}
-        </select>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 basis-[280px] items-center justify-center gap-1.5">
+          <select
+            value={fromLang}
+            onChange={(e) => setFromLang(e.target.value)}
+            className="h-8 min-w-0 w-[clamp(96px,22vw,132px)] bg-bg-secondary text-text-primary border border-border rounded-md px-2 py-1 text-xs cursor-pointer focus:border-primary"
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </select>
 
-        {detectedLang && fromLang === "auto" && (
-          <span className="text-xs text-text-secondary">
-            {t("translator.detected")}: {detectedLang}
-          </span>
-        )}
+          {detectedLang && fromLang === "auto" && (
+            <span
+              className="max-w-[112px] truncate text-xs text-text-secondary"
+              title={`${t("translator.detected")}: ${detectedLang}`}
+            >
+              {t("translator.detected")}: {detectedLang}
+            </span>
+          )}
 
-        <button
-          className="bg-bg-tertiary border border-border text-text-primary rounded-lg px-4 py-2 text-lg hover:bg-primary hover:text-white transition-colors"
-          onClick={swapLanguages}
-          title={t("translator.swapLang")}
-        >
-          <ArrowLeftRight size={18} />
-        </button>
-
-        <select
-          value={toLang}
-          onChange={(e) => setToLang(e.target.value)}
-          className="bg-bg-secondary text-text-primary border border-border rounded-lg px-4 py-2 text-sm cursor-pointer min-w-[120px] focus:border-primary"
-        >
-          {LANGUAGES.filter((l) => l.code !== "auto").map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.name}
-            </option>
-          ))}
-        </select>
-
-        <div className="ml-2 flex items-center gap-2">
           <button
-            className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-primary-hover transition-colors flex items-center gap-2"
+            className="h-8 w-8 shrink-0 bg-bg-tertiary border border-border text-text-primary rounded-md hover:bg-primary hover:text-white transition-colors flex items-center justify-center"
+            onClick={swapLanguages}
+            title={t("translator.swapLang")}
+          >
+            <ArrowLeftRight size={16} />
+          </button>
+
+          <select
+            value={toLang}
+            onChange={(e) => setToLang(e.target.value)}
+            className="h-8 min-w-0 w-[clamp(96px,22vw,132px)] bg-bg-secondary text-text-primary border border-border rounded-md px-2 py-1 text-xs cursor-pointer focus:border-primary"
+          >
+            {LANGUAGES.filter((l) => l.code !== "auto").map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            className="h-8 w-8 shrink-0 bg-primary text-white rounded-md hover:bg-primary-hover transition-colors flex items-center justify-center shadow-sm shadow-primary/20"
             onClick={onOcrScreenshot}
-            title="全屏截图 OCR 翻译"
+            title={t("ocr.screenshotTranslate") || "OCR截图翻译"}
           >
             <Scan size={16} />
-            OCR截图翻译
           </button>
 
           {/* Mode Toggles Group */}
-          <div className="flex items-center gap-1 bg-bg-tertiary/50 rounded-lg p-1">
+          <div className="flex items-center gap-0.5 bg-bg-tertiary/50 rounded-md p-0.5">
             {/* Incremental Mode Toggle */}
             <button
-              className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
                 incrementalMode
                   ? "bg-accent text-white"
                   : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
@@ -287,7 +301,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
 
             {/* Delete Newlines Toggle */}
             <button
-              className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
                 deleteNewlines
                   ? "bg-warning text-white"
                   : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
@@ -300,7 +314,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
 
             {/* Clipboard Monitor Toggle */}
             <button
-              className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
                 clipboardMonitorEnabled
                   ? "bg-primary text-white"
                   : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
@@ -313,7 +327,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
 
             {/* Bilingual Mode Toggle */}
             <button
-              className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
                 bilingualMode
                   ? "bg-accent text-white"
                   : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
@@ -326,13 +340,12 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
 
             {/* Embedded Translation Mode Toggle */}
             <button
-              className={`w-8 h-8 rounded-md flex items-center justify-center transition-colors ${
+              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
                 embeddedMode
                   ? "bg-primary text-white"
                   : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
               }`}
               onClick={() => {
-                console.log("[Embedded] button clicked");
                 toggleEmbeddedMode();
               }}
               title={t(embeddedMode ? "translator.embeddedOff" : "translator.embeddedOn")}
@@ -344,15 +357,15 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
       </div>
 
       {/* Translation Area */}
-      <div className="flex gap-3 flex-1 min-h-0">
+      <div className="flex gap-2 flex-1 min-h-0">
         {/* Source Panel */}
-        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-xl overflow-hidden">
+        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-lg overflow-hidden">
           <div className="flex-1 relative">
             <textarea
               value={sourceText}
               onChange={(e) => handleInput(e.target.value)}
               placeholder={t("translator.placeholder")}
-              className="w-full h-full bg-transparent text-text-primary p-4 text-sm leading-relaxed resize-none outline-none placeholder:text-text-secondary"
+              className="w-full h-full bg-transparent text-text-primary p-3 text-sm leading-relaxed resize-none outline-none placeholder:text-text-secondary"
               autoFocus
             />
             {isListening && interimTranscript && (
@@ -361,7 +374,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
               </div>
             )}
           </div>
-          <div className="flex justify-between items-center px-4 py-2 border-t border-border">
+          <div className="flex justify-between items-center px-3 py-1.5 border-t border-border">
             <div className="flex items-center gap-2">
               <span className="text-xs text-text-secondary">
                 {sourceText.length} {t("translator.chars")}
@@ -424,7 +437,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
         </div>
 
         {/* Result Panel */}
-        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-xl overflow-hidden">
+        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-lg overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             {/* Incremental Entries */}
             {incrementalMode && incrementalEntries.length > 0 && (

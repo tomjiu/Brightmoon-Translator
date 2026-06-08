@@ -9,10 +9,12 @@ use crate::models::error::TranslationError;
 use crate::post_process::PostProcessor;
 use crate::pre_process::PreProcessor;
 pub use crate::models::translation::BatchTranslationResult;
+use std::collections::VecDeque;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
+use tracing::{info_span, Instrument};
 
 /// Result of text preparation before engine call
 struct PreparedText {
@@ -132,148 +134,165 @@ impl TranslationService {
         from: &str,
         to: &str,
     ) -> Result<TranslateResponse, TranslationError> {
-        let preview: String = text.chars().take(100).collect();
-        tracing::info!("[Translation] Input text ({} chars): {:?}", text.len(), preview);
+        let span = info_span!("translate", chars = text.len(), from, to);
+        async {
+            let preview: String = text.chars().take(100).collect();
+            tracing::info!("[Translation] Input text ({} chars): {:?}", text.len(), preview);
 
-        let prepared = self.prepare(text, from, to).await;
+            let prepared = self.prepare(text, from, to).await;
 
-        // Get TM config
-        let (tm_enabled, tm_threshold) = {
-            let config = self.config.lock().await;
-            (config.tm_enabled, config.tm_threshold)
-        };
+            // Get TM config
+            let (tm_enabled, tm_threshold) = {
+                let config = self.config.lock().await;
+                (config.tm_enabled, config.tm_threshold)
+            };
 
-        // Check Translation Memory before cache
-        if tm_enabled {
-            let history = self.history.lock().await;
-            if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold) {
-                drop(history);
-                self.metrics.record_cache_hit().await;
-                let tm_preview: String = tm_match.source_text.chars().take(50).collect();
-                tracing::info!(
-                    "[TM] Hit: similarity={:.2}, engine={}, stored_source={:?}",
-                    tm_match.similarity, tm_match.engine, tm_preview
-                );
-                let final_text = self.finalize(&tm_match.translated_text, text, from, to, &prepared.blacklist).await;
-                return Ok(TranslateResponse {
-                    results: vec![TranslationResult {
-                        engine: format!("TM ({})", tm_match.engine),
+            // Check Translation Memory before cache
+            if tm_enabled {
+                let history = self.history.lock().await;
+                if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold) {
+                    drop(history);
+                    self.metrics.record_cache_hit();
+                    let tm_preview: String = tm_match.source_text.chars().take(50).collect();
+                    tracing::info!(
+                        "[TM] Hit: similarity={:.2}, engine={}, stored_source={:?}",
+                        tm_match.similarity, tm_match.engine, tm_preview
+                    );
+                    let final_text = self.finalize(&tm_match.translated_text, text, from, to, &prepared.blacklist).await;
+                    return Ok(TranslateResponse {
+                        results: vec![TranslationResult {
+                            engine: format!("TM ({})", tm_match.engine),
+                            text: final_text,
+                            latency_ms: None,
+                        }],
+                        detected_language: None,
+                    });
+                }
+            }
+
+            // Check cache first
+            let cache_span = info_span!("cache_lookup");
+            let cached = async { self.cache.get(&prepared.text, from, to).await }
+                .instrument(cache_span)
+                .await;
+            if let Some(cached) = cached {
+                self.metrics.record_cache_hit();
+                let mut results = Vec::with_capacity(cached.results.len());
+                for (engine, cached_text) in cached.results {
+                    let final_text = self.finalize(&cached_text, text, from, to, &prepared.blacklist).await;
+                    results.push(TranslationResult {
+                        engine,
                         text: final_text,
                         latency_ms: None,
-                    }],
+                    });
+                }
+                return Ok(TranslateResponse {
+                    results,
                     detected_language: None,
                 });
             }
-        }
+            self.metrics.record_cache_miss();
 
-        // Check cache first
-        if let Some(cached) = self.cache.get(&prepared.text, from, to).await {
-            self.metrics.record_cache_hit().await;
-            let mut results = Vec::with_capacity(cached.results.len());
-            for (engine, cached_text) in cached.results {
-                let final_text = self.finalize(&cached_text, text, from, to, &prepared.blacklist).await;
-                results.push(TranslationResult {
-                    engine,
-                    text: final_text,
-                    latency_ms: None,
+            // Call translation engines with timing
+            let start = Instant::now();
+            let router = self.engine_router.read().await;
+            let mut response = if prepared.glossary_hint.is_empty() {
+                let engine_span = info_span!("engine_translate_all");
+                async { router.translate_all(&prepared.text, from, to).await }
+                    .instrument(engine_span)
+                    .await
+            } else {
+                let engine_span = info_span!("engine_translate_glossary");
+                async {
+                    let primary_result = router
+                        .translate_primary_with_glossary(&prepared.text, from, to, &prepared.glossary_hint)
+                        .await;
+                    let mut resp = router.translate_rest(&prepared.text, from, to).await;
+                    match primary_result {
+                        Ok(translated) => {
+                            let engine_name = router.primary_engine_name().unwrap_or("LLM").to_string();
+                            resp.results.insert(
+                                0,
+                                TranslationResult {
+                                    engine: engine_name,
+                                    text: translated,
+                                    latency_ms: None,
+                                },
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!("[translate] Primary engine with glossary failed: {}, falling back", e);
+                            let fallback = router.translate_primary(&prepared.text, from, to).await;
+                            if let Ok(translated) = fallback {
+                                let engine_name = router.primary_engine_name().unwrap_or("primary").to_string();
+                                resp.results.insert(
+                                    0,
+                                    TranslationResult {
+                                        engine: engine_name,
+                                        text: translated,
+                                        latency_ms: None,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    resp
+                }
+                .instrument(engine_span)
+                .await
+            };
+            let elapsed_ms = start.elapsed().as_millis() as u64;
+
+            // Record failures for empty results
+            let engine_names: Vec<String> = router.engine_names().iter().map(|s| s.to_string()).collect();
+            drop(router);
+
+            for result in &response.results {
+                self.metrics.record_engine_latency(&result.engine, elapsed_ms).await;
+            }
+
+            if response.results.is_empty() {
+                let detail = if engine_names.is_empty() {
+                    "No engines are configured".to_string()
+                } else {
+                    format!("No engine returned a result (configured: {})", engine_names.join(", "))
+                };
+                self.metrics.record_failure("all", &detail).await;
+                return Err(TranslationError::AllEnginesFailed {
+                    errors: vec![detail],
                 });
             }
-            return Ok(TranslateResponse {
-                results,
-                detected_language: None,
-            });
-        }
-        self.metrics.record_cache_miss().await;
 
-        // Call translation engines with timing
-        let start = Instant::now();
-        let router = self.engine_router.read().await;
-        let mut response = if prepared.glossary_hint.is_empty() {
-            router.translate_all(&prepared.text, from, to).await
-        } else {
-            let primary_result = router
-                .translate_primary_with_glossary(&prepared.text, from, to, &prepared.glossary_hint)
-                .await;
-            let mut resp = router.translate_rest(&prepared.text, from, to).await;
-            match primary_result {
-                Ok(translated) => {
-                    let engine_name = router.primary_engine_name().unwrap_or("LLM").to_string();
-                    resp.results.insert(
-                        0,
-                        TranslationResult {
-                            engine: engine_name,
-                            text: translated,
-                            latency_ms: None,
-                        },
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!("[translate] Primary engine with glossary failed: {}, falling back", e);
-                    let fallback = router.translate_primary(&prepared.text, from, to).await;
-                    if let Ok(translated) = fallback {
-                        let engine_name = router.primary_engine_name().unwrap_or("primary").to_string();
-                        resp.results.insert(
-                            0,
-                            TranslationResult {
-                                engine: engine_name,
-                                text: translated,
-                                latency_ms: None,
-                            },
-                        );
-                    }
-                }
+            // Finalize all results: restore blacklist -> post-process -> auto-correct
+            for result in &mut response.results {
+                result.text = self.finalize(&result.text, text, from, to, &prepared.blacklist).await;
             }
-            resp
-        };
-        let elapsed_ms = start.elapsed().as_millis() as u64;
 
-        // Record failures for empty results
-        let engine_names = router.engine_names();
-        drop(router);
+            // Log translation results
+            for result in &response.results {
+                tracing::info!("[Translation] Engine: {}, Result ({} chars): {:?}", result.engine, result.text.len(), &result.text[..result.text.len().min(200)]);
+            }
 
-        for result in &response.results {
-            self.metrics.record_engine_latency(&result.engine, elapsed_ms).await;
+            // Cache the results
+            if !response.results.is_empty() {
+                let cache_results: Vec<(String, String)> = response
+                    .results
+                    .iter()
+                    .map(|r| (r.engine.clone(), r.text.clone()))
+                    .collect();
+                self.cache.set(&prepared.text, from, to, cache_results).await;
+            }
+
+            // Save to history
+            if let Some(first) = response.results.first() {
+                let history = self.history.lock().await;
+                history.add(text, &first.text, from, to, &first.engine);
+            }
+
+            Ok(response)
         }
-
-        if response.results.is_empty() {
-            let detail = if engine_names.is_empty() {
-                "No engines are configured".to_string()
-            } else {
-                format!("No engine returned a result (configured: {})", engine_names.join(", "))
-            };
-            self.metrics.record_failure("all", &detail).await;
-            return Err(TranslationError::AllEnginesFailed {
-                errors: vec![detail],
-            });
-        }
-
-        // Finalize all results: restore blacklist -> post-process -> auto-correct
-        for result in &mut response.results {
-            result.text = self.finalize(&result.text, text, from, to, &prepared.blacklist).await;
-        }
-
-        // Log translation results
-        for result in &response.results {
-            tracing::info!("[Translation] Engine: {}, Result ({} chars): {:?}", result.engine, result.text.len(), &result.text[..result.text.len().min(200)]);
-        }
-
-        // Cache the results
-        if !response.results.is_empty() {
-            let cache_results: Vec<(String, String)> = response
-                .results
-                .iter()
-                .map(|r| (r.engine.clone(), r.text.clone()))
-                .collect();
-            self.cache.set(&prepared.text, from, to, cache_results).await;
-        }
-
-        // Save to history
-        if let Some(first) = response.results.first() {
-            let history = self.history.lock().await;
-            history.add(text, &first.text, from, to, &first.engine);
-        }
-
-        Ok(response)
+        .instrument(span)
+        .await
     }
 
     /// Stream translation using primary engine
@@ -284,54 +303,68 @@ impl TranslationService {
         to: &str,
         tx: tokio::sync::mpsc::Sender<String>,
     ) -> Result<String, TranslationError> {
-        let prepared = self.prepare(text, from, to).await;
+        let span = info_span!("translate_stream", chars = text.len(), from, to);
+        async {
+            let prepared = self.prepare(text, from, to).await;
 
-        // Check cache first
-        if let Some(cached) = self.cache.get(&prepared.text, from, to).await {
-            if let Some((_, cached_text)) = cached.results.into_iter().next() {
-                self.metrics.record_cache_hit().await;
-                let final_text = self.finalize(&cached_text, text, from, to, &prepared.blacklist).await;
-                let _ = tx.send(final_text.clone()).await;
-                return Ok(final_text);
-            }
-        }
-        self.metrics.record_cache_miss().await;
-
-        // Stream translation using primary engine
-        let start = Instant::now();
-        let router = self.engine_router.read().await;
-        let result = if prepared.glossary_hint.is_empty() {
-            router.translate_stream(&prepared.text, from, to, tx).await
-        } else {
-            router.translate_stream_with_glossary(&prepared.text, from, to, tx, &prepared.glossary_hint).await
-        };
-        drop(router);
-
-        match result {
-            Ok(full_text) => {
-                let elapsed_ms = start.elapsed().as_millis() as u64;
-                self.metrics.record_engine_latency("LLM", elapsed_ms).await;
-
-                let final_text = self.finalize(&full_text, text, from, to, &prepared.blacklist).await;
-
-                if !final_text.is_empty() {
-                    self.cache
-                        .set(&prepared.text, from, to, vec![("LLM".to_string(), final_text.clone())])
-                        .await;
-                    let history = self.history.lock().await;
-                    history.add(text, &final_text, from, to, "LLM");
+            // Check cache first
+            let cache_span = info_span!("cache_lookup");
+            let cached = async { self.cache.get(&prepared.text, from, to).await }
+                .instrument(cache_span)
+                .await;
+            if let Some(cached) = cached {
+                if let Some((_, cached_text)) = cached.results.into_iter().next() {
+                    self.metrics.record_cache_hit();
+                    let final_text = self.finalize(&cached_text, text, from, to, &prepared.blacklist).await;
+                    let _ = tx.send(final_text.clone()).await;
+                    return Ok(final_text);
                 }
-
-                Ok(final_text)
             }
-            Err(e) => {
-                self.metrics.record_failure("LLM", &e.to_string()).await;
-                Err(TranslationError::EngineError {
-                    engine: "LLM".to_string(),
-                    message: format!("Streaming failed: {}", e),
-                })
+            self.metrics.record_cache_miss();
+
+            // Stream translation using primary engine
+            let start = Instant::now();
+            let router = self.engine_router.read().await;
+            let engine_span = info_span!("engine_stream");
+            let result = if prepared.glossary_hint.is_empty() {
+                async { router.translate_stream(&prepared.text, from, to, tx).await }
+                    .instrument(engine_span)
+                    .await
+            } else {
+                async { router.translate_stream_with_glossary(&prepared.text, from, to, tx, &prepared.glossary_hint).await }
+                    .instrument(engine_span)
+                    .await
+            };
+            drop(router);
+
+            match result {
+                Ok(full_text) => {
+                    let elapsed_ms = start.elapsed().as_millis() as u64;
+                    self.metrics.record_engine_latency("LLM", elapsed_ms).await;
+
+                    let final_text = self.finalize(&full_text, text, from, to, &prepared.blacklist).await;
+
+                    if !final_text.is_empty() {
+                        self.cache
+                            .set(&prepared.text, from, to, vec![("LLM".to_string(), final_text.clone())])
+                            .await;
+                        let history = self.history.lock().await;
+                        history.add(text, &final_text, from, to, "LLM");
+                    }
+
+                    Ok(final_text)
+                }
+                Err(e) => {
+                    self.metrics.record_failure("LLM", &e.to_string()).await;
+                    Err(TranslationError::EngineError {
+                        engine: "LLM".to_string(),
+                        message: format!("Streaming failed: {}", e),
+                    })
+                }
             }
         }
+        .instrument(span)
+        .await
     }
 
     /// Translate with primary engine only (for quick translations)
@@ -341,46 +374,56 @@ impl TranslationService {
         from: &str,
         to: &str,
     ) -> Result<String, TranslationError> {
-        let prepared = self.prepare(text, from, to).await;
+        let span = info_span!("translate_primary", chars = text.len(), from, to);
+        async {
+            let prepared = self.prepare(text, from, to).await;
 
-        // Check Translation Memory
-        let (tm_enabled, tm_threshold) = {
-            let config = self.config.lock().await;
-            (config.tm_enabled, config.tm_threshold)
-        };
+            // Check Translation Memory
+            let (tm_enabled, tm_threshold) = {
+                let config = self.config.lock().await;
+                (config.tm_enabled, config.tm_threshold)
+            };
 
-        if tm_enabled {
-            let history = self.history.lock().await;
-            if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold) {
-                drop(history);
-                self.metrics.record_cache_hit().await;
-                let final_text = self.finalize(&tm_match.translated_text, text, from, to, &prepared.blacklist).await;
-                return Ok(final_text);
+            if tm_enabled {
+                let history = self.history.lock().await;
+                if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold) {
+                    drop(history);
+                    self.metrics.record_cache_hit();
+                    let final_text = self.finalize(&tm_match.translated_text, text, from, to, &prepared.blacklist).await;
+                    return Ok(final_text);
+                }
+            }
+
+            let start = Instant::now();
+            let router = self.engine_router.read().await;
+            let engine_span = info_span!("engine_call");
+            let result = if prepared.glossary_hint.is_empty() {
+                async { router.translate_primary(&prepared.text, from, to).await }
+                    .instrument(engine_span)
+                    .await
+            } else {
+                async { router.translate_primary_with_glossary(&prepared.text, from, to, &prepared.glossary_hint).await }
+                    .instrument(engine_span)
+                    .await
+            };
+            drop(router);
+
+            match result {
+                Ok(translated) => {
+                    let elapsed_ms = start.elapsed().as_millis() as u64;
+                    self.metrics.record_engine_latency("primary", elapsed_ms).await;
+
+                    let final_text = self.finalize(&translated, text, from, to, &prepared.blacklist).await;
+                    Ok(final_text)
+                }
+                Err(e) => {
+                    self.metrics.record_failure("primary", &e.to_string()).await;
+                    Err(TranslationError::from(e))
+                }
             }
         }
-
-        let start = Instant::now();
-        let router = self.engine_router.read().await;
-        let result = if prepared.glossary_hint.is_empty() {
-            router.translate_primary(&prepared.text, from, to).await
-        } else {
-            router.translate_primary_with_glossary(&prepared.text, from, to, &prepared.glossary_hint).await
-        };
-        drop(router);
-
-        match result {
-            Ok(translated) => {
-                let elapsed_ms = start.elapsed().as_millis() as u64;
-                self.metrics.record_engine_latency("primary", elapsed_ms).await;
-
-                let final_text = self.finalize(&translated, text, from, to, &prepared.blacklist).await;
-                Ok(final_text)
-            }
-            Err(e) => {
-                self.metrics.record_failure("primary", &e.to_string()).await;
-                Err(TranslationError::from(e))
-            }
-        }
+        .instrument(span)
+        .await
     }
 
     /// Translate with context for document consistency
@@ -403,6 +446,94 @@ impl TranslationService {
         &self.engine_router
     }
 
+    /// Core batch translation logic shared by translate_batch and translate_embedded_batch.
+    /// Spawns concurrent translation tasks with context reuse and optional progress callback.
+    async fn translate_batch_core<F>(
+        &self,
+        lines: &[(usize, &str)],
+        from: &str,
+        to: &str,
+        concurrency: usize,
+        mut on_progress: F,
+    ) -> Vec<BatchTranslationResult>
+    where
+        F: FnMut(usize, usize),
+    {
+        let span = info_span!("translate_batch", total = lines.len(), from, to);
+        async {
+            let total = lines.len();
+            if total == 0 {
+                return Vec::new();
+            }
+
+            let concurrency = concurrency.max(1).min(10);
+            let mut results = Vec::with_capacity(total);
+            // Use VecDeque for O(1) pop_front when evicting old context entries
+            let mut context: VecDeque<TranslationContext> = VecDeque::new();
+            let mut completed = 0;
+
+            self.metrics.record_chunk_size(total).await;
+
+            for chunk in lines.chunks(concurrency) {
+                let mut handles = Vec::new();
+
+                for &(idx, text) in chunk {
+                    let text = text.to_string();
+                    let from = from.to_string();
+                    let to = to.to_string();
+                    // Convert VecDeque to Vec for the snapshot (small, max 5 entries)
+                    let context_snapshot: Vec<TranslationContext> = context.iter().cloned().collect();
+                    let router = self.engine_router.clone();
+
+                    let handle = tokio::spawn(async move {
+                        let router = router.read().await;
+                        let translated = match router
+                            .translate_primary_with_context(&text, &from, &to, &context_snapshot)
+                            .await
+                        {
+                            Ok(t) => t,
+                            Err(e) => {
+                                tracing::warn!("[translate_batch] Translation failed for segment {}: {}", idx, e);
+                                String::new()
+                            }
+                        };
+                        drop(router);
+
+                        BatchTranslationResult {
+                            index: idx,
+                            original: text,
+                            translated,
+                        }
+                    });
+
+                    handles.push(handle);
+                }
+
+                for handle in handles {
+                    if let Ok(result) = handle.await {
+                        context.push_back(TranslationContext {
+                            source: result.original.clone(),
+                            translation: result.translated.clone(),
+                        });
+                        // Keep context window at most 5 entries (O(1) pop_front)
+                        while context.len() > 5 {
+                            context.pop_front();
+                        }
+                        results.push(result);
+                        completed += 1;
+                        on_progress(completed, total);
+                    }
+                }
+            }
+
+            results.sort_by_key(|r| r.index);
+            self.finalize_batch(&mut results, from, to).await;
+            results
+        }
+        .instrument(span)
+        .await
+    }
+
     /// Batch translate multiple lines with concurrency control and context reuse
     /// Returns results in the same order as input
     pub async fn translate_batch(
@@ -412,67 +543,8 @@ impl TranslationService {
         to: &str,
         concurrency: usize,
     ) -> Vec<BatchTranslationResult> {
-        if lines.is_empty() {
-            return Vec::new();
-        }
-
-        let concurrency = concurrency.max(1).min(10);
-        let mut results = Vec::with_capacity(lines.len());
-        let mut context: Vec<TranslationContext> = Vec::new();
-
-        self.metrics.record_chunk_size(lines.len()).await;
-
-        for chunk in lines.chunks(concurrency) {
-            let mut handles = Vec::new();
-
-            for &(idx, text) in chunk {
-                let text = text.to_string();
-                let from = from.to_string();
-                let to = to.to_string();
-                let context_snapshot = context.clone();
-                let router = self.engine_router.clone();
-
-                let handle = tokio::spawn(async move {
-                    let router = router.read().await;
-                    let translated = match router
-                        .translate_primary_with_context(&text, &from, &to, &context_snapshot)
-                        .await
-                    {
-                        Ok(t) => t,
-                        Err(e) => {
-                            tracing::warn!("[translate_batch] Translation failed for segment {}: {}", idx, e);
-                            String::new()
-                        }
-                    };
-                    drop(router);
-
-                    BatchTranslationResult {
-                        index: idx,
-                        original: text,
-                        translated,
-                    }
-                });
-
-                handles.push(handle);
-            }
-
-            for handle in handles {
-                if let Ok(result) = handle.await {
-                    context.push(TranslationContext {
-                        source: result.original.clone(),
-                        translation: result.translated.clone(),
-                    });
-                    if context.len() > 5 {
-                        context.remove(0);
-                    }
-                    results.push(result);
-                }
-            }
-        }
-
-        results.sort_by_key(|r| r.index);
-        self.finalize_batch(&mut results, from, to).await;
-        results
+        self.translate_batch_core(lines, from, to, concurrency, |_completed, _total| {})
+            .await
     }
 
     /// Translate text lines for embedded/subtitle with progress callback
@@ -482,7 +554,7 @@ impl TranslationService {
         from: &str,
         to: &str,
         concurrency: usize,
-        mut on_progress: F,
+        on_progress: F,
     ) -> Vec<BatchTranslationResult>
     where
         F: FnMut(usize, usize),
@@ -494,70 +566,7 @@ impl TranslationService {
             .map(|(i, l)| (i, l.trim()))
             .collect();
 
-        let total = lines.len();
-        if total == 0 {
-            return Vec::new();
-        }
-
-        let concurrency = concurrency.max(1).min(10);
-        let mut results = Vec::with_capacity(total);
-        let mut context: Vec<TranslationContext> = Vec::new();
-        let mut completed = 0;
-
-        self.metrics.record_chunk_size(total).await;
-
-        for chunk in lines.chunks(concurrency) {
-            let mut handles = Vec::new();
-
-            for &(idx, text) in chunk {
-                let text = text.to_string();
-                let from = from.to_string();
-                let to = to.to_string();
-                let context_snapshot = context.clone();
-                let router = self.engine_router.clone();
-
-                let handle = tokio::spawn(async move {
-                    let router = router.read().await;
-                    let translated = match router
-                        .translate_primary_with_context(&text, &from, &to, &context_snapshot)
-                        .await
-                    {
-                        Ok(t) => t,
-                        Err(e) => {
-                            tracing::warn!("[translate_batch] Translation failed for segment {}: {}", idx, e);
-                            String::new()
-                        }
-                    };
-                    drop(router);
-
-                    BatchTranslationResult {
-                        index: idx,
-                        original: text,
-                        translated,
-                    }
-                });
-
-                handles.push(handle);
-            }
-
-            for handle in handles {
-                if let Ok(result) = handle.await {
-                    context.push(TranslationContext {
-                        source: result.original.clone(),
-                        translation: result.translated.clone(),
-                    });
-                    if context.len() > 5 {
-                        context.remove(0);
-                    }
-                    results.push(result);
-                    completed += 1;
-                    on_progress(completed, total);
-                }
-            }
-        }
-
-        results.sort_by_key(|r| r.index);
-        self.finalize_batch(&mut results, from, to).await;
-        results
+        self.translate_batch_core(&lines, from, to, concurrency, on_progress)
+            .await
     }
 }
