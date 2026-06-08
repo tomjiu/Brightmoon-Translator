@@ -1,11 +1,12 @@
-// Build script for Moon Translator Browser Extension
-// Creates Chrome and Firefox versions
+// Build script for Moon Translator Browser Extension.
+// Creates Chrome MV3 and Firefox MV2 packages.
 
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT_DIR = __dirname;
+const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 
 // Clean dist
@@ -45,18 +46,31 @@ firefoxManifest.background = {
 firefoxManifest.browser_action = firefoxManifest.action;
 delete firefoxManifest.action;
 firefoxManifest.permissions = firefoxManifest.permissions.filter(p => p !== 'scripting');
+delete firefoxManifest.commands;
+
+// Convert web_accessible_resources from MV3 object format to MV2 string array format
+if (firefoxManifest.web_accessible_resources && Array.isArray(firefoxManifest.web_accessible_resources)) {
+  const resources = [];
+  for (const entry of firefoxManifest.web_accessible_resources) {
+    if (entry.resources) {
+      resources.push(...entry.resources);
+    }
+  }
+  firefoxManifest.web_accessible_resources = resources;
+}
+
 fs.writeFileSync(path.join(firefoxDir, 'manifest.json'), JSON.stringify(firefoxManifest, null, 2));
 
-// Create zip files
+// Create portable archives. For local development, load the unpacked dist folders.
 console.log('Creating Chrome extension...');
-execSync(`cd "${chromeDir}" && tar -cf ../moontranslator-chrome.zip .`, { stdio: 'inherit' });
+archiveDir(chromeDir, path.join(DIST_DIR, 'moontranslator-chrome.tar.gz'));
 
 console.log('Creating Firefox extension...');
-execSync(`cd "${firefoxDir}" && tar -cf ../moontranslator-firefox.zip .`, { stdio: 'inherit' });
+archiveDir(firefoxDir, path.join(DIST_DIR, 'moontranslator-firefox.tar.gz'));
 
 console.log('\nBuild complete!');
-console.log(`Chrome: ${path.join(DIST_DIR, 'moontranslator-chrome.zip')}`);
-console.log(`Firefox: ${path.join(DIST_DIR, 'moontranslator-firefox.zip')}`);
+console.log(`Chrome directory: ${chromeDir}`);
+console.log(`Firefox directory: ${firefoxDir}`);
 
 // Helper: Copy directory
 function copyDir(src, dest, exclude = []) {
@@ -73,6 +87,26 @@ function copyDir(src, dest, exclude = []) {
       copyDir(srcPath, destPath, exclude);
     } else {
       fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+function archiveDir(src, dest) {
+  try {
+    // Try creating a zip archive (more portable on Windows)
+    const zipDest = dest.replace('.tar.gz', '.zip');
+    execSync(`powershell -Command "Compress-Archive -Path '${src}\\*' -DestinationPath '${zipDest}' -Force"`, {
+      stdio: 'inherit',
+    });
+  } catch {
+    // Fallback to tar on Unix-like systems
+    try {
+      execSync(`tar -czf "${dest}" .`, {
+        cwd: src,
+        stdio: 'inherit',
+      });
+    } catch (e) {
+      console.warn('Archive creation skipped (platform not supported):', e.message);
     }
   }
 }

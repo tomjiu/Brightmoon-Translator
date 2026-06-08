@@ -12,6 +12,17 @@ pub struct HistoryItem {
     pub timestamp: i64,
 }
 
+/// Translation Memory match result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TmMatch {
+    pub source_text: String,
+    pub translated_text: String,
+    pub engine: String,
+    pub timestamp: i64,
+    pub similarity: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WordBookItem {

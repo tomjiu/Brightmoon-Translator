@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
 import { BookOpen, Languages, Download, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -55,7 +55,7 @@ function EpubViewer() {
       });
 
       if (selected) {
-        const path = typeof selected === "string" ? selected : (selected as any).path;
+        const path = selected;
         setFilePath(path);
         setFileName(path.split(/[/\\]/).pop() || "book.epub");
         setTranslatedEpub(null);
@@ -64,7 +64,7 @@ function EpubViewer() {
         // Load EPUB content
         setLoading(true);
         try {
-          const doc = await invoke<EpubDocument>("open_epub", { filePath: path });
+          const doc = await invokeOrThrow<EpubDocument>("open_epub", { filePath: path });
           setEpubDoc(doc);
         } catch (err) {
           console.error("Failed to open EPUB:", err);
@@ -82,7 +82,7 @@ function EpubViewer() {
 
     setTranslating(true);
     try {
-      const result = await invoke<TranslatedEpub>("translate_epub", {
+      const result = await invokeOrThrow<TranslatedEpub>("translate_epub", {
         filePath,
         fromLang,
         toLang,

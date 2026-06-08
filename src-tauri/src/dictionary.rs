@@ -29,10 +29,6 @@ struct EcWord {
     usphone: Option<String>,
     #[serde(default)]
     phone: Option<String>,
-    #[serde(default)]
-    ukspeech: Option<String>,
-    #[serde(default)]
-    usspeech: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -106,8 +102,13 @@ impl Dictionary {
             urlencoding::encode(dicts)
         );
 
-        let resp = self.client.get(&url)
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        let resp = self
+            .client
+            .get(&url)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            )
             .send()
             .await?;
 
@@ -151,7 +152,11 @@ impl Dictionary {
                             .collect();
 
                         Meaning {
-                            part_of_speech: if i == 0 { "基本释义".to_string() } else { "扩展释义".to_string() },
+                            part_of_speech: if i == 0 {
+                                "基本释义".to_string()
+                            } else {
+                                "扩展释义".to_string()
+                            },
                             definitions,
                         }
                     })
@@ -196,8 +201,13 @@ impl Dictionary {
             urlencoding::encode(dicts)
         );
 
-        let resp = self.client.get(&url)
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        let resp = self
+            .client
+            .get(&url)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            )
             .send()
             .await?;
 
@@ -233,7 +243,11 @@ impl Dictionary {
                             .collect();
 
                         Meaning {
-                            part_of_speech: if i == 0 { "基本释义".to_string() } else { "扩展释义".to_string() },
+                            part_of_speech: if i == 0 {
+                                "基本释义".to_string()
+                            } else {
+                                "扩展释义".to_string()
+                            },
                             definitions,
                         }
                     })
@@ -288,13 +302,16 @@ pub fn is_single_word(text: &str) -> bool {
 
     if has_cjk {
         // For CJK text: allow up to 10 characters (Chinese phrases)
-        let cjk_count = trimmed.chars().filter(|c| {
-            matches!(c,
-                '\u{4e00}'..='\u{9fff}' |
-                '\u{3400}'..='\u{4dbf}' |
-                '\u{f900}'..='\u{faff}'
-            )
-        }).count();
+        let cjk_count = trimmed
+            .chars()
+            .filter(|c| {
+                matches!(c,
+                    '\u{4e00}'..='\u{9fff}' |
+                    '\u{3400}'..='\u{4dbf}' |
+                    '\u{f900}'..='\u{faff}'
+                )
+            })
+            .count();
         return cjk_count >= 1 && cjk_count <= 10;
     }
 

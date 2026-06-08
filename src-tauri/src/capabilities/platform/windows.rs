@@ -1,4 +1,5 @@
-/// Set clipboard text content. Returns Err on any critical failure.
+/// Set clipboard text content.
+/// SAFETY: Win32 clipboard API calls. Clipboard is properly opened/closed.
 unsafe fn set_clipboard_text(text: &str) -> Result<(), String> {
     extern "system" {
         fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
@@ -59,6 +60,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
     }
 
     #[repr(C)]
+    #[allow(non_snake_case)]
     struct KEYBDINPUT {
         wVk: u16,
         wScan: u16,
@@ -86,6 +88,10 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
         fn GlobalSize(hMem: *mut std::ffi::c_void) -> usize;
     }
 
+    // SAFETY: Win32 clipboard and input simulation APIs.
+    // Clipboard is saved/restored properly. SendInput simulates Ctrl+V.
+    // SAFETY: Win32 API calls for foreground app detection.
+    // All handles are properly closed.
     unsafe {
         // Save current clipboard content
         let saved_text = if OpenClipboard(std::ptr::null_mut()) != 0 {
@@ -99,7 +105,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                     GlobalUnlock(h_data);
                     Some(saved)
                 } else {
-                    log::warn!("[replace] save clipboard: GlobalLock failed");
+                    tracing::warn!("[replace] save clipboard: GlobalLock failed");
                     None
                 }
             } else {
@@ -108,13 +114,13 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             CloseClipboard();
             saved
         } else {
-            log::warn!("[replace] save clipboard: OpenClipboard failed");
+            tracing::warn!("[replace] save clipboard: OpenClipboard failed");
             None
         };
 
         // Set translated text to clipboard — this is the critical path
         set_clipboard_text(text).map_err(|e| {
-            log::error!("[replace] set translated clipboard failed: {}", e);
+            tracing::error!("[replace] set translated clipboard failed: {}", e);
             format!("set translated clipboard failed: {}", e)
         })?;
 
@@ -131,6 +137,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                 time: 0,
                 dwExtraInfo: 0,
             };
+            // SAFETY: copy_nonoverlapping for KEYBDINPUT into INPUT union.
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     &ki as *const _ as *const u8,
@@ -154,7 +161,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             std::mem::size_of::<INPUT>() as i32,
         );
         if sent == 0 {
-            log::warn!("[replace] paste delivery uncertain: SendInput returned 0");
+            tracing::warn!("[replace] paste delivery uncertain: SendInput returned 0");
         }
 
         // Adaptive wait: poll clipboard to confirm paste completed, 30ms intervals, max 300ms
@@ -166,8 +173,14 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                     let h_data = GetClipboardData(CF_UNICODETEXT);
                     let has_content = if !h_data.is_null() {
                         let p_data = GlobalLock(h_data);
-                        let size = if !p_data.is_null() { GlobalSize(h_data) } else { 0 };
-                        if !p_data.is_null() { GlobalUnlock(h_data); }
+                        let size = if !p_data.is_null() {
+                            GlobalSize(h_data)
+                        } else {
+                            0
+                        };
+                        if !p_data.is_null() {
+                            GlobalUnlock(h_data);
+                        }
                         size > 2
                     } else {
                         false
@@ -182,7 +195,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             confirmed
         };
         if !paste_confirmed {
-            log::debug!("[replace] paste delivery uncertain: not confirmed after 300ms");
+            tracing::debug!("[replace] paste delivery uncertain: not confirmed after 300ms");
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
 
@@ -196,24 +209,31 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                 if !h_mem.is_null() {
                     let p_mem = GlobalLock(h_mem);
                     if !p_mem.is_null() {
-                        std::ptr::copy_nonoverlapping(saved.as_ptr(), p_mem as *mut u8, saved.len());
+                        std::ptr::copy_nonoverlapping(
+                            saved.as_ptr(),
+                            p_mem as *mut u8,
+                            saved.len(),
+                        );
                         GlobalUnlock(h_mem);
                         SetClipboardData(CF_UNICODETEXT, h_mem);
                     } else {
-                        log::warn!("[replace] restore clipboard: GlobalLock failed");
+                        tracing::warn!("[replace] restore clipboard: GlobalLock failed");
                     }
                 } else {
-                    log::warn!("[replace] restore clipboard: GlobalAlloc failed");
+                    tracing::warn!("[replace] restore clipboard: GlobalAlloc failed");
                 }
             }
 
             CloseClipboard();
         } else {
-            log::warn!("[replace] restore clipboard: OpenClipboard failed");
+            tracing::warn!("[replace] restore clipboard: OpenClipboard failed");
         }
     }
 
-    log::info!("[replace] Replace-via-clipboard completed for {} chars", text.len());
+    tracing::info!(
+        "[replace] Replace-via-clipboard completed for {} chars",
+        text.len()
+    );
     Ok(())
 }
 
@@ -230,13 +250,15 @@ pub struct ForegroundAppInfo {
 pub fn detect_foreground_app() -> Option<ForegroundAppInfo> {
     extern "system" {
         fn GetForegroundWindow() -> *mut std::ffi::c_void;
-        fn GetWindowThreadProcessId(
-            hWnd: *mut std::ffi::c_void,
-            lpdwProcessId: *mut u32,
-        ) -> u32;
+        fn GetWindowThreadProcessId(hWnd: *mut std::ffi::c_void, lpdwProcessId: *mut u32) -> u32;
         fn GetWindowTextW(hWnd: *mut std::ffi::c_void, lpString: *mut u16, nMaxCount: i32) -> i32;
-        fn GetClassNameW(hWnd: *mut std::ffi::c_void, lpClassName: *mut u16, nMaxCount: i32) -> i32;
-        fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> *mut std::ffi::c_void;
+        fn GetClassNameW(hWnd: *mut std::ffi::c_void, lpClassName: *mut u16, nMaxCount: i32)
+            -> i32;
+        fn OpenProcess(
+            dwDesiredAccess: u32,
+            bInheritHandle: i32,
+            dwProcessId: u32,
+        ) -> *mut std::ffi::c_void;
         fn CloseHandle(hObject: *mut std::ffi::c_void) -> i32;
         fn QueryFullProcessImageNameW(
             hProcess: *mut std::ffi::c_void,
@@ -248,6 +270,8 @@ pub fn detect_foreground_app() -> Option<ForegroundAppInfo> {
 
     const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
 
+    // SAFETY: Win32 API calls for foreground app detection.
+    // All handles are properly closed.
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd.is_null() {
@@ -287,7 +311,8 @@ pub fn detect_foreground_app() -> Option<ForegroundAppInfo> {
             } else {
                 let mut exe_buf = [0u16; 1024];
                 let mut exe_size = 1024u32;
-                let result = QueryFullProcessImageNameW(h_process, 0, exe_buf.as_mut_ptr(), &mut exe_size);
+                let result =
+                    QueryFullProcessImageNameW(h_process, 0, exe_buf.as_mut_ptr(), &mut exe_size);
                 CloseHandle(h_process);
 
                 if result != 0 && exe_size > 0 {
@@ -315,7 +340,10 @@ pub fn detect_foreground_app() -> Option<ForegroundAppInfo> {
 
 /// Classify the embedded app type based on process name and window class.
 /// Returns None for standard (non-embedded) applications.
-pub fn classify_embedded_app(app_name: &str, window_class: &str) -> Option<super::super::EmbeddedAppType> {
+pub fn classify_embedded_app(
+    app_name: &str,
+    window_class: &str,
+) -> Option<super::super::EmbeddedAppType> {
     let app_lower = app_name.to_lowercase();
     let class_lower = window_class.to_lowercase();
 
@@ -340,7 +368,8 @@ pub fn classify_embedded_app(app_name: &str, window_class: &str) -> Option<super
     // Detection is heuristic: apps with WebView2 runtime but not Electron
     if class_lower == "chrome_widgetwin_1" {
         // If it's a known WebView2 host, classify as WebView2
-        if app_lower.contains("webview") || app_lower.contains("microsoftedge")
+        if app_lower.contains("webview")
+            || app_lower.contains("microsoftedge")
             || app_lower == "msedge.exe"
         {
             return Some(super::super::EmbeddedAppType::WebView2);

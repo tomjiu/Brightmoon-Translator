@@ -31,10 +31,7 @@ impl TranslationEngine for GoogleEngine {
         );
 
         let resp = self.client.get(&url).send().await?;
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(anyhow::anyhow!("Google API error: {}", status));
-        }
+        super::check_response(&resp, "Google")?;
 
         let body: serde_json::Value = resp.json().await?;
 
@@ -47,7 +44,11 @@ impl TranslationEngine for GoogleEngine {
                     .collect::<Vec<_>>()
                     .join("")
             })
-            .unwrap_or_default();
+            .ok_or_else(|| anyhow::anyhow!("Google API returned unexpected response format"))?;
+
+        if translated.is_empty() {
+            return Err(anyhow::anyhow!("Google API returned empty translation"));
+        }
 
         Ok(translated)
     }

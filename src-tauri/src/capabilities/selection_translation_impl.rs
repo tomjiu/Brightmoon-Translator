@@ -67,8 +67,7 @@ impl DefaultSelectionTranslation {
 
         // Position overlay: prefer selection bounds, fall back to cursor
         let (cursor_x, cursor_y) = get_cursor_position();
-        let pos =
-            overlay::positioner::calculate_position(bounds, cursor_x, cursor_y);
+        let pos = overlay::positioner::calculate_position(bounds, cursor_x, cursor_y);
 
         let content = overlay::OverlayContent {
             source: source_text.to_string(),
@@ -135,14 +134,22 @@ impl SelectionTranslation for DefaultSelectionTranslation {
             "No text selected".to_string(),
         ))?;
 
-        log::info!(
+        tracing::info!(
             "[selection_translate] Got selection via '{}': {} chars, app='{}'",
-            selection.provider, selection.text.len(), selection.source_app
+            selection.provider,
+            selection.text.len(),
+            selection.source_app
         );
 
         let config = self.config.lock().await;
-        let from = options.from.clone().unwrap_or_else(|| config.default_from.clone());
-        let to = options.to.clone().unwrap_or_else(|| config.default_to.clone());
+        let from = options
+            .from
+            .clone()
+            .unwrap_or_else(|| config.default_from.clone());
+        let to = options
+            .to
+            .clone()
+            .unwrap_or_else(|| config.default_to.clone());
         drop(config);
 
         let response = self
@@ -200,8 +207,14 @@ impl SelectionTranslation for DefaultSelectionTranslation {
         }
 
         let config = self.config.lock().await;
-        let from = options.from.clone().unwrap_or_else(|| config.default_from.clone());
-        let to = options.to.clone().unwrap_or_else(|| config.default_to.clone());
+        let from = options
+            .from
+            .clone()
+            .unwrap_or_else(|| config.default_from.clone());
+        let to = options
+            .to
+            .clone()
+            .unwrap_or_else(|| config.default_to.clone());
         drop(config);
 
         let response = self.translation_service.translate(text, &from, &to).await?;
@@ -209,14 +222,8 @@ impl SelectionTranslation for DefaultSelectionTranslation {
         // Show overlay if requested (no bounds info for direct text)
         if options.show_overlay {
             if let Some(first) = response.results.first() {
-                let _ = self.show_overlay(
-                    text,
-                    &first.text,
-                    "direct",
-                    "",
-                    None,
-                    options.overlay_level,
-                );
+                let _ =
+                    self.show_overlay(text, &first.text, "direct", "", None, options.overlay_level);
             }
         }
 
@@ -247,6 +254,7 @@ fn get_cursor_position() -> (f64, f64) {
         extern "system" {
             fn GetCursorPos(lpPoint: *mut POINT) -> i32;
         }
+        // SAFETY: GetCursorPos is a standard Win32 API. Buffer is stack-allocated.
         unsafe {
             let mut point = POINT { x: 0, y: 0 };
             if GetCursorPos(&mut point) != 0 {

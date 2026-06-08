@@ -8,12 +8,21 @@ pub struct ClipboardSelectionProvider;
 #[async_trait::async_trait]
 impl SelectionProvider for ClipboardSelectionProvider {
     async fn get_selection(&self) -> Option<SelectionResult> {
-        let (text, window_title) = get_clipboard_selection()?;
+        // Wrap in spawn_blocking because get_clipboard_selection uses thread::sleep and Win32 clipboard APIs
+        let result = tokio::task::spawn_blocking(get_clipboard_selection)
+            .await
+            .ok()
+            .flatten();
+        let (text, window_title) = result?;
         if text.trim().is_empty() {
-            log::debug!("[clipboard] Got text but empty after trim");
+            tracing::debug!("[clipboard] Got text but empty after trim");
             return None;
         }
-        log::info!("[clipboard] Got selection: {} chars from '{}'", text.trim().len(), window_title);
+        tracing::info!(
+            "[clipboard] Got selection: {} chars from '{}'",
+            text.trim().len(),
+            window_title
+        );
         Some(SelectionResult {
             text: text.trim().to_string(),
             source_app: detect_app_from_title(&window_title),
@@ -45,6 +54,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
         }
 
         #[repr(C)]
+        #[allow(non_snake_case)]
         struct KEYBDINPUT {
             wVk: u16,
             wScan: u16,
@@ -63,7 +73,8 @@ fn get_clipboard_selection() -> Option<(String, String)> {
             fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
             fn CloseClipboard() -> i32;
             fn EmptyClipboard() -> i32;
-            fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+            fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void)
+                -> *mut std::ffi::c_void;
             fn GetClipboardData(uFormat: u32) -> *mut std::ffi::c_void;
             fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut std::ffi::c_void;
             fn GlobalLock(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
@@ -87,6 +98,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 time: 0,
                 dwExtraInfo: 0,
             };
+            // SAFETY: copy_nonoverlapping for KEYBDINPUT into INPUT union.
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     &ki as *const _ as *const u8,
@@ -97,6 +109,8 @@ fn get_clipboard_selection() -> Option<(String, String)> {
             input
         }
 
+        // SAFETY: Win32 clipboard and input simulation APIs.
+        // Clipboard is saved/restored properly. SendInput simulates Ctrl+C.
         unsafe {
             // Get foreground window title
             let hwnd = GetForegroundWindow();
@@ -122,7 +136,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 }
                 CloseClipboard();
             } else {
-                log::warn!("[clipboard] Failed to open clipboard for saving");
+                tracing::warn!("[clipboard] Failed to open clipboard for saving");
             }
 
             // Clear clipboard before simulating Ctrl+C
@@ -130,7 +144,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 EmptyClipboard();
                 CloseClipboard();
             } else {
-                log::warn!("[clipboard] Failed to open clipboard for clearing");
+                tracing::warn!("[clipboard] Failed to open clipboard for clearing");
             }
 
             // Simulate Ctrl+C
@@ -146,7 +160,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 std::mem::size_of::<INPUT>() as i32,
             );
             if sent == 0 {
-                log::warn!("[clipboard] SendInput returned 0 — Ctrl+C may not have been delivered");
+                tracing::warn!("[clipboard] SendInput returned 0 — Ctrl+C may not have been delivered");
             }
 
             // Adaptive wait: poll clipboard every 50ms, up to 500ms
@@ -157,8 +171,14 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                     let h_data = GetClipboardData(CF_UNICODETEXT);
                     let has_content = if !h_data.is_null() {
                         let p_data = GlobalLock(h_data);
-                        let size = if !p_data.is_null() { GlobalSize(h_data) } else { 0 };
-                        if !p_data.is_null() { GlobalUnlock(h_data); }
+                        let size = if !p_data.is_null() {
+                            GlobalSize(h_data)
+                        } else {
+                            0
+                        };
+                        if !p_data.is_null() {
+                            GlobalUnlock(h_data);
+                        }
                         size > 2
                     } else {
                         false
@@ -171,7 +191,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 }
             }
             if !clipboard_ready {
-                log::debug!("[clipboard] Adaptive wait: clipboard did not get new content after 500ms, trying final read");
+                tracing::debug!("[clipboard] Adaptive wait: clipboard did not get new content after 500ms, trying final read");
                 // One last attempt with a bit more wait
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
@@ -194,7 +214,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                             None
                         }
                     } else {
-                        log::warn!("[clipboard] GlobalLock failed when reading clipboard");
+                        tracing::warn!("[clipboard] GlobalLock failed when reading clipboard");
                         None
                     }
                 } else {
@@ -203,7 +223,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 CloseClipboard();
                 text
             } else {
-                log::warn!("[clipboard] Failed to open clipboard for reading");
+                tracing::warn!("[clipboard] Failed to open clipboard for reading");
                 None
             };
 
@@ -224,15 +244,17 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                                 GlobalUnlock(h_mem);
                                 SetClipboardData(CF_UNICODETEXT, h_mem);
                             } else {
-                                log::warn!("[clipboard] GlobalLock failed when restoring clipboard");
+                                tracing::warn!(
+                                    "[clipboard] GlobalLock failed when restoring clipboard"
+                                );
                             }
                         } else {
-                            log::warn!("[clipboard] GlobalAlloc failed when restoring clipboard");
+                            tracing::warn!("[clipboard] GlobalAlloc failed when restoring clipboard");
                         }
                     }
                     CloseClipboard();
                 } else {
-                    log::warn!("[clipboard] Failed to open clipboard for restore");
+                    tracing::warn!("[clipboard] Failed to open clipboard for restore");
                 }
             }
 
@@ -246,6 +268,8 @@ fn get_clipboard_selection() -> Option<(String, String)> {
 
 /// Get window title from HWND
 #[cfg(target_os = "windows")]
+/// Get window title from HWND.
+/// SAFETY: GetWindowTextW is a standard Win32 API.
 unsafe fn get_window_title(hwnd: *mut std::ffi::c_void) -> String {
     extern "system" {
         fn GetWindowTextW(hWnd: *mut std::ffi::c_void, lpString: *mut u16, nMaxCount: i32) -> i32;

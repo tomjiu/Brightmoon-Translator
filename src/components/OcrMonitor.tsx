@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeOrThrow } from "../services/invoke";
 import { useOcrMonitor } from "../hooks/useOcrMonitor";
 import { useI18n } from "../i18n";
+import { useConfigStore } from "../stores/configStore";
 import {
   Scan,
   X,
@@ -22,15 +23,28 @@ interface Selection {
   y: number;
   width: number;
   height: number;
+  /** CSS left for overlay display (clientX-based) */
+  cssX: number;
+  /** CSS top for overlay display (clientY-based) */
+  cssY: number;
 }
 
 function OcrMonitor() {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(
+  const [startPos, setStartPos] = useState<{ x: number; y: number; clientX: number; clientY: number } | null>(
     null
   );
-  const [interval, setInterval_] = useState(2000);
+  const config = useConfigStore((s) => s.config);
+  const updateConfig = useConfigStore((s) => s.updateConfig);
+  const [interval, setInterval_] = useState(config.ocrInterval ?? 2000);
+
+  // Sync interval from config when config loads
+  useEffect(() => {
+    if (config.ocrInterval !== undefined) {
+      setInterval_(config.ocrInterval);
+    }
+  }, [config.ocrInterval]);
 
   const { t } = useI18n();
 
@@ -46,6 +60,7 @@ function OcrMonitor() {
     boundWindow,
     cycleCount,
     skipCount,
+    lastDiag,
     startMonitoring,
     stopMonitoring,
     pauseMonitoring,
@@ -56,10 +71,17 @@ function OcrMonitor() {
     unbindWindow,
   } = useOcrMonitor();
 
+  const [showDiag, setShowDiag] = useState(false);
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (!isSelecting) return;
-      setStartPos({ x: e.clientX, y: e.clientY });
+      setStartPos({
+        x: e.screenX,
+        y: e.screenY,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      });
       setSelection(null);
     },
     [isSelecting]
@@ -68,11 +90,15 @@ function OcrMonitor() {
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (!startPos || !isSelecting) return;
-      const x = Math.min(startPos.x, e.clientX);
-      const y = Math.min(startPos.y, e.clientY);
-      const width = Math.abs(e.clientX - startPos.x);
-      const height = Math.abs(e.clientY - startPos.y);
-      setSelection({ x, y, width, height });
+      // Screen coordinates for Rust capture
+      const x = Math.min(startPos.x, e.screenX);
+      const y = Math.min(startPos.y, e.screenY);
+      const width = Math.abs(e.screenX - startPos.x);
+      const height = Math.abs(e.screenY - startPos.y);
+      // Client coordinates for CSS overlay display
+      const cssX = Math.min(startPos.clientX, e.clientX);
+      const cssY = Math.min(startPos.clientY, e.clientY);
+      setSelection({ x, y, width, height, cssX, cssY });
     },
     [startPos, isSelecting]
   );
@@ -85,20 +111,26 @@ function OcrMonitor() {
       return;
     }
 
-    const sel = { ...selection };
+    // Extract screen coordinates for Rust capture
+    const region = {
+      x: selection.x,
+      y: selection.y,
+      width: selection.width,
+      height: selection.height,
+    };
     setIsSelecting(false);
     setStartPos(null);
     setSelection(null);
 
     // Hide window for clean capture
-    await invoke("hide_main_window");
+    await invokeOrThrow("hide_main_window");
     await new Promise((resolve) => setTimeout(resolve, 200));
 
-    // Start monitoring
-    startMonitoring(sel, interval);
+    // Start monitoring with screen coordinates
+    startMonitoring(region, interval);
 
     // Show window again
-    await invoke("show_main_window");
+    await invokeOrThrow("show_main_window");
   }, [selection, isSelecting, interval, startMonitoring]);
 
   const cancelSelection = () => {
@@ -118,12 +150,12 @@ function OcrMonitor() {
 
   const handleRebind = async () => {
     if (region) {
-      await invoke("show_main_window");
+      await invokeOrThrow("show_main_window");
       await new Promise((resolve) => setTimeout(resolve, 300));
-      await invoke("hide_main_window");
+      await invokeOrThrow("hide_main_window");
       await new Promise((resolve) => setTimeout(resolve, 200));
       await rebindWindow(region);
-      await invoke("show_main_window");
+      await invokeOrThrow("show_main_window");
     }
   };
 
@@ -280,6 +312,55 @@ function OcrMonitor() {
               </div>
             )}
 
+            {/* Diagnostics Panel */}
+            <div className="bg-bg-tertiary rounded-lg overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-3 py-2 text-xs text-text-secondary hover:text-text-primary transition-colors"
+                onClick={() => setShowDiag(!showDiag)}
+              >
+                <span className="flex items-center gap-1.5">
+                  <Activity size={12} />
+                  {t("ocr.diagnostics")}
+                </span>
+                <span className="text-[10px]">{showDiag ? "▲" : "▼"}</span>
+              </button>
+              {showDiag && lastDiag && (
+                <div className="px-3 pb-3 grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.captureMs")}: </span>
+                    <span className="text-text-primary">{lastDiag.captureMs.toFixed(0)}ms</span>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.ocrMs")}: </span>
+                    <span className="text-text-primary">{lastDiag.ocrMs.toFixed(0)}ms</span>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.translateMs")}: </span>
+                    <span className="text-text-primary">{lastDiag.translateMs.toFixed(0)}ms</span>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.qualityScore")}: </span>
+                    <span className="text-text-primary">{lastDiag.qualityScore.toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.textLen")}: </span>
+                    <span className="text-text-primary">{lastDiag.textLen}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-secondary">{t("ocr.skipReason")}: </span>
+                    <span className={lastDiag.skipped ? "text-warning" : "text-success"}>
+                      {lastDiag.skipped ? lastDiag.skipReason : "none"}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {showDiag && !lastDiag && (
+                <div className="px-3 pb-3 text-xs text-text-secondary">
+                  {t("ocr.noDiagData")}
+                </div>
+              )}
+            </div>
+
             {/* Control Buttons */}
             <div className="flex flex-wrap gap-2">
               <button
@@ -369,13 +450,63 @@ function OcrMonitor() {
                 max="10000"
                 step="500"
                 value={interval}
-                onChange={(e) => setInterval_(Number(e.target.value))}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setInterval_(val);
+                  updateConfig((prev) => ({ ...prev, ocrInterval: val }));
+                }}
                 className="w-full accent-primary"
               />
               <div className="flex justify-between text-xs text-text-secondary mt-1">
                 <span>{t("ocr.intervalMin")}</span>
                 <span>{t("ocr.intervalMax")}</span>
               </div>
+            </div>
+
+            {/* OCR Settings */}
+            <div className="bg-bg-tertiary rounded-lg p-3 space-y-2.5">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.ocrAutoBindWindow ?? true}
+                  onChange={(e) =>
+                    updateConfig((prev) => ({
+                      ...prev,
+                      ocrAutoBindWindow: e.target.checked,
+                    }))
+                  }
+                  className="mt-0.5 accent-primary"
+                />
+                <div>
+                  <div className="text-xs text-text-primary">
+                    {t("ocr.autoBindWindow")}
+                  </div>
+                  <div className="text-[11px] text-text-secondary mt-0.5">
+                    {t("ocr.autoBindWindowHint")}
+                  </div>
+                </div>
+              </label>
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={config.ocrClickThrough ?? false}
+                  onChange={(e) =>
+                    updateConfig((prev) => ({
+                      ...prev,
+                      ocrClickThrough: e.target.checked,
+                    }))
+                  }
+                  className="mt-0.5 accent-primary"
+                />
+                <div>
+                  <div className="text-xs text-text-primary">
+                    {t("ocr.clickThroughSetting")}
+                  </div>
+                  <div className="text-[11px] text-text-secondary mt-0.5">
+                    {t("ocr.clickThroughSettingHint")}
+                  </div>
+                </div>
+              </label>
             </div>
 
             {/* Info Text */}
@@ -418,8 +549,8 @@ function OcrMonitor() {
               <div
                 className="absolute border-2 border-accent bg-accent/10"
                 style={{
-                  left: selection.x,
-                  top: selection.y,
+                  left: selection.cssX,
+                  top: selection.cssY,
                   width: selection.width,
                   height: selection.height,
                 }}
@@ -427,8 +558,8 @@ function OcrMonitor() {
               <div
                 className="absolute bg-bg-secondary border border-border rounded px-2 py-1 text-xs text-text-primary"
                 style={{
-                  left: selection.x,
-                  top: selection.y - 28,
+                  left: selection.cssX,
+                  top: selection.cssY - 28,
                 }}
               >
                 {Math.round(selection.width)} x {Math.round(selection.height)}

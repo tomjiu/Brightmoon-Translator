@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
-import { FileText, Languages, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileText, Languages, Download, ChevronLeft, ChevronRight, ScanLine, Loader2 } from "lucide-react";
 
 interface PdfPage {
   pageNumber: number;
@@ -17,11 +18,25 @@ interface TranslatedPage {
 interface PdfDocument {
   pages: PdfPage[];
   totalPages: number;
+  isScanned: boolean;
 }
 
 interface TranslatedPdf {
   pages: TranslatedPage[];
   totalPages: number;
+  isScanned: boolean;
+}
+
+interface ScannedPdfOcrResult {
+  pages: PdfPage[];
+  totalPages: number;
+  processedPages: number;
+}
+
+interface OcrProgress {
+  current: number;
+  total: number;
+  done?: boolean;
 }
 
 function PdfViewer() {
@@ -35,7 +50,28 @@ function PdfViewer() {
   const [showBilingual, setShowBilingual] = useState(true);
   const [fromLang, setFromLang] = useState("auto");
   const [toLang, setToLang] = useState("zh");
+
+  // OCR state
+  const [ocrRunning, setOcrRunning] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null);
+  const [ocrLang, setOcrLang] = useState<string>("auto");
+
   const { t } = useI18n();
+
+  // Listen for OCR progress events
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    listen<OcrProgress>("pdf-ocr-progress", (event) => {
+      setOcrProgress(event.payload);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, []);
 
   const openFile = async () => {
     try {
@@ -51,16 +87,17 @@ function PdfViewer() {
       });
 
       if (selected) {
-        const path = typeof selected === "string" ? selected : (selected as any).path;
+        const path = selected;
         setFilePath(path);
         setFileName(path.split(/[/\\]/).pop() || "document.pdf");
         setTranslatedPdf(null);
         setCurrentPage(1);
+        setOcrProgress(null);
 
         // Load PDF content
         setLoading(true);
         try {
-          const doc = await invoke<PdfDocument>("open_pdf", { filePath: path });
+          const doc = await invokeOrThrow<PdfDocument>("open_pdf", { filePath: path });
           setPdfDoc(doc);
         } catch (err) {
           console.error("Failed to open PDF:", err);
@@ -78,7 +115,7 @@ function PdfViewer() {
 
     setTranslating(true);
     try {
-      const result = await invoke<TranslatedPdf>("translate_pdf", {
+      const result = await invokeOrThrow<TranslatedPdf>("translate_pdf", {
         filePath,
         fromLang,
         toLang,
@@ -88,6 +125,32 @@ function PdfViewer() {
       console.error("Failed to translate PDF:", err);
     } finally {
       setTranslating(false);
+    }
+  };
+
+  const runOcr = async () => {
+    if (!filePath) return;
+
+    setOcrRunning(true);
+    setOcrProgress(null);
+    try {
+      const result = await invokeOrThrow<ScannedPdfOcrResult>("ocr_scanned_pdf", {
+        filePath,
+        lang: ocrLang === "auto" ? null : ocrLang,
+      });
+
+      // Update pdfDoc with OCR results
+      setPdfDoc({
+        pages: result.pages,
+        totalPages: result.totalPages,
+        isScanned: true,
+      });
+      setCurrentPage(1);
+    } catch (err) {
+      console.error("Failed to OCR PDF:", err);
+    } finally {
+      setOcrRunning(false);
+      setOcrProgress(null);
     }
   };
 
@@ -113,6 +176,7 @@ function PdfViewer() {
 
   const currentPdfPage = pdfDoc?.pages.find((p) => p.pageNumber === currentPage);
   const currentTranslatedPage = translatedPdf?.pages.find((p) => p.pageNumber === currentPage);
+  const hasOcrText = pdfDoc?.pages.some((p) => p.text.trim().length > 0) ?? false;
 
   return (
     <div className="h-full flex flex-col p-6">
@@ -149,7 +213,17 @@ function PdfViewer() {
             <FileText size={14} />
             {t("pdf.openFile")}
           </button>
-          {pdfDoc && (
+          {pdfDoc && !pdfDoc.isScanned && (
+            <button
+              className="bg-accent text-white border border-accent rounded-lg px-4 py-2 text-sm hover:bg-accent/80 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              onClick={translatePdf}
+              disabled={translating}
+            >
+              <Languages size={14} />
+              {translating ? t("pdf.translating") : t("pdf.translate")}
+            </button>
+          )}
+          {pdfDoc && hasOcrText && pdfDoc.isScanned && (
             <button
               className="bg-accent text-white border border-accent rounded-lg px-4 py-2 text-sm hover:bg-accent/80 transition-colors flex items-center gap-1.5 disabled:opacity-50"
               onClick={translatePdf}
@@ -197,6 +271,70 @@ function PdfViewer() {
           </div>
         ) : pdfDoc ? (
           <div className="h-full flex flex-col">
+            {/* Scanned PDF Detection Banner */}
+            {pdfDoc.isScanned && !hasOcrText && (
+              <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ScanLine size={18} className="text-amber-500" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-400">{t("pdf.scannedDetected")}</p>
+                      <p className="text-xs text-text-secondary mt-1">
+                        {t("pdf.scannedHint", { total: String(pdfDoc.totalPages) })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={ocrLang}
+                      onChange={(e) => setOcrLang(e.target.value)}
+                      className="bg-bg-secondary text-text-primary border border-border rounded-lg px-2 py-1.5 text-xs cursor-pointer"
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="en">English</option>
+                      <option value="zh-Hans">中文</option>
+                      <option value="ja">日本語</option>
+                      <option value="ko">한국어</option>
+                      <option value="de">Deutsch</option>
+                      <option value="fr">Français</option>
+                    </select>
+                    <button
+                      className="bg-amber-600 text-white border border-amber-600 rounded-lg px-4 py-2 text-sm hover:bg-amber-700 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                      onClick={runOcr}
+                      disabled={ocrRunning}
+                    >
+                      {ocrRunning ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          {t("pdf.ocrRunning")}
+                        </>
+                      ) : (
+                        <>
+                          <ScanLine size={14} />
+                          {t("pdf.ocrButton")}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                {/* OCR Progress Bar */}
+                {ocrProgress && (
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between text-xs text-text-secondary mb-1">
+                      <span>{t("pdf.ocrProgress", { current: String(ocrProgress.current), total: String(ocrProgress.total) })}</span>
+                      <span>{Math.round((ocrProgress.current / ocrProgress.total) * 100)}%</span>
+                    </div>
+                    <div className="w-full bg-bg-tertiary rounded-full h-2">
+                      <div
+                        className="bg-amber-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(ocrProgress.current / ocrProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Page Info */}
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm text-text-secondary">
@@ -204,6 +342,9 @@ function PdfViewer() {
                   current: String(currentPage),
                   total: String(pdfDoc.totalPages),
                 })}
+                {pdfDoc.isScanned && hasOcrText && (
+                  <span className="ml-2 text-amber-500 text-xs">(OCR)</span>
+                )}
               </span>
               <div className="flex items-center gap-2">
                 <button

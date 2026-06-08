@@ -1,6 +1,9 @@
+use crate::capabilities::input_replacement::ReplacementResult;
 use crate::dictionary::{self, DictionaryResult};
 use crate::engine::TranslateResponse;
+use crate::error::AppError;
 use crate::lang_detect::{self, DetectionResult};
+use crate::security;
 use crate::AppState;
 use serde::Deserialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,16 +24,20 @@ pub async fn translate(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: TranslateRequest,
-) -> Result<TranslateResponse, String> {
+) -> Result<TranslateResponse, AppError> {
+    // Validate inputs
+    security::validate_text_length(&request.text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
+    security::validate_language_code(&request.from)?;
+    security::validate_language_code(&request.to)?;
+
     // Use TranslationService for the full pipeline
     let response = state
-        .translation_service
+        .translation.service
         .translate(&request.text, &request.from, &request.to)
-        .await
-        .map_err(|e| e.to_string())?;
+        .await?;
 
     // Auto-copy result if enabled
-    let config = state.config.lock().await;
+    let config = state.system.config.lock().await;
     if config.auto_copy_result {
         if let Some(first) = response.results.first() {
             let copy_text = match config.auto_copy_mode.as_str() {
@@ -50,7 +57,12 @@ pub async fn translate_stream(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: TranslateRequest,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
+    // Validate inputs
+    security::validate_text_length(&request.text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
+    security::validate_language_code(&request.from)?;
+    security::validate_language_code(&request.to)?;
+
     // Create channel for streaming tokens
     let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(100);
 
@@ -60,29 +72,35 @@ pub async fn translate_stream(
         let mut full_text = String::new();
         while let Some(chunk) = rx.recv().await {
             full_text.push_str(&chunk);
-            let _ = app_handle.emit("stream-chunk", serde_json::json!({
-                "chunk": chunk,
-                "done": false,
-            }));
+            let _ = app_handle.emit(
+                "stream-chunk",
+                serde_json::json!({
+                    "chunk": chunk,
+                    "done": false,
+                }),
+            );
         }
         // Emit completion
-        let _ = app_handle.emit("stream-chunk", serde_json::json!({
-            "chunk": "",
-            "done": true,
-        }));
+        let _ = app_handle.emit(
+            "stream-chunk",
+            serde_json::json!({
+                "chunk": "",
+                "done": true,
+            }),
+        );
         full_text
     });
 
     // Stream translation using TranslationService
     let result = state
-        .translation_service
+        .translation.service
         .translate_stream(&request.text, &request.from, &request.to, tx)
         .await;
 
     // Wait for forwarding to complete
-    let _full_text = forward_handle.await.map_err(|e| e.to_string())?;
+    let _full_text = forward_handle.await?;
 
-    result.map_err(|e| e.to_string())
+    result.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -93,11 +111,16 @@ pub async fn start_clipboard_monitor(
     use std::thread;
     use std::time::Duration;
 
-    if CLIPBOARD_MONITORING.load(Ordering::Relaxed) {
-        return Ok(());
+    // Atomic check-and-set to prevent duplicate monitoring threads
+    match CLIPBOARD_MONITORING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
+        Ok(false) => {
+            // Successfully set from false to true, proceed to spawn thread
+        }
+        _ => {
+            // Already monitoring
+            return Ok(());
+        }
     }
-
-    CLIPBOARD_MONITORING.store(true, Ordering::Relaxed);
 
     let app_handle = app.clone();
 
@@ -129,31 +152,33 @@ pub async fn translate_selection_with_text(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     text: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     if text.trim().is_empty() {
-        return Err("Text is empty".to_string());
+        return Err(AppError::EmptyText);
     }
 
     // Get config
-    let config = state.config.lock().await;
+    let config = state.system.config.lock().await;
     let from = config.default_from.clone();
     let to = config.default_to.clone();
     drop(config);
 
     // Translate using service
     let response = state
-        .translation_service
+        .translation.service
         .translate(&text, &from, &to)
-        .await
-        .map_err(|e| e.to_string())?;
+        .await?;
 
     if let Some(first) = response.results.first() {
         // Emit result to frontend for overlay display
-        let _ = app.emit("selection-translated", serde_json::json!({
-            "source": text,
-            "translated": first.text,
-            "engine": first.engine,
-        }));
+        let _ = app.emit(
+            "selection-translated",
+            serde_json::json!({
+                "source": text,
+                "translated": first.text,
+                "engine": first.engine,
+            }),
+        );
     }
 
     Ok(())
@@ -163,35 +188,34 @@ pub async fn translate_selection_with_text(
 /// Uses the InputReplacement capability: selection → translate → clipboard paste.
 /// No frontend clipboard read needed — the capability handles everything.
 #[tauri::command]
-pub async fn replace_translate(
-    state: State<'_, AppState>,
-) -> Result<String, String> {
-    let config = state.config.lock().await;
+pub async fn replace_translate(state: State<'_, AppState>) -> Result<ReplacementResult, AppError> {
+    let config = state.system.config.lock().await;
     let from = config.default_from.clone();
     let to = config.default_to.clone();
     drop(config);
 
-    let cap = state.input_replacement.get()
-        .ok_or_else(|| "InputReplacement capability not initialized".to_string())?;
+    let cap = state
+        .input_replacement
+        .get()
+        .ok_or_else(|| AppError::Internal("InputReplacement capability not initialized".to_string()))?;
 
     let result = cap
         .replace_translate(&from, &to)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    Ok(result.replacement)
+    Ok(result)
 }
 
 /// Replace text in the foreground application via the InputReplacement capability.
 #[tauri::command]
-pub async fn replace_text_in_app(
-    state: State<'_, AppState>,
-    text: String,
-) -> Result<(), String> {
-    let cap = state.input_replacement.get()
-        .ok_or_else(|| "InputReplacement capability not initialized".to_string())?;
+pub async fn replace_text_in_app(state: State<'_, AppState>, text: String) -> Result<(), AppError> {
+    let cap = state
+        .input_replacement
+        .get()
+        .ok_or_else(|| AppError::Internal("InputReplacement capability not initialized".to_string()))?;
 
-    cap.replace_text(&text).await.map_err(|e| e.to_string())?;
+    cap.replace_text(&text).await.map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(())
 }
 
@@ -201,17 +225,21 @@ pub async fn back_translate(
     text: String,
     from: String,
     to: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
+    security::validate_text_length(&text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
+    security::validate_language_code(&from)?;
+    security::validate_language_code(&to)?;
+
     if text.trim().is_empty() {
-        return Err("Text is empty".to_string());
+        return Err(AppError::EmptyText);
     }
 
     // Translate back: swap from and to languages
-    state
-        .translation_service
+    let result = state
+        .translation.service
         .translate_primary(&text, &to, &from)
-        .await
-        .map_err(|e| e.to_string())
+        .await?;
+    Ok(result)
 }
 
 #[derive(serde::Serialize)]
@@ -228,16 +256,21 @@ pub async fn translate_embedded(
     text: String,
     from: String,
     to: String,
-) -> Result<Vec<EmbeddedLine>, String> {
+) -> Result<Vec<EmbeddedLine>, AppError> {
+    security::validate_text_length(&text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
+    security::validate_language_code(&from)?;
+    security::validate_language_code(&to)?;
+
     if text.trim().is_empty() {
         return Ok(vec![]);
     }
 
     // Use batch translation with concurrency of 3
     let batch_results = state
-        .translation_service
+        .translation.service
         .translate_batch(
-            &text.lines()
+            &text
+                .lines()
                 .enumerate()
                 .filter(|(_, l)| !l.trim().is_empty())
                 .map(|(i, l)| (i, l.trim()))
@@ -262,12 +295,12 @@ pub async fn translate_embedded(
 }
 
 #[tauri::command]
-pub async fn detect_language(text: String) -> Result<DetectionResult, String> {
+pub async fn detect_language(text: String) -> Result<DetectionResult, AppError> {
     Ok(lang_detect::detect_language(&text))
 }
 
 #[tauri::command]
-pub async fn lookup_dictionary(text: String) -> Result<Vec<DictionaryResult>, String> {
+pub async fn lookup_dictionary(text: String) -> Result<Vec<DictionaryResult>, AppError> {
     let trimmed = text.trim();
     if !dictionary::is_single_word(trimmed) {
         return Ok(vec![]);
@@ -279,11 +312,11 @@ pub async fn lookup_dictionary(text: String) -> Result<Vec<DictionaryResult>, St
     if dictionary::is_cjk(trimmed) {
         dict.lookup_chinese(trimmed)
             .await
-            .map_err(|e| format!("Dictionary lookup failed: {}", e))
+            .map_err(|e| AppError::Internal(format!("Dictionary lookup failed: {}", e)))
     } else {
         dict.lookup(trimmed)
             .await
-            .map_err(|e| format!("Dictionary lookup failed: {}", e))
+            .map_err(|e| AppError::Internal(format!("Dictionary lookup failed: {}", e)))
     }
 }
 
@@ -291,30 +324,41 @@ pub async fn lookup_dictionary(text: String) -> Result<Vec<DictionaryResult>, St
 impl Clone for AppState {
     fn clone(&self) -> Self {
         Self {
-            config: self.config.clone(),
-            history: self.history.clone(),
-            wordbook: self.wordbook.clone(),
-            post_processor: self.post_processor.clone(),
-            engine_router: self.engine_router.clone(),
-            cache: self.cache.clone(),
-            glossary: self.glossary.clone(),
-            translation_service: self.translation_service.clone(),
-            metrics: self.metrics.clone(),
-            selection_manager: self.selection_manager.clone(),
-            app_detector: self.app_detector.clone(),
-            follow_controller: self.follow_controller.clone(),
+            translation: crate::app_context::TranslationContext {
+                service: self.translation.service.clone(),
+                engine_router: self.translation.engine_router.clone(),
+                cache: self.translation.cache.clone(),
+                glossary: self.translation.glossary.clone(),
+                metrics: self.translation.metrics.clone(),
+            },
+            document: crate::app_context::DocumentContext {
+                history: self.document.history.clone(),
+                wordbook: self.document.wordbook.clone(),
+                post_processor: self.document.post_processor.clone(),
+                pre_processor: self.document.pre_processor.clone(),
+            },
+            overlay: crate::app_context::OverlayContext {
+                follow_controller: self.overlay.follow_controller.clone(),
+                http_server: self.overlay.http_server.clone(),
+            },
+            hook: crate::app_context::HookContext {
+                hook_monitor: self.hook.hook_monitor.clone(),
+                profiles: self.hook.profiles.clone(),
+            },
+            system: crate::app_context::SystemContext {
+                config: self.system.config.clone(),
+                selection_manager: self.system.selection_manager.clone(),
+                app_detector: self.system.app_detector.clone(),
+            },
             // OnceCell fields: create new empty cells for clones
             selection_translation: tokio::sync::OnceCell::new(),
             input_replacement: tokio::sync::OnceCell::new(),
+            // Batch manager: share the same Arc
+            batch: self.batch.clone(),
+            // Speech recognition state
+            speech_state: self.speech_state.clone(),
         }
     }
-}
-
-
-#[tauri::command]
-pub async fn get_metrics(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let summary = state.metrics.summary().await;
-    serde_json::to_value(&summary).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -324,9 +368,14 @@ pub async fn polish_translation(
     translated_text: String,
     from_lang: String,
     to_lang: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
+    security::validate_text_length(&source_text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
+    security::validate_text_length(&translated_text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
+    security::validate_language_code(&from_lang)?;
+    security::validate_language_code(&to_lang)?;
+
     if translated_text.trim().is_empty() {
-        return Err("Translation is empty".to_string());
+        return Err(AppError::EmptyText);
     }
 
     // Build polish prompt
@@ -365,9 +414,42 @@ pub async fn polish_translation(
     );
 
     // Use service to polish
-    state
-        .translation_service
+    let result = state
+        .translation.service
         .translate_primary(&prompt, &from_lang, &to_lang)
-        .await
-        .map_err(|e| format!("Polish failed: {}", e))
+        .await?;
+    Ok(result)
+}
+
+/// Query Translation Memory for a match
+#[tauri::command]
+pub async fn query_tm(
+    state: State<'_, AppState>,
+    text: String,
+    from: String,
+    to: String,
+) -> Result<Option<crate::models::memory::TmMatch>, AppError> {
+    let config = state.system.config.lock().await;
+    let threshold = config.tm_threshold;
+    drop(config);
+
+    let history = state.document.history.lock().await;
+    Ok(history.fuzzy_match(&text, &from, &to, threshold))
+}
+
+/// Translate with all enabled engines in parallel for comparison
+#[tauri::command]
+pub async fn compare_translate(
+    state: State<'_, AppState>,
+    request: TranslateRequest,
+) -> Result<TranslateResponse, AppError> {
+    security::validate_text_length(&request.text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
+    security::validate_language_code(&request.from)?;
+    security::validate_language_code(&request.to)?;
+
+    let router = state.translation.engine_router.read().await;
+    let response = router
+        .translate_parallel_compare(&request.text, &request.from, &request.to)
+        .await;
+    Ok(response)
 }

@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://moontranslator.dev/schemas/translation-api.schema.json",
+  "title": "Moon Translator - Translation Plugin API",
+  "description": "Schema for translation plugin HTTP API request/response",
+
+  "definitions": {
+    "TranslateRequest": {
+      "type": "object",
+      "required": ["text", "from", "to"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Source text to translate",
+          "minLength": 1
+        },
+        "from": {
+          "type": "string",
+          "description": "Source language code (e.g. 'en', 'zh', 'auto')"
+        },
+        "to": {
+          "type": "string",
+          "description": "Target language code (e.g. 'zh', 'en')"
+        },
+        "context": {
+          "type": "array",
+          "description": "Previous translation pairs for context-aware translation",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": { "type": "string" },
+              "translation": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "TranslateResponse": {
+      "type": "object",
+      "required": ["translated"],
+      "properties": {
+        "translated": {
+          "type": "string",
+          "description": "Translated text"
+        }
+      }
+    },
+    "BatchTranslateRequest": {
+      "type": "object",
+      "required": ["texts", "from", "to"],
+      "properties": {
+        "texts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "maxItems": 100
+        },
+        "from": { "type": "string" },
+        "to": { "type": "string" }
+      }
+    },
+    "BatchTranslateResponse": {
+      "type": "object",
+      "required": ["translations"],
+      "properties": {
+        "translations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "StreamChunk": {
+      "type": "object",
+      "required": ["chunk"],
+      "properties": {
+        "chunk": {
+          "type": "string",
+          "description": "Text chunk for streaming response"
+        },
+        "done": {
+          "type": "boolean",
+          "description": "Whether this is the final chunk"
+        }
+      }
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "string",
+          "description": "Human-readable error message"
+        },
+        "code": {
+          "type": "string",
+          "description": "Machine-readable error code"
+        }
+      }
+    }
+  }
+}
