@@ -52,6 +52,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Moon Translator ${{ github.ref_name }}
+          tauriScript: npm run tauri --
           releaseBody: |
             ## Moon Translator ${{ github.ref_name }}
 
@@ -75,15 +76,17 @@ jobs:
         working-directory: extension
         run: node build.js
 
-      - name: Create Chrome zip
+      - name: Normalize extension archives
         working-directory: extension/dist
         run: |
-          Compress-Archive -Path chrome/* -DestinationPath moontranslator-chrome.zip
-
-      - name: Create Firefox xpi
-        working-directory: extension/dist
-        run: |
-          Compress-Archive -Path firefox/* -DestinationPath moontranslator-firefox.xpi
+          if (!(Test-Path moontranslator-chrome.zip)) {
+            Compress-Archive -Path chrome/* -DestinationPath moontranslator-chrome.zip -Force
+          }
+          if (Test-Path moontranslator-firefox.zip) {
+            Move-Item -Path moontranslator-firefox.zip -Destination moontranslator-firefox.xpi -Force
+          } elseif (!(Test-Path moontranslator-firefox.xpi)) {
+            Compress-Archive -Path firefox/* -DestinationPath moontranslator-firefox.xpi -Force
+          }
 
       - name: Upload Chrome extension
         uses: actions/upload-artifact@v7
