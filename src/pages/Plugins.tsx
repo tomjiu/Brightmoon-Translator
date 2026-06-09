@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
+import { isTauriRuntime } from "../services/tauriRuntime";
 import { Puzzle, FolderOpen, RefreshCw, ExternalLink } from "lucide-react";
 
 interface PluginManifest {
@@ -24,16 +25,27 @@ interface PluginInfo {
 
 function Plugins() {
   const { t } = useI18n();
+  const isTauri = isTauriRuntime();
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [pluginsDir, setPluginsDir] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!isTauri) {
+      setLoading(false);
+      return;
+    }
+
     loadPlugins();
     loadPluginsDir();
-  }, []);
+  }, [isTauri]);
 
   const loadPlugins = async () => {
+    if (!isTauri) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const result = await invokeOrThrow<PluginInfo[]>("get_plugins");
@@ -45,6 +57,8 @@ function Plugins() {
   };
 
   const loadPluginsDir = async () => {
+    if (!isTauri) return;
+
     try {
       const dir = await invokeOrThrow<string>("get_plugins_dir");
       setPluginsDir(dir);

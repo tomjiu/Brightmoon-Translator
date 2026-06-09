@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
 import { useTranslateStore } from "../stores/translateStore";
+import { isTauriRuntime } from "../services/tauriRuntime";
 import { Search, Trash2, Copy, Check, X, Download, Plus, Edit2, Save } from "lucide-react";
 
 interface WordBookItem {
@@ -40,6 +41,7 @@ function WordBook() {
   const { t, locale } = useI18n();
   const fromLang = useTranslateStore((s) => s.fromLang);
   const toLang = useTranslateStore((s) => s.toLang);
+  const isTauri = isTauriRuntime();
 
   const localeMap: Record<string, string> = {
     zh: "zh-CN",
@@ -50,8 +52,10 @@ function WordBook() {
   const browserLocale = localeMap[locale] || locale;
 
   useEffect(() => {
+    if (!isTauri) return;
+
     loadWordBook();
-  }, []);
+  }, [isTauri]);
 
   useEffect(() => {
     if (debounceTimer.current) {
@@ -69,6 +73,8 @@ function WordBook() {
   }, [search]);
 
   const loadWordBook = async () => {
+    if (!isTauri) return;
+
     try {
       const data = await invokeOrThrow<WordBookItem[]>("get_wordbook");
       setItems(data);
@@ -78,6 +84,8 @@ function WordBook() {
   };
 
   const searchWordBook = async (query: string) => {
+    if (!isTauri) return;
+
     try {
       const data = await invokeOrThrow<WordBookItem[]>("search_wordbook", { query });
       setItems(data);
@@ -87,12 +95,14 @@ function WordBook() {
   };
 
   useEffect(() => {
+    if (!isTauri) return;
+
     if (debouncedSearch) {
       searchWordBook(debouncedSearch);
     } else {
       loadWordBook();
     }
-  }, [debouncedSearch]);
+  }, [debouncedSearch, isTauri]);
 
   const addWord = async () => {
     if (!newWord.trim() || !newTranslation.trim()) return;
@@ -190,7 +200,7 @@ function WordBook() {
   const exportCsv = async () => {
     try {
       const csv = await invokeOrThrow<string>("export_wordbook_csv");
-      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

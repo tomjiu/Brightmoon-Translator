@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useI18n } from "../i18n";
 import { invokeOrThrow } from "../services/invoke";
+import { isTauriRuntime } from "../services/tauriRuntime";
 import {
   Search,
   Download,
@@ -112,6 +113,7 @@ const CATEGORIES: Array<PluginCategory | "all"> = [
 
 function PluginMarketplace() {
   const { t } = useI18n();
+  const isTauri = isTauriRuntime();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<PluginCategory | "all">("all");
   const [selectedPlugin, setSelectedPlugin] = useState<MarketplacePlugin | null>(null);
@@ -122,6 +124,12 @@ function PluginMarketplace() {
   // ── Load marketplace plugins from backend on mount ──────────────────────────
 
   const loadPlugins = useCallback(async () => {
+    if (!isTauri) {
+      setPlugins([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const entries = await invokeOrThrow<MarketplaceEntryBackend[]>(
@@ -133,7 +141,7 @@ function PluginMarketplace() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isTauri]);
 
   useEffect(() => {
     void loadPlugins();

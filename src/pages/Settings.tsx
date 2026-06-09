@@ -3,10 +3,10 @@ import { invokeOrThrow } from "../services/invoke";
 import { useConfigStore } from "../stores/configStore";
 import { useToastStore } from "../stores/toastStore";
 import { useI18n } from "../i18n";
+import { isTauriRuntime } from "../services/tauriRuntime";
 import { Save, Check, Trash2, Database, Power, Clipboard, Eye, EyeOff, Globe, Keyboard, Plus, X, Download, Upload, Languages, Wand2, MousePointer, Brain, BookOpen, Volume2, Code, ArrowRight, RefreshCw, Copy } from "lucide-react";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
-import type { AutoCopyMode, VariableFormat } from "../types";
-import { VARIABLE_FORMATS } from "../types";
+import { VARIABLE_FORMATS, type AutoCopyMode, type VariableFormat } from "../types";
 import TmManager from "../components/TmManager";
 import SyncSettings from "./settings/SyncSettings";
 
@@ -25,6 +25,7 @@ function Settings() {
 
   const { locale, setLocale, t } = useI18n();
   const addToast = useToastStore((s) => s.addToast);
+  const isTauri = isTauriRuntime();
   const [autostartEnabled, setAutostartEnabled] = useState(false);
   const [newApiKey, setNewApiKey] = useState("");
   const [newTemplateName, setNewTemplateName] = useState("");
@@ -103,14 +104,18 @@ function Settings() {
   };
 
   useEffect(() => {
+    if (!isTauri) return;
+
     loadConfig();
     loadCacheSize();
     checkAutostart();
     loadPostProcessConfig();
     loadPreProcessConfig();
-  }, [loadConfig, loadCacheSize]);
+  }, [isTauri, loadConfig, loadCacheSize]);
 
   const loadPostProcessConfig = async () => {
+    if (!isTauri) return;
+
     try {
       const config = await invokeOrThrow<PostProcessConfig>("get_post_process_config");
       setPostConfig(config);
@@ -208,6 +213,8 @@ function Settings() {
   const [preTestOutput, setPreTestOutput] = useState("");
 
   const loadPreProcessConfig = async () => {
+    if (!isTauri) return;
+
     try {
       const config = await invokeOrThrow<PreProcessConfig>("get_pre_process_config");
       setPreConfig(config);
@@ -280,6 +287,8 @@ function Settings() {
   };
 
   const checkAutostart = async () => {
+    if (!isTauri) return;
+
     try {
       const enabled = await isEnabled();
       setAutostartEnabled(enabled);
@@ -343,7 +352,7 @@ function Settings() {
     }
   };
 
-  const importConfig = async () => {
+  const importConfig = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json";
@@ -932,7 +941,7 @@ function Settings() {
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={config.engines.offline?.autoSwitch !== false}
+                      checked={config.engines.offline?.autoSwitch ?? true}
                       onChange={(e) =>
                         updateConfig((prev) => ({
                           ...prev,

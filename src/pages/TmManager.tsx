@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useI18n } from "../i18n";
 import { useToastStore } from "../stores/toastStore";
 import { invokeOrThrow, safeInvoke } from "../services/invoke";
+import { isTauriRuntime } from "../services/tauriRuntime";
 import {
   Search,
   Trash2,
@@ -29,7 +30,7 @@ interface TmExportEntry {
 
 interface TmStats {
   total: number;
-  langPairs: [string, string, number][];
+  langPairs: Array<[string, string, number]>;
 }
 
 // ── Component ───────────────────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ interface TmStats {
 function TmManager() {
   const { t } = useI18n();
   const addToast = useToastStore((s) => s.addToast);
+  const isTauri = isTauriRuntime();
 
   // State
   const [stats, setStats] = useState<TmStats | null>(null);
@@ -55,15 +57,21 @@ function TmManager() {
 
   // Load stats on mount
   useEffect(() => {
+    if (!isTauri) return;
+
     loadStats();
-  }, []);
+  }, [isTauri]);
 
   // Search when filters change
   useEffect(() => {
+    if (!isTauri) return;
+
     searchEntries();
-  }, [searchQuery, fromLang, toLang, page]);
+  }, [searchQuery, fromLang, toLang, page, isTauri]);
 
   const loadStats = async () => {
+    if (!isTauri) return;
+
     try {
       const data = await invokeOrThrow<TmStats>("tm_get_stats");
       setStats(data);
@@ -73,6 +81,8 @@ function TmManager() {
   };
 
   const searchEntries = async () => {
+    if (!isTauri) return;
+
     setLoading(true);
     try {
       const [data, err] = await safeInvoke<[TmExportEntry[], number]>("tm_search", {
@@ -92,6 +102,7 @@ function TmManager() {
   };
 
   const handleDelete = async (entry: TmExportEntry) => {
+    // eslint-disable-next-line no-alert
     if (!confirm(t("tm.deleteConfirm"))) return;
     try {
       await invokeOrThrow<number>("tm_delete", {
@@ -110,6 +121,7 @@ function TmManager() {
 
   const handleBatchDelete = async () => {
     if (selected.size === 0) return;
+    // eslint-disable-next-line no-alert
     if (!confirm(t("tm.batchDeleteConfirm", { count: selected.size }))) return;
     try {
       const entriesToDelete = Array.from(selected).map((i) => [

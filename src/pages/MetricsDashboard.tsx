@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { safeInvoke } from "../services/invoke";
 import { useI18n } from "../i18n";
+import { isTauriRuntime } from "../services/tauriRuntime";
 import {
   BarChart3,
   RefreshCw,
@@ -92,6 +93,7 @@ function formatTime(timestamp: number): string {
 
 export default function MetricsDashboard() {
   const { t } = useI18n();
+  const isTauri = isTauriRuntime();
   const [summary, setSummary] = useState<MetricsSummary | null>(null);
   const [timeline, setTimeline] = useState<MetricsTimeline[]>([]);
   const [hourlyStats, setHourlyStats] = useState<HourlyStats[]>([]);
@@ -99,6 +101,11 @@ export default function MetricsDashboard() {
   const [hours, setHours] = useState(24);
 
   const loadMetrics = useCallback(async () => {
+    if (!isTauri) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     const [summaryData] = await safeInvoke<MetricsSummary>("get_metrics_summary");
     const [timelineData] = await safeInvoke<MetricsTimeline[]>("get_metrics_timeline", {
@@ -112,7 +119,7 @@ export default function MetricsDashboard() {
     if (timelineData) setTimeline(timelineData);
     if (hourlyData) setHourlyStats(hourlyData);
     setLoading(false);
-  }, [hours]);
+  }, [hours, isTauri]);
 
   useEffect(() => {
     loadMetrics();
@@ -145,6 +152,7 @@ export default function MetricsDashboard() {
   };
 
   const handleClear = async () => {
+    // eslint-disable-next-line no-alert
     if (confirm(t("metrics.clearConfirm"))) {
       await safeInvoke("clear_metrics");
       loadMetrics();

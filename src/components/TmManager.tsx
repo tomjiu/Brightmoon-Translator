@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
 import { useToastStore } from "../stores/toastStore";
-import type { TmStats, TmExportEntry } from "../types";
-import { LANGUAGES } from "../types";
+import { isTauriRuntime } from "../services/tauriRuntime";
+import { LANGUAGES, type TmStats, type TmExportEntry } from "../types";
 import {
   Database,
   Download,
@@ -22,6 +22,7 @@ const PAGE_SIZE = 20;
 function TmManager() {
   const { t } = useI18n();
   const addToast = useToastStore((state) => state.addToast);
+  const isTauri = isTauriRuntime();
   const [stats, setStats] = useState<TmStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -37,6 +38,8 @@ function TmManager() {
   const [searching, setSearching] = useState(false);
 
   const loadStats = useCallback(async () => {
+    if (!isTauri) return;
+
     setLoading(true);
     try {
       const result = await invokeOrThrow<TmStats>("tm_get_stats");
@@ -46,13 +49,17 @@ function TmManager() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isTauri]);
 
   useEffect(() => {
-    loadStats();
-  }, [loadStats]);
+    if (!isTauri) return;
 
-  const handleSearch = useCallback(async (page: number = 0) => {
+    loadStats();
+  }, [isTauri, loadStats]);
+
+  const handleSearch = useCallback(async (page = 0) => {
+    if (!isTauri) return;
+
     if (!searchQuery.trim() && !searchFromLang && !searchToLang) {
       setSearchResults([]);
       setSearchTotal(0);
@@ -76,7 +83,7 @@ function TmManager() {
     } finally {
       setSearching(false);
     }
-  }, [searchQuery, searchFromLang, searchToLang]);
+  }, [isTauri, searchQuery, searchFromLang, searchToLang]);
 
   const totalPages = Math.ceil(searchTotal / PAGE_SIZE);
 
@@ -134,7 +141,7 @@ function TmManager() {
     }
   }, [addToast]);
 
-  const handleImport = useCallback(async () => {
+  const handleImport = useCallback(() => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json";
@@ -173,7 +180,7 @@ function TmManager() {
     input.click();
   }, [loadStats, addToast]);
 
-  const handleImportTmx = useCallback(async () => {
+  const handleImportTmx = useCallback(() => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".tmx,.xml";
