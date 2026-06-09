@@ -42,7 +42,7 @@ env:
 jobs:
   rust:
     name: Rust on Windows
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     env:
       CARGO_TERM_COLOR: always
     steps:

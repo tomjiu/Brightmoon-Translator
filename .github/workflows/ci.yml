@@ -16,7 +16,7 @@ env:
 jobs:
   rust-check:
     name: Rust Check
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -58,7 +58,7 @@ jobs:
 
   frontend-check:
     name: Frontend Check
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -82,7 +82,7 @@ jobs:
 
   extension-check:
     name: Extension Check
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     steps:
       - name: Checkout
         uses: actions/checkout@v6
