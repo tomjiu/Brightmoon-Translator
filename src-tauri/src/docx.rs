@@ -2,7 +2,6 @@ use docx_rs::{Docx, Paragraph, Run};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocxParagraph {
@@ -60,8 +59,7 @@ pub fn extract_text_from_docx(file_path: &str) -> Result<DocxDocument, String> {
     std::io::Read::read_to_end(&mut std::io::BufReader::new(file), &mut buf)
         .map_err(|e| format!("Failed to read DOCX file: {}", e))?;
 
-    let docx = docx_rs::read_docx(&buf)
-        .map_err(|e| format!("Failed to parse DOCX file: {}", e))?;
+    let docx = docx_rs::read_docx(&buf).map_err(|e| format!("Failed to parse DOCX file: {}", e))?;
 
     let mut paragraphs: Vec<DocxParagraph> = Vec::new();
     let mut title = String::from("Untitled");
@@ -148,20 +146,27 @@ fn detect_paragraph_style(para: &Paragraph) -> (String, bool, u8) {
 /// Count words in text (handles both CJK and Latin)
 fn count_words(text: &str) -> usize {
     let mut count = 0;
-    let mut in_word = false;
+    let mut current_kind: Option<bool> = None;
+    let has_latin_word = text.chars().any(|ch| ch.is_ascii_alphanumeric());
 
     for ch in text.chars() {
         if ch.is_ascii_alphanumeric() {
-            if !in_word {
+            if current_kind != Some(false) {
                 count += 1;
-                in_word = true;
+                current_kind = Some(false);
             }
         } else if is_cjk(ch) {
-            // Each CJK character counts as a word
-            count += 1;
-            in_word = false;
+            if has_latin_word {
+                if current_kind != Some(true) {
+                    count += 1;
+                    current_kind = Some(true);
+                }
+            } else {
+                count += 1;
+                current_kind = None;
+            }
         } else {
-            in_word = false;
+            current_kind = None;
         }
     }
 
@@ -189,8 +194,7 @@ pub fn write_translated_docx(
     std::io::Read::read_to_end(&mut std::io::BufReader::new(file), &mut buf)
         .map_err(|e| format!("Failed to read DOCX file: {}", e))?;
 
-    let docx = docx_rs::read_docx(&buf)
-        .map_err(|e| format!("Failed to parse DOCX file: {}", e))?;
+    let docx = docx_rs::read_docx(&buf).map_err(|e| format!("Failed to parse DOCX file: {}", e))?;
 
     let mut new_doc = Docx::new();
     let mut para_index = 0;
@@ -295,7 +299,9 @@ pub async fn translate_docx_file(
     output_path: &str,
     _from_lang: &str,
     _to_lang: &str,
-    translate_fn: impl for<'a> Fn(&'a [(usize, &'a str)]) -> futures::future::BoxFuture<'a, Vec<(usize, String)>>,
+    translate_fn: impl for<'a> Fn(
+        &'a [(usize, &'a str)],
+    ) -> futures::future::BoxFuture<'a, Vec<(usize, String)>>,
 ) -> Result<DocxTranslationResult, String> {
     // Extract text
     let doc = extract_text_from_docx(input_path)?;
