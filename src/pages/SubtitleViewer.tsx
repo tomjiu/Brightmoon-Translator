@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invokeOrThrow } from "../services/invoke";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "../i18n";
+import { isTauriRuntime } from "../services/tauriRuntime";
 import { FileText, Languages, Download, ChevronLeft, ChevronRight, Subtitles, Loader2 } from "lucide-react";
 
 interface SubtitleEntry {
@@ -44,9 +45,12 @@ function SubtitleViewer() {
   const [toLang, setToLang] = useState("zh");
   const [itemsPerPage] = useState(20);
   const { t } = useI18n();
+  const isTauri = isTauriRuntime();
 
   // Listen for progress events
   useEffect(() => {
+    if (!isTauri) return;
+
     const unlisten = listen<ProgressInfo>("subtitle-progress", (event) => {
       setProgress(event.payload);
     });
@@ -54,7 +58,7 @@ function SubtitleViewer() {
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [isTauri]);
 
   const openFile = async () => {
     try {
@@ -132,31 +136,6 @@ function SubtitleViewer() {
       });
 
       if (outputPath) {
-        // Generate export content
-        let content = "";
-        if (ext === "srt" || ext === "vtt") {
-          for (const entry of translatedSub.entries) {
-            if (ext === "srt") {
-              content += `${entry.index}\n`;
-              content += `${entry.startTime} --> ${entry.endTime}\n`;
-              content += `${showBilingual ? entry.originalText + "\n" : ""}${entry.translatedText}\n\n`;
-            } else {
-              content += `${entry.index}\n`;
-              content += `${entry.startTime} --> ${entry.endTime}\n`;
-              content += `${showBilingual ? entry.originalText + "\n" : ""}${entry.translatedText}\n\n`;
-            }
-          }
-          if (ext === "vtt") {
-            content = "WEBVTT\n\n" + content;
-          }
-        } else if (ext === "lrc") {
-          for (const entry of translatedSub.entries) {
-            content += `${entry.startTime}${entry.originalText}\n`;
-            content += `${entry.startTime}[译] ${entry.translatedText}\n`;
-          }
-        }
-
-        // Write file using invoke
         await invokeOrThrow("export_subtitle_file", {
           filePath: filePath!,
           outputPath,

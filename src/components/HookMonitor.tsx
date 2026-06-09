@@ -4,6 +4,7 @@ import { speakText as ttsSpeak } from "../services/tts";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "../i18n";
 import { useConfigStore } from "../stores/configStore";
+import { isTauriRuntime } from "../services/tauriRuntime";
 import {
   showOverlayAt,
   positionBelowText,
@@ -162,6 +163,7 @@ const HookResultItem = memo(function HookResultItem({
 
 function HookMonitor() {
   const { t, locale } = useI18n();
+  const isTauri = isTauriRuntime();
 
   const localeMap: Record<string, string> = {
     zh: "zh-CN",
@@ -204,17 +206,21 @@ function HookMonitor() {
 
   // Check initial status
   useEffect(() => {
+    if (!isTauri) return;
+
     invokeOrThrow<boolean>("get_hook_monitor_status")
       .then((running) => {
         setIsRunning(running);
       })
-      .catch((e) => {
+      .catch((e: unknown) => {
         console.error("Failed to get hook monitor status:", e);
       });
-  }, []);
+  }, [isTauri]);
 
   // Listen for hook-text-translated events
   useEffect(() => {
+    if (!isTauri) return;
+
     let unlisten: (() => void) | null = null;
     let cancelled = false;
 
@@ -248,14 +254,14 @@ function HookMonitor() {
 
         // Auto-copy if enabled
         if (autoCopy) {
-          navigator.clipboard.writeText(item.translated).catch((e) => {
+          navigator.clipboard.writeText(item.translated).catch((e: unknown) => {
             console.warn("Auto-copy failed:", e);
           });
         }
 
         // Auto-play TTS if enabled
         if (config.ttsAutoPlay && item.translated) {
-          ttsSpeak(item.translated, "auto").catch((e) => {
+          ttsSpeak(item.translated, "auto").catch((e: unknown) => {
             console.warn("TTS auto-play failed:", e);
           });
         }
@@ -292,7 +298,7 @@ function HookMonitor() {
       cancelled = true;
       if (unlisten) unlisten();
     };
-  }, [autoCopy, showOverlay]);
+  }, [autoCopy, isTauri, showOverlay]);
 
   // Auto-scroll to bottom when new results arrive
   useEffect(() => {
@@ -303,14 +309,16 @@ function HookMonitor() {
 
   // H-Code: Check initial injection status
   useEffect(() => {
+    if (!isTauri) return;
+
     safeInvoke<HookStatus>("hook_status", undefined, { silent: true })
       .then(([status]) => {
         if (status) setHcodeStatus(status);
       })
-      .catch((e) => {
+      .catch((e: unknown) => {
         console.error("Failed to get H-Code injection status:", e);
       });
-  }, []);
+  }, [isTauri]);
 
   // H-Code: Poll for messages when injected
   useEffect(() => {

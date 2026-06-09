@@ -5,6 +5,7 @@ import { useConfigStore } from "../stores/configStore";
 import type { AppConfig } from "../types";
 import { listen } from "@tauri-apps/api/event";
 import { showOverlayAt } from "../services/overlayPosition";
+import { invokeOrThrow, safeInvoke } from "../services/invoke";
 
 vi.mock("../services/invoke", () => ({
   safeInvoke: vi.fn().mockResolvedValue([null, null]),
@@ -21,7 +22,7 @@ vi.mock("../services/overlayPosition", () => ({
   positionAtWindowBottom: vi.fn(() => ({ x: 10, y: 20, width: 300, height: 120 })),
 }));
 
-type HookTranslatedPayload = {
+interface HookTranslatedPayload {
   window_title: string;
   process_name: string;
   original: string;
@@ -30,7 +31,7 @@ type HookTranslatedPayload = {
   timestamp: number;
   source: string;
   text_rect?: [number, number, number, number];
-};
+}
 
 const baseConfig: AppConfig = {
   llm: { provider: "deepseek", apiKey: "", apiKeys: [], baseUrl: "", model: "" },
@@ -73,15 +74,17 @@ const baseConfig: AppConfig = {
   ttsVoice: "",
 };
 
-const emitHookTranslation = async (payload: Partial<HookTranslatedPayload> = {}) => {
+const emitHookTranslation = (payload: Partial<HookTranslatedPayload> = {}) => {
   const hookListener = vi.mocked(listen).mock.calls.find(
     ([eventName]) => eventName === "hook-text-translated"
   )?.[1];
 
   expect(hookListener).toBeDefined();
 
-  await act(async () => {
+  act(() => {
     hookListener?.({
+      event: "hook-text-translated",
+      id: 1,
       payload: {
         window_title: "Example",
         process_name: "example.exe",
@@ -100,6 +103,10 @@ const emitHookTranslation = async (payload: Partial<HookTranslatedPayload> = {})
 describe("HookMonitor overlay defaults", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      value: {},
+      configurable: true,
+    });
     Element.prototype.scrollIntoView = vi.fn();
     vi.mocked(listen).mockResolvedValue(vi.fn());
     useConfigStore.setState({
@@ -118,7 +125,7 @@ describe("HookMonitor overlay defaults", () => {
       expect(listen).toHaveBeenCalledWith("hook-text-translated", expect.any(Function));
     });
 
-    await emitHookTranslation();
+    emitHookTranslation();
 
     expect(showOverlayAt).not.toHaveBeenCalled();
   });
@@ -137,12 +144,37 @@ describe("HookMonitor overlay defaults", () => {
       expect(listen).toHaveBeenCalledWith("hook-text-translated", expect.any(Function));
     });
 
-    await emitHookTranslation();
+    emitHookTranslation();
 
     expect(showOverlayAt).toHaveBeenCalledWith(
       { x: 10, y: 20, width: 300, height: 120 },
       "你好",
       "hello"
     );
+  });
+});
+
+describe("HookMonitor browser runtime", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+    Element.prototype.scrollIntoView = vi.fn();
+    useConfigStore.setState({
+      config: baseConfig,
+      loaded: true,
+      saved: false,
+      cacheSize: 0,
+      cacheStats: null,
+    });
+  });
+
+  it("does not call Tauri APIs on mount outside the Tauri runtime", async () => {
+    render(<HookMonitor />);
+
+    await waitFor(() => {
+      expect(listen).not.toHaveBeenCalled();
+      expect(invokeOrThrow).not.toHaveBeenCalledWith("get_hook_monitor_status");
+      expect(safeInvoke).not.toHaveBeenCalledWith("hook_status", undefined, { silent: true });
+    });
   });
 });

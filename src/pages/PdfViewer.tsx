@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invokeOrThrow } from "../services/invoke";
 import { useI18n } from "../i18n";
+import { isTauriRuntime } from "../services/tauriRuntime";
 import { FileText, Languages, Download, ChevronLeft, ChevronRight, ScanLine, Loader2 } from "lucide-react";
 
 interface PdfPage {
@@ -57,9 +58,12 @@ function PdfViewer() {
   const [ocrLang, setOcrLang] = useState<string>("auto");
 
   const { t } = useI18n();
+  const isTauri = isTauriRuntime();
 
   // Listen for OCR progress events
   useEffect(() => {
+    if (!isTauri) return;
+
     let unlisten: (() => void) | undefined;
 
     listen<OcrProgress>("pdf-ocr-progress", (event) => {
@@ -71,7 +75,7 @@ function PdfViewer() {
     return () => {
       unlisten?.();
     };
-  }, []);
+  }, [isTauri]);
 
   const openFile = async () => {
     try {
