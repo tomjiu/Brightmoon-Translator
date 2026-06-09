@@ -19,13 +19,13 @@ jobs:
       releaseId: ${{ steps.tauri_build.outputs.releaseId }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -34,7 +34,7 @@ jobs:
         run: npm ci
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -64,10 +64,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
 
@@ -86,13 +86,13 @@ jobs:
           Compress-Archive -Path firefox/* -DestinationPath moontranslator-firefox.xpi
 
       - name: Upload Chrome extension
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: moontranslator-chrome
           path: extension/dist/moontranslator-chrome.zip
 
       - name: Upload Firefox extension
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: moontranslator-firefox
           path: extension/dist/moontranslator-firefox.xpi
@@ -104,17 +104,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Download Chrome extension
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: moontranslator-chrome
 
       - name: Download Firefox extension
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: moontranslator-firefox
 
