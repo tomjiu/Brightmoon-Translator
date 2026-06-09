@@ -2,6 +2,7 @@ import { useCallback, useState, useEffect, lazy, Suspense, useMemo } from "react
 import { listen } from "@tauri-apps/api/event";
 import { safeInvoke, invokeOrThrow } from "./services/invoke";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauriRuntime } from "./services/tauriRuntime";
 const MainTranslator = lazy(() => import("./pages/MainTranslator"));
 const Settings = lazy(() => import("./pages/Settings"));
 const DocumentsViewer = lazy(() => import("./pages/DocumentsViewer"));
@@ -16,7 +17,6 @@ import OcrScreenshotSelector from "./components/OcrScreenshotSelector";
 import OcrRegionFrame from "./components/OcrRegionFrame";
 import OcrScreenshotTranslator from "./components/OcrScreenshotTranslator";
 import { useThemeStore } from "./stores/themeStore";
-import { useTranslateStore } from "./stores/translateStore";
 import { useToastStore } from "./stores/toastStore";
 import { useConfigStore } from "./stores/configStore";
 import ToastContainer from "./components/Toast";
@@ -64,30 +64,38 @@ function MainApp() {
   const [pinned, setPinned] = useState(false);
   const [ocrLaunchNonce, setOcrLaunchNonce] = useState(0);
   const { theme, toggleTheme } = useThemeStore();
-  const setSourceText = useTranslateStore((s) => s.setSourceText);
   const addToast = useToastStore((s) => s.addToast);
   const loadDefaults = useConfigStore((s) => s.loadDefaults);
   const { t } = useI18n();
+  const isTauri = isTauriRuntime();
 
   // Fetch authoritative defaults from Rust backend on mount
   useEffect(() => {
+    if (!isTauri) return;
     loadDefaults();
-  }, [loadDefaults]);
+  }, [isTauri, loadDefaults]);
 
   const startOcrScreenshot = useCallback(() => {
     setOcrLaunchNonce((n) => n + 1);
   }, []);
 
   const togglePin = useCallback(async () => {
+    if (!isTauri) {
+      addToast({ type: "info", message: t("common.desktopOnly") || "Desktop-only action", duration: 2500 });
+      return;
+    }
+
     try {
       const result = await invokeOrThrow<boolean>("toggle_always_on_top");
       setPinned(result);
     } catch (err) {
       console.error("Failed to toggle pin:", err);
     }
-  }, []);
+  }, [addToast, isTauri, t]);
 
   useEffect(() => {
+    if (!isTauri) return;
+
     // Listen for navigation events from tray
     const unlistenNav = listen<string>("navigate", (event) => {
       const pageMap: Record<string, Page> = {
@@ -220,7 +228,7 @@ function MainApp() {
       unlistenAutoCopy.then((fn) => fn());
       unlistenReplaceTranslate.then((fn) => fn());
     };
-  }, [setSourceText, startOcrScreenshot]);
+  }, [addToast, isTauri, startOcrScreenshot, t]);
 
   const navItems: NavItem[] = useMemo(() => [
     { id: "translator", icon: Languages, label: t("nav.translator"), group: "core" },
@@ -269,7 +277,7 @@ function MainApp() {
                       ? "bg-primary text-white shadow-md shadow-primary/25"
                       : "text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
                   }`}
-                  onClick={() => setPage(item.id as Page)}
+                  onClick={() => setPage(item.id)}
                   title={item.label}
                 >
                   <Icon size={18} />

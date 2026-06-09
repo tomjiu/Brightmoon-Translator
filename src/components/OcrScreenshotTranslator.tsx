@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { safeInvoke, invokeOrThrow } from '../services/invoke';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { isTauriRuntime } from '../services/tauriRuntime';
 import { useI18n } from '../i18n';
 import {
   captureScreenshotRegion,
@@ -46,6 +47,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
 export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreenshotTranslatorProps) {
   const { t } = useI18n();
   const config = useConfigStore((state) => state.config);
+  const isTauri = isTauriRuntime();
   const ocrIntervalMs = Math.max(750, config.ocrInterval ?? 2000);
   const [continuous, setContinuous] = useState(true);
 
@@ -249,6 +251,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
   // await listen() resolves, so `unlisteners` is empty. The `cancelled` flag
   // ensures the first listener self-destructs when its callback fires.
   useEffect(() => {
+    if (!isTauri) return;
+
     let cancelled = false;
     const unlisteners: Array<() => void> = [];
 
@@ -327,7 +331,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       cancelled = true;
       unlisteners.forEach((fn) => fn());
     };
-  }, [captureAndTranslate]);
+  }, [captureAndTranslate, isTauri]);
 
   // ---- Continuous refresh timer ----
   useEffect(() => {
@@ -345,6 +349,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
 
   // ---- Screenshot selection listener ----
   useEffect(() => {
+    if (!isTauri) return;
+
     console.log('[OCR] Registering ocr-screenshot-selected listener...');
     let cancelled = false;
     let unlisten: (() => void) | undefined;
@@ -435,10 +441,12 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       cancelled = true;
       unlisten?.();
     };
-  }, [captureAndTranslate]);
+  }, [captureAndTranslate, isTauri]);
 
   // ---- Cancelled listener ----
   useEffect(() => {
+    if (!isTauri) return;
+
     let cancelled = false;
     let unlisten: (() => void) | undefined;
 
@@ -457,13 +465,15 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       cancelled = true;
       unlisten?.();
     };
-  }, []);
+  }, [isTauri]);
 
   // Guard ref to prevent concurrent startScreenshotTranslate calls
   const startingRef = useRef(false);
 
   // ---- Start screenshot translate ----
   const startScreenshotTranslate = useCallback(async () => {
+    if (!isTauri) return;
+
     console.log('[OCR] startScreenshotTranslate called, startingRef:', startingRef.current);
     if (startingRef.current) return;
     startingRef.current = true;
@@ -509,7 +519,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     } finally {
       startingRef.current = false;
     }
-  }, [t]);
+  }, [isTauri, t]);
 
   useEffect(() => {
     if (launchNonce <= 0) return;

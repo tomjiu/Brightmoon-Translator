@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useTranslateStore } from "../stores/translateStore";
 import { useConfigStore } from "../stores/configStore";
 import { useI18n } from "../i18n";
+import { isTauriRuntime } from "../services/tauriRuntime";
 import { LANGUAGES } from "../types";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
 import { normalizeTranslatorInput } from "../services/translatorText";
@@ -81,6 +82,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
 
   const config = useConfigStore((s) => s.config);
   const { t, locale } = useI18n();
+  const isTauri = isTauriRuntime();
 
   const localeMap: Record<string, string> = {
     zh: "zh-CN",
@@ -109,7 +111,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
       const text = consumeTranscript();
       if (text) {
         const currentText = useTranslateStore.getState().sourceText;
-        setSourceText(currentText ? currentText + " " + text : text);
+        setSourceText(currentText ? `${currentText} ${text}` : text);
       }
     }, 300);
 
@@ -191,6 +193,8 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
 
   // Window follow mode: move window to cursor on selection translation
   useEffect(() => {
+    if (!isTauri) return;
+
     let unlisten: (() => void) | undefined;
 
     const setup = async () => {
@@ -205,14 +209,14 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
     return () => {
       if (unlisten) unlisten();
     };
-  }, [config.windowFollowMode, moveWindowToCursor]);
+  }, [config.windowFollowMode, isTauri, moveWindowToCursor]);
 
   // Auto-play TTS after translation completes
   useEffect(() => {
     if (config.ttsAutoPlay && results.length > 0 && !loading) {
       const lastResult = results[results.length - 1];
       if (lastResult?.text) {
-        ttsSpeak(lastResult.text, toLang).catch((e) => {
+        ttsSpeak(lastResult.text, toLang).catch((e: unknown) => {
           console.warn("TTS auto-play failed:", e);
         });
       }
@@ -401,7 +405,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
                       const remaining = consumeTranscript();
                       if (remaining) {
                         const currentText = useTranslateStore.getState().sourceText;
-                        setSourceText(currentText ? currentText + " " + remaining : remaining);
+                        setSourceText(currentText ? `${currentText} ${remaining}` : remaining);
                       }
                       stopListening();
                       // Trigger translation after stopping
