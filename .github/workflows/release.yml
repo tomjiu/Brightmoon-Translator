@@ -14,7 +14,7 @@ env:
 jobs:
   build-windows:
     name: Build Windows
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     outputs:
       releaseId: ${{ steps.tauri_build.outputs.releaseId }}
     steps:
@@ -61,7 +61,7 @@ jobs:
 
   build-extension:
     name: Build Extensions
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -100,7 +100,7 @@ jobs:
   upload-extensions:
     name: Upload Extensions to Release
     needs: [build-windows, build-extension]
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout
