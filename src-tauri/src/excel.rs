@@ -89,7 +89,7 @@ fn data_to_string(data: &Data) -> String {
             } else {
                 format!("{}", f)
             }
-        }
+        },
         Data::Int(i) => format!("{}", i),
         Data::Bool(b) => format!("{}", b),
         Data::Error(e) => format!("#ERROR: {:?}", e),
@@ -107,9 +107,12 @@ fn data_to_string(data: &Data) -> String {
             if hours == 0 && minutes == 0 && seconds == 0 {
                 format!("{:04}-{:02}-{:02}", year, month, day)
             } else {
-                format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", year, month, day, hours, minutes, seconds)
+                format!(
+                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                    year, month, day, hours, minutes, seconds
+                )
             }
-        }
+        },
         Data::DateTimeIso(s) => s.clone(),
         Data::DurationIso(s) => s.clone(),
     }
@@ -118,19 +121,27 @@ fn data_to_string(data: &Data) -> String {
 /// Count words in text (handles both CJK and Latin)
 fn count_words(text: &str) -> usize {
     let mut count = 0;
-    let mut in_word = false;
+    let mut current_kind: Option<bool> = None;
+    let has_latin_word = text.chars().any(|ch| ch.is_ascii_alphanumeric());
 
     for ch in text.chars() {
         if ch.is_ascii_alphanumeric() {
-            if !in_word {
+            if current_kind != Some(false) {
                 count += 1;
-                in_word = true;
+                current_kind = Some(false);
             }
         } else if is_cjk(ch) {
-            count += 1;
-            in_word = false;
+            if has_latin_word {
+                if current_kind != Some(true) {
+                    count += 1;
+                    current_kind = Some(true);
+                }
+            } else {
+                count += 1;
+                current_kind = None;
+            }
         } else {
-            in_word = false;
+            current_kind = None;
         }
     }
 
@@ -266,45 +277,45 @@ pub fn write_translated_excel(
                 } else {
                     // Write original value (preserve non-translatable cells)
                     match cell {
-                        Data::Empty => {}
+                        Data::Empty => {},
                         Data::String(s) => {
                             worksheet
                                 .write_string(row_idx as u32, col_idx as u16, s)
                                 .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        }
+                        },
                         Data::Float(f) => {
                             worksheet
                                 .write_number(row_idx as u32, col_idx as u16, *f)
                                 .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        }
+                        },
                         Data::Int(i) => {
                             worksheet
                                 .write_number(row_idx as u32, col_idx as u16, *i as f64)
                                 .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        }
+                        },
                         Data::Bool(b) => {
                             worksheet
                                 .write_boolean(row_idx as u32, col_idx as u16, *b)
                                 .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        }
+                        },
                         Data::Error(_) => {
                             // Skip error cells
-                        }
+                        },
                         Data::DateTime(dt) => {
                             worksheet
                                 .write_number(row_idx as u32, col_idx as u16, dt.as_f64())
                                 .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        }
+                        },
                         Data::DateTimeIso(s) => {
                             worksheet
                                 .write_string(row_idx as u32, col_idx as u16, s)
                                 .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        }
+                        },
                         Data::DurationIso(s) => {
                             worksheet
                                 .write_string(row_idx as u32, col_idx as u16, s)
                                 .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        }
+                        },
                     }
                 }
             }
@@ -331,7 +342,9 @@ pub async fn translate_excel_file(
     output_path: &str,
     _from_lang: &str,
     _to_lang: &str,
-    translate_fn: impl for<'a> Fn(&'a [(usize, &'a str)]) -> futures::future::BoxFuture<'a, Vec<(usize, String)>>,
+    translate_fn: impl for<'a> Fn(
+        &'a [(usize, &'a str)],
+    ) -> futures::future::BoxFuture<'a, Vec<(usize, String)>>,
 ) -> Result<ExcelTranslationResult, String> {
     // Extract text
     let doc = extract_text_from_excel(input_path)?;
@@ -367,7 +380,9 @@ pub async fn translate_excel_file(
             cells_translated: 0,
             words_translated: 0,
             success: true,
-            error_message: Some("No translatable content found (only formulas or empty cells)".to_string()),
+            error_message: Some(
+                "No translatable content found (only formulas or empty cells)".to_string(),
+            ),
         });
     }
 
@@ -375,9 +390,10 @@ pub async fn translate_excel_file(
     let text_pairs: Vec<(usize, &str)> = cells_to_translate
         .iter()
         .map(|(idx, _, row, col)| {
-            let sheet = doc.sheets.iter().find(|s| {
-                s.cells.iter().any(|c| c.row == *row && c.col == *col)
-            });
+            let sheet = doc
+                .sheets
+                .iter()
+                .find(|s| s.cells.iter().any(|c| c.row == *row && c.col == *col));
             let text = sheet
                 .and_then(|s| s.cells.iter().find(|c| c.row == *row && c.col == *col))
                 .map(|c| c.text.as_str())
@@ -393,10 +409,7 @@ pub async fn translate_excel_file(
     let mut translation_map: HashMap<(String, u32, u32), String> = HashMap::new();
     for (idx, translated) in batch_results {
         if let Some((_, sheet_name, row, col)) = cells_to_translate.get(idx) {
-            translation_map.insert(
-                (sheet_name.clone(), *row, *col),
-                translated,
-            );
+            translation_map.insert((sheet_name.clone(), *row, *col), translated);
         }
     }
 

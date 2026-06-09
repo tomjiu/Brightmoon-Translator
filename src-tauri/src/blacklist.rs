@@ -13,7 +13,7 @@ impl BlacklistProcessor {
 
     /// Replace blacklisted words with numbered placeholders.
     /// Single-pass implementation: scans text once, replacing blacklist words as encountered.
-    /// First-match priority follows blacklist order (lower index wins for overlapping terms).
+    /// Longest match wins for overlapping terms; ties keep blacklist order.
     /// Returns (protected_text, placeholder_map)
     pub fn protect(&self, text: &str) -> (String, HashMap<String, String>) {
         let mut result = String::with_capacity(text.len());
@@ -27,22 +27,31 @@ impl BlacklistProcessor {
 
             let remaining = &text[pos..];
 
+            let mut best_match: Option<(usize, &String)> = None;
             for (i, word) in self.blacklist.iter().enumerate() {
                 if word.is_empty() {
                     continue;
                 }
 
                 if remaining.starts_with(word.as_str()) {
-                    if pos > last_match_end {
-                        result.push_str(&text[last_match_end..pos]);
+                    match best_match {
+                        Some((best_i, best_word))
+                            if word.len() < best_word.len()
+                                || (word.len() == best_word.len() && i > best_i) => {},
+                        _ => best_match = Some((i, word)),
                     }
-
-                    let placeholder = format!("__BLACKLIST_{}__", i);
-                    result.push_str(&placeholder);
-                    placeholder_map.insert(placeholder, word.clone());
-                    last_match_end = pos + word.len();
-                    break;
                 }
+            }
+
+            if let Some((i, word)) = best_match {
+                if pos > last_match_end {
+                    result.push_str(&text[last_match_end..pos]);
+                }
+
+                let placeholder = format!("__BLACKLIST_{}__", i);
+                result.push_str(&placeholder);
+                placeholder_map.insert(placeholder, word.clone());
+                last_match_end = pos + word.len();
             }
         }
 
@@ -164,18 +173,18 @@ mod tests {
     fn test_protect_multiple_occurrences() {
         let processor = BlacklistProcessor::new(vec!["API".to_string()]);
         let (protected, map) = processor.protect("API call and API response");
-        assert_eq!(protected, "__BLACKLIST_0__ call and __BLACKLIST_0__ response");
+        assert_eq!(
+            protected,
+            "__BLACKLIST_0__ call and __BLACKLIST_0__ response"
+        );
         assert_eq!(map.len(), 1);
         assert_eq!(map["__BLACKLIST_0__"], "API");
     }
 
     #[test]
     fn test_protect_skips_empty_blacklist_words() {
-        let processor = BlacklistProcessor::new(vec![
-            "".to_string(),
-            "API".to_string(),
-            "".to_string(),
-        ]);
+        let processor =
+            BlacklistProcessor::new(vec!["".to_string(), "API".to_string(), "".to_string()]);
         let (protected, map) = processor.protect("Use API");
         // Empty strings are skipped, index 1 is "API"
         assert!(protected.contains("__BLACKLIST_1__"));
@@ -234,11 +243,7 @@ mod tests {
 
     #[test]
     fn test_protect_and_restore_full_roundtrip() {
-        let blacklist = vec![
-            "OpenAI".to_string(),
-            "GPT-4".to_string(),
-            "API".to_string(),
-        ];
+        let blacklist = vec!["OpenAI".to_string(), "GPT-4".to_string(), "API".to_string()];
         let processor = BlacklistProcessor::new(blacklist);
 
         let text = "Call OpenAI GPT-4 API endpoint";

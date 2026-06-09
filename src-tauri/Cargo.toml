@@ -41,9 +41,9 @@ pdf-extract = "0.7"
 epub = "2"
 regex = "1"
 md5 = "0.7"
-lindera-ipadic = "0.28"
-lindera-tokenizer = "0.28"
-lindera-dictionary = "0.28"
+lindera-ipadic = { version = "0.28", features = ["ipadic"] }
+lindera-tokenizer = { version = "0.28", features = ["ipadic"] }
+lindera-dictionary = { version = "0.28", features = ["ipadic"] }
 lindera-core = "0.28"
 rand = "0.8"
 tracing = "0.1"
