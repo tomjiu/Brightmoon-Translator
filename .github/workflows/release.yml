@@ -121,7 +121,7 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          $PREV_TAG = git tag --sort=-creatordate | Select-Object -Skip 1 | Select-Object -First 1
+          $PREV_TAG = git tag --list "v*" --sort=-creatordate | Select-Object -Skip 1 | Select-Object -First 1
           if ($PREV_TAG) {
             $LOG = git log "$PREV_TAG..HEAD" --pretty=format:"- %s (%h)" --no-merges
           } else {
