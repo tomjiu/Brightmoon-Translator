@@ -1,7 +1,17 @@
 import { useState, useEffect } from 'react';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
-import { Search, Star, BookOpen, Trash2, Download, Volume2 } from 'lucide-react';
+import {
+  Search,
+  Star,
+  BookOpen,
+  Trash2,
+  Download,
+  Volume2,
+  GraduationCap,
+  Brain,
+  Repeat,
+} from 'lucide-react';
 import { useI18n } from '../i18n';
 
 // 临时类型定义 - 后续可以移到types/index.ts
@@ -115,6 +125,39 @@ export default function Dictionary() {
     <div className="flex h-full">
       {/* 左侧：生词列表 */}
       <div className="w-80 border-r border-border bg-bg-secondary flex flex-col">
+        {/* 顶部学习功能按钮 */}
+        <div className="p-4 border-b border-border bg-bg-primary">
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              className="flex flex-col items-center gap-1 p-2 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors border border-primary/30"
+              title="开始学习（开发中）"
+              disabled
+            >
+              <GraduationCap size={18} className="text-primary" />
+              <span className="text-xs text-primary">学习模式</span>
+            </button>
+            <button
+              className="flex flex-col items-center gap-1 p-2 rounded-lg bg-bg-tertiary hover:bg-bg-secondary transition-colors border border-border"
+              title="智能复习（开发中）"
+              disabled
+            >
+              <Brain size={18} className="text-text-secondary" />
+              <span className="text-xs text-text-secondary">智能复习</span>
+            </button>
+            <button
+              className="flex flex-col items-center gap-1 p-2 rounded-lg bg-bg-tertiary hover:bg-bg-secondary transition-colors border border-border"
+              title="今日复习（开发中）"
+              disabled
+            >
+              <Repeat size={18} className="text-text-secondary" />
+              <span className="text-xs text-text-secondary">今日复习</span>
+            </button>
+          </div>
+          <p className="text-xs text-text-secondary mt-2 text-center">
+            <Badge variant="info">学习功能开发中</Badge>
+          </p>
+        </div>
+
         {/* 搜索栏 */}
         <div className="p-4 border-b border-border">
           <div className="relative">
@@ -260,7 +303,7 @@ export default function Dictionary() {
                     <div className="flex-1 h-2 bg-bg-tertiary rounded-full overflow-hidden">
                       <div
                         className="h-full bg-primary transition-all"
-                        style={{ width: `${selectedEntry.memoryStrength}%` }}
+                        style={{ width: `${String(selectedEntry.memoryStrength)}%` }}
                       />
                     </div>
                     <span className="text-sm font-medium text-primary">
