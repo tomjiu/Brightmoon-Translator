@@ -13,8 +13,8 @@ Desktop translation tool with browser extension, overlay UI, and multi-engine su
 ### Desktop App (Tauri)
 
 ```bash
-pnpm install
-pnpm tauri build
+npm install
+npm run tauri build
 ```
 
 Tauri runs the configured frontend build first, then writes bundles under
@@ -35,16 +35,16 @@ Load `extension/dist/firefox/manifest.json` in Firefox via `about:debugging`.
 
 ```bash
 # Run desktop app in dev mode
-pnpm install
-pnpm tauri dev
+npm install
+npm run tauri dev
 
 # Run tests
-pnpm test
+npm test
 cd src-tauri && cargo test
 
 # Check for warnings
-pnpm run check
-pnpm run lint
+npm run check
+npm run lint
 cd src-tauri && cargo check
 ```
 
