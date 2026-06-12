@@ -99,6 +99,11 @@ pub trait TranslationEngine: Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
 }
 
+struct EngineEntry {
+    id: String,
+    engine: Arc<dyn TranslationEngine>,
+}
+
 pub struct Router {
     engines: Vec<Arc<dyn TranslationEngine>>,
     strategy: RoutingStrategy,
@@ -106,7 +111,7 @@ pub struct Router {
 
 impl Router {
     pub fn new(config: &AppConfig) -> Self {
-        let mut engines: Vec<Arc<dyn TranslationEngine>> = Vec::new();
+        let mut available: Vec<EngineEntry> = Vec::new();
 
         // Create shared HTTP client with proxy support and configurable timeout
         let client = config
@@ -138,14 +143,18 @@ impl Router {
             } else {
                 engine
             };
-            engines.push(Arc::new(engine));
+            available.push(EngineEntry {
+                id: "llm".to_string(),
+                engine: Arc::new(engine),
+            });
         }
 
         // Youdao engine (free, no API key needed) - prioritize over Google
         if config.engines.youdao.enabled {
-            engines.push(Arc::new(
-                youdao::YoudaoEngine::new().with_client(client.clone()),
-            ));
+            available.push(EngineEntry {
+                id: "youdao".to_string(),
+                engine: Arc::new(youdao::YoudaoEngine::new().with_client(client.clone())),
+            });
         }
 
         // DeepL engine (requires API key)
@@ -157,7 +166,10 @@ impl Router {
             } else {
                 engine
             };
-            engines.push(Arc::new(engine));
+            available.push(EngineEntry {
+                id: "deepl".to_string(),
+                engine: Arc::new(engine),
+            });
         }
 
         // DeepLX engine (built-in, free DeepL alternative)
@@ -172,36 +184,48 @@ impl Router {
                     }
                 }
             }
-            engines.push(Arc::new(engine));
+            available.push(EngineEntry {
+                id: "deeplx".to_string(),
+                engine: Arc::new(engine),
+            });
         }
 
         // Baidu engine (requires API key)
         if config.engines.baidu.enabled && !config.engines.baidu.app_id.is_empty() {
-            engines.push(Arc::new(
-                baidu::BaiduEngine::new(&config.engines.baidu.app_id, &config.engines.baidu.secret)
+            available.push(EngineEntry {
+                id: "baidu".to_string(),
+                engine: Arc::new(
+                    baidu::BaiduEngine::new(
+                        &config.engines.baidu.app_id,
+                        &config.engines.baidu.secret,
+                    )
                     .with_client(client.clone()),
-            ));
+                ),
+            });
         }
 
         // Microsoft engine (free, no config needed)
         if config.engines.microsoft.enabled {
-            engines.push(Arc::new(
-                microsoft::MicrosoftEngine::new().with_client(client.clone()),
-            ));
+            available.push(EngineEntry {
+                id: "microsoft".to_string(),
+                engine: Arc::new(microsoft::MicrosoftEngine::new().with_client(client.clone())),
+            });
         }
 
         // Yandex engine (free, no config needed)
         if config.engines.yandex.enabled {
-            engines.push(Arc::new(
-                yandex::YandexEngine::new().with_client(client.clone()),
-            ));
+            available.push(EngineEntry {
+                id: "yandex".to_string(),
+                engine: Arc::new(yandex::YandexEngine::new().with_client(client.clone())),
+            });
         }
 
         // Google engine (free, no config needed) - lowest priority
         if config.engines.google.enabled {
-            engines.push(Arc::new(
-                google::GoogleEngine::new().with_client(client.clone()),
-            ));
+            available.push(EngineEntry {
+                id: "google".to_string(),
+                engine: Arc::new(google::GoogleEngine::new().with_client(client.clone())),
+            });
         }
 
         // Offline engine (local translation models)
@@ -212,36 +236,48 @@ impl Router {
                 Some(config.engines.offline.model_dir.as_str())
             };
             let offline_engine = offline::OfflineEngine::new(model_dir);
-            engines.push(Arc::new(offline_engine));
+            available.push(EngineEntry {
+                id: "offline".to_string(),
+                engine: Arc::new(offline_engine),
+            });
         }
-
-        // Fallback: if no engines configured, add a default LLM
-        if engines.is_empty() {
-            engines.push(Arc::new(
-                llm::LlmEngine::new("", "https://api.deepseek.com/v1", "deepseek-chat")
-                    .with_client(llm_client),
-            ));
-        }
-
-        // Log configured engines for debugging
-        let engine_names: Vec<&str> = engines.iter().map(|e| e.name()).collect();
-        tracing::info!("[Router] Configured engines: {:?} (strategy: {:?})", engine_names, config.routing_strategy);
 
         // Load plugin engines
         let plugins = plugin::scan_plugins();
         for p in &plugins {
             if p.manifest.enabled {
                 if let Some(ref tc) = p.manifest.translation {
+                    let plugin_id = format!(
+                        "plugin_{}",
+                        p.manifest.name.to_lowercase().replace(' ', "_")
+                    );
                     let engine = PluginEngine::new(
                         &format!("Plugin: {}", p.manifest.name),
                         &tc.endpoint,
                         tc.headers.clone(),
                     )
                     .with_client(client.clone());
-                    engines.push(Arc::new(engine));
+                    available.push(EngineEntry {
+                        id: plugin_id,
+                        engine: Arc::new(engine),
+                    });
                 }
             }
         }
+
+        // Order engines according to config
+        let engines = order_engines(available, &[]);
+
+        // Log configured engines for debugging
+        if engines.is_empty() {
+            tracing::error!("[Router] No translation engines available - check configuration");
+        }
+        let engine_names: Vec<&str> = engines.iter().map(|e| e.name()).collect();
+        tracing::info!(
+            "[Router] Configured engines: {:?} (strategy: {:?})",
+            engine_names,
+            config.routing_strategy
+        );
 
         Self {
             engines,
@@ -270,7 +306,7 @@ impl Router {
             RoutingStrategy::FallbackOnError => self.translate_with_fallback(text, from, to).await,
             RoutingStrategy::ParallelCompare => {
                 self.translate_parallel_compare(text, from, to).await
-            }
+            },
             RoutingStrategy::CostAware => self.translate_cost_aware(text, from, to).await,
             RoutingStrategy::LatencyFirst => self.translate_latency_first(text, from, to).await,
         }
@@ -309,7 +345,7 @@ impl Router {
                     Err(e) => {
                         tracing::warn!("[Router] Engine {} failed: {}", name, e);
                         None
-                    }
+                    },
                 }
             }));
         }
@@ -349,7 +385,7 @@ impl Router {
                         results: vec![],
                         detected_language: None,
                     }
-                }
+                },
             }
         } else {
             tracing::error!("[Router] No engines configured");
@@ -376,11 +412,11 @@ impl Router {
                         }],
                         detected_language: None,
                     };
-                }
+                },
                 Err(e) => {
                     tracing::warn!("[Router] Engine {} failed: {}, trying next...", name, e);
                     continue;
-                }
+                },
             }
         }
 
@@ -421,7 +457,7 @@ impl Router {
                     Err(e) => {
                         tracing::warn!("Engine {} error: {}", name, e);
                         None
-                    }
+                    },
                 }
             });
 
@@ -441,9 +477,9 @@ impl Router {
         }
     }
 
-    /// Strategy: Cost Aware - prefer free engines (Google, Microsoft, Yandex, DeepLX)
+    /// Strategy: Cost Aware - prefer free engines (Google, Youdao, DeepLX, Offline)
     async fn translate_cost_aware(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
-        const FREE_ENGINES: &[&str] = &["Google", "Microsoft", "Yandex", "DeepLX"];
+        const FREE_ENGINES: &[&str] = &["Google", "Youdao", "DeepLX", "Offline"];
 
         // Try free engines first
         for engine in &self.engines {
@@ -459,11 +495,11 @@ impl Router {
                             }],
                             detected_language: None,
                         };
-                    }
+                    },
                     Err(e) => {
                         tracing::warn!("Free engine {} failed: {}", name, e);
                         continue;
-                    }
+                    },
                 }
             }
         }
@@ -482,11 +518,11 @@ impl Router {
                             }],
                             detected_language: None,
                         };
-                    }
+                    },
                     Err(e) => {
                         tracing::warn!("Paid engine {} failed: {}", name, e);
                         continue;
-                    }
+                    },
                 }
             }
         }
@@ -522,11 +558,11 @@ impl Router {
                             text: translated,
                             latency_ms: Some(elapsed.as_millis() as u64),
                         })
-                    }
+                    },
                     Err(e) => {
                         tracing::warn!("Engine {} error: {}", name, e);
                         None
-                    }
+                    },
                 }
             });
 
@@ -664,5 +700,83 @@ impl Router {
         } else {
             Err(anyhow::anyhow!("No translation engine available"))
         }
+    }
+}
+
+/// Order engines according to configured priority
+fn order_engines(
+    mut available: Vec<EngineEntry>,
+    configured_order: &[String],
+) -> Vec<Arc<dyn TranslationEngine>> {
+    let mut ordered = Vec::with_capacity(available.len());
+
+    // Add engines in configured order
+    for requested_id in configured_order {
+        if let Some(index) = available
+            .iter()
+            .position(|entry| entry.id.eq_ignore_ascii_case(requested_id))
+        {
+            ordered.push(available.remove(index).engine);
+        }
+    }
+
+    // Add remaining engines in discovery order
+    ordered.extend(available.into_iter().map(|entry| entry.engine));
+    ordered
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::AppConfig;
+
+    #[test]
+    fn router_with_no_engines_returns_empty_results() {
+        let mut config = AppConfig::default();
+        config.engines.google.enabled = false;
+        config.engines.youdao.enabled = false;
+        config.engines.deepl.enabled = false;
+        config.engines.deeplx.enabled = false;
+        config.engines.baidu.enabled = false;
+        config.engines.microsoft.enabled = false;
+        config.engines.yandex.enabled = false;
+        config.engines.offline.enabled = false;
+
+        let router = Router::new(&config);
+        assert!(router.engines.is_empty());
+    }
+
+    #[tokio::test]
+    async fn empty_router_returns_empty_response() {
+        let router = Router {
+            engines: vec![],
+            strategy: RoutingStrategy::PrimaryOnly,
+        };
+
+        let response = router.translate_all("hello", "en", "zh").await;
+        assert!(response.results.is_empty());
+    }
+
+    #[test]
+    fn order_engines_respects_configured_order() {
+        use crate::engine::google;
+        use crate::engine::youdao;
+
+        let entries = vec![
+            EngineEntry {
+                id: "google".to_string(),
+                engine: Arc::new(google::GoogleEngine::new()),
+            },
+            EngineEntry {
+                id: "youdao".to_string(),
+                engine: Arc::new(youdao::YoudaoEngine::new()),
+            },
+        ];
+
+        let ordered = order_engines(entries, &["youdao".to_string(), "google".to_string()]);
+
+        assert_eq!(ordered.len(), 2);
+        assert_eq!(ordered[0].name(), "Youdao");
+        assert_eq!(ordered[1].name(), "Google");
     }
 }
