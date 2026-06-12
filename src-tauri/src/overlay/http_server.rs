@@ -64,12 +64,14 @@ impl OverlayHttpServer {
         tokio::spawn(async move {
             // Restrict CORS to localhost origins only (this is a local overlay server)
             let cors = tower_http::cors::CorsLayer::new()
-                .allow_origin(tower_http::cors::AllowOrigin::predicate(|origin, _parts| {
-                    let o = origin.as_bytes();
-                    o.starts_with(b"http://localhost")
-                        || o.starts_with(b"http://127.0.0.1")
-                        || o.starts_with(b"tauri://localhost")
-                }))
+                .allow_origin(tower_http::cors::AllowOrigin::predicate(
+                    |origin, _parts| {
+                        let o = origin.as_bytes();
+                        o.starts_with(b"http://localhost")
+                            || o.starts_with(b"http://127.0.0.1")
+                            || o.starts_with(b"tauri://localhost")
+                    },
+                ))
                 .allow_methods(tower_http::cors::Any)
                 .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::ACCEPT]);
 
@@ -108,7 +110,7 @@ impl OverlayHttpServer {
                 Err(e) => {
                     tracing::error!("Overlay HTTP server failed to bind: {}", e);
                     return;
-                }
+                },
             };
 
             tracing::info!("Overlay HTTP server listening on {}", addr);

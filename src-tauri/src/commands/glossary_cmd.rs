@@ -31,14 +31,16 @@ pub async fn add_glossary_entry(
     context: Option<String>,
 ) -> Result<(), String> {
     let mut glossary = state.translation.glossary.lock().await;
-    glossary.add_entry(
-        lang_pair,
-        GlossaryEntry {
-            source,
-            target,
-            context,
-        },
-    ).await;
+    glossary
+        .add_entry(
+            lang_pair,
+            GlossaryEntry {
+                source,
+                target,
+                context,
+            },
+        )
+        .await;
     Ok(())
 }
 

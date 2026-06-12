@@ -39,10 +39,10 @@ impl Glossary {
                 if let Err(e) = tokio::fs::write(&self.path, data).await {
                     tracing::error!("Failed to save glossary to {:?}: {}", self.path, e);
                 }
-            }
+            },
             Err(e) => {
                 tracing::error!("Failed to serialize glossary: {}", e);
-            }
+            },
         }
     }
 
@@ -191,14 +191,16 @@ mod tests {
         let mut glossary = Glossary::test_fixture();
         // Use a temp path that we won't actually write to
         glossary.path = PathBuf::from("/dev/null/test_add");
-        glossary.add_entry(
-            "en-zh".to_string(),
-            GlossaryEntry {
-                source: "hello".to_string(),
-                target: "你好".to_string(),
-                context: None,
-            },
-        ).await;
+        glossary
+            .add_entry(
+                "en-zh".to_string(),
+                GlossaryEntry {
+                    source: "hello".to_string(),
+                    target: "你好".to_string(),
+                    context: None,
+                },
+            )
+            .await;
         let entries = glossary.get_entries("en-zh");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].source, "hello");
@@ -350,14 +352,16 @@ mod tests {
         glossary.path = PathBuf::from("/dev/null/test_add_existing");
         assert_eq!(glossary.get_entries("ja-zh").len(), 2);
 
-        glossary.add_entry(
-            "ja-zh".to_string(),
-            GlossaryEntry {
-                source: "新しい".to_string(),
-                target: "新的".to_string(),
-                context: None,
-            },
-        ).await;
+        glossary
+            .add_entry(
+                "ja-zh".to_string(),
+                GlossaryEntry {
+                    source: "新しい".to_string(),
+                    target: "新的".to_string(),
+                    context: None,
+                },
+            )
+            .await;
         let entries = glossary.get_entries("ja-zh");
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[2].source, "新しい");

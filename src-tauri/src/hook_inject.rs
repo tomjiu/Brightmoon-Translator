@@ -4,20 +4,18 @@
  * Manages injection of the text hooking DLL into target processes.
  * Reads captured text from shared memory and dispatches to the translation pipeline.
  */
-
 use serde::Serialize;
 use windows::core::{PCWSTR, PSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::Diagnostics::Debug::WriteProcessMemory;
 use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 use windows::Win32::System::Memory::{
-    MapViewOfFile, MEMORY_MAPPED_VIEW_ADDRESS, OpenFileMappingW, UnmapViewOfFile,
-    VirtualAllocEx, VirtualFreeEx, FILE_MAP_ALL_ACCESS, MEM_COMMIT, MEM_RELEASE, PAGE_READWRITE,
+    MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, VirtualAllocEx, VirtualFreeEx,
+    FILE_MAP_ALL_ACCESS, MEMORY_MAPPED_VIEW_ADDRESS, MEM_COMMIT, MEM_RELEASE, PAGE_READWRITE,
 };
 use windows::Win32::System::Threading::{
-    CreateRemoteThread, GetExitCodeThread, OpenProcess, WaitForSingleObject,
-    PROCESS_CREATE_THREAD, PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ,
-    PROCESS_VM_WRITE,
+    CreateRemoteThread, GetExitCodeThread, OpenProcess, WaitForSingleObject, PROCESS_CREATE_THREAD,
+    PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE,
 };
 
 // Shared memory constants (must match DLL)
@@ -136,13 +134,7 @@ impl HookManager {
 
             // Allocate memory in target process for DLL path
             let path_size = (dll_path_wide.len() * 2) as usize;
-            let remote_mem = VirtualAllocEx(
-                process,
-                None,
-                path_size,
-                MEM_COMMIT,
-                PAGE_READWRITE,
-            );
+            let remote_mem = VirtualAllocEx(process, None, path_size, MEM_COMMIT, PAGE_READWRITE);
             if remote_mem.is_null() {
                 let _ = CloseHandle(process);
                 return Err("VirtualAllocEx failed".to_string());
@@ -359,13 +351,7 @@ impl HookManager {
             )
             .map_err(|e| format!("OpenFileMappingW failed: {}", e))?;
 
-            let view = MapViewOfFile(
-                handle,
-                FILE_MAP_ALL_ACCESS,
-                0,
-                0,
-                SHARED_MEMORY_SIZE,
-            );
+            let view = MapViewOfFile(handle, FILE_MAP_ALL_ACCESS, 0, 0, SHARED_MEMORY_SIZE);
 
             if view.Value.is_null() {
                 let _ = CloseHandle(handle);

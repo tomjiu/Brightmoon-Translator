@@ -3,7 +3,6 @@
  *
  * Tauri commands for translation quality scoring and engine comparison
  */
-
 use crate::quality::{EngineScore, TranslationScore};
 use crate::AppState;
 use tauri::State;

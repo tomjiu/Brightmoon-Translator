@@ -36,7 +36,8 @@ pub async fn translate_subtitle(
     // Use batch translation with progress
     let window_clone = window.clone();
     let batch_results = state
-        .translation.service
+        .translation
+        .service
         .translate_embedded_batch(
             &entries_to_translate
                 .iter()
@@ -109,7 +110,8 @@ pub async fn translate_subtitle_text(
     to_lang: String,
 ) -> Result<String, String> {
     state
-        .translation.service
+        .translation
+        .service
         .translate_primary(&text, &from_lang, &to_lang)
         .await
         .map_err(|e| e.to_string())

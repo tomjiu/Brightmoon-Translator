@@ -3,7 +3,6 @@
  *
  * Commands for managing DLL injection and reading captured text.
  */
-
 use crate::error::AppError;
 use crate::hook_inject::{CapturedText, HookManager, HookStatus};
 use std::sync::Mutex;
@@ -25,10 +24,7 @@ impl HookState {
 /// Inject the hook DLL into the specified process.
 /// If pid is 0, uses the foreground window's process.
 #[tauri::command]
-pub async fn hook_inject(
-    state: State<'_, HookState>,
-    pid: u32,
-) -> Result<HookStatus, AppError> {
+pub async fn hook_inject(state: State<'_, HookState>, pid: u32) -> Result<HookStatus, AppError> {
     let target_pid = if pid == 0 {
         // Get foreground window's process ID
         #[cfg(target_os = "windows")]
@@ -56,15 +52,15 @@ pub async fn hook_inject(
     }
 
     let mut manager = state.manager.lock()?;
-    manager.inject(target_pid).map_err(AppError::HookInjection)?;
+    manager
+        .inject(target_pid)
+        .map_err(AppError::HookInjection)?;
     Ok(manager.status())
 }
 
 /// Eject the hook DLL and cleanup.
 #[tauri::command]
-pub async fn hook_eject(
-    state: State<'_, HookState>,
-) -> Result<HookStatus, AppError> {
+pub async fn hook_eject(state: State<'_, HookState>) -> Result<HookStatus, AppError> {
     let mut manager = state.manager.lock()?;
     manager.eject().map_err(AppError::Hook)?;
     Ok(manager.status())
@@ -72,9 +68,7 @@ pub async fn hook_eject(
 
 /// Get the current hook status.
 #[tauri::command]
-pub async fn hook_status(
-    state: State<'_, HookState>,
-) -> Result<HookStatus, AppError> {
+pub async fn hook_status(state: State<'_, HookState>) -> Result<HookStatus, AppError> {
     let manager = state.manager.lock()?;
     Ok(manager.status())
 }

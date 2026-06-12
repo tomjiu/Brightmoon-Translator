@@ -4,9 +4,7 @@ use tauri::State;
 
 /// Get aggregated metrics summary
 #[tauri::command]
-pub async fn get_metrics_summary(
-    state: State<'_, AppState>,
-) -> Result<MetricsSummary, String> {
+pub async fn get_metrics_summary(state: State<'_, AppState>) -> Result<MetricsSummary, String> {
     Ok(state.translation.metrics.summary().await)
 }
 
@@ -32,34 +30,26 @@ pub async fn get_metrics_hourly_stats(
 
 /// Export all metrics as CSV
 #[tauri::command]
-pub async fn export_metrics_csv(
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn export_metrics_csv(state: State<'_, AppState>) -> Result<String, String> {
     Ok(state.translation.metrics.export_csv().await)
 }
 
 /// Export all metrics as JSON
 #[tauri::command]
-pub async fn export_metrics_json(
-    state: State<'_, AppState>,
-) -> Result<Vec<MetricsEvent>, String> {
+pub async fn export_metrics_json(state: State<'_, AppState>) -> Result<Vec<MetricsEvent>, String> {
     Ok(state.translation.metrics.export_json().await)
 }
 
 /// Clear all metrics data
 #[tauri::command]
-pub async fn clear_metrics(
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn clear_metrics(state: State<'_, AppState>) -> Result<(), String> {
     state.translation.metrics.clear().await;
     Ok(())
 }
 
 /// Prune old metrics data
 #[tauri::command]
-pub async fn prune_metrics(
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn prune_metrics(state: State<'_, AppState>) -> Result<(), String> {
     state.translation.metrics.prune().await;
     Ok(())
 }

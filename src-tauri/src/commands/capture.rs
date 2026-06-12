@@ -66,28 +66,60 @@ impl Drop for TempFileGuard {
 
 // ── In-memory snapshot cache ───────────────────────────────────────────────
 // Avoids slow disk I/O when the selector window loads the screenshot.
+// Includes timestamp for smart cache expiration (30 seconds default)
 
-static SNAPSHOT_CACHE: std::sync::OnceLock<
-    std::sync::Mutex<Option<(Vec<u8>, ScreenshotSnapshotInfo)>>,
-> = std::sync::OnceLock::new();
+use std::time::{SystemTime, UNIX_EPOCH};
 
-fn snapshot_cache() -> &'static std::sync::Mutex<Option<(Vec<u8>, ScreenshotSnapshotInfo)>> {
+struct CachedSnapshot {
+    png_bytes: Vec<u8>,
+    info: ScreenshotSnapshotInfo,
+    timestamp: u64, // Unix timestamp in seconds
+}
+
+static SNAPSHOT_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<CachedSnapshot>>> =
+    std::sync::OnceLock::new();
+
+fn snapshot_cache() -> &'static std::sync::Mutex<Option<CachedSnapshot>> {
     SNAPSHOT_CACHE.get_or_init(|| std::sync::Mutex::new(None))
 }
 
 fn cache_snapshot(png_bytes: Vec<u8>, info: &ScreenshotSnapshotInfo) {
     if let Ok(mut cache) = snapshot_cache().lock() {
-        *cache = Some((png_bytes, info.clone()));
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        *cache = Some(CachedSnapshot {
+            png_bytes,
+            info: info.clone(),
+            timestamp,
+        });
     }
 }
 
 fn read_cached_snapshot() -> Option<ScreenshotSnapshot> {
     let cache = snapshot_cache().lock().ok()?;
-    let (ref png, ref info) = cache.as_ref()?;
+    let cached = cache.as_ref()?;
     Some(ScreenshotSnapshot {
-        image: encode_png_bytes(png),
-        info: info.clone(),
+        image: encode_png_bytes(&cached.png_bytes),
+        info: cached.info.clone(),
     })
+}
+
+/// Check if cache is fresh (within 30 seconds)
+fn is_cache_fresh(max_age_secs: u64) -> bool {
+    if let Ok(cache) = snapshot_cache().lock() {
+        if let Some(ref cached) = *cache {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            return (now - cached.timestamp) < max_age_secs;
+        }
+    }
+    false
 }
 
 #[cfg(target_os = "windows")]
@@ -338,6 +370,20 @@ pub async fn capture_full_screen() -> Result<String, String> {
 
 #[command]
 pub async fn prepare_screenshot_snapshot() -> Result<ScreenshotSnapshotInfo, String> {
+    // Smart cache: If cache is fresh (within 30 seconds), return cached info instantly
+    // This eliminates the 1-2 second lag when user clicks OCR button repeatedly
+    if is_cache_fresh(30) {
+        if let Some(cached) = read_cached_snapshot() {
+            tracing::info!("prepare_screenshot_snapshot: returning fresh cache (instant response)");
+            return Ok(cached.info);
+        }
+    }
+
+    // Cache expired or not available, capture fresh screenshot
+    tracing::info!(
+        "prepare_screenshot_snapshot: cache expired or not available, capturing fresh screenshot"
+    );
+
     // Use spawn_blocking to avoid blocking the async runtime with GDI calls
     tokio::task::spawn_blocking(move || {
         // Capture the screen (platform-specific)

@@ -55,7 +55,7 @@ impl HistoryStore {
             Err(e) => {
                 tracing::error!("Failed to open history database: {}", e);
                 Connection::open_in_memory().expect("Failed to create in-memory history")
-            }
+            },
         };
 
         // Create table if not exists
@@ -143,7 +143,7 @@ impl HistoryStore {
             Err(e) => {
                 tracing::error!("Failed to query history: {}", e);
                 Vec::new()
-            }
+            },
         }
     }
 
@@ -287,9 +287,7 @@ impl HistoryStore {
     ) -> Option<TmMatch> {
         // Find entries contained within the query or containing the query
         // Escape LIKE special chars to prevent pattern injection
-        let escaped = normalized
-            .replace('%', "\\%")
-            .replace('_', "\\_");
+        let escaped = normalized.replace('%', "\\%").replace('_', "\\_");
         let pattern = format!("%{}%", escaped);
         let mut stmt = conn
             .prepare(
@@ -337,7 +335,8 @@ impl HistoryStore {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
 
         // Build query with parameterized placeholders to prevent SQL injection
-        let (query, param_values): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match (from, to) {
+        let (query, param_values): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match (from, to)
+        {
             (Some(f), Some(t)) => (
                 "SELECT source_text, translated_text, from_lang, to_lang, engine, timestamp
                  FROM history WHERE from_lang = ?1 AND to_lang = ?2 ORDER BY timestamp DESC"
@@ -373,20 +372,23 @@ impl HistoryStore {
                     entries: Vec::new(),
                     exported_at: chrono::Utc::now().timestamp_millis(),
                 };
-            }
+            },
         };
 
         let entries: Vec<TmExportEntry> = stmt
-            .query_map(rusqlite::params_from_iter(param_values.iter().map(|p| p.as_ref())), |row| {
-                Ok(TmExportEntry {
-                    source: row.get(0)?,
-                    target: row.get(1)?,
-                    from_lang: row.get(2)?,
-                    to_lang: row.get(3)?,
-                    engine: row.get(4)?,
-                    timestamp: row.get(5)?,
-                })
-            })
+            .query_map(
+                rusqlite::params_from_iter(param_values.iter().map(|p| p.as_ref())),
+                |row| {
+                    Ok(TmExportEntry {
+                        source: row.get(0)?,
+                        target: row.get(1)?,
+                        from_lang: row.get(2)?,
+                        to_lang: row.get(3)?,
+                        engine: row.get(4)?,
+                        timestamp: row.get(5)?,
+                    })
+                },
+            )
             .ok()
             .map(|rows| rows.filter_map(|r| r.ok()).collect())
             .unwrap_or_default();
@@ -407,13 +409,14 @@ impl HistoryStore {
 
         // If deduplicating, load existing source texts for quick lookup
         let existing: HashSet<String> = if deduplicate {
-            let mut stmt = match conn.prepare("SELECT DISTINCT LOWER(TRIM(source_text)) FROM history") {
-                Ok(stmt) => stmt,
-                Err(e) => {
-                    tracing::error!("Failed to prepare dedup query: {}", e);
-                    return (0, data.entries.len());
-                }
-            };
+            let mut stmt =
+                match conn.prepare("SELECT DISTINCT LOWER(TRIM(source_text)) FROM history") {
+                    Ok(stmt) => stmt,
+                    Err(e) => {
+                        tracing::error!("Failed to prepare dedup query: {}", e);
+                        return (0, data.entries.len());
+                    },
+                };
             stmt.query_map([], |row| row.get::<_, String>(0))
                 .ok()
                 .map(|rows| rows.filter_map(|r| r.ok()).collect())
@@ -448,7 +451,9 @@ impl HistoryStore {
     pub fn get_tm_stats(&self) -> TmStats {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let total = conn
-            .query_row("SELECT COUNT(*) FROM history", [], |row| row.get::<_, i64>(0))
+            .query_row("SELECT COUNT(*) FROM history", [], |row| {
+                row.get::<_, i64>(0)
+            })
             .unwrap_or(0) as usize;
 
         let lang_pairs: Vec<(String, String, usize)> = {
@@ -457,7 +462,12 @@ impl HistoryStore {
                  FROM history GROUP BY from_lang, to_lang ORDER BY cnt DESC",
             ) {
                 Ok(stmt) => stmt,
-                Err(_) => return TmStats { total, lang_pairs: Vec::new() },
+                Err(_) => {
+                    return TmStats {
+                        total,
+                        lang_pairs: Vec::new(),
+                    }
+                },
             };
             stmt.query_map([], |row| {
                 Ok((
@@ -486,7 +496,8 @@ impl HistoryStore {
     ) -> (Vec<TmExportEntry>, usize) {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         // Escape LIKE special characters to prevent pattern injection
-        let escaped_query = query.to_lowercase()
+        let escaped_query = query
+            .to_lowercase()
             .replace('\\', "\\\\")
             .replace('%', "\\%")
             .replace('_', "\\_");
@@ -495,9 +506,8 @@ impl HistoryStore {
         let mut conditions = vec![
             "(LOWER(source_text) LIKE ?1 ESCAPE '\\' OR LOWER(translated_text) LIKE ?1 ESCAPE '\\')".to_string(),
         ];
-        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-            Box::new(query_pattern.clone()),
-        ];
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> =
+            vec![Box::new(query_pattern.clone())];
 
         let mut param_idx = 2;
         if let Some(from) = from_lang {
@@ -514,10 +524,7 @@ impl HistoryStore {
         let where_clause = conditions.join(" AND ");
 
         // Get total count
-        let count_query = format!(
-            "SELECT COUNT(*) FROM history WHERE {}",
-            where_clause
-        );
+        let count_query = format!("SELECT COUNT(*) FROM history WHERE {}", where_clause);
         let total: usize = conn
             .query_row(
                 &count_query,
@@ -530,7 +537,9 @@ impl HistoryStore {
         let query_str = format!(
             "SELECT source_text, translated_text, from_lang, to_lang, engine, timestamp
              FROM history WHERE {} ORDER BY timestamp DESC LIMIT ?{} OFFSET ?{}",
-            where_clause, param_idx, param_idx + 1
+            where_clause,
+            param_idx,
+            param_idx + 1
         );
         params.push(Box::new(limit as i64));
         params.push(Box::new(offset as i64));
@@ -563,13 +572,7 @@ impl HistoryStore {
 
     /// Delete TM entries matching the given criteria.
     /// Returns the number of entries deleted.
-    pub fn delete_tm(
-        &self,
-        source: &str,
-        target: &str,
-        from_lang: &str,
-        to_lang: &str,
-    ) -> usize {
+    pub fn delete_tm(&self, source: &str, target: &str, from_lang: &str, to_lang: &str) -> usize {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "DELETE FROM history WHERE source_text = ?1 AND translated_text = ?2 AND from_lang = ?3 AND to_lang = ?4",
@@ -580,10 +583,7 @@ impl HistoryStore {
 
     /// Bulk delete TM entries by a list of source/target/lang tuples.
     /// Returns the total number of entries deleted.
-    pub fn batch_delete_tm(
-        &self,
-        entries: &[(String, String, String, String)],
-    ) -> usize {
+    pub fn batch_delete_tm(&self, entries: &[(String, String, String, String)]) -> usize {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut total_deleted = 0usize;
         for (source, target, from_lang, to_lang) in entries {
@@ -648,7 +648,7 @@ impl WordBookStore {
             Err(e) => {
                 tracing::error!("Failed to open wordbook database: {}", e);
                 Connection::open_in_memory().expect("Failed to create in-memory wordbook")
-            }
+            },
         };
 
         if let Err(e) = conn.execute(
@@ -732,7 +732,7 @@ impl WordBookStore {
             Err(e) => {
                 tracing::error!("Failed to query wordbook: {}", e);
                 Vec::new()
-            }
+            },
         }
     }
 
@@ -804,7 +804,7 @@ impl WordBookStore {
             Err(e) => {
                 tracing::error!("Failed to search wordbook: {}", e);
                 Vec::new()
-            }
+            },
         }
     }
 }

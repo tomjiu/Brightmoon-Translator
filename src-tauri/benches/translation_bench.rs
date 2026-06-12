@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 // Mock translation engine for benchmarking
 struct MockTranslationEngine {
@@ -32,17 +32,9 @@ fn bench_single_translation(c: &mut Criterion) {
         let engine = MockTranslationEngine::new("mock", delay_ms);
         let text = "Hello, world! This is a test sentence for translation.";
 
-        group.bench_with_input(
-            BenchmarkId::new("delay_ms", delay_ms),
-            &delay_ms,
-            |b, _| {
-                b.iter(|| {
-                    rt.block_on(async {
-                        engine.translate(black_box(text), "en", "zh").await
-                    })
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("delay_ms", delay_ms), &delay_ms, |b, _| {
+            b.iter(|| rt.block_on(async { engine.translate(black_box(text), "en", "zh").await }));
+        });
     }
 
     group.finish();
@@ -62,17 +54,9 @@ fn bench_text_length(c: &mut Criterion) {
     ];
 
     for (name, text) in texts {
-        group.bench_with_input(
-            BenchmarkId::new("length", name),
-            &text,
-            |b, text| {
-                b.iter(|| {
-                    rt.block_on(async {
-                        engine.translate(black_box(text), "en", "zh").await
-                    })
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("length", name), &text, |b, text| {
+            b.iter(|| rt.block_on(async { engine.translate(black_box(text), "en", "zh").await }));
+        });
     }
 
     group.finish();
@@ -167,17 +151,13 @@ fn bench_cache_key_generation(c: &mut Criterion) {
     ];
 
     for (name, text) in texts {
-        group.bench_with_input(
-            BenchmarkId::new("text", name),
-            &text,
-            |b, text| {
-                b.iter(|| {
-                    // Simulate cache key generation
-                    let key = format!("{}|{}|{}", "en", "zh", black_box(text));
-                    key
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("text", name), &text, |b, text| {
+            b.iter(|| {
+                // Simulate cache key generation
+                let key = format!("{}|{}|{}", "en", "zh", black_box(text));
+                key
+            });
+        });
     }
 
     group.finish();

@@ -6,11 +6,11 @@ use crate::glossary::Glossary;
 use crate::memory::HistoryStore;
 use crate::metrics::MetricsCollector;
 use crate::models::error::TranslationError;
+pub use crate::models::translation::BatchTranslationResult;
 use crate::post_process::PostProcessor;
 use crate::pre_process::PreProcessor;
-pub use crate::models::translation::BatchTranslationResult;
-use std::collections::VecDeque;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
@@ -137,7 +137,11 @@ impl TranslationService {
         let span = info_span!("translate", chars = text.len(), from, to);
         async {
             let preview: String = text.chars().take(100).collect();
-            tracing::info!("[Translation] Input text ({} chars): {:?}", text.len(), preview);
+            tracing::info!(
+                "[Translation] Input text ({} chars): {:?}",
+                text.len(),
+                preview
+            );
 
             let prepared = self.prepare(text, from, to).await;
 
@@ -150,15 +154,26 @@ impl TranslationService {
             // Check Translation Memory before cache
             if tm_enabled {
                 let history = self.history.lock().await;
-                if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold) {
+                if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold)
+                {
                     drop(history);
                     self.metrics.record_cache_hit();
                     let tm_preview: String = tm_match.source_text.chars().take(50).collect();
                     tracing::info!(
                         "[TM] Hit: similarity={:.2}, engine={}, stored_source={:?}",
-                        tm_match.similarity, tm_match.engine, tm_preview
+                        tm_match.similarity,
+                        tm_match.engine,
+                        tm_preview
                     );
-                    let final_text = self.finalize(&tm_match.translated_text, text, from, to, &prepared.blacklist).await;
+                    let final_text = self
+                        .finalize(
+                            &tm_match.translated_text,
+                            text,
+                            from,
+                            to,
+                            &prepared.blacklist,
+                        )
+                        .await;
                     return Ok(TranslateResponse {
                         results: vec![TranslationResult {
                             engine: format!("TM ({})", tm_match.engine),
@@ -179,7 +194,9 @@ impl TranslationService {
                 self.metrics.record_cache_hit();
                 let mut results = Vec::with_capacity(cached.results.len());
                 for (engine, cached_text) in cached.results {
-                    let final_text = self.finalize(&cached_text, text, from, to, &prepared.blacklist).await;
+                    let final_text = self
+                        .finalize(&cached_text, text, from, to, &prepared.blacklist)
+                        .await;
                     results.push(TranslationResult {
                         engine,
                         text: final_text,
@@ -205,12 +222,18 @@ impl TranslationService {
                 let engine_span = info_span!("engine_translate_glossary");
                 async {
                     let primary_result = router
-                        .translate_primary_with_glossary(&prepared.text, from, to, &prepared.glossary_hint)
+                        .translate_primary_with_glossary(
+                            &prepared.text,
+                            from,
+                            to,
+                            &prepared.glossary_hint,
+                        )
                         .await;
                     let mut resp = router.translate_rest(&prepared.text, from, to).await;
                     match primary_result {
                         Ok(translated) => {
-                            let engine_name = router.primary_engine_name().unwrap_or("LLM").to_string();
+                            let engine_name =
+                                router.primary_engine_name().unwrap_or("LLM").to_string();
                             resp.results.insert(
                                 0,
                                 TranslationResult {
@@ -219,12 +242,18 @@ impl TranslationService {
                                     latency_ms: None,
                                 },
                             );
-                        }
+                        },
                         Err(e) => {
-                            tracing::warn!("[translate] Primary engine with glossary failed: {}, falling back", e);
+                            tracing::warn!(
+                                "[translate] Primary engine with glossary failed: {}, falling back",
+                                e
+                            );
                             let fallback = router.translate_primary(&prepared.text, from, to).await;
                             if let Ok(translated) = fallback {
-                                let engine_name = router.primary_engine_name().unwrap_or("primary").to_string();
+                                let engine_name = router
+                                    .primary_engine_name()
+                                    .unwrap_or("primary")
+                                    .to_string();
                                 resp.results.insert(
                                     0,
                                     TranslationResult {
@@ -234,7 +263,7 @@ impl TranslationService {
                                     },
                                 );
                             }
-                        }
+                        },
                     }
                     resp
                 }
@@ -244,18 +273,27 @@ impl TranslationService {
             let elapsed_ms = start.elapsed().as_millis() as u64;
 
             // Record failures for empty results
-            let engine_names: Vec<String> = router.engine_names().iter().map(|s| s.to_string()).collect();
+            let engine_names: Vec<String> = router
+                .engine_names()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
             drop(router);
 
             for result in &response.results {
-                self.metrics.record_engine_latency(&result.engine, elapsed_ms).await;
+                self.metrics
+                    .record_engine_latency(&result.engine, elapsed_ms)
+                    .await;
             }
 
             if response.results.is_empty() {
                 let detail = if engine_names.is_empty() {
                     "No engines are configured".to_string()
                 } else {
-                    format!("No engine returned a result (configured: {})", engine_names.join(", "))
+                    format!(
+                        "No engine returned a result (configured: {})",
+                        engine_names.join(", ")
+                    )
                 };
                 self.metrics.record_failure("all", &detail).await;
                 return Err(TranslationError::AllEnginesFailed {
@@ -265,12 +303,19 @@ impl TranslationService {
 
             // Finalize all results: restore blacklist -> post-process -> auto-correct
             for result in &mut response.results {
-                result.text = self.finalize(&result.text, text, from, to, &prepared.blacklist).await;
+                result.text = self
+                    .finalize(&result.text, text, from, to, &prepared.blacklist)
+                    .await;
             }
 
             // Log translation results
             for result in &response.results {
-                tracing::info!("[Translation] Engine: {}, Result ({} chars): {:?}", result.engine, result.text.len(), &result.text[..result.text.len().min(200)]);
+                tracing::info!(
+                    "[Translation] Engine: {}, Result ({} chars): {:?}",
+                    result.engine,
+                    result.text.len(),
+                    &result.text[..result.text.len().min(200)]
+                );
             }
 
             // Cache the results
@@ -280,7 +325,9 @@ impl TranslationService {
                     .iter()
                     .map(|r| (r.engine.clone(), r.text.clone()))
                     .collect();
-                self.cache.set(&prepared.text, from, to, cache_results).await;
+                self.cache
+                    .set(&prepared.text, from, to, cache_results)
+                    .await;
             }
 
             // Save to history
@@ -315,7 +362,9 @@ impl TranslationService {
             if let Some(cached) = cached {
                 if let Some((_, cached_text)) = cached.results.into_iter().next() {
                     self.metrics.record_cache_hit();
-                    let final_text = self.finalize(&cached_text, text, from, to, &prepared.blacklist).await;
+                    let final_text = self
+                        .finalize(&cached_text, text, from, to, &prepared.blacklist)
+                        .await;
                     let _ = tx.send(final_text.clone()).await;
                     return Ok(final_text);
                 }
@@ -331,9 +380,19 @@ impl TranslationService {
                     .instrument(engine_span)
                     .await
             } else {
-                async { router.translate_stream_with_glossary(&prepared.text, from, to, tx, &prepared.glossary_hint).await }
-                    .instrument(engine_span)
-                    .await
+                async {
+                    router
+                        .translate_stream_with_glossary(
+                            &prepared.text,
+                            from,
+                            to,
+                            tx,
+                            &prepared.glossary_hint,
+                        )
+                        .await
+                }
+                .instrument(engine_span)
+                .await
             };
             drop(router);
 
@@ -342,25 +401,32 @@ impl TranslationService {
                     let elapsed_ms = start.elapsed().as_millis() as u64;
                     self.metrics.record_engine_latency("LLM", elapsed_ms).await;
 
-                    let final_text = self.finalize(&full_text, text, from, to, &prepared.blacklist).await;
+                    let final_text = self
+                        .finalize(&full_text, text, from, to, &prepared.blacklist)
+                        .await;
 
                     if !final_text.is_empty() {
                         self.cache
-                            .set(&prepared.text, from, to, vec![("LLM".to_string(), final_text.clone())])
+                            .set(
+                                &prepared.text,
+                                from,
+                                to,
+                                vec![("LLM".to_string(), final_text.clone())],
+                            )
                             .await;
                         let history = self.history.lock().await;
                         history.add(text, &final_text, from, to, "LLM");
                     }
 
                     Ok(final_text)
-                }
+                },
                 Err(e) => {
                     self.metrics.record_failure("LLM", &e.to_string()).await;
                     Err(TranslationError::EngineError {
                         engine: "LLM".to_string(),
                         message: format!("Streaming failed: {}", e),
                     })
-                }
+                },
             }
         }
         .instrument(span)
@@ -386,10 +452,19 @@ impl TranslationService {
 
             if tm_enabled {
                 let history = self.history.lock().await;
-                if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold) {
+                if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold)
+                {
                     drop(history);
                     self.metrics.record_cache_hit();
-                    let final_text = self.finalize(&tm_match.translated_text, text, from, to, &prepared.blacklist).await;
+                    let final_text = self
+                        .finalize(
+                            &tm_match.translated_text,
+                            text,
+                            from,
+                            to,
+                            &prepared.blacklist,
+                        )
+                        .await;
                     return Ok(final_text);
                 }
             }
@@ -402,24 +477,37 @@ impl TranslationService {
                     .instrument(engine_span)
                     .await
             } else {
-                async { router.translate_primary_with_glossary(&prepared.text, from, to, &prepared.glossary_hint).await }
-                    .instrument(engine_span)
-                    .await
+                async {
+                    router
+                        .translate_primary_with_glossary(
+                            &prepared.text,
+                            from,
+                            to,
+                            &prepared.glossary_hint,
+                        )
+                        .await
+                }
+                .instrument(engine_span)
+                .await
             };
             drop(router);
 
             match result {
                 Ok(translated) => {
                     let elapsed_ms = start.elapsed().as_millis() as u64;
-                    self.metrics.record_engine_latency("primary", elapsed_ms).await;
+                    self.metrics
+                        .record_engine_latency("primary", elapsed_ms)
+                        .await;
 
-                    let final_text = self.finalize(&translated, text, from, to, &prepared.blacklist).await;
+                    let final_text = self
+                        .finalize(&translated, text, from, to, &prepared.blacklist)
+                        .await;
                     Ok(final_text)
-                }
+                },
                 Err(e) => {
                     self.metrics.record_failure("primary", &e.to_string()).await;
                     Err(TranslationError::from(e))
-                }
+                },
             }
         }
         .instrument(span)
@@ -482,7 +570,8 @@ impl TranslationService {
                     let from = from.to_string();
                     let to = to.to_string();
                     // Convert VecDeque to Vec for the snapshot (small, max 5 entries)
-                    let context_snapshot: Vec<TranslationContext> = context.iter().cloned().collect();
+                    let context_snapshot: Vec<TranslationContext> =
+                        context.iter().cloned().collect();
                     let router = self.engine_router.clone();
 
                     let handle = tokio::spawn(async move {
@@ -493,9 +582,13 @@ impl TranslationService {
                         {
                             Ok(t) => t,
                             Err(e) => {
-                                tracing::warn!("[translate_batch] Translation failed for segment {}: {}", idx, e);
+                                tracing::warn!(
+                                    "[translate_batch] Translation failed for segment {}: {}",
+                                    idx,
+                                    e
+                                );
                                 String::new()
-                            }
+                            },
                         };
                         drop(router);
 

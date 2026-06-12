@@ -157,7 +157,7 @@ impl FollowController {
                 let should_move = match last_pos {
                     Some((lx, ly)) => {
                         (nx - lx).abs() > MOVE_THRESHOLD || (ny - ly).abs() > MOVE_THRESHOLD
-                    }
+                    },
                     None => true,
                 };
 
@@ -216,11 +216,11 @@ impl FollowController {
             FollowMode::Cursor => {
                 let cursor = get_cursor_position();
                 Some((cursor.x + 10.0, cursor.y + 10.0))
-            }
+            },
             FollowMode::TargetBounds => {
                 let bounds = self.target_bounds.lock().await;
                 bounds.map(|b| (b.x, b.y + b.height + 8.0))
-            }
+            },
             FollowMode::None => None,
         };
 

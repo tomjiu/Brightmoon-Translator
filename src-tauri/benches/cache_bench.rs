@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -223,10 +223,7 @@ fn bench_cache_eviction(c: &mut Criterion) {
                         // Trigger evictions
                         for i in 0..100 {
                             cache
-                                .set(
-                                    &format!("new_key_{}", i),
-                                    &format!("new_value_{}", i),
-                                )
+                                .set(&format!("new_key_{}", i), &format!("new_value_{}", i))
                                 .await;
                         }
                         cache.size().await
@@ -256,9 +253,7 @@ fn bench_cache_key_format(c: &mut Criterion) {
             BenchmarkId::new("format", name),
             &(from, to, text),
             |b, &(from, to, text)| {
-                b.iter(|| {
-                    format!("{}|{}|{}", from, to, black_box(text))
-                });
+                b.iter(|| format!("{}|{}|{}", from, to, black_box(text)));
             },
         );
     }

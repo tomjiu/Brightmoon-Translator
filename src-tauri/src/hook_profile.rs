@@ -63,7 +63,7 @@ impl HookProfileManager {
                 Err(e) => {
                     tracing::error!("Failed to read hook profiles {:?}: {}", path, e);
                     empty
-                }
+                },
             }
         } else {
             empty
@@ -82,15 +82,19 @@ impl HookProfileManager {
                 if let Err(e) = std::fs::write(&path, data) {
                     tracing::error!("Failed to save hook profiles {:?}: {}", path, e);
                 }
-            }
+            },
             Err(e) => {
                 tracing::error!("Failed to serialize hook profiles: {}", e);
-            }
+            },
         }
     }
 
     pub fn get_all(&self) -> Vec<HookProfile> {
-        self.store.lock().unwrap_or_else(|e| e.into_inner()).profiles.clone()
+        self.store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .profiles
+            .clone()
     }
 
     pub fn get_active(&self) -> Option<HookProfile> {
@@ -103,7 +107,11 @@ impl HookProfileManager {
     }
 
     pub fn get_active_id(&self) -> Option<String> {
-        self.store.lock().unwrap_or_else(|e| e.into_inner()).active_profile_id.clone()
+        self.store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .active_profile_id
+            .clone()
     }
 
     pub fn create(&self, name: String, hook_config: HookConfig) -> HookProfile {
@@ -189,7 +197,10 @@ impl HookProfileManager {
         // First try to match by process name
         for profile in &store.profiles {
             if let Some(ref pattern) = profile.process_name {
-                if process_name.to_lowercase().contains(&pattern.to_lowercase()) {
+                if process_name
+                    .to_lowercase()
+                    .contains(&pattern.to_lowercase())
+                {
                     return Some(profile.clone());
                 }
             }
@@ -198,7 +209,10 @@ impl HookProfileManager {
         // Then try to match by window title pattern
         for profile in &store.profiles {
             if let Some(ref pattern) = profile.window_title_pattern {
-                if window_title.to_lowercase().contains(&pattern.to_lowercase()) {
+                if window_title
+                    .to_lowercase()
+                    .contains(&pattern.to_lowercase())
+                {
                     return Some(profile.clone());
                 }
             }

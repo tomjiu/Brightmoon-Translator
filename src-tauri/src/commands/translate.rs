@@ -32,7 +32,8 @@ pub async fn translate(
 
     // Use TranslationService for the full pipeline
     let response = state
-        .translation.service
+        .translation
+        .service
         .translate(&request.text, &request.from, &request.to)
         .await?;
 
@@ -93,7 +94,8 @@ pub async fn translate_stream(
 
     // Stream translation using TranslationService
     let result = state
-        .translation.service
+        .translation
+        .service
         .translate_stream(&request.text, &request.from, &request.to, tx)
         .await;
 
@@ -115,11 +117,11 @@ pub async fn start_clipboard_monitor(
     match CLIPBOARD_MONITORING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
         Ok(false) => {
             // Successfully set from false to true, proceed to spawn thread
-        }
+        },
         _ => {
             // Already monitoring
             return Ok(());
-        }
+        },
     }
 
     let app_handle = app.clone();
@@ -165,7 +167,8 @@ pub async fn translate_selection_with_text(
 
     // Translate using service
     let response = state
-        .translation.service
+        .translation
+        .service
         .translate(&text, &from, &to)
         .await?;
 
@@ -194,10 +197,9 @@ pub async fn replace_translate(state: State<'_, AppState>) -> Result<Replacement
     let to = config.default_to.clone();
     drop(config);
 
-    let cap = state
-        .input_replacement
-        .get()
-        .ok_or_else(|| AppError::Internal("InputReplacement capability not initialized".to_string()))?;
+    let cap = state.input_replacement.get().ok_or_else(|| {
+        AppError::Internal("InputReplacement capability not initialized".to_string())
+    })?;
 
     let result = cap
         .replace_translate(&from, &to)
@@ -210,12 +212,13 @@ pub async fn replace_translate(state: State<'_, AppState>) -> Result<Replacement
 /// Replace text in the foreground application via the InputReplacement capability.
 #[tauri::command]
 pub async fn replace_text_in_app(state: State<'_, AppState>, text: String) -> Result<(), AppError> {
-    let cap = state
-        .input_replacement
-        .get()
-        .ok_or_else(|| AppError::Internal("InputReplacement capability not initialized".to_string()))?;
+    let cap = state.input_replacement.get().ok_or_else(|| {
+        AppError::Internal("InputReplacement capability not initialized".to_string())
+    })?;
 
-    cap.replace_text(&text).await.map_err(|e| AppError::Internal(e.to_string()))?;
+    cap.replace_text(&text)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(())
 }
 
@@ -236,7 +239,8 @@ pub async fn back_translate(
 
     // Translate back: swap from and to languages
     let result = state
-        .translation.service
+        .translation
+        .service
         .translate_primary(&text, &to, &from)
         .await?;
     Ok(result)
@@ -267,7 +271,8 @@ pub async fn translate_embedded(
 
     // Use batch translation with concurrency of 3
     let batch_results = state
-        .translation.service
+        .translation
+        .service
         .translate_batch(
             &text
                 .lines()
@@ -415,7 +420,8 @@ pub async fn polish_translation(
 
     // Use service to polish
     let result = state
-        .translation.service
+        .translation
+        .service
         .translate_primary(&prompt, &from_lang, &to_lang)
         .await?;
     Ok(result)

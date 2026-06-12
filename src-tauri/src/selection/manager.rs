@@ -54,10 +54,10 @@ impl SelectionProviderManager {
                             name
                         );
                     }
-                }
+                },
                 None => {
                     tracing::debug!("[selection_manager] Provider '{}' returned None", name);
-                }
+                },
             }
         }
         tracing::warn!(
@@ -104,10 +104,10 @@ impl SelectionProviderManager {
                             name
                         );
                     }
-                }
+                },
                 None => {
                     tracing::debug!("[selection_manager] Provider '{}' returned None", name);
-                }
+                },
             }
         }
         tracing::warn!(

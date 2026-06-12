@@ -27,7 +27,10 @@ pub async fn translate_image(
 
     tracing::info!(
         "[translate_image] {} -> {}, {} -> {}",
-        input_path, output_path, from_lang, to_lang
+        input_path,
+        output_path,
+        from_lang,
+        to_lang
     );
 
     let engine_type = ocr_engine.unwrap_or_else(|| "winrt".to_string());
@@ -109,7 +112,9 @@ pub async fn translate_image_base64(
 ) -> Result<TranslatedImageBase64, String> {
     tracing::info!(
         "[translate_image_base64] {} -> {}, data size={} chars",
-        from_lang, to_lang, base64_data.len()
+        from_lang,
+        to_lang,
+        base64_data.len()
     );
 
     // Decode base64 image
@@ -118,11 +123,8 @@ pub async fn translate_image_base64(
         .and_then(|s| s.find(',').map(|i| &s[i + 1..]))
         .unwrap_or(&base64_data);
 
-    let image_bytes = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD,
-        b64,
-    )
-    .map_err(|e| format!("Base64 decode failed: {}", e))?;
+    let image_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
+        .map_err(|e| format!("Base64 decode failed: {}", e))?;
 
     // Save to temp file for processing
     let temp_id = uuid::Uuid::new_v4().to_string();
@@ -180,11 +182,11 @@ pub async fn translate_image_base64(
                 width: info.original_width,
                 height: info.original_height,
             })
-        }
+        },
         Err(e) => {
             let _ = std::fs::remove_file(&output_path);
             Err(e)
-        }
+        },
     }
 }
 

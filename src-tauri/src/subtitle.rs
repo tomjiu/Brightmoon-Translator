@@ -136,7 +136,7 @@ fn strip_ass_tags(text: &str) -> String {
             '{' => in_tag = true,
             '}' => in_tag = false,
             _ if !in_tag => result.push(ch),
-            _ => {}
+            _ => {},
         }
     }
 

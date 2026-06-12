@@ -45,11 +45,11 @@ pub fn validate_file_path(path: &str) -> Result<(), String> {
         match component {
             Component::ParentDir => {
                 return Err("Path must not contain '..' components".to_string());
-            }
+            },
             Component::RootDir if path.starts_with("//") || path.starts_with("\\\\") => {
                 // UNC paths are allowed on Windows
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -160,7 +160,13 @@ pub fn sanitize_plugin_name(name: &str) -> Result<String, String> {
     // Only allow safe characters
     let sanitized: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
 
     Ok(sanitized)
@@ -229,7 +235,10 @@ mod tests {
     #[test]
     fn test_sanitize_plugin_name() {
         assert_eq!(sanitize_plugin_name("my-plugin").unwrap(), "my-plugin");
-        assert_eq!(sanitize_plugin_name("valid_name_123").unwrap(), "valid_name_123");
+        assert_eq!(
+            sanitize_plugin_name("valid_name_123").unwrap(),
+            "valid_name_123"
+        );
         assert!(sanitize_plugin_name("../etc/passwd").is_err());
         assert!(sanitize_plugin_name("path/to/plugin").is_err());
         assert!(sanitize_plugin_name("").is_err());
@@ -307,10 +316,8 @@ impl std::fmt::Display for SecureString {
 /// Returns the ciphertext bytes, or an error string.
 #[cfg(target_os = "windows")]
 pub fn dpapi_encrypt(plaintext: &[u8]) -> Result<Vec<u8>, String> {
-    use windows::Win32::Foundation::{HLOCAL, LocalFree};
-    use windows::Win32::Security::Cryptography::{
-        CryptProtectData, CRYPT_INTEGER_BLOB,
-    };
+    use windows::Win32::Foundation::{LocalFree, HLOCAL};
+    use windows::Win32::Security::Cryptography::{CryptProtectData, CRYPT_INTEGER_BLOB};
 
     let mut input_blob = CRYPT_INTEGER_BLOB {
         cbData: plaintext.len() as u32,
@@ -351,10 +358,8 @@ pub fn dpapi_encrypt(plaintext: &[u8]) -> Result<Vec<u8>, String> {
 /// Decrypt ciphertext using Windows DPAPI (Current User scope).
 #[cfg(target_os = "windows")]
 pub fn dpapi_decrypt(ciphertext: &[u8]) -> Result<Vec<u8>, String> {
-    use windows::Win32::Foundation::{HLOCAL, LocalFree};
-    use windows::Win32::Security::Cryptography::{
-        CryptUnprotectData, CRYPT_INTEGER_BLOB,
-    };
+    use windows::Win32::Foundation::{LocalFree, HLOCAL};
+    use windows::Win32::Security::Cryptography::{CryptUnprotectData, CRYPT_INTEGER_BLOB};
 
     let mut input_blob = CRYPT_INTEGER_BLOB {
         cbData: ciphertext.len() as u32,
@@ -550,7 +555,7 @@ pub fn decrypt_secret(stored: &str) -> String {
                 let mut dec = decrypted;
                 zeroize::Zeroize::zeroize(&mut dec);
                 result
-            }
+            },
             Err(_) => stored.to_string(),
         }
     } else if let Some(encoded) = stored.strip_prefix(AES_MAGIC) {
@@ -667,15 +672,35 @@ pub fn sanitize_log_message(message: &str) -> String {
     // 2. Bearer <token>
     result = sanitize_pattern_regex(&result, r"Bearer [A-Za-z0-9_\-\.]{20,}", "Bearer ***");
     // 3. api_key=... or api_key: ...
-    result = sanitize_pattern_regex(&result, r"(?i)api_key[=:]\s*[A-Za-z0-9_\-]{10,}", "api_key=***");
+    result = sanitize_pattern_regex(
+        &result,
+        r"(?i)api_key[=:]\s*[A-Za-z0-9_\-]{10,}",
+        "api_key=***",
+    );
     // 4. secret=... or secret: ...
-    result = sanitize_pattern_regex(&result, r"(?i)secret[=:]\s*[A-Za-z0-9_\-]{10,}", "secret=***");
+    result = sanitize_pattern_regex(
+        &result,
+        r"(?i)secret[=:]\s*[A-Za-z0-9_\-]{10,}",
+        "secret=***",
+    );
     // 5. DeepL-Auth-Key <key>
-    result = sanitize_pattern_regex(&result, r"DeepL-Auth-Key [A-Za-z0-9_\-]{10,}", "DeepL-Auth-Key ***");
+    result = sanitize_pattern_regex(
+        &result,
+        r"DeepL-Auth-Key [A-Za-z0-9_\-]{10,}",
+        "DeepL-Auth-Key ***",
+    );
     // 6. Authorization header with long token
-    result = sanitize_pattern_regex(&result, r"(?i)authorization[=:]\s*[A-Za-z0-9_\-\.]{20,}", "Authorization=***");
+    result = sanitize_pattern_regex(
+        &result,
+        r"(?i)authorization[=:]\s*[A-Za-z0-9_\-\.]{20,}",
+        "Authorization=***",
+    );
     // 7. appid/sign/sign patterns from Baidu API
-    result = sanitize_pattern_regex(&result, r"(?i)(appid|sign)[=:]\s*[A-Za-z0-9]{20,}", "$1=***");
+    result = sanitize_pattern_regex(
+        &result,
+        r"(?i)(appid|sign)[=:]\s*[A-Za-z0-9]{20,}",
+        "$1=***",
+    );
 
     result
 }

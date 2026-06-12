@@ -29,8 +29,8 @@ pub fn add_furigana(text: &str) -> Result<Vec<FuriganaSegment>, String> {
         mode: lindera_core::mode::Mode::Normal,
     };
 
-    let tokenizer = Tokenizer::from_config(config)
-        .map_err(|e| format!("Failed to create tokenizer: {}", e))?;
+    let tokenizer =
+        Tokenizer::from_config(config).map_err(|e| format!("Failed to create tokenizer: {}", e))?;
 
     let tokens = tokenizer
         .tokenize(text)

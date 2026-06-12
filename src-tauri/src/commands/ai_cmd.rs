@@ -55,7 +55,10 @@ pub async fn ai_polish_translation(
     request: PolishRequest,
 ) -> Result<String, String> {
     security::validate_text_length(&request.source_text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
-    security::validate_text_length(&request.translated_text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
+    security::validate_text_length(
+        &request.translated_text,
+        security::MAX_TRANSLATION_TEXT_LENGTH,
+    )?;
     security::validate_language_code(&request.from_lang)?;
     security::validate_language_code(&request.to_lang)?;
 

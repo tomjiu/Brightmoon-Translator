@@ -59,7 +59,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
             Err(e) => {
                 tracing::error!("[uiautomation] CoCreateInstance failed: {}", e);
                 return None;
-            }
+            },
         };
 
         // Get the focused element
@@ -68,7 +68,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
             Err(e) => {
                 tracing::warn!("[uiautomation] GetFocusedElement failed: {}", e);
                 return None;
-            }
+            },
         };
 
         // Get window title
@@ -97,7 +97,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
                     result.0.len()
                 );
                 result
-            }
+            },
             Err(e) => {
                 tracing::debug!("[uiautomation] TextPattern failed: {}", e);
                 match try_value_pattern_with_selection(&element, &automation) {
@@ -107,7 +107,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
                             result.0.len()
                         );
                         result
-                    }
+                    },
                     Err(e2) => {
                         tracing::debug!("[uiautomation] ValuePattern+selection failed: {}", e2);
                         match try_value_pattern_full(&element) {
@@ -117,7 +117,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
                                     result.0.len()
                                 );
                                 result
-                            }
+                            },
                             Err(e3) => {
                                 tracing::debug!("[uiautomation] ValuePattern(full) failed: {}", e3);
                                 match find_text_in_children(&element, &automation, 0) {
@@ -127,17 +127,17 @@ fn get_uia_selection() -> Option<SelectionResult> {
                                             result.0.len()
                                         );
                                         result
-                                    }
+                                    },
                                     None => {
                                         tracing::debug!("[uiautomation] All patterns exhausted for focused element");
                                         return None;
-                                    }
+                                    },
                                 }
-                            }
+                            },
                         }
-                    }
+                    },
                 }
-            }
+            },
         };
 
         if text.trim().is_empty() {
@@ -323,7 +323,7 @@ unsafe fn find_text_in_children(
         Err(e) => {
             tracing::debug!("[uiautomation] CreateTrueCondition failed: {}", e);
             return None;
-        }
+        },
     };
 
     let children = match element.FindAll(
@@ -338,7 +338,7 @@ unsafe fn find_text_in_children(
                 e
             );
             return None;
-        }
+        },
     };
 
     let count = children.Length().unwrap_or(0);

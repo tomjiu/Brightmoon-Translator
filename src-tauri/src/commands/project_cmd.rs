@@ -1,4 +1,6 @@
-use crate::project::{ProjectFile, ProjectStore, TranslationProject, TranslationSegment, ProjectExportData};
+use crate::project::{
+    ProjectExportData, ProjectFile, ProjectStore, TranslationProject, TranslationSegment,
+};
 use crate::AppState;
 use serde::Deserialize;
 use tauri::State;
@@ -107,10 +109,7 @@ pub async fn update_project(
 }
 
 #[tauri::command]
-pub async fn delete_project(
-    _state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_project(_state: State<'_, AppState>, id: String) -> Result<(), String> {
     let store = ProjectStore::load();
     store.delete_project(&id)
 }
@@ -143,10 +142,7 @@ pub async fn get_project_files(
 }
 
 #[tauri::command]
-pub async fn delete_file(
-    _state: State<'_, AppState>,
-    file_id: String,
-) -> Result<(), String> {
+pub async fn delete_file(_state: State<'_, AppState>, file_id: String) -> Result<(), String> {
     let store = ProjectStore::load();
     store.delete_file(&file_id)
 }

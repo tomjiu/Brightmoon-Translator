@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use image::{ImageBuffer, Rgb, RgbImage};
 use std::io::Cursor;
 
@@ -128,9 +128,7 @@ fn bench_image_grayscale(c: &mut Criterion) {
             BenchmarkId::new("size", format!("{}x{}", width, height)),
             &img,
             |b, img| {
-                b.iter(|| {
-                    image::imageops::grayscale(black_box(img))
-                });
+                b.iter(|| image::imageops::grayscale(black_box(img)));
             },
         );
     }
@@ -155,9 +153,7 @@ fn bench_image_crop(c: &mut Criterion) {
             BenchmarkId::new("crop", name),
             &(x, y, w, h),
             |b, &(x, y, w, h)| {
-                b.iter(|| {
-                    image::imageops::crop_imm(black_box(&img), x, y, w, h).to_image()
-                });
+                b.iter(|| image::imageops::crop_imm(black_box(&img), x, y, w, h).to_image());
             },
         );
     }
@@ -181,15 +177,9 @@ fn bench_base64_encoding(c: &mut Criterion) {
     for (name, size) in data_sizes {
         let data = vec![0u8; size];
 
-        group.bench_with_input(
-            BenchmarkId::new("size", name),
-            &data,
-            |b, data| {
-                b.iter(|| {
-                    base64::engine::general_purpose::STANDARD.encode(black_box(data))
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("size", name), &data, |b, data| {
+            b.iter(|| base64::engine::general_purpose::STANDARD.encode(black_box(data)));
+        });
     }
 
     group.finish();
@@ -225,9 +215,7 @@ fn bench_ocr_extraction(c: &mut Criterion) {
             BenchmarkId::new("image", name),
             &image_data,
             |b, image_data| {
-                b.iter(|| {
-                    simulate_ocr_extraction(black_box(image_data), None)
-                });
+                b.iter(|| simulate_ocr_extraction(black_box(image_data), None));
             },
         );
     }
@@ -252,9 +240,7 @@ fn bench_ocr_region_extraction(c: &mut Criterion) {
             BenchmarkId::new("region", name),
             &(x, y, w, h),
             |b, &(x, y, w, h)| {
-                b.iter(|| {
-                    simulate_ocr_extraction(black_box(&image_data), Some((x, y, w, h)))
-                });
+                b.iter(|| simulate_ocr_extraction(black_box(&image_data), Some((x, y, w, h))));
             },
         );
     }

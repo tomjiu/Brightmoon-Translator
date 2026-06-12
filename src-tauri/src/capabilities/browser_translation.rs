@@ -241,7 +241,7 @@ pub async fn handle_browser_request(
                 replaced_inline: request.replace_inline,
                 segment_translations: None,
             })
-        }
+        },
         BrowserTranslatePayload::FullPage(page) => {
             if page.segments.is_empty() {
                 return Err(BrowserTranslateError {
@@ -290,7 +290,7 @@ pub async fn handle_browser_request(
                 replaced_inline: request.replace_inline,
                 segment_translations: Some(segment_translations),
             })
-        }
+        },
         BrowserTranslatePayload::Hover(hover) => {
             if hover.text.trim().is_empty() {
                 return Err(BrowserTranslateError {
@@ -312,6 +312,6 @@ pub async fn handle_browser_request(
                 replaced_inline: request.replace_inline,
                 segment_translations: None,
             })
-        }
+        },
     }
 }

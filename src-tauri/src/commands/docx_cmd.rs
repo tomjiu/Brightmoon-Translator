@@ -37,11 +37,14 @@ pub async fn translate_docx(
     }
 
     // Emit progress event
-    let _ = window.emit("docx-progress", serde_json::json!({
-        "stage": "extracting",
-        "totalParagraphs": doc.total_paragraphs,
-        "totalWords": doc.total_words,
-    }));
+    let _ = window.emit(
+        "docx-progress",
+        serde_json::json!({
+            "stage": "extracting",
+            "totalParagraphs": doc.total_paragraphs,
+            "totalWords": doc.total_words,
+        }),
+    );
 
     // Prepare paragraphs for batch translation
     let paragraphs_to_translate: Vec<(usize, &str)> = doc
@@ -52,10 +55,13 @@ pub async fn translate_docx(
         .collect();
 
     // Emit translation start
-    let _ = window.emit("docx-progress", serde_json::json!({
-        "stage": "translating",
-        "paragraphsToTranslate": paragraphs_to_translate.len(),
-    }));
+    let _ = window.emit(
+        "docx-progress",
+        serde_json::json!({
+            "stage": "translating",
+            "paragraphsToTranslate": paragraphs_to_translate.len(),
+        }),
+    );
 
     // Use batch translation
     let batch_results = state
@@ -65,9 +71,12 @@ pub async fn translate_docx(
         .await;
 
     // Emit write progress
-    let _ = window.emit("docx-progress", serde_json::json!({
-        "stage": "writing",
-    }));
+    let _ = window.emit(
+        "docx-progress",
+        serde_json::json!({
+            "stage": "writing",
+        }),
+    );
 
     // Write translated DOCX
     let translations: Vec<(usize, String)> = batch_results
@@ -78,11 +87,14 @@ pub async fn translate_docx(
     let result = docx::write_translated_docx(&input_path, &output_path, &translations)?;
 
     // Emit completion
-    let _ = window.emit("docx-progress", serde_json::json!({
-        "stage": "completed",
-        "paragraphsTranslated": result.paragraphs_translated,
-        "wordsTranslated": result.words_translated,
-    }));
+    let _ = window.emit(
+        "docx-progress",
+        serde_json::json!({
+            "stage": "completed",
+            "paragraphsTranslated": result.paragraphs_translated,
+            "wordsTranslated": result.words_translated,
+        }),
+    );
 
     Ok(result)
 }

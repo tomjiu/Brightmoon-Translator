@@ -89,35 +89,41 @@ pub fn parse_tbx(xml: &str) -> Result<TbxData> {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string().to_lowercase();
+                let tag_name = String::from_utf8_lossy(e.name().as_ref())
+                    .to_string()
+                    .to_lowercase();
                 match tag_name.as_str() {
                     "martif" | "tbx" => {
                         // Extract dialect/type
                         for attr in e.attributes().flatten() {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string().to_lowercase();
+                            let key = String::from_utf8_lossy(attr.key.as_ref())
+                                .to_string()
+                                .to_lowercase();
                             if key == "type" || key == "dialect" {
                                 dialect = String::from_utf8_lossy(&attr.value).to_string();
                             }
                         }
-                    }
+                    },
                     "header" => {
                         for attr in e.attributes().flatten() {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string().to_lowercase();
+                            let key = String::from_utf8_lossy(attr.key.as_ref())
+                                .to_string()
+                                .to_lowercase();
                             let val = String::from_utf8_lossy(&attr.value).to_string();
                             match key.as_str() {
                                 "sourcelanguage" | "srcLang" => {
                                     header_source_lang = Some(val);
-                                }
+                                },
                                 "targetlanguage" | "tgtLang" => {
                                     header_target_lang = Some(val);
-                                }
-                                _ => {}
+                                },
+                                _ => {},
                             }
                         }
-                    }
+                    },
                     "body" => {
                         _in_body = true;
-                    }
+                    },
                     "termentry" | "conceptEntry" => {
                         _in_term_entry = true;
                         current_source_term.clear();
@@ -129,49 +135,55 @@ pub fn parse_tbx(xml: &str) -> Result<TbxData> {
                         current_target_definition = None;
                         current_note = None;
                         lang_set_count = 0;
-                    }
+                    },
                     "langset" | "languageSection" => {
                         in_lang_set = true;
                         lang_set_count += 1;
                         current_lang.clear();
                         for attr in e.attributes().flatten() {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string().to_lowercase();
+                            let key = String::from_utf8_lossy(attr.key.as_ref())
+                                .to_string()
+                                .to_lowercase();
                             if key == "xml:lang" || key == "lang" || key == "language" {
                                 current_lang = String::from_utf8_lossy(&attr.value).to_string();
                             }
                         }
                         is_source = lang_set_count == 1;
-                    }
+                    },
                     "tig" | "termSection" => {
                         in_tig = true;
-                    }
+                    },
                     "term" => {
                         in_term = true;
-                    }
+                    },
                     "termnote" | "termNote" => {
                         in_term_note = true;
-                    }
+                    },
                     "descrip" | "descripGrp" => {
                         in_descrip = true;
                         for attr in e.attributes().flatten() {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string().to_lowercase();
+                            let key = String::from_utf8_lossy(attr.key.as_ref())
+                                .to_string()
+                                .to_lowercase();
                             if key == "type" {
                                 descrip_type = String::from_utf8_lossy(&attr.value).to_string();
                             }
                         }
-                    }
+                    },
                     "admin" => {
                         in_admin = true;
                         for attr in e.attributes().flatten() {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string().to_lowercase();
+                            let key = String::from_utf8_lossy(attr.key.as_ref())
+                                .to_string()
+                                .to_lowercase();
                             if key == "type" {
                                 descrip_type = String::from_utf8_lossy(&attr.value).to_string();
                             }
                         }
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
-            }
+            },
             Ok(Event::Text(ref e)) => {
                 let text = e.unescape().unwrap_or_default().to_string();
                 if in_term && in_tig && in_lang_set {
@@ -193,20 +205,20 @@ pub fn parse_tbx(xml: &str) -> Result<TbxData> {
                     match descrip_type.to_lowercase().as_str() {
                         "subjectField" | "subject" => {
                             current_subject_field = Some(text);
-                        }
+                        },
                         "definition" => {
                             if is_source {
                                 current_source_definition = Some(text);
                             } else {
                                 current_target_definition = Some(text);
                             }
-                        }
-                        _ => {}
+                        },
+                        _ => {},
                     }
                 } else if in_admin && descrip_type.to_lowercase() == "note" {
                     current_note = Some(text);
                 }
-            }
+            },
             Ok(Event::CData(ref e)) => {
                 let text = String::from_utf8_lossy(e.as_ref()).to_string();
                 if in_term && in_tig && in_lang_set {
@@ -216,9 +228,11 @@ pub fn parse_tbx(xml: &str) -> Result<TbxData> {
                         current_target_term.push_str(&text);
                     }
                 }
-            }
+            },
             Ok(Event::End(ref e)) => {
-                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string().to_lowercase();
+                let tag_name = String::from_utf8_lossy(e.name().as_ref())
+                    .to_string()
+                    .to_lowercase();
                 match tag_name.as_str() {
                     "termentry" | "conceptEntry" => {
                         _in_term_entry = false;
@@ -227,12 +241,16 @@ pub fn parse_tbx(xml: &str) -> Result<TbxData> {
                                 source_term: current_source_term.trim().to_string(),
                                 target_term: current_target_term.trim().to_string(),
                                 source_lang: if current_source_lang.is_empty() {
-                                    header_source_lang.clone().unwrap_or_else(|| "en".to_string())
+                                    header_source_lang
+                                        .clone()
+                                        .unwrap_or_else(|| "en".to_string())
                                 } else {
                                     current_source_lang.clone()
                                 },
                                 target_lang: if current_target_lang.is_empty() {
-                                    header_target_lang.clone().unwrap_or_else(|| "zh".to_string())
+                                    header_target_lang
+                                        .clone()
+                                        .unwrap_or_else(|| "zh".to_string())
                                 } else {
                                     current_target_lang.clone()
                                 },
@@ -243,38 +261,38 @@ pub fn parse_tbx(xml: &str) -> Result<TbxData> {
                                 transaction_type: None,
                             });
                         }
-                    }
+                    },
                     "langset" | "languageSection" => {
                         in_lang_set = false;
-                    }
+                    },
                     "tig" | "termSection" => {
                         in_tig = false;
-                    }
+                    },
                     "term" => {
                         in_term = false;
-                    }
+                    },
                     "termnote" | "termNote" => {
                         in_term_note = false;
-                    }
+                    },
                     "descrip" | "descripGrp" => {
                         in_descrip = false;
                         descrip_type.clear();
-                    }
+                    },
                     "admin" => {
                         in_admin = false;
                         descrip_type.clear();
-                    }
+                    },
                     "body" => {
                         _in_body = false;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
-            }
+            },
             Ok(Event::Eof) => break,
             Err(e) => {
                 return Err(anyhow::anyhow!("TBX parse error: {}", e));
-            }
-            _ => {}
+            },
+            _ => {},
         }
         buf.clear();
     }
@@ -445,19 +463,17 @@ mod tests {
 
     #[test]
     fn test_export_tbx() {
-        let entries = vec![
-            TbxTermEntry {
-                source_term: "software".to_string(),
-                target_term: "软件".to_string(),
-                source_lang: "en".to_string(),
-                target_lang: "zh".to_string(),
-                subject_field: Some("computing".to_string()),
-                source_definition: None,
-                target_definition: None,
-                note: None,
-                transaction_type: None,
-            },
-        ];
+        let entries = vec![TbxTermEntry {
+            source_term: "software".to_string(),
+            target_term: "软件".to_string(),
+            source_lang: "en".to_string(),
+            target_lang: "zh".to_string(),
+            subject_field: Some("computing".to_string()),
+            source_definition: None,
+            target_definition: None,
+            note: None,
+            transaction_type: None,
+        }];
 
         let xml = export_tbx(&entries, "en", "zh").unwrap();
         assert!(xml.contains("martif"));

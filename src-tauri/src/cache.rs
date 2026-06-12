@@ -42,7 +42,7 @@ impl TranslationCache {
                 tracing::error!("Failed to open cache database: {}", e);
                 // Create in-memory database as fallback
                 Connection::open_in_memory().expect("Failed to create in-memory cache")
-            }
+            },
         };
 
         // Create table if not exists
@@ -250,12 +250,12 @@ impl TranslationCache {
                 Err(e) => {
                     tracing::error!("Failed to query engine stats: {}", e);
                     Vec::new()
-                }
+                },
             },
             Err(e) => {
                 tracing::error!("Failed to prepare engine stats query: {}", e);
                 Vec::new()
-            }
+            },
         };
 
         CacheStats {

@@ -1,4 +1,6 @@
-use crate::pptx::{self, PptxDocument, PptxTranslationResult, TranslatedPptx, TranslatedTextBlock, TranslatedSlide};
+use crate::pptx::{
+    self, PptxDocument, PptxTranslationResult, TranslatedPptx, TranslatedSlide, TranslatedTextBlock,
+};
 use crate::security;
 use crate::AppState;
 use tauri::{Emitter, State, Window};
@@ -38,12 +40,15 @@ pub async fn translate_pptx(
     }
 
     // Emit progress event
-    let _ = window.emit("pptx-progress", serde_json::json!({
-        "stage": "extracting",
-        "totalSlides": doc.total_slides,
-        "totalTextBlocks": doc.total_text_blocks,
-        "totalWords": doc.total_words,
-    }));
+    let _ = window.emit(
+        "pptx-progress",
+        serde_json::json!({
+            "stage": "extracting",
+            "totalSlides": doc.total_slides,
+            "totalTextBlocks": doc.total_text_blocks,
+            "totalWords": doc.total_words,
+        }),
+    );
 
     // Prepare text blocks for batch translation
     let mut blocks_to_translate: Vec<(usize, &str)> = Vec::new();
@@ -56,10 +61,13 @@ pub async fn translate_pptx(
     }
 
     // Emit translation start
-    let _ = window.emit("pptx-progress", serde_json::json!({
-        "stage": "translating",
-        "blocksToTranslate": blocks_to_translate.len(),
-    }));
+    let _ = window.emit(
+        "pptx-progress",
+        serde_json::json!({
+            "stage": "translating",
+            "blocksToTranslate": blocks_to_translate.len(),
+        }),
+    );
 
     // Use batch translation
     let batch_results = state
@@ -69,9 +77,12 @@ pub async fn translate_pptx(
         .await;
 
     // Emit write progress
-    let _ = window.emit("pptx-progress", serde_json::json!({
-        "stage": "writing",
-    }));
+    let _ = window.emit(
+        "pptx-progress",
+        serde_json::json!({
+            "stage": "writing",
+        }),
+    );
 
     // Build translations mapping
     let translations: Vec<(String, String)> = batch_results
@@ -97,12 +108,15 @@ pub async fn translate_pptx(
     let result = pptx::write_translated_pptx(&input_path, &output_path, &translations)?;
 
     // Emit completion
-    let _ = window.emit("pptx-progress", serde_json::json!({
-        "stage": "completed",
-        "slidesTranslated": result.slides_translated,
-        "textBlocksTranslated": result.text_blocks_translated,
-        "wordsTranslated": result.words_translated,
-    }));
+    let _ = window.emit(
+        "pptx-progress",
+        serde_json::json!({
+            "stage": "completed",
+            "slidesTranslated": result.slides_translated,
+            "textBlocksTranslated": result.text_blocks_translated,
+            "wordsTranslated": result.words_translated,
+        }),
+    );
 
     Ok(result)
 }

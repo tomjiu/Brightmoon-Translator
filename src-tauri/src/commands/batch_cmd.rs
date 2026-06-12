@@ -3,8 +3,7 @@
  *
  * Tauri commands for batch translation queue management
  */
-
-use crate::batch::{BatchConfig, BatchProgress, BatchTask, BatchJobStatus};
+use crate::batch::{BatchConfig, BatchJobStatus, BatchProgress, BatchTask};
 use crate::memory::TmExportData;
 use crate::security;
 use crate::tmx;
@@ -207,7 +206,10 @@ pub async fn tm_import_tmx(
             target: unit.target_text.clone(),
             from_lang: unit.source_lang.clone(),
             to_lang: unit.target_lang.clone(),
-            engine: unit.creation_user.clone().unwrap_or_else(|| "tmx-import".to_string()),
+            engine: unit
+                .creation_user
+                .clone()
+                .unwrap_or_else(|| "tmx-import".to_string()),
             timestamp: unit
                 .creation_date
                 .as_ref()

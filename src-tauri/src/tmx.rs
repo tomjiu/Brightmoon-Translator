@@ -77,7 +77,7 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
             Ok(Event::Decl(decl)) => {
                 // XML declaration - continue
                 let _ = decl;
-            }
+            },
             Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
                 let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 match tag_name.as_str() {
@@ -89,7 +89,7 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                                 version = String::from_utf8_lossy(&attr.value).to_string();
                             }
                         }
-                    }
+                    },
                     "header" => {
                         // Extract srclang from header
                         for attr in e.attributes().flatten() {
@@ -101,7 +101,7 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                                 }
                             }
                         }
-                    }
+                    },
                     "tu" => {
                         in_tu = true;
                         current_source.clear();
@@ -110,7 +110,7 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                         current_creation_date = None;
                         current_change_date = None;
                         current_creation_user = None;
-                    }
+                    },
                     "tuv" => {
                         in_tuv = true;
                         current_lang.clear();
@@ -122,13 +122,13 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                                 current_lang = val;
                             }
                         }
-                    }
+                    },
                     "seg" => {
                         in_seg = true;
-                    }
+                    },
                     "note" => {
                         in_note = true;
-                    }
+                    },
                     "prop" => {
                         // TMX 2.0 properties
                         for attr in e.attributes().flatten() {
@@ -138,18 +138,18 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                                 match val.as_str() {
                                     "x-creation-date" | "creationdate" => {
                                         // Will be set from text content
-                                    }
+                                    },
                                     "x-change-date" | "changedate" => {
                                         // Will be set from text content
-                                    }
-                                    _ => {}
+                                    },
+                                    _ => {},
                                 }
                             }
                         }
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
-            }
+            },
             Ok(Event::Text(ref e)) => {
                 let text = e.unescape().unwrap_or_default().to_string();
                 if in_seg && in_tuv {
@@ -161,7 +161,7 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                 } else if in_note && in_tu {
                     current_note = Some(text);
                 }
-            }
+            },
             Ok(Event::CData(ref e)) => {
                 let text = String::from_utf8_lossy(e.as_ref()).to_string();
                 if in_seg && in_tuv {
@@ -171,7 +171,7 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                         current_target.push_str(&text);
                     }
                 }
-            }
+            },
             Ok(Event::End(ref e)) => {
                 let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 match tag_name.as_str() {
@@ -179,7 +179,8 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                         in_tu = false;
                         // Determine which is source and which is target
                         if !current_source.is_empty() && !current_target.is_empty() {
-                            let src_lang = header_srclang.clone().unwrap_or_else(|| "en".to_string());
+                            let src_lang =
+                                header_srclang.clone().unwrap_or_else(|| "en".to_string());
                             units.push(TmxTranslationUnit {
                                 source_text: current_source.clone(),
                                 target_text: current_target.clone(),
@@ -191,24 +192,24 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                                 note: current_note.clone(),
                             });
                         }
-                    }
+                    },
                     "tuv" => {
                         in_tuv = false;
-                    }
+                    },
                     "seg" => {
                         in_seg = false;
-                    }
+                    },
                     "note" => {
                         in_note = false;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
-            }
+            },
             Ok(Event::Eof) => break,
             Err(e) => {
                 return Err(anyhow::anyhow!("TMX parse error: {}", e));
-            }
-            _ => {}
+            },
+            _ => {},
         }
         buf.clear();
     }
@@ -249,11 +250,15 @@ fn parse_tmx_lenient(xml: &str, version: &str) -> Result<TmxData> {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string().to_lowercase();
+                let tag_name = String::from_utf8_lossy(e.name().as_ref())
+                    .to_string()
+                    .to_lowercase();
                 match tag_name.as_str() {
                     "header" => {
                         for attr in e.attributes().flatten() {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string().to_lowercase();
+                            let key = String::from_utf8_lossy(attr.key.as_ref())
+                                .to_string()
+                                .to_lowercase();
                             if key == "srclang" {
                                 let val = String::from_utf8_lossy(&attr.value).to_string();
                                 if !val.is_empty() && val != "*" {
@@ -261,7 +266,7 @@ fn parse_tmx_lenient(xml: &str, version: &str) -> Result<TmxData> {
                                 }
                             }
                         }
-                    }
+                    },
                     "tu" => {
                         _in_tu = true;
                         tuv_count = 0;
@@ -269,13 +274,15 @@ fn parse_tmx_lenient(xml: &str, version: &str) -> Result<TmxData> {
                         target_lang.clear();
                         current_source.clear();
                         current_target.clear();
-                    }
+                    },
                     "tuv" => {
                         in_tuv = true;
                         tuv_count += 1;
                         current_lang.clear();
                         for attr in e.attributes().flatten() {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string().to_lowercase();
+                            let key = String::from_utf8_lossy(attr.key.as_ref())
+                                .to_string()
+                                .to_lowercase();
                             if key == "xml:lang" || key == "lang" || key == "xmllang" {
                                 current_lang = String::from_utf8_lossy(&attr.value).to_string();
                             }
@@ -285,13 +292,13 @@ fn parse_tmx_lenient(xml: &str, version: &str) -> Result<TmxData> {
                         } else {
                             target_lang = current_lang.clone();
                         }
-                    }
+                    },
                     "seg" => {
                         in_seg = true;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
-            }
+            },
             Ok(Event::Text(ref e)) => {
                 let text = e.unescape().unwrap_or_default().to_string();
                 if in_seg && in_tuv {
@@ -301,7 +308,7 @@ fn parse_tmx_lenient(xml: &str, version: &str) -> Result<TmxData> {
                         current_target.push_str(&text);
                     }
                 }
-            }
+            },
             Ok(Event::CData(ref e)) => {
                 let text = String::from_utf8_lossy(e.as_ref()).to_string();
                 if in_seg && in_tuv {
@@ -311,9 +318,11 @@ fn parse_tmx_lenient(xml: &str, version: &str) -> Result<TmxData> {
                         current_target.push_str(&text);
                     }
                 }
-            }
+            },
             Ok(Event::End(ref e)) => {
-                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string().to_lowercase();
+                let tag_name = String::from_utf8_lossy(e.name().as_ref())
+                    .to_string()
+                    .to_lowercase();
                 match tag_name.as_str() {
                     "tu" => {
                         _in_tu = false;
@@ -337,21 +346,21 @@ fn parse_tmx_lenient(xml: &str, version: &str) -> Result<TmxData> {
                                 note: None,
                             });
                         }
-                    }
+                    },
                     "tuv" => {
                         in_tuv = false;
-                    }
+                    },
                     "seg" => {
                         in_seg = false;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
-            }
+            },
             Ok(Event::Eof) => break,
             Err(e) => {
                 return Err(anyhow::anyhow!("TMX parse error: {}", e));
-            }
-            _ => {}
+            },
+            _ => {},
         }
         buf.clear();
     }

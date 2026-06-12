@@ -39,10 +39,7 @@ pub async fn add_pre_process_rule(
 }
 
 #[tauri::command]
-pub async fn remove_pre_process_rule(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn remove_pre_process_rule(state: State<'_, AppState>, id: String) -> Result<(), String> {
     state.document.pre_processor.remove_rule(&id);
     Ok(())
 }

@@ -1,5 +1,5 @@
-use crate::capabilities::{HookMonitor, TargetAppDetector, WindowsTargetAppDetector};
 use crate::cache::TranslationCache;
+use crate::capabilities::{HookMonitor, TargetAppDetector, WindowsTargetAppDetector};
 use crate::config::AppConfig;
 use crate::engine;
 use crate::glossary::Glossary;

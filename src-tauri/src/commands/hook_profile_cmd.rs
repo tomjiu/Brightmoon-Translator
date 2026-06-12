@@ -37,10 +37,7 @@ pub async fn update_hook_profile(
 }
 
 #[tauri::command]
-pub async fn delete_hook_profile(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_hook_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
     state.hook.profiles.delete(&id);
     Ok(())
 }

@@ -120,7 +120,12 @@ body { background: transparent; font-family: -apple-system, BlinkMacSystemFont, 
 
 /// Build a JS script that calls the shell's __overlayUpdate function.
 /// Escapes all special characters to prevent XSS injection via script context.
-pub fn build_update_script(source: &str, translated: &str, level: OverlayLevel, dismiss_ms: u64) -> String {
+pub fn build_update_script(
+    source: &str,
+    translated: &str,
+    level: OverlayLevel,
+    dismiss_ms: u64,
+) -> String {
     // Escape for JavaScript string literal context (single-quoted)
     // Must handle: backslash, single quote, newlines, carriage returns,
     // HTML close tags (</script>), null bytes, and Unicode line/paragraph separators
@@ -138,7 +143,10 @@ pub fn build_update_script(source: &str, translated: &str, level: OverlayLevel, 
     let src_escaped = escape_js(source);
     let trans_escaped = escape_js(translated);
     let level_num = level as u8;
-    format!("window.__overlayUpdate('{}', '{}', {}, {});", src_escaped, trans_escaped, level_num, dismiss_ms)
+    format!(
+        "window.__overlayUpdate('{}', '{}', {}, {});",
+        src_escaped, trans_escaped, level_num, dismiss_ms
+    )
 }
 
 /// L1: Minimal overlay - just translated text, auto-dismiss after dismiss_ms

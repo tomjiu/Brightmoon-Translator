@@ -75,10 +75,7 @@ impl SpeechState {
 /// Start continuous speech recognition
 /// This uses the Web Speech API on the frontend, with this backend providing
 /// configuration and status management.
-pub fn start_recognition(
-    state: Arc<Mutex<SpeechState>>,
-    lang: &str,
-) -> anyhow::Result<()> {
+pub fn start_recognition(state: Arc<Mutex<SpeechState>>, lang: &str) -> anyhow::Result<()> {
     let mut state_guard = state.blocking_lock();
 
     // Update state

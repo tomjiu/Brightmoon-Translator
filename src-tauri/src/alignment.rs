@@ -165,7 +165,14 @@ fn split_sentences(text: &str) -> Vec<String> {
 
     for ch in text.chars() {
         current.push(ch);
-        if ch == '.' || ch == '!' || ch == '?' || ch == '\n' || ch == '。' || ch == '！' || ch == '？' {
+        if ch == '.'
+            || ch == '!'
+            || ch == '?'
+            || ch == '\n'
+            || ch == '。'
+            || ch == '！'
+            || ch == '？'
+        {
             let trimmed = current.trim().to_string();
             if !trimmed.is_empty() {
                 sentences.push(trimmed);

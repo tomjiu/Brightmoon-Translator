@@ -27,7 +27,7 @@ impl AppConfig {
                             let mut config = config;
                             config.decrypt_secrets();
                             return config;
-                        }
+                        },
                         Err(e) => {
                             tracing::error!("Failed to parse config file (using defaults): {}", e);
                             tracing::info!("Config file path: {}", path.display());
@@ -36,14 +36,17 @@ impl AppConfig {
                             if let Err(bak_err) = std::fs::copy(&path, &backup) {
                                 tracing::warn!("Failed to backup corrupted config: {}", bak_err);
                             } else {
-                                tracing::info!("Corrupted config backed up to: {}", backup.display());
+                                tracing::info!(
+                                    "Corrupted config backed up to: {}",
+                                    backup.display()
+                                );
                             }
-                        }
+                        },
                     }
-                }
+                },
                 Err(e) => {
                     tracing::error!("Failed to read config file: {}", e);
-                }
+                },
             }
         } else {
             tracing::info!("No config file found, creating default");
@@ -66,10 +69,10 @@ impl AppConfig {
                 if let Err(e) = std::fs::write(&path, data) {
                     tracing::error!("Failed to save config: {}", e);
                 }
-            }
+            },
             Err(e) => {
                 tracing::error!("Failed to serialize config: {}", e);
-            }
+            },
         }
     }
 

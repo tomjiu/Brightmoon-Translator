@@ -69,7 +69,9 @@ fn checksum(data: &[u8]) -> String {
 fn build_client(config: &AppConfig) -> Result<reqwest::Client, AppError> {
     let mut builder = config.proxy.to_client_builder();
     builder = builder.timeout(std::time::Duration::from_secs(config.http_timeout_secs));
-    builder.build().map_err(|e| AppError::Network(e.to_string()))
+    builder
+        .build()
+        .map_err(|e| AppError::Network(e.to_string()))
 }
 
 /// Base URL for the WebDAV remote directory, ensuring trailing slash.
@@ -133,10 +135,7 @@ async fn download_file(
 }
 
 /// MKCOL — create directory on WebDAV (ignore if already exists).
-async fn ensure_remote_dir(
-    client: &reqwest::Client,
-    config: &AppConfig,
-) -> Result<(), AppError> {
+async fn ensure_remote_dir(client: &reqwest::Client, config: &AppConfig) -> Result<(), AppError> {
     let url = format!("{}/", remote_base_url(config));
     let resp = client
         .request(reqwest::Method::from_bytes(b"MKCOL").unwrap(), &url)
@@ -201,8 +200,13 @@ pub async fn sync_all(
 
     // === Sync Config ===
     if config.sync.sync_config {
-        let local_entry = local_manifest.files.iter().find(|f| f.name == "config.json");
-        let remote_entry = remote_manifest.as_ref().and_then(|m| m.files.iter().find(|f| f.name == "config.json"));
+        let local_entry = local_manifest
+            .files
+            .iter()
+            .find(|f| f.name == "config.json");
+        let remote_entry = remote_manifest
+            .as_ref()
+            .and_then(|m| m.files.iter().find(|f| f.name == "config.json"));
 
         match (local_entry, remote_entry) {
             (Some(local), Some(remote)) if local.updated_at > remote.updated_at => {
@@ -210,33 +214,38 @@ pub async fn sync_all(
                 let config_data = serialize_config_for_sync(config)?;
                 upload_file(&client, config, "config.json", config_data.into_bytes()).await?;
                 uploaded.push("config.json".to_string());
-            }
+            },
             (Some(_), Some(_remote)) => {
                 // Download remote config
                 let data = download_file(&client, config, "config.json").await?;
                 let json = String::from_utf8_lossy(&data).to_string();
                 // Store downloaded config for the caller to apply
                 downloaded.push(format!("config.json:{}", json.len()));
-            }
+            },
             (Some(_local), None) => {
                 // Upload local (no remote exists)
                 let config_data = serialize_config_for_sync(config)?;
                 upload_file(&client, config, "config.json", config_data.into_bytes()).await?;
                 uploaded.push("config.json".to_string());
-            }
+            },
             (None, Some(_)) => {
                 // Download remote (no local equivalent in manifest)
                 let data = download_file(&client, config, "config.json").await?;
                 downloaded.push(format!("config.json:{}", data.len()));
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
     // === Sync Glossary ===
     if config.sync.sync_glossary {
-        let local_entry = local_manifest.files.iter().find(|f| f.name == "glossary.json");
-        let remote_entry = remote_manifest.as_ref().and_then(|m| m.files.iter().find(|f| f.name == "glossary.json"));
+        let local_entry = local_manifest
+            .files
+            .iter()
+            .find(|f| f.name == "glossary.json");
+        let remote_entry = remote_manifest
+            .as_ref()
+            .and_then(|m| m.files.iter().find(|f| f.name == "glossary.json"));
 
         let should_upload = match (local_entry, remote_entry) {
             (Some(local), Some(remote)) => local.updated_at > remote.updated_at,
@@ -252,8 +261,10 @@ pub async fn sync_all(
             uploaded.push("glossary.json".to_string());
         } else if remote_entry.is_some() {
             let data = download_file(&client, config, "glossary.json").await?;
-            let entries: std::collections::HashMap<String, Vec<crate::models::glossary::GlossaryEntry>> =
-                serde_json::from_slice(&data).unwrap_or_default();
+            let entries: std::collections::HashMap<
+                String,
+                Vec<crate::models::glossary::GlossaryEntry>,
+            > = serde_json::from_slice(&data).unwrap_or_default();
             let mut g = glossary.lock().await;
             // Merge remote entries into local
             for (lang_pair, remote_entries) in entries {
@@ -271,8 +282,13 @@ pub async fn sync_all(
 
     // === Sync History (Translation Memory) ===
     if config.sync.sync_history {
-        let local_entry = local_manifest.files.iter().find(|f| f.name == "tm_export.json");
-        let remote_entry = remote_manifest.as_ref().and_then(|m| m.files.iter().find(|f| f.name == "tm_export.json"));
+        let local_entry = local_manifest
+            .files
+            .iter()
+            .find(|f| f.name == "tm_export.json");
+        let remote_entry = remote_manifest
+            .as_ref()
+            .and_then(|m| m.files.iter().find(|f| f.name == "tm_export.json"));
 
         let should_upload = match (local_entry, remote_entry) {
             (Some(local), Some(remote)) => local.updated_at > remote.updated_at,
@@ -283,14 +299,14 @@ pub async fn sync_all(
         if should_upload {
             let history = history.lock().await;
             let export = history.export_tm(None, None);
-            let data = serde_json::to_string(&export)
-                .map_err(|e| AppError::Internal(e.to_string()))?;
+            let data =
+                serde_json::to_string(&export).map_err(|e| AppError::Internal(e.to_string()))?;
             upload_file(&client, config, "tm_export.json", data.into_bytes()).await?;
             uploaded.push("tm_export.json".to_string());
         } else if remote_entry.is_some() {
             let data = download_file(&client, config, "tm_export.json").await?;
-            let export: TmExportData = serde_json::from_slice(&data)
-                .map_err(|e| AppError::Internal(e.to_string()))?;
+            let export: TmExportData =
+                serde_json::from_slice(&data).map_err(|e| AppError::Internal(e.to_string()))?;
             let h = history.lock().await;
             let (imported, _skipped) = h.import_tm(&export, true);
             downloaded.push(format!("tm_export.json ({} entries)", imported));
@@ -299,8 +315,13 @@ pub async fn sync_all(
 
     // === Sync Wordbook ===
     if config.sync.sync_wordbook {
-        let local_entry = local_manifest.files.iter().find(|f| f.name == "wordbook.json");
-        let remote_entry = remote_manifest.as_ref().and_then(|m| m.files.iter().find(|f| f.name == "wordbook.json"));
+        let local_entry = local_manifest
+            .files
+            .iter()
+            .find(|f| f.name == "wordbook.json");
+        let remote_entry = remote_manifest
+            .as_ref()
+            .and_then(|m| m.files.iter().find(|f| f.name == "wordbook.json"));
 
         let should_upload = match (local_entry, remote_entry) {
             (Some(local), Some(remote)) => local.updated_at > remote.updated_at,
@@ -317,11 +338,17 @@ pub async fn sync_all(
             uploaded.push("wordbook.json".to_string());
         } else if remote_entry.is_some() {
             let data = download_file(&client, config, "wordbook.json").await?;
-            let items: Vec<crate::memory::WordBookItem> = serde_json::from_slice(&data)
-                .map_err(|e| AppError::Internal(e.to_string()))?;
+            let items: Vec<crate::memory::WordBookItem> =
+                serde_json::from_slice(&data).map_err(|e| AppError::Internal(e.to_string()))?;
             let wb = wordbook.lock().await;
             for item in &items {
-                let _ = wb.add(&item.word, &item.translation, &item.from_lang, &item.to_lang, &item.note);
+                let _ = wb.add(
+                    &item.word,
+                    &item.translation,
+                    &item.from_lang,
+                    &item.to_lang,
+                    &item.note,
+                );
             }
             downloaded.push(format!("wordbook.json ({} entries)", items.len()));
         }
@@ -332,7 +359,9 @@ pub async fn sync_all(
         version: 1,
         device_id: device_id(),
         updated_at: now,
-        files: build_local_manifest(config, &glossary, &history, &wordbook).await.files,
+        files: build_local_manifest(config, &glossary, &history, &wordbook)
+            .await
+            .files,
     };
     let manifest_json = serde_json::to_string_pretty(&new_manifest)
         .map_err(|e| AppError::Internal(e.to_string()))?;

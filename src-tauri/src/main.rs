@@ -17,7 +17,8 @@ fn set_panic_hook() {
             "Unknown panic".to_string()
         };
 
-        let location = panic_info.location()
+        let location = panic_info
+            .location()
             .map(|l| format!(" at {}:{}", l.file(), l.line()))
             .unwrap_or_default();
 

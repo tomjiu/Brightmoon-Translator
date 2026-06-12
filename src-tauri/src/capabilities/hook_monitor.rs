@@ -8,13 +8,14 @@ use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
 };
-use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, IUIAutomationTextPattern,
-    SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK,
-    UIA_TextPatternId,
-};
 use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
-use windows::Win32::System::Threading::{GetCurrentThreadId, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
+use windows::Win32::System::Threading::{
+    GetCurrentThreadId, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+};
+use windows::Win32::UI::Accessibility::{
+    CUIAutomation, IUIAutomation, IUIAutomationTextPattern, SetWinEventHook, UIA_TextPatternId,
+    UnhookWinEvent, HWINEVENTHOOK,
+};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 /// Monitored text from a window
@@ -159,7 +160,10 @@ impl HookMonitor {
         drop(running);
 
         // Clear and reuse the shared thread ID list
-        self.message_loop_tids.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.message_loop_tids
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         let thread_ids = self.message_loop_tids.clone();
 
         let (tx, mut rx) = mpsc::unbounded_channel::<MonitoredText>();
@@ -221,7 +225,10 @@ impl HookMonitor {
         drop(running);
 
         // Post WM_QUIT to all message-loop threads so they exit cleanly
-        let tids = self.message_loop_tids.lock().unwrap_or_else(|e| e.into_inner());
+        let tids = self
+            .message_loop_tids
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         for tid in tids.iter() {
             // SAFETY: PostThreadMessageW with valid thread IDs. WM_QUIT causes GetMessageW to return FALSE.
             // SAFETY: Win32 API calls for window info and screen capture.
@@ -262,24 +269,38 @@ async fn uia_monitor_task(
 ) {
     let mut last_text = String::new();
     let mut last_hwnd: usize = 0;
-    tracing::info!("[UIA Monitor] Starting UI Automation capture (interval: {}ms)", interval_ms);
+    tracing::info!(
+        "[UIA Monitor] Starting UI Automation capture (interval: {}ms)",
+        interval_ms
+    );
 
     loop {
         {
             let r = running.lock().await;
-            if !*r { break; }
+            if !*r {
+                break;
+            }
         }
 
         let result = tokio::task::spawn_blocking(capture_foreground_text)
-            .await.ok().flatten();
+            .await
+            .ok()
+            .flatten();
 
         if let Some((text, hwnd_raw, window_title, process_name, text_rect)) = result {
-            tracing::debug!("[UIA Monitor] Captured {} chars from {} ({})", text.len(), window_title, process_name);
+            tracing::debug!(
+                "[UIA Monitor] Captured {} chars from {} ({})",
+                text.len(),
+                window_title,
+                process_name
+            );
             if text != last_text || hwnd_raw != last_hwnd {
                 last_text = text.clone();
                 last_hwnd = hwnd_raw;
                 let _ = tx.send(MonitoredText {
-                    window_title, process_name, text,
+                    window_title,
+                    process_name,
+                    text,
                     timestamp: chrono::Utc::now().timestamp_millis(),
                     source: "uia".to_string(),
                     text_rect,
@@ -325,8 +346,14 @@ async fn clipboard_monitor_task(
             windows::core::w!("STATIC"),
             windows::core::w!("MoonClipListener"),
             WINDOW_STYLE::default(),
-            0, 0, 0, 0,
-            None, None, None, None,
+            0,
+            0,
+            0,
+            0,
+            None,
+            None,
+            None,
+            None,
         );
 
         let hwnd = match hwnd {
@@ -372,20 +399,27 @@ async fn clipboard_monitor_task(
     loop {
         {
             let r = running.lock().await;
-            if !*r { break; }
+            if !*r {
+                break;
+            }
         }
 
         while let Ok(trimmed) = clip_rx.try_recv() {
-            if trimmed == last_clip { continue; }
+            if trimmed == last_clip {
+                continue;
+            }
             last_clip = trimmed.clone();
 
             let (window_title, process_name) = tokio::task::spawn_blocking(|| unsafe {
                 let hwnd = GetForegroundWindow();
                 (get_window_title(hwnd), get_process_name(hwnd))
-            }).await.unwrap_or_default();
+            })
+            .await
+            .unwrap_or_default();
 
             let _ = tx.send(MonitoredText {
-                window_title, process_name,
+                window_title,
+                process_name,
                 text: trimmed,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 source: "clipboard".to_string(),
@@ -418,13 +452,17 @@ fn read_clipboard_text() -> Option<String> {
 
         const CF_UNICODETEXT: u32 = 13;
 
-        if OpenClipboard(None).is_err() { return None; }
+        if OpenClipboard(None).is_err() {
+            return None;
+        }
 
         let result = (|| -> Option<String> {
             let handle = GetClipboardData(CF_UNICODETEXT).ok()?;
             let h_global = HGLOBAL(handle.0);
             let p_data = GlobalLock(h_global);
-            if p_data.is_null() { return None; }
+            if p_data.is_null() {
+                return None;
+            }
             let size = GlobalSize(h_global);
             if size <= 2 {
                 let _ = GlobalUnlock(h_global);
@@ -453,12 +491,17 @@ async fn ocr_monitor_task(
 
     // Delay start to let UIA work first
     tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-    tracing::info!("[OCR Monitor] Starting OCR fallback capture (interval: {}ms)", interval_ms);
+    tracing::info!(
+        "[OCR Monitor] Starting OCR fallback capture (interval: {}ms)",
+        interval_ms
+    );
 
     loop {
         {
             let r = running.lock().await;
-            if !*r { break; }
+            if !*r {
+                break;
+            }
         }
 
         let result = tokio::task::spawn_blocking(|| {
@@ -479,8 +522,14 @@ async fn ocr_monitor_task(
                 }
 
                 // Convert client coordinates to screen coordinates
-                let mut top_left = windows::Win32::Foundation::POINT { x: client_rect.left, y: client_rect.top };
-                let mut bottom_right = windows::Win32::Foundation::POINT { x: client_rect.right, y: client_rect.bottom };
+                let mut top_left = windows::Win32::Foundation::POINT {
+                    x: client_rect.left,
+                    y: client_rect.top,
+                };
+                let mut bottom_right = windows::Win32::Foundation::POINT {
+                    x: client_rect.right,
+                    y: client_rect.bottom,
+                };
                 let _ = ClientToScreen(hwnd, &mut top_left);
                 let _ = ClientToScreen(hwnd, &mut bottom_right);
 
@@ -489,35 +538,58 @@ async fn ocr_monitor_task(
 
                 // Skip if area is too small
                 if width < 100 || height < 100 {
-                    tracing::debug!("[OCR Monitor] Window too small: {}x{} for {}", width, height, window_title);
+                    tracing::debug!(
+                        "[OCR Monitor] Window too small: {}x{} for {}",
+                        width,
+                        height,
+                        window_title
+                    );
                     return None;
                 }
 
-                tracing::debug!("[OCR Monitor] Capturing {}x{} from {} ({})", width, height, window_title, process_name);
+                tracing::debug!(
+                    "[OCR Monitor] Capturing {}x{} from {} ({})",
+                    width,
+                    height,
+                    window_title,
+                    process_name
+                );
 
                 let img = crate::commands::capture::capture_area_gdi(
                     top_left.x, top_left.y, width, height,
-                ).ok()?;
+                )
+                .ok()?;
 
                 let mut buf = Cursor::new(Vec::new());
                 img.write_to(&mut buf, ImageFormat::Png).ok()?;
 
-                let text = crate::ocr_engine::run_winrt_ocr(&buf.into_inner(), None)
-                    .ok()??;
+                let text = crate::ocr_engine::run_winrt_ocr(&buf.into_inner(), None).ok()??;
 
-                tracing::debug!("[OCR Monitor] OCR result: {} chars from {}", text.len(), window_title);
+                tracing::debug!(
+                    "[OCR Monitor] OCR result: {} chars from {}",
+                    text.len(),
+                    window_title
+                );
 
                 Some((text, window_title, process_name))
             }
-        }).await.ok().flatten();
+        })
+        .await
+        .ok()
+        .flatten();
 
         if let Some((text, window_title, process_name)) = result {
             let trimmed = text.trim().to_string();
             if !trimmed.is_empty() && trimmed != last_text {
                 last_text = trimmed.clone();
-                tracing::info!("[OCR Monitor] Sending text ({} chars) from {}", trimmed.len(), window_title);
+                tracing::info!(
+                    "[OCR Monitor] Sending text ({} chars) from {}",
+                    trimmed.len(),
+                    window_title
+                );
                 let _ = tx.send(MonitoredText {
-                    window_title, process_name,
+                    window_title,
+                    process_name,
                     text: trimmed,
                     timestamp: chrono::Utc::now().timestamp_millis(),
                     source: "ocr".to_string(),
@@ -606,20 +678,27 @@ async fn win_event_hook_task(
     loop {
         {
             let r = running.lock().await;
-            if !*r { break; }
+            if !*r {
+                break;
+            }
         }
 
         while let Ok((hwnd_raw, text, window_title)) = hook_rx.try_recv() {
             let trimmed = text.trim().to_string();
-            if trimmed.is_empty() || trimmed == last_text { continue; }
+            if trimmed.is_empty() || trimmed == last_text {
+                continue;
+            }
             last_text = trimmed.clone();
 
             let process_name = tokio::task::spawn_blocking(move || unsafe {
                 get_process_name(HWND(hwnd_raw as *mut _))
-            }).await.unwrap_or_default();
+            })
+            .await
+            .unwrap_or_default();
 
             let _ = tx.send(MonitoredText {
-                window_title, process_name,
+                window_title,
+                process_name,
                 text: trimmed,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 source: "hook".to_string(),
@@ -652,12 +731,18 @@ unsafe extern "system" fn win_event_proc(
     _time: u32,
 ) {
     // Only process client area events (OBJID_CLIENT = -4)
-    if id_object != OBJID_CLIENT.0 { return; }
-    if hwnd.is_invalid() { return; }
+    if id_object != OBJID_CLIENT.0 {
+        return;
+    }
+    if hwnd.is_invalid() {
+        return;
+    }
 
     // Try to read text via WM_GETTEXT
     let text = get_wm_text(hwnd);
-    if text.is_empty() { return; }
+    if text.is_empty() {
+        return;
+    }
 
     let window_title = get_window_title(hwnd);
     let hwnd_raw = hwnd.0 as isize;
@@ -672,7 +757,12 @@ unsafe extern "system" fn win_event_proc(
 /// Read text from a window/control via WM_GETTEXT message.
 unsafe fn get_wm_text(hwnd: HWND) -> String {
     let mut buffer = [0u16; 4096];
-    let len = SendMessageW(hwnd, WM_GETTEXT, WPARAM(buffer.len()), LPARAM(buffer.as_mut_ptr() as _));
+    let len = SendMessageW(
+        hwnd,
+        WM_GETTEXT,
+        WPARAM(buffer.len()),
+        LPARAM(buffer.as_mut_ptr() as _),
+    );
     if len.0 > 0 {
         String::from_utf16_lossy(&buffer[..len.0 as usize])
     } else {
@@ -684,7 +774,8 @@ unsafe fn get_wm_text(hwnd: HWND) -> String {
 
 /// Capture foreground window text via UI Automation.
 /// SAFETY: Win32 API calls to get foreground window and read its text.
-fn capture_foreground_text() -> Option<(String, usize, String, String, Option<(i32, i32, i32, i32)>)> {
+fn capture_foreground_text() -> Option<(String, usize, String, String, Option<(i32, i32, i32, i32)>)>
+{
     unsafe {
         let hwnd = GetForegroundWindow();
         let hwnd_raw = hwnd.0 as usize;
@@ -697,9 +788,13 @@ fn capture_foreground_text() -> Option<(String, usize, String, String, Option<(i
 
 /// Read text from window using UI Automation TextPattern.
 /// SAFETY: COM and UI Automation API calls. All COM objects are reference-counted.
-unsafe fn get_window_text_pattern_with_rect(hwnd: HWND) -> Option<(String, Option<(i32, i32, i32, i32)>)> {
+unsafe fn get_window_text_pattern_with_rect(
+    hwnd: HWND,
+) -> Option<(String, Option<(i32, i32, i32, i32)>)> {
     let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-    if hr.is_err() { return None; }
+    if hr.is_err() {
+        return None;
+    }
 
     let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL).ok()?;
     let element = automation.ElementFromHandle(hwnd).ok()?;
@@ -711,12 +806,15 @@ unsafe fn get_window_text_pattern_with_rect(hwnd: HWND) -> Option<(String, Optio
     let text = range.GetText(-1).ok()?;
     let text_str = text.to_string();
 
-    if text_str.is_empty() { return None; }
+    if text_str.is_empty() {
+        return None;
+    }
 
     // Get bounding rectangle of the UIA element (screen coordinates)
-    let text_rect = element.CurrentBoundingRectangle().ok().map(|r| {
-        (r.left, r.top, r.right - r.left, r.bottom - r.top)
-    });
+    let text_rect = element
+        .CurrentBoundingRectangle()
+        .ok()
+        .map(|r| (r.left, r.top, r.right - r.left, r.bottom - r.top));
 
     Some((text_str, text_rect))
 }
@@ -738,9 +836,15 @@ unsafe fn get_window_title(hwnd: HWND) -> String {
 unsafe fn get_process_name(hwnd: HWND) -> String {
     let mut process_id = 0u32;
     GetWindowThreadProcessId(hwnd, Some(&mut process_id));
-    if process_id == 0 { return String::new(); }
+    if process_id == 0 {
+        return String::new();
+    }
 
-    if let Ok(handle) = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, process_id) {
+    if let Ok(handle) = OpenProcess(
+        PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+        false,
+        process_id,
+    ) {
         let mut buffer = [0u16; 512];
         let len = GetModuleFileNameExW(handle, None, &mut buffer);
         let _ = windows::Win32::Foundation::CloseHandle(handle);
@@ -778,25 +882,56 @@ pub fn is_translatable(text: &str, recent: &VecDeque<String>, source: &str) -> b
     }
 
     // Skip URLs
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") || trimmed.starts_with("ftp://") {
+    if trimmed.starts_with("http://")
+        || trimmed.starts_with("https://")
+        || trimmed.starts_with("ftp://")
+    {
         return false;
     }
 
     // Skip file paths
-    if trimmed.starts_with("C:\\") || trimmed.starts_with("D:\\") || trimmed.starts_with("/") || trimmed.starts_with("\\\\") {
+    if trimmed.starts_with("C:\\")
+        || trimmed.starts_with("D:\\")
+        || trimmed.starts_with("/")
+        || trimmed.starts_with("\\\\")
+    {
         return false;
     }
 
     // Skip code-like content (too many special chars)
     // Be more lenient for OCR source which may have noise
     let special_threshold = if source == "ocr" { 4 } else { 3 };
-    let special_count = trimmed.chars().filter(|c| matches!(c, '{' | '}' | '(' | ')' | ';' | '=' | '<' | '>' | '&' | '|' | '!' | '#' | '$' | '@' | '`')).count();
+    let special_count = trimmed
+        .chars()
+        .filter(|c| {
+            matches!(
+                c,
+                '{' | '}'
+                    | '('
+                    | ')'
+                    | ';'
+                    | '='
+                    | '<'
+                    | '>'
+                    | '&'
+                    | '|'
+                    | '!'
+                    | '#'
+                    | '$'
+                    | '@'
+                    | '`'
+            )
+        })
+        .count();
     if special_count > 0 && special_count * special_threshold > char_count {
         return false;
     }
 
     // Skip pure numbers / hex / UUIDs
-    let hex_like = trimmed.chars().filter(|c| c.is_ascii_hexdigit() || *c == '-' || *c == '_').count();
+    let hex_like = trimmed
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit() || *c == '-' || *c == '_')
+        .count();
     if hex_like == char_count {
         return false;
     }

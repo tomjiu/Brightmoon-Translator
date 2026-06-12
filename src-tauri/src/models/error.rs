@@ -39,10 +39,10 @@ impl fmt::Display for TranslationError {
             Self::NoEngine => write!(f, "No translation engine available"),
             Self::AllEnginesFailed { errors } => {
                 write!(f, "All engines failed: {}", errors.join("; "))
-            }
+            },
             Self::EngineError { engine, message } => {
                 write!(f, "{} engine error: {}", engine, message)
-            }
+            },
             Self::RateLimited {
                 engine,
                 retry_after_ms,
@@ -52,17 +52,17 @@ impl fmt::Display for TranslationError {
                     write!(f, " (retry after {}ms)", ms)?;
                 }
                 Ok(())
-            }
+            },
             Self::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
             Self::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
             Self::NetworkError(msg) => write!(f, "Network error: {}", msg),
             Self::CacheError(msg) => write!(f, "Cache error: {}", msg),
             Self::PluginError { name, message } => {
                 write!(f, "Plugin '{}' error: {}", name, message)
-            }
+            },
             Self::StreamingNotSupported => {
                 write!(f, "Streaming not supported by current engine")
-            }
+            },
             Self::Internal(msg) => write!(f, "Internal error: {}", msg),
         }
     }

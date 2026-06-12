@@ -18,9 +18,7 @@ pub async fn start_speech_recognition(
 
 /// Stop speech recognition
 #[tauri::command]
-pub async fn stop_speech_recognition(
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn stop_speech_recognition(state: State<'_, AppState>) -> Result<(), String> {
     let speech_state = state.speech_state.clone();
 
     speech::stop_recognition(speech_state)

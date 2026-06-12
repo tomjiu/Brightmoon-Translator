@@ -64,7 +64,7 @@ impl PreProcessor {
                 Err(e) => {
                     tracing::error!("Failed to read pre-process config {:?}: {}", path, e);
                     PreProcessConfig::default()
-                }
+                },
             }
         } else {
             PreProcessConfig::default()
@@ -83,15 +83,18 @@ impl PreProcessor {
                 if let Err(e) = std::fs::write(&path, data) {
                     tracing::error!("Failed to save pre-process config {:?}: {}", path, e);
                 }
-            }
+            },
             Err(e) => {
                 tracing::error!("Failed to serialize pre-process config: {}", e);
-            }
+            },
         }
     }
 
     pub fn get_config(&self) -> PreProcessConfig {
-        self.config.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.config
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn update_config(&self, config: PreProcessConfig) {

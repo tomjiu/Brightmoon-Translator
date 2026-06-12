@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
+use crate::cache::TranslationCache;
 use crate::capabilities::handle_browser_request;
 use crate::config::AppConfig;
 use crate::engine;
@@ -19,7 +20,6 @@ use crate::models::browser_protocol::BrowserTranslateRequest;
 use crate::models::error::{ApiError, TranslationError};
 use crate::models::glossary::GlossaryEntry;
 use crate::services::TranslationService;
-use crate::cache::TranslationCache;
 
 /// Mask a secret string, keeping first 4 and last 4 bytes visible.
 /// Safe for ASCII secrets (API keys, tokens). Uses byte slicing for performance.
@@ -37,15 +37,26 @@ fn sanitize_config(config: &AppConfig) -> serde_json::Value {
     let mut v = serde_json::to_value(config).unwrap_or_default();
     // Mask LLM keys
     if let Some(llm) = v.get_mut("llm") {
-        if let Some(key) = llm.get_mut("apiKey").and_then(|v| v.as_str().map(|s| s.to_string())) {
+        if let Some(key) = llm
+            .get_mut("apiKey")
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+        {
             if let Some(obj) = llm.as_object_mut() {
-                obj.insert("apiKey".into(), serde_json::Value::String(mask_secret(&key)));
+                obj.insert(
+                    "apiKey".into(),
+                    serde_json::Value::String(mask_secret(&key)),
+                );
             }
         }
         if let Some(keys) = llm.get_mut("apiKeys").and_then(|v| v.as_array().cloned()) {
-            let masked: Vec<_> = keys.iter().map(|k| {
-                k.as_str().map(|s| serde_json::Value::String(mask_secret(s))).unwrap_or(k.clone())
-            }).collect();
+            let masked: Vec<_> = keys
+                .iter()
+                .map(|k| {
+                    k.as_str()
+                        .map(|s| serde_json::Value::String(mask_secret(s)))
+                        .unwrap_or(k.clone())
+                })
+                .collect();
             if let Some(obj) = llm.as_object_mut() {
                 obj.insert("apiKeys".into(), serde_json::Value::Array(masked));
             }
@@ -56,27 +67,45 @@ fn sanitize_config(config: &AppConfig) -> serde_json::Value {
         for field in &["deepl", "deeplx", "baidu"] {
             if let Some(engine_cfg) = engines.get_mut(field) {
                 for secret_field in &["apiKey", "secret"] {
-                    if let Some(val) = engine_cfg.get(*secret_field).and_then(|v| v.as_str().map(|s| s.to_string())) {
+                    if let Some(val) = engine_cfg
+                        .get(*secret_field)
+                        .and_then(|v| v.as_str().map(|s| s.to_string()))
+                    {
                         if let Some(obj) = engine_cfg.as_object_mut() {
-                            obj.insert(secret_field.to_string(), serde_json::Value::String(mask_secret(&val)));
+                            obj.insert(
+                                secret_field.to_string(),
+                                serde_json::Value::String(mask_secret(&val)),
+                            );
                         }
                     }
                 }
             }
         }
         if let Some(youdao) = engines.get_mut("youdao") {
-            if let Some(val) = youdao.get("ocrAppSecret").and_then(|v| v.as_str().map(|s| s.to_string())) {
+            if let Some(val) = youdao
+                .get("ocrAppSecret")
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+            {
                 if let Some(obj) = youdao.as_object_mut() {
-                    obj.insert("ocrAppSecret".into(), serde_json::Value::String(mask_secret(&val)));
+                    obj.insert(
+                        "ocrAppSecret".into(),
+                        serde_json::Value::String(mask_secret(&val)),
+                    );
                 }
             }
         }
     }
     // Mask proxy password
     if let Some(proxy) = v.get_mut("proxy") {
-        if let Some(val) = proxy.get("password").and_then(|v| v.as_str().map(|s| s.to_string())) {
+        if let Some(val) = proxy
+            .get("password")
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+        {
             if let Some(obj) = proxy.as_object_mut() {
-                obj.insert("password".into(), serde_json::Value::String(mask_secret(&val)));
+                obj.insert(
+                    "password".into(),
+                    serde_json::Value::String(mask_secret(&val)),
+                );
             }
         }
     }
@@ -161,13 +190,13 @@ async fn translate(
             let status = match &e {
                 TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => {
                     StatusCode::SERVICE_UNAVAILABLE
-                }
+                },
                 TranslationError::InvalidInput(_) => StatusCode::BAD_REQUEST,
                 TranslationError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             (status, Json(ApiError::from(&e))).into_response()
-        }
+        },
     }
 }
 
@@ -220,13 +249,13 @@ async fn translate_primary(
             let status = match &e {
                 TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => {
                     StatusCode::SERVICE_UNAVAILABLE
-                }
+                },
                 TranslationError::InvalidInput(_) => StatusCode::BAD_REQUEST,
                 TranslationError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             (status, Json(ApiError::from(&e))).into_response()
-        }
+        },
     }
 }
 
@@ -254,7 +283,7 @@ async fn update_config(
                 }),
             )
                 .into_response();
-        }
+        },
     };
 
     let mut merged = config_json;
@@ -277,7 +306,7 @@ async fn update_config(
             *config = new_config; // move instead of clone
 
             response
-        }
+        },
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(ApiError {
@@ -343,13 +372,13 @@ async fn browser_translate(
             let status = match &e.error {
                 TranslationError::NoEngine | TranslationError::AllEnginesFailed { .. } => {
                     StatusCode::SERVICE_UNAVAILABLE
-                }
+                },
                 TranslationError::InvalidInput(_) => StatusCode::BAD_REQUEST,
                 TranslationError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             (status, Json(e)).into_response()
-        }
+        },
     }
 }
 
@@ -375,14 +404,16 @@ async fn add_glossary_entry(
     Json(req): Json<AddGlossaryRequest>,
 ) -> impl IntoResponse {
     let mut glossary = state.glossary.lock().await;
-    glossary.add_entry(
-        req.lang_pair,
-        GlossaryEntry {
-            source: req.source,
-            target: req.target,
-            context: req.context,
-        },
-    ).await;
+    glossary
+        .add_entry(
+            req.lang_pair,
+            GlossaryEntry {
+                source: req.source,
+                target: req.target,
+                context: req.context,
+            },
+        )
+        .await;
     StatusCode::OK.into_response()
 }
 

@@ -16,10 +16,10 @@ pub async fn open_pdf(file_path: String) -> Result<PdfDocument, String> {
                 Ok(count) => {
                     doc.total_pages = count as usize;
                     tracing::info!("[PDF] Scanned PDF detected with {} pages", count);
-                }
+                },
                 Err(e) => {
                     tracing::warn!("[PDF] Failed to get page count: {}", e);
-                }
+                },
             }
         }
     }
@@ -107,10 +107,13 @@ pub async fn ocr_scanned_pdf(
 
         for i in 0..page_count {
             // Emit progress event
-            let _ = window.emit("pdf-ocr-progress", serde_json::json!({
-                "current": i + 1,
-                "total": page_count,
-            }));
+            let _ = window.emit(
+                "pdf-ocr-progress",
+                serde_json::json!({
+                    "current": i + 1,
+                    "total": page_count,
+                }),
+            );
 
             tracing::info!("[PDF OCR] Processing page {}/{}", i + 1, page_count);
 
@@ -130,7 +133,7 @@ pub async fn ocr_scanned_pdf(
                                 text,
                             });
                             processed += 1;
-                        }
+                        },
                         Ok(None) => {
                             tracing::info!("[PDF OCR] Page {} OCR returned empty", i + 1);
                             pages.push(PdfPage {
@@ -138,32 +141,35 @@ pub async fn ocr_scanned_pdf(
                                 text: String::new(),
                             });
                             processed += 1;
-                        }
+                        },
                         Err(e) => {
                             tracing::warn!("[PDF OCR] Page {} OCR failed: {}", i + 1, e);
                             pages.push(PdfPage {
                                 page_number: (i + 1) as usize,
                                 text: String::new(),
                             });
-                        }
+                        },
                     }
-                }
+                },
                 Err(e) => {
                     tracing::warn!("[PDF OCR] Page {} render failed: {}", i + 1, e);
                     pages.push(PdfPage {
                         page_number: (i + 1) as usize,
                         text: String::new(),
                     });
-                }
+                },
             }
         }
 
         // Emit completion event
-        let _ = window.emit("pdf-ocr-progress", serde_json::json!({
-            "current": page_count,
-            "total": page_count,
-            "done": true,
-        }));
+        let _ = window.emit(
+            "pdf-ocr-progress",
+            serde_json::json!({
+                "current": page_count,
+                "total": page_count,
+                "done": true,
+            }),
+        );
 
         tracing::info!(
             "[PDF OCR] Completed: {}/{} pages processed",

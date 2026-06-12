@@ -1,4 +1,4 @@
-use crate::plugin::{self, PluginInfo, PluginErrorLog, PluginSandboxStatus, MarketplaceEntry};
+use crate::plugin::{self, MarketplaceEntry, PluginErrorLog, PluginInfo, PluginSandboxStatus};
 use crate::plugin_sandbox;
 use crate::security;
 
@@ -87,7 +87,9 @@ pub struct PluginUpdateInfo {
 
 #[tauri::command]
 pub async fn get_plugin_errors(plugin_name: Option<String>) -> Result<Vec<PluginErrorLog>, String> {
-    Ok(plugin::get_plugin_errors(plugin_name.as_deref().unwrap_or("")))
+    Ok(plugin::get_plugin_errors(
+        plugin_name.as_deref().unwrap_or(""),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -98,14 +100,18 @@ pub async fn get_plugin_errors(plugin_name: Option<String>) -> Result<Vec<Plugin
 #[tauri::command]
 pub async fn start_plugin_sandbox(plugin_name: String) -> Result<(), String> {
     let _ = security::sanitize_plugin_name(&plugin_name)?;
-    plugin_sandbox::get_sandbox().start_plugin(&plugin_name).await
+    plugin_sandbox::get_sandbox()
+        .start_plugin(&plugin_name)
+        .await
 }
 
 /// Stop a sandboxed plugin subprocess.
 #[tauri::command]
 pub async fn stop_plugin_sandbox(plugin_name: String) -> Result<(), String> {
     let _ = security::sanitize_plugin_name(&plugin_name)?;
-    plugin_sandbox::get_sandbox().stop_plugin(&plugin_name).await
+    plugin_sandbox::get_sandbox()
+        .stop_plugin(&plugin_name)
+        .await
 }
 
 /// Get the sandbox status of a specific plugin.

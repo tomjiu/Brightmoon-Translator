@@ -261,7 +261,12 @@ fn default_ocr_interval() -> u32 {
 }
 
 fn default_hook_enabled_sources() -> Vec<String> {
-    vec!["uia".into(), "clipboard".into(), "ocr".into(), "hook".into()]
+    vec![
+        "uia".into(),
+        "clipboard".into(),
+        "ocr".into(),
+        "hook".into(),
+    ]
 }
 
 fn default_uia_interval_ms() -> u64 {
@@ -553,7 +558,10 @@ mod tests {
         assert!(config.engines.youdao.enabled);
         assert!(!config.engines.youdao.use_ai);
         assert_eq!(config.engines.youdao.ocr_app_key, "3d9fa94028675971");
-        assert_eq!(config.engines.youdao.ocr_app_secret, "5X2CJlMERfGOkOP0PFqokVJkSgDIOD0p");
+        assert_eq!(
+            config.engines.youdao.ocr_app_secret,
+            "5X2CJlMERfGOkOP0PFqokVJkSgDIOD0p"
+        );
         assert!(!config.engines.deepl.enabled);
         assert!(!config.engines.deeplx.enabled);
         assert!(!config.engines.microsoft.enabled);
@@ -721,7 +729,10 @@ mod tests {
         assert_eq!(deserialized.llm.model, config.llm.model);
         assert_eq!(deserialized.default_from, config.default_from);
         assert_eq!(deserialized.default_to, config.default_to);
-        assert_eq!(deserialized.hotkeys.ocr_translate, config.hotkeys.ocr_translate);
+        assert_eq!(
+            deserialized.hotkeys.ocr_translate,
+            config.hotkeys.ocr_translate
+        );
         assert_eq!(deserialized.proxy.port, config.proxy.port);
         assert_eq!(deserialized.sync.remote_dir, config.sync.remote_dir);
         assert_eq!(deserialized.overlay_level, config.overlay_level);

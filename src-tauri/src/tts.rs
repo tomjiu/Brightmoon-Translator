@@ -119,7 +119,11 @@ pub async fn synthesize(text: &str, voice: &str) -> anyhow::Result<Vec<u8>> {
     synthesize_with_token(text, voice, "").await
 }
 
-pub async fn synthesize_with_token(text: &str, voice: &str, config_token: &str) -> anyhow::Result<Vec<u8>> {
+pub async fn synthesize_with_token(
+    text: &str,
+    voice: &str,
+    config_token: &str,
+) -> anyhow::Result<Vec<u8>> {
     let token = get_edge_tts_token(config_token);
     let url = format!(
         "{}&ConnectionId={}",
@@ -169,13 +173,13 @@ pub async fn synthesize_with_token(text: &str, voice: &str, config_token: &str) 
                         audio_data.extend_from_slice(&data[2 + header_len..]);
                     }
                 }
-            }
+            },
             Message::Text(text) => {
                 if text.contains("Path:turn.end") {
                     break;
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 

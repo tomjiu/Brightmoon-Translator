@@ -160,7 +160,9 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 std::mem::size_of::<INPUT>() as i32,
             );
             if sent == 0 {
-                tracing::warn!("[clipboard] SendInput returned 0 — Ctrl+C may not have been delivered");
+                tracing::warn!(
+                    "[clipboard] SendInput returned 0 — Ctrl+C may not have been delivered"
+                );
             }
 
             // Adaptive wait: poll clipboard every 50ms, up to 500ms
@@ -249,7 +251,9 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                                 );
                             }
                         } else {
-                            tracing::warn!("[clipboard] GlobalAlloc failed when restoring clipboard");
+                            tracing::warn!(
+                                "[clipboard] GlobalAlloc failed when restoring clipboard"
+                            );
                         }
                     }
                     CloseClipboard();

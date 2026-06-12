@@ -76,7 +76,9 @@ pub async fn translate_excel(
             cells_translated: 0,
             words_translated: 0,
             success: true,
-            error_message: Some("No translatable content found (only formulas or empty cells)".to_string()),
+            error_message: Some(
+                "No translatable content found (only formulas or empty cells)".to_string(),
+            ),
         });
     }
 
@@ -114,10 +116,7 @@ pub async fn translate_excel(
     let mut translation_map: HashMap<(String, u32, u32), String> = HashMap::new();
     for result in batch_results {
         if let Some((_, sheet_name, _, row, col)) = cells_to_translate.get(result.index) {
-            translation_map.insert(
-                (sheet_name.clone(), *row, *col),
-                result.translated,
-            );
+            translation_map.insert((sheet_name.clone(), *row, *col), result.translated);
         }
     }
 
@@ -185,10 +184,7 @@ pub async fn translate_excel_preview(
     let mut translation_map: HashMap<(String, u32, u32), String> = HashMap::new();
     for result in batch_results {
         if let Some((_, sheet_name, _, row, col)) = cells_to_translate.get(result.index) {
-            translation_map.insert(
-                (sheet_name.clone(), *row, *col),
-                result.translated,
-            );
+            translation_map.insert((sheet_name.clone(), *row, *col), result.translated);
         }
     }
 

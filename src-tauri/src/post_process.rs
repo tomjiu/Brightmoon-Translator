@@ -55,7 +55,8 @@ fn text_similarity(a: &str, b: &str) -> f32 {
     }
 
     // Quick check: if lengths are very different, texts are likely different
-    let len_ratio = a_chars.len().min(b_chars.len()) as f32 / a_chars.len().max(b_chars.len()) as f32;
+    let len_ratio =
+        a_chars.len().min(b_chars.len()) as f32 / a_chars.len().max(b_chars.len()) as f32;
     if len_ratio < 0.3 {
         return 0.0;
     }
@@ -96,13 +97,30 @@ fn has_garbled_chars(text: &str) -> bool {
     // Check for common UTF-8 → Latin-1 mojibake patterns
     // These occur when UTF-8 bytes are decoded as Latin-1
     let mojibake_patterns = [
-        "Ã¡", "Ã©", "Ã­", "Ã³", "Ãº",  // Spanish accented vowels
-        "Ã¤", "Ã¶", "Ã¼", "ÃŸ",         // German umlauts
-        "Ã ", "Ã¨", "Ã¬", "Ã²", "Ã¹",  // French/Italian accented vowels
-        "Ã§", "Ã±",                      // c-cedilla, n-tilde
-        "Ð", "Ñ",                        // Cyrillic mojibake start bytes
-        "â€™", "â€œ", "â€", "â€¦",     // Smart quotes mojibake
-        "Ã¢Â€Â™", "Ã¢Â€Âœ",            // Double-encoded mojibake
+        "Ã¡",
+        "Ã©",
+        "Ã­",
+        "Ã³",
+        "Ãº", // Spanish accented vowels
+        "Ã¤",
+        "Ã¶",
+        "Ã¼",
+        "ÃŸ", // German umlauts
+        "Ã ",
+        "Ã¨",
+        "Ã¬",
+        "Ã²",
+        "Ã¹", // French/Italian accented vowels
+        "Ã§",
+        "Ã±", // c-cedilla, n-tilde
+        "Ð",
+        "Ñ", // Cyrillic mojibake start bytes
+        "â€™",
+        "â€œ",
+        "â€",
+        "â€¦", // Smart quotes mojibake
+        "Ã¢Â€Â™",
+        "Ã¢Â€Âœ", // Double-encoded mojibake
     ];
 
     for pattern in &mojibake_patterns {
@@ -112,20 +130,26 @@ fn has_garbled_chars(text: &str) -> bool {
     }
 
     // Check for excessive control characters (except common whitespace)
-    let control_count = text.chars().filter(|c| {
-        let code = *c as u32;
-        code < 0x20 && !matches!(code, 0x09 | 0x0A | 0x0D) // tab, LF, CR are OK
-    }).count();
+    let control_count = text
+        .chars()
+        .filter(|c| {
+            let code = *c as u32;
+            code < 0x20 && !matches!(code, 0x09 | 0x0A | 0x0D) // tab, LF, CR are OK
+        })
+        .count();
 
     if control_count > 0 {
         return true;
     }
 
     // Check for Private Use Area characters (often indicate font-specific glyphs that didn't render)
-    let pua_count = text.chars().filter(|c| {
-        let code = *c as u32;
-        (0xE000..=0xF8FF).contains(&code) || (0xF0000..=0xFFFFF).contains(&code)
-    }).count();
+    let pua_count = text
+        .chars()
+        .filter(|c| {
+            let code = *c as u32;
+            (0xE000..=0xF8FF).contains(&code) || (0xF0000..=0xFFFFF).contains(&code)
+        })
+        .count();
 
     // If more than 5% PUA characters, likely garbled
     if !text.is_empty() && pua_count as f32 / text.chars().count() as f32 > 0.05 {
@@ -161,7 +185,7 @@ impl PostProcessor {
                 Err(e) => {
                     tracing::error!("Failed to read post-process config {:?}: {}", path, e);
                     PostProcessConfig::default()
-                }
+                },
             }
         } else {
             PostProcessConfig::default()
@@ -180,15 +204,18 @@ impl PostProcessor {
                 if let Err(e) = std::fs::write(&path, data) {
                     tracing::error!("Failed to save post-process config {:?}: {}", path, e);
                 }
-            }
+            },
             Err(e) => {
                 tracing::error!("Failed to serialize post-process config: {}", e);
-            }
+            },
         }
     }
 
     pub fn get_config(&self) -> PostProcessConfig {
-        self.config.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.config
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn update_config(&self, config: PostProcessConfig) {
@@ -285,10 +312,13 @@ impl PostProcessor {
             // Remove replacement characters
             result = result.replace('\u{FFFD}', "");
             // Clean up excessive control characters
-            result = result.chars().filter(|c| {
-                let code = *c as u32;
-                code >= 0x20 || matches!(code, 0x09 | 0x0A | 0x0D)
-            }).collect();
+            result = result
+                .chars()
+                .filter(|c| {
+                    let code = *c as u32;
+                    code >= 0x20 || matches!(code, 0x09 | 0x0A | 0x0D)
+                })
+                .collect();
             result = result.trim().to_string();
         }
 

@@ -131,11 +131,7 @@ impl BatchManager {
     }
 
     /// Submit texts for batch translation
-    pub async fn submit(
-        &self,
-        texts: Vec<String>,
-        config: BatchConfig,
-    ) -> Result<String, String> {
+    pub async fn submit(&self, texts: Vec<String>, config: BatchConfig) -> Result<String, String> {
         let mut status = self.status.write().await;
         if *status == BatchJobStatus::Running {
             return Err("A batch job is already running".to_string());
@@ -232,7 +228,10 @@ impl BatchManager {
                     task.status = BatchTaskStatus::Running;
 
                     // Translate
-                    match service.translate(&task.text, &task.from_lang, &task.to_lang).await {
+                    match service
+                        .translate(&task.text, &task.from_lang, &task.to_lang)
+                        .await
+                    {
                         Ok(response) => {
                             let translated = response
                                 .results
@@ -242,7 +241,7 @@ impl BatchManager {
                             task.status = BatchTaskStatus::Completed;
                             task.result = Some(translated);
                             completed_count.fetch_add(1, Ordering::SeqCst);
-                        }
+                        },
                         Err(e) => {
                             task.status = BatchTaskStatus::Failed;
                             task.error = Some(e.to_string());
@@ -254,7 +253,7 @@ impl BatchManager {
                                 *s = BatchJobStatus::Failed;
                                 break;
                             }
-                        }
+                        },
                     }
 
                     // Store result and emit progress
@@ -381,8 +380,7 @@ impl BatchManager {
 
         // Decrement failed count
         let retry_count = self.tasks.lock().await.len();
-        self.failed_count
-            .fetch_sub(retry_count, Ordering::SeqCst);
+        self.failed_count.fetch_sub(retry_count, Ordering::SeqCst);
 
         // Update status
         *self.status.write().await = BatchJobStatus::Running;

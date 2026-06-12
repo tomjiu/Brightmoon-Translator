@@ -103,7 +103,9 @@ pub async fn import_config_json(state: State<'_, AppState>, json: String) -> Res
 }
 
 #[tauri::command]
-pub async fn get_translation_blacklist(state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
+pub async fn get_translation_blacklist(
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, AppError> {
     let config = state.system.config.lock().await;
     Ok(config.translation_blacklist.clone())
 }

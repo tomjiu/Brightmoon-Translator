@@ -120,7 +120,8 @@ pub fn get_pdf_page_count(file_path: &str) -> Result<u32, String> {
         .get()
         .map_err(|e| format!("LoadPdf await: {}", e))?;
 
-    let page_count = pdf_doc.PageCount()
+    let page_count = pdf_doc
+        .PageCount()
         .map_err(|e| format!("PageCount: {}", e))?;
 
     Ok(page_count)
@@ -146,21 +147,23 @@ pub fn render_pdf_page_to_png(file_path: &str, page_index: u32) -> Result<Vec<u8
         .get()
         .map_err(|e| format!("LoadPdf await: {}", e))?;
 
-    let page = pdf_doc.GetPage(page_index)
+    let page = pdf_doc
+        .GetPage(page_index)
         .map_err(|e| format!("GetPage({}): {}", page_index, e))?;
 
-    let stream = InMemoryRandomAccessStream::new()
-        .map_err(|e| format!("InMemoryStream: {}", e))?;
+    let stream = InMemoryRandomAccessStream::new().map_err(|e| format!("InMemoryStream: {}", e))?;
 
-    let render_options = PdfPageRenderOptions::new()
-        .map_err(|e| format!("RenderOptions: {}", e))?;
+    let render_options =
+        PdfPageRenderOptions::new().map_err(|e| format!("RenderOptions: {}", e))?;
 
     // Set bitmap dimensions for good OCR quality (2x scale, capped at 4096px)
     let width = 2048u32;
     let height = 2896u32; // A4 aspect ratio at 2x
-    render_options.SetDestinationWidth(width)
+    render_options
+        .SetDestinationWidth(width)
         .map_err(|e| format!("SetDestinationWidth: {}", e))?;
-    render_options.SetDestinationHeight(height)
+    render_options
+        .SetDestinationHeight(height)
         .map_err(|e| format!("SetDestinationHeight: {}", e))?;
 
     page.RenderToStreamAsync(&stream)
@@ -173,18 +176,19 @@ pub fn render_pdf_page_to_png(file_path: &str, page_index: u32) -> Result<Vec<u8
     let reader = windows::Storage::Streams::DataReader::CreateDataReader(&stream)
         .map_err(|e| format!("DataReader: {}", e))?;
 
-    reader.LoadAsync(size as u32)
+    reader
+        .LoadAsync(size as u32)
         .map_err(|e| format!("LoadAsync: {}", e))?
         .get()
         .map_err(|e| format!("LoadAsync await: {}", e))?;
 
     let mut bytes = vec![0u8; size];
-    reader.ReadBytes(&mut bytes)
+    reader
+        .ReadBytes(&mut bytes)
         .map_err(|e| format!("ReadBytes: {}", e))?;
 
     // The rendered stream is a BMP. Convert to PNG.
-    let img = image::load_from_memory(&bytes)
-        .map_err(|e| format!("LoadBmp: {}", e))?;
+    let img = image::load_from_memory(&bytes).map_err(|e| format!("LoadBmp: {}", e))?;
 
     let mut png_buf = std::io::Cursor::new(Vec::new());
     img.write_to(&mut png_buf, image::ImageFormat::Png)

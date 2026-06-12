@@ -17,8 +17,7 @@ pub fn run_winrt_ocr(png_bytes: &[u8], lang: Option<&str>) -> Result<Option<Stri
     // Use unique path to avoid race conditions with concurrent OCR calls
     let id = Uuid::new_v4().to_string();
     let temp_path = std::env::temp_dir().join(format!("moontranslator_hook_ocr_{}.png", id));
-    std::fs::write(&temp_path, png_bytes)
-        .map_err(|e| format!("OCR temp write failed: {}", e))?;
+    std::fs::write(&temp_path, png_bytes).map_err(|e| format!("OCR temp write failed: {}", e))?;
 
     let path_str = temp_path.to_string_lossy().replace("\\\\?\\", "");
 
@@ -54,7 +53,7 @@ pub fn run_winrt_ocr(png_bytes: &[u8], lang: Option<&str>) -> Result<Option<Stri
                     .map_err(|e| format!("Language: {}", e))?;
                 OcrEngine::TryCreateFromLanguage(&language)
                     .map_err(|e| format!("OcrEngine: {}", e))?
-            }
+            },
             _ => OcrEngine::TryCreateFromUserProfileLanguages()
                 .map_err(|e| format!("OcrEngine: {}", e))?,
         };

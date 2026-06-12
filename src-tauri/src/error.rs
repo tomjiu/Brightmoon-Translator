@@ -195,10 +195,10 @@ impl AppError {
             Self::NoEngine => "没有可用的翻译引擎".to_string(),
             Self::AllEnginesFailed(errors) => {
                 format!("所有翻译引擎均失败: {}", errors.join("; "))
-            }
+            },
             Self::EngineError { engine, message } => {
                 format!("{} 引擎错误: {}", engine, message)
-            }
+            },
             Self::RateLimited {
                 engine,
                 retry_after_ms,
@@ -212,8 +212,11 @@ impl AppError {
             Self::InvalidInput(msg) => format!("输入无效: {}", msg),
             Self::EmptyText => "文本为空".to_string(),
             Self::TextTooLong { max, got } => {
-                format!("文本超出最大长度限制 (最大 {} 字符，当前 {} 字符)", max, got)
-            }
+                format!(
+                    "文本超出最大长度限制 (最大 {} 字符，当前 {} 字符)",
+                    max, got
+                )
+            },
             Self::InvalidLanguage(code) => format!("无效的语言代码: {}", code),
             Self::InvalidPath(msg) => format!("无效的文件路径: {}", msg),
             Self::PathTraversal => "检测到路径穿越攻击".to_string(),
@@ -284,7 +287,7 @@ impl AppError {
             // Warnings: expected/recoverable
             Self::RateLimited { .. } | Self::Timeout | Self::Cancelled => {
                 tracing::warn!("[AppError] {}", sanitized);
-            }
+            },
             // Errors: unexpected failures
             Self::Internal(_)
             | Self::Io(_)
@@ -293,7 +296,7 @@ impl AppError {
             | Self::LockPoisoned(_)
             | Self::TaskJoin(_) => {
                 tracing::error!("[AppError] {}", sanitized);
-            }
+            },
             // Info: validation, user input
             Self::InvalidInput(_)
             | Self::EmptyText
@@ -303,11 +306,11 @@ impl AppError {
             | Self::PathTraversal
             | Self::InvalidPluginName(_) => {
                 tracing::info!("[AppError] {}", sanitized);
-            }
+            },
             // Everything else
             _ => {
                 tracing::error!("[AppError] {}", sanitized);
-            }
+            },
         }
     }
 }

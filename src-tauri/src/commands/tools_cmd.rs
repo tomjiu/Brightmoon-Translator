@@ -24,7 +24,7 @@ pub fn transform_variable_name(text: String, target_format: String) -> String {
                 }
             }
             result
-        }
+        },
         "PascalCase" => words.iter().map(|w| capitalize_first(w)).collect(),
         "dot.notation" => words.join(".").to_lowercase(),
         "Title Case" => words

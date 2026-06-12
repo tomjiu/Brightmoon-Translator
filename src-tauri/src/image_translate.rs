@@ -7,7 +7,7 @@
 //! 4. Draw translated text over original text positions
 //! 5. Output the translated image
 
-use ab_glyph::{FontRef, PxScale, Font, ScaleFont};
+use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
 use image::{DynamicImage, GenericImageView, Rgba, RgbaImage};
 use imageproc::drawing::draw_text_mut;
 use serde::Serialize;
@@ -83,28 +83,28 @@ fn find_system_font(target_lang: &str) -> Option<Vec<u8>> {
     // Select font candidates based on target language
     let candidates: Vec<&str> = match target_lang {
         "zh" | "zh-CN" | "zh-CHS" | "zh-TW" | "zh-CHT" => vec![
-            "msyh.ttc",       // Microsoft YaHei
-            "msyhbd.ttc",     // Microsoft YaHei Bold
-            "simhei.ttf",     // SimHei
-            "simsun.ttc",     // SimSun
-            "msyh.ttf",       // Microsoft YaHei (older)
+            "msyh.ttc",   // Microsoft YaHei
+            "msyhbd.ttc", // Microsoft YaHei Bold
+            "simhei.ttf", // SimHei
+            "simsun.ttc", // SimSun
+            "msyh.ttf",   // Microsoft YaHei (older)
         ],
         "ja" => vec![
-            "msgothic.ttc",   // MS Gothic
-            "msmincho.ttc",   // MS Mincho
-            "YuGothR.ttc",    // Yu Gothic
-            "msyh.ttc",       // Microsoft YaHei (fallback)
+            "msgothic.ttc", // MS Gothic
+            "msmincho.ttc", // MS Mincho
+            "YuGothR.ttc",  // Yu Gothic
+            "msyh.ttc",     // Microsoft YaHei (fallback)
         ],
         "ko" => vec![
-            "malgun.ttf",     // Malgun Gothic
-            "batang.ttc",     // Batang
-            "msyh.ttc",       // Fallback
+            "malgun.ttf", // Malgun Gothic
+            "batang.ttc", // Batang
+            "msyh.ttc",   // Fallback
         ],
         _ => vec![
-            "arial.ttf",      // Arial
-            "segoeui.ttf",    // Segoe UI
-            "tahoma.ttf",     // Tahoma
-            "verdana.ttf",    // Verdana
+            "arial.ttf",   // Arial
+            "segoeui.ttf", // Segoe UI
+            "tahoma.ttf",  // Tahoma
+            "verdana.ttf", // Verdana
         ],
     };
 
@@ -293,7 +293,9 @@ fn measure_text_width(text: &str, font: &FontRef<'_>, scale: PxScale) -> f32 {
 
     for ch in text.chars() {
         let glyph_id = font.glyph_id(ch);
-        width += font.as_scaled(scale).kern(prev_glyph.unwrap_or(glyph_id), glyph_id);
+        width += font
+            .as_scaled(scale)
+            .kern(prev_glyph.unwrap_or(glyph_id), glyph_id);
         width += font.as_scaled(scale).h_advance(glyph_id);
         prev_glyph = Some(glyph_id);
     }
@@ -355,7 +357,15 @@ fn draw_line_in_box(
         box_y
     };
 
-    draw_text_mut(img, text_color, x_offset as i32, y_offset as i32, scale, font, text);
+    draw_text_mut(
+        img,
+        text_color,
+        x_offset as i32,
+        y_offset as i32,
+        scale,
+        font,
+        text,
+    );
 }
 
 /// Translate an image: OCR -> translate -> overlay translated text.
@@ -373,29 +383,35 @@ pub async fn translate_image_file(
 ) -> Result<ImageTranslationResult, String> {
     tracing::info!(
         "[ImageTranslate] Starting: {} -> {}, lang {} -> {}",
-        input_path, output_path, from_lang, to_lang
+        input_path,
+        output_path,
+        from_lang,
+        to_lang
     );
 
     // 1. Load image
-    let img = image::open(input_path)
-        .map_err(|e| format!("Failed to open image: {}", e))?;
+    let img = image::open(input_path).map_err(|e| format!("Failed to open image: {}", e))?;
     let (img_width, img_height) = img.dimensions();
     let mut result_img = img.to_rgba8();
 
     // 2. Run OCR
-    let ocr_result = run_image_ocr(input_path, ocr_engine_type, from_lang, app_key, app_secret).await?;
+    let ocr_result =
+        run_image_ocr(input_path, ocr_engine_type, from_lang, app_key, app_secret).await?;
 
     if ocr_result.lines.is_empty() {
         return Err("OCR did not detect any text in the image".to_string());
     }
 
-    tracing::info!("[ImageTranslate] OCR detected {} lines", ocr_result.lines.len());
+    tracing::info!(
+        "[ImageTranslate] OCR detected {} lines",
+        ocr_result.lines.len()
+    );
 
     // 3. Find and load font
     let font_data = find_system_font(to_lang)
         .ok_or_else(|| "No suitable font found for the target language".to_string())?;
-    let font = FontRef::try_from_slice(&font_data)
-        .map_err(|e| format!("Failed to load font: {}", e))?;
+    let font =
+        FontRef::try_from_slice(&font_data).map_err(|e| format!("Failed to load font: {}", e))?;
 
     let config = RenderConfig::default();
 
@@ -415,9 +431,13 @@ pub async fn translate_image_file(
         {
             Ok(t) => t,
             Err(e) => {
-                tracing::warn!("[ImageTranslate] Translation failed for {:?}: {}", line.text, e);
+                tracing::warn!(
+                    "[ImageTranslate] Translation failed for {:?}: {}",
+                    line.text,
+                    e
+                );
                 continue;
-            }
+            },
         };
 
         if translated.trim().is_empty() || translated.trim() == line.text.trim() {
@@ -454,8 +474,7 @@ pub async fn translate_image_file(
         );
 
         // Calculate font size and wrap text
-        let (font_size, wrapped_lines) =
-            calculate_font_size_and_wrap(&translated, bw, bh, &font);
+        let (font_size, wrapped_lines) = calculate_font_size_and_wrap(&translated, bw, bh, &font);
 
         // Draw each wrapped line
         let line_height = font_size * 1.3;
@@ -495,7 +514,8 @@ pub async fn translate_image_file(
 
     tracing::info!(
         "[ImageTranslate] Done: {}/{} lines translated",
-        translated_count, total_lines
+        translated_count,
+        total_lines
     );
 
     Ok(ImageTranslationResult {
@@ -516,8 +536,8 @@ async fn run_image_ocr(
     app_secret: Option<String>,
 ) -> Result<OcrResultDetailed, String> {
     // Load image and encode to PNG bytes for OCR
-    let img = image::open(image_path)
-        .map_err(|e| format!("Failed to open image for OCR: {}", e))?;
+    let img =
+        image::open(image_path).map_err(|e| format!("Failed to open image for OCR: {}", e))?;
 
     let mut png_buf = std::io::Cursor::new(Vec::new());
     img.write_to(&mut png_buf, image::ImageFormat::Png)
@@ -525,12 +545,20 @@ async fn run_image_ocr(
     let png_bytes = png_buf.into_inner();
 
     // Convert to owned String for use in spawn_blocking
-    let lang_owned = if lang == "auto" { None } else { Some(lang.to_string()) };
+    let lang_owned = if lang == "auto" {
+        None
+    } else {
+        Some(lang.to_string())
+    };
 
     match engine_type {
         "winrt" => {
-            crate::commands::capture::run_winrt_ocr_detailed_from_bytes(&png_bytes, lang_owned.as_deref()).await
-        }
+            crate::commands::capture::run_winrt_ocr_detailed_from_bytes(
+                &png_bytes,
+                lang_owned.as_deref(),
+            )
+            .await
+        },
         "youdao" => {
             // Use standalone Youdao OCR with default 30s timeout
             crate::commands::capture::run_youdao_ocr_from_bytes(
@@ -539,12 +567,17 @@ async fn run_image_ocr(
                 app_key,
                 app_secret,
                 30,
-            ).await
-        }
+            )
+            .await
+        },
         _ => {
             // Default to WinRT OCR
-            crate::commands::capture::run_winrt_ocr_detailed_from_bytes(&png_bytes, lang_owned.as_deref()).await
-        }
+            crate::commands::capture::run_winrt_ocr_detailed_from_bytes(
+                &png_bytes,
+                lang_owned.as_deref(),
+            )
+            .await
+        },
     }
 }
 
@@ -556,8 +589,7 @@ pub async fn preview_image_ocr(
     app_key: Option<String>,
     app_secret: Option<String>,
 ) -> Result<ImagePreview, String> {
-    let img = image::open(image_path)
-        .map_err(|e| format!("Failed to open image: {}", e))?;
+    let img = image::open(image_path).map_err(|e| format!("Failed to open image: {}", e))?;
     let (width, height) = img.dimensions();
 
     let ocr_result = run_image_ocr(image_path, ocr_engine_type, lang, app_key, app_secret).await?;
@@ -596,5 +628,4 @@ mod tests {
             assert!(!lines.is_empty());
         }
     }
-
 }

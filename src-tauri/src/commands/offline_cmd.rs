@@ -20,7 +20,9 @@ pub struct OfflineModelInfo {
 
 /// Get list of all available offline models
 #[tauri::command]
-pub async fn get_offline_models(state: State<'_, AppState>) -> Result<Vec<OfflineModelInfo>, String> {
+pub async fn get_offline_models(
+    state: State<'_, AppState>,
+) -> Result<Vec<OfflineModelInfo>, String> {
     let config = state.system.config.lock().await;
     let model_dir = if config.engines.offline.model_dir.is_empty() {
         None
@@ -107,7 +109,11 @@ pub async fn delete_offline_model(
     // Update config to remove model from downloaded list
     let model_id = format!("{}-{}", source_lang, target_lang);
     let mut config = state.system.config.lock().await;
-    config.engines.offline.downloaded_models.retain(|m| m != &model_id);
+    config
+        .engines
+        .offline
+        .downloaded_models
+        .retain(|m| m != &model_id);
     config.save();
 
     Ok(())
@@ -190,10 +196,10 @@ pub async fn generate_sample_offline_models(
                     }
                     config.save();
                 }
-            }
+            },
             Err(e) => {
                 tracing::warn!("Failed to serialize sample model {}: {}", model_id, e);
-            }
+            },
         }
     }
 

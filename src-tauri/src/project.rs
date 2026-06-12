@@ -1,8 +1,8 @@
+use chrono::Utc;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
-use chrono::Utc;
 use uuid::Uuid;
 
 /// Translation project data model
@@ -77,7 +77,7 @@ impl ProjectStore {
             Err(e) => {
                 tracing::error!("Failed to open project database: {}", e);
                 Connection::open_in_memory().expect("Failed to create in-memory project db")
-            }
+            },
         };
 
         // Create tables
@@ -283,7 +283,11 @@ impl ProjectStore {
             param_index += 1;
         }
 
-        let query = format!("UPDATE projects SET {} WHERE id = ?{}", updates.join(", "), param_index);
+        let query = format!(
+            "UPDATE projects SET {} WHERE id = ?{}",
+            updates.join(", "),
+            param_index
+        );
 
         // Build params dynamically
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(now)];
@@ -304,7 +308,8 @@ impl ProjectStore {
         }
         param_values.push(Box::new(id.to_string()));
 
-        let params_ref: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
 
         conn.execute(&query, params_ref.as_slice())
             .map_err(|e| format!("Failed to update project: {}", e))?;
@@ -430,7 +435,10 @@ impl ProjectStore {
             updates.push("translated_segments = ?4".to_string());
         }
 
-        let query = format!("UPDATE project_files SET {} WHERE id = ?5", updates.join(", "));
+        let query = format!(
+            "UPDATE project_files SET {} WHERE id = ?5",
+            updates.join(", ")
+        );
 
         conn.execute(
             &query,
@@ -677,7 +685,12 @@ impl ProjectStore {
         let now = Utc::now().timestamp();
 
         // Calculate totals from files
-        let (total_files, completed_files, total_segments, translated_segments): (i32, i32, i32, i32) = conn
+        let (total_files, completed_files, total_segments, translated_segments): (
+            i32,
+            i32,
+            i32,
+            i32,
+        ) = conn
             .query_row(
                 "SELECT
                     COUNT(*),

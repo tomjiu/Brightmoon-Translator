@@ -4,7 +4,11 @@ use base64::Engine;
 use tauri::State;
 
 #[tauri::command]
-pub async fn text_to_speech(state: State<'_, AppState>, text: String, lang: String) -> Result<String, String> {
+pub async fn text_to_speech(
+    state: State<'_, AppState>,
+    text: String,
+    lang: String,
+) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("Text is empty".to_string());
     }

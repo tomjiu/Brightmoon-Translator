@@ -16,9 +16,9 @@ pub mod error;
 pub mod excel;
 pub mod furigana;
 pub mod glossary;
-pub mod hotkey;
 pub mod hook_inject;
 pub mod hook_profile;
+pub mod hotkey;
 pub mod image_translate;
 pub mod lang_detect;
 pub mod memory;
@@ -241,6 +241,26 @@ pub fn run() {
             plugin_sandbox::init_sandbox();
             plugin_sandbox::spawn_health_check_task();
 
+            // Warmup OCR screenshot cache for instant capture
+            // Spawns a background task 1 second after startup to pre-capture and cache screen
+            // This eliminates the 1-2 second lag when user clicks OCR button
+            {
+                tauri::async_runtime::spawn(async move {
+                    // Wait 1 second to avoid slowing down app startup
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+                    tracing::info!("[OCR Warmup] Starting screenshot cache warmup...");
+                    match commands::capture::prepare_screenshot_snapshot().await {
+                        Ok(_) => {
+                            tracing::info!("[OCR Warmup] Screenshot cache warmed up successfully");
+                        }
+                        Err(e) => {
+                            tracing::warn!("[OCR Warmup] Failed to warmup screenshot cache: {}", e);
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -455,7 +475,6 @@ pub fn run() {
 async fn build_contexts() -> Contexts {
     app_context::build_contexts().await
 }
-
 
 /// Start API server if enabled in config
 fn start_api_server(app: &tauri::App) {

@@ -94,7 +94,7 @@ impl MetricsCollector {
             Err(e) => {
                 tracing::error!("Failed to open metrics database: {}", e);
                 Connection::open_in_memory().expect("Failed to create in-memory metrics db")
-            }
+            },
         };
 
         // Create tables
@@ -183,7 +183,11 @@ impl MetricsCollector {
 
         // Update ring buffer
         let engine_key = engine.to_string();
-        let current_idx = state.engine_write_idx.get(&engine_key).copied().unwrap_or(0);
+        let current_idx = state
+            .engine_write_idx
+            .get(&engine_key)
+            .copied()
+            .unwrap_or(0);
         let buffer = state
             .engine_latencies
             .entry(engine_key.clone())
@@ -239,10 +243,7 @@ impl MetricsCollector {
         let timestamp = Utc::now().timestamp_millis();
         let mut state = self.state.lock().await;
 
-        let failures = state
-            .failures
-            .entry(engine.to_string())
-            .or_default();
+        let failures = state.failures.entry(engine.to_string()).or_default();
         failures.push(FailureRecord {
             error: error.to_string(),
             timestamp,
@@ -387,7 +388,7 @@ impl MetricsCollector {
             Err(e) => {
                 tracing::error!("Failed to prepare timeline query: {}", e);
                 return Vec::new();
-            }
+            },
         };
 
         let rows = stmt.query_map(params![limit as i64], |row| {
@@ -404,7 +405,7 @@ impl MetricsCollector {
             Err(e) => {
                 tracing::error!("Failed to query timeline: {}", e);
                 Vec::new()
-            }
+            },
         }
     }
 
@@ -429,7 +430,7 @@ impl MetricsCollector {
             Err(e) => {
                 tracing::error!("Failed to prepare hourly stats query: {}", e);
                 return Vec::new();
-            }
+            },
         };
 
         let rows = stmt.query_map(params![since], |row| {
@@ -447,7 +448,7 @@ impl MetricsCollector {
             Err(e) => {
                 tracing::error!("Failed to query hourly stats: {}", e);
                 Vec::new()
-            }
+            },
         }
     }
 
@@ -462,10 +463,11 @@ impl MetricsCollector {
             Err(e) => {
                 tracing::error!("Failed to prepare CSV export query: {}", e);
                 return String::new();
-            }
+            },
         };
 
-        let mut csv = String::from("id,event_type,engine,latency_ms,success,error_message,timestamp\n");
+        let mut csv =
+            String::from("id,event_type,engine,latency_ms,success,error_message,timestamp\n");
         let rows = stmt.query_map([], |row| {
             Ok(MetricsEvent {
                 id: row.get(0)?,
@@ -506,7 +508,7 @@ impl MetricsCollector {
             Err(e) => {
                 tracing::error!("Failed to prepare JSON export query: {}", e);
                 return Vec::new();
-            }
+            },
         };
 
         let rows = stmt.query_map([], |row| {
@@ -526,7 +528,7 @@ impl MetricsCollector {
             Err(e) => {
                 tracing::error!("Failed to export JSON: {}", e);
                 Vec::new()
-            }
+            },
         }
     }
 
