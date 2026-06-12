@@ -912,6 +912,69 @@ function Settings() {
               )}
             </div>
 
+            {/* Caiyun Translate */}
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  checked={config.engines.caiyun?.enabled || false}
+                  onChange={(e) =>
+                    updateConfig((prev) => ({
+                      ...prev,
+                      engines: {
+                        ...prev.engines,
+                        caiyun: {
+                          ...prev.engines.caiyun,
+                          enabled: e.target.checked,
+                        },
+                      },
+                    }))
+                  }
+                  className="accent-primary w-4 h-4"
+                />
+                <span className="text-sm">
+                  {t('settings.engines.caiyun') || '彩云小译 (长文本翻译，100万字/月)'}
+                </span>
+              </label>
+              {config.engines.caiyun?.enabled && (
+                <div className="ml-6 space-y-2">
+                  <input
+                    type="password"
+                    value={config.engines.caiyun.apiToken || ''}
+                    onChange={(e) =>
+                      updateConfig((prev) => ({
+                        ...prev,
+                        engines: {
+                          ...prev.engines,
+                          caiyun: {
+                            ...prev.engines.caiyun,
+                            apiToken: e.target.value,
+                          },
+                        },
+                      }))
+                    }
+                    placeholder="Caiyun API Token"
+                    className="w-full bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
+                  />
+                  <div className="text-xs text-text-secondary space-y-1">
+                    <p>✓ 擅长长文本、上下文翻译（小说、文章）</p>
+                    <p>✓ 免费额度：100万字/月</p>
+                    <p>✓ 支持：中英、中日互译</p>
+                    <p>
+                      <a
+                        href="https://dashboard.caiyunapp.com/v1/token/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        获取 API Token →
+                      </a>
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Microsoft */}
             <label className="flex items-center gap-2 cursor-pointer">
               <input

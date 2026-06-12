@@ -42,6 +42,7 @@ interface EnginesConfig {
   };
   deepl: { enabled: boolean; apiKey: string; pro: boolean };
   deeplx: { enabled: boolean; apiKey?: string; pro: boolean };
+  caiyun?: { enabled: boolean; apiToken: string };
   microsoft: { enabled: boolean };
   yandex: { enabled: boolean };
   offline: {
