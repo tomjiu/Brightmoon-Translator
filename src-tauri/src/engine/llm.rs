@@ -212,7 +212,12 @@ impl LlmEngine {
                     let status = resp.status();
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
-                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, crate::security::sanitize_log_message(&body));
+                        tracing::warn!(
+                            "Key attempt {} failed: LLM API error {}: {}",
+                            attempt + 1,
+                            status,
+                            crate::security::sanitize_log_message(&body)
+                        );
                         let sanitized = sanitize_llm_error(status, &body);
                         last_error = sanitized;
                         continue;
@@ -223,15 +228,17 @@ impl LlmEngine {
                         .choices
                         .first()
                         .map(|c| c.message.content.trim().to_string())
-                        .ok_or_else(|| anyhow::anyhow!("LLM API returned no choices in response"))?;
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("LLM API returned no choices in response")
+                        })?;
 
                     return Ok(content);
-                }
+                },
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
                     tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
                     continue;
-                }
+                },
             }
         }
 
@@ -249,7 +256,12 @@ impl LlmEngine {
     }
 
     /// Non-streaming LLM call with a custom temperature value.
-    async fn call_llm_with_temperature(&self, system_prompt: &str, user_text: &str, temperature: f32) -> anyhow::Result<String> {
+    async fn call_llm_with_temperature(
+        &self,
+        system_prompt: &str,
+        user_text: &str,
+        temperature: f32,
+    ) -> anyhow::Result<String> {
         let total_keys = self.api_keys.len();
         let request = ChatRequest {
             model: self.model.clone(),
@@ -289,7 +301,12 @@ impl LlmEngine {
                     let status = resp.status();
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
-                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, crate::security::sanitize_log_message(&body));
+                        tracing::warn!(
+                            "Key attempt {} failed: LLM API error {}: {}",
+                            attempt + 1,
+                            status,
+                            crate::security::sanitize_log_message(&body)
+                        );
                         let sanitized = sanitize_llm_error(status, &body);
                         last_error = sanitized;
                         continue;
@@ -300,15 +317,17 @@ impl LlmEngine {
                         .choices
                         .first()
                         .map(|c| c.message.content.trim().to_string())
-                        .ok_or_else(|| anyhow::anyhow!("LLM API returned no choices in response"))?;
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("LLM API returned no choices in response")
+                        })?;
 
                     return Ok(content);
-                }
+                },
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
                     tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
                     continue;
-                }
+                },
             }
         }
 
@@ -356,7 +375,12 @@ impl LlmEngine {
                     let status = resp.status();
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
-                        tracing::warn!("Key attempt {} failed: LLM API error {}: {}", attempt + 1, status, crate::security::sanitize_log_message(&body));
+                        tracing::warn!(
+                            "Key attempt {} failed: LLM API error {}: {}",
+                            attempt + 1,
+                            status,
+                            crate::security::sanitize_log_message(&body)
+                        );
                         let sanitized = sanitize_llm_error(status, &body);
                         last_error = sanitized;
                         continue;
@@ -394,12 +418,12 @@ impl LlmEngine {
                     }
 
                     return Ok(full_text);
-                }
+                },
                 Err(e) => {
                     last_error = format!("Request failed: {}", e);
                     tracing::warn!("Key attempt {} failed: {}", attempt + 1, last_error);
                     continue;
-                }
+                },
             }
         }
 
@@ -538,7 +562,8 @@ impl LlmEngine {
         temperature: f32,
     ) -> anyhow::Result<String> {
         let system_prompt = self.build_system_prompt(from, to, None);
-        self.call_llm_with_temperature(&system_prompt, text, temperature).await
+        self.call_llm_with_temperature(&system_prompt, text, temperature)
+            .await
     }
 }
 

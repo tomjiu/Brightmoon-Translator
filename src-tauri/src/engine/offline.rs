@@ -47,14 +47,12 @@ pub struct OfflineEngine {
 
 impl OfflineEngine {
     pub fn new(model_dir: Option<&str>) -> Self {
-        let dir = model_dir
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                let mut path = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
-                path.push("moontranslator");
-                path.push("offline_models");
-                path
-            });
+        let dir = model_dir.map(PathBuf::from).unwrap_or_else(|| {
+            let mut path = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+            path.push("moontranslator");
+            path.push("offline_models");
+            path
+        });
 
         Self {
             models: Arc::new(RwLock::new(HashMap::new())),
@@ -113,7 +111,7 @@ impl OfflineEngine {
                                     stem,
                                     e
                                 );
-                            }
+                            },
                         }
                     }
                 }
@@ -230,7 +228,10 @@ impl OfflineEngine {
         // Verify the downloaded file is valid JSON
         let _: LanguageModel = serde_json::from_slice(&content)?;
 
-        tracing::info!("[OfflineEngine] Successfully downloaded model: {}", model_id);
+        tracing::info!(
+            "[OfflineEngine] Successfully downloaded model: {}",
+            model_id
+        );
         Ok(())
     }
 
@@ -318,9 +319,7 @@ impl TranslationEngine for OfflineEngine {
 
             if result.is_empty() || result == text {
                 // If translation is same as source or empty, try reverse lookup
-                return Err(anyhow::anyhow!(
-                    "No translation found for the given text"
-                ));
+                return Err(anyhow::anyhow!("No translation found for the given text"));
             }
 
             Ok(result)
@@ -400,7 +399,7 @@ pub fn generate_sample_model(source: &str, target: &str) -> LanguageModel {
             common_words.insert("time".to_string(), "时间".to_string());
             common_words.insert("day".to_string(), "天".to_string());
             common_words.insert("night".to_string(), "夜".to_string());
-        }
+        },
         ("zh", "en") => {
             phrases.push(DictionaryEntry {
                 source: "你好".to_string(),
@@ -446,7 +445,7 @@ pub fn generate_sample_model(source: &str, target: &str) -> LanguageModel {
             common_words.insert("水".to_string(), "water".to_string());
             common_words.insert("帮助".to_string(), "help".to_string());
             common_words.insert("时间".to_string(), "time".to_string());
-        }
+        },
         _ => {
             // Generic placeholder for other language pairs
             phrases.push(DictionaryEntry {
@@ -454,7 +453,7 @@ pub fn generate_sample_model(source: &str, target: &str) -> LanguageModel {
                 target: "hello".to_string(),
                 context: None,
             });
-        }
+        },
     }
 
     LanguageModel {

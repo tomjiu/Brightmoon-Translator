@@ -11,17 +11,25 @@ use tokio::sync::RwLock;
 /// Pre-compiled regex patterns (compiled once, never fails at runtime)
 fn re_version() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r"translation-website/(\d+\.\d+\.\d+)/js/app").expect("invalid regex"))
+    RE.get_or_init(|| {
+        regex::Regex::new(r"translation-website/(\d+\.\d+\.\d+)/js/app").expect("invalid regex")
+    })
 }
 
 fn re_js_files() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r"(chunk-vendors\.[a-f0-9]+\.js|app\.[a-f0-9]+\.js)").expect("invalid regex"))
+    RE.get_or_init(|| {
+        regex::Regex::new(r"(chunk-vendors\.[a-f0-9]+\.js|app\.[a-f0-9]+\.js)")
+            .expect("invalid regex")
+    })
 }
 
 fn re_key_id() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r#"(?i)(keyId|keyid)\s*[:=]\s*["']([a-zA-Z0-9_-]+)["']"#).expect("invalid regex"))
+    RE.get_or_init(|| {
+        regex::Regex::new(r#"(?i)(keyId|keyid)\s*[:=]\s*["']([a-zA-Z0-9_-]+)["']"#)
+            .expect("invalid regex")
+    })
 }
 
 fn re_key_32() -> &'static regex::Regex {
@@ -31,22 +39,35 @@ fn re_key_32() -> &'static regex::Regex {
 
 fn re_key_pair() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r#"["']([a-zA-Z0-9_-]{4,64})["'][:=]\s*["']([A-Za-z0-9]{32})["']"#).expect("invalid regex"))
+    RE.get_or_init(|| {
+        regex::Regex::new(r#"["']([a-zA-Z0-9_-]{4,64})["'][:=]\s*["']([A-Za-z0-9]{32})["']"#)
+            .expect("invalid regex")
+    })
 }
 
 fn re_cred() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r#"["']([A-Za-z0-9+/=]{12,20})["']"#).expect("invalid regex"))
+    RE.get_or_init(|| {
+        regex::Regex::new(r#"["']([A-Za-z0-9+/=]{12,20})["']"#).expect("invalid regex")
+    })
 }
 
 fn re_ocr_key() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r#"(?i)(appKey|appkey|ocrKey)\s*[:=]\s*["']([A-Za-z0-9]{16})["']"#).expect("invalid regex"))
+    RE.get_or_init(|| {
+        regex::Regex::new(r#"(?i)(appKey|appkey|ocrKey)\s*[:=]\s*["']([A-Za-z0-9]{16})["']"#)
+            .expect("invalid regex")
+    })
 }
 
 fn re_ocr_secret() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r#"(?i)(appSecret|appsecret|ocrSecret)\s*[:=]\s*["']([A-Za-z0-9]{32})["']"#).expect("invalid regex"))
+    RE.get_or_init(|| {
+        regex::Regex::new(
+            r#"(?i)(appSecret|appsecret|ocrSecret)\s*[:=]\s*["']([A-Za-z0-9]{32})["']"#,
+        )
+        .expect("invalid regex")
+    })
 }
 
 // ============================================================
@@ -204,10 +225,10 @@ fn save_keys(keys: &HashMap<String, KeyEntry>) {
             if let Err(e) = std::fs::write(&path, data) {
                 tracing::error!("Failed to save youdao keys {:?}: {}", path, e);
             }
-        }
+        },
         Err(e) => {
             tracing::error!("Failed to serialize youdao keys: {}", e);
-        }
+        },
     }
 }
 
