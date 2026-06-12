@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import { emit, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { PhysicalSize } from '@tauri-apps/api/dpi';
@@ -56,7 +56,7 @@ interface TranslationLineProps {
   scaleFactor: number;
 }
 
-const TranslationLine = ({ line, translation, scaleFactor }: TranslationLineProps) => {
+const TranslationLine = memo(({ line, translation, scaleFactor }: TranslationLineProps) => {
   const left = line.x / scaleFactor - 2;
   const top = line.y / scaleFactor - 1;
   const width = line.width / scaleFactor + 4;
@@ -90,7 +90,7 @@ const TranslationLine = ({ line, translation, scaleFactor }: TranslationLineProp
       </div>
     </div>
   );
-};
+});
 
 export default function OcrRegionFrame() {
   const { t } = useI18n();
@@ -117,6 +117,9 @@ export default function OcrRegionFrame() {
   const [displayMode, setDisplayMode] = useState<DisplayMode>('translation');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Track if we're currently updating to prevent flash
+  const isUpdatingRef = useRef(false);
   const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const [sourceLang, setSourceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('en');
@@ -176,15 +179,24 @@ export default function OcrRegionFrame() {
 
     listen<OcrRegionData>('ocr-region-update-data', (event) => {
       console.log('[OcrRegionFrame] Received ocr-region-update-data:', event.payload);
-      if (cancelled) return;
+      if (cancelled || isUpdatingRef.current) return;
+
       const d = event.payload;
 
       // Change detection: compare with previous OCR result
       const hasChanged = prevSourceTextRef.current !== d.sourceText;
+      if (!hasChanged && data) {
+        // No text change, skip update to prevent flash
+        return;
+      }
+
       if (hasChanged) {
         console.log('[OcrRegionFrame] Content changed, updating display');
         prevSourceTextRef.current = d.sourceText;
       }
+
+      // Mark as updating
+      isUpdatingRef.current = true;
 
       // Only update screenshot if it actually changed (prevent re-render)
       if (d.screenshot && d.screenshot !== screenshotUrlRef.current) {
@@ -203,6 +215,11 @@ export default function OcrRegionFrame() {
         setError(null);
         setSourceLang(d.sourceLang);
         setTargetLang(d.targetLang);
+
+        // Release update lock after render
+        setTimeout(() => {
+          isUpdatingRef.current = false;
+        }, 100);
       });
     }).then((fn) => {
       console.log('[OcrRegionFrame] Listener registered successfully');
