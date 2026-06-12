@@ -338,6 +338,7 @@ pub fn run() {
             commands::hook_inject_cmd::hook_eject,
             commands::hook_inject_cmd::hook_status,
             commands::hook_inject_cmd::hook_read_messages,
+            commands::process_list::get_process_list,
             commands::glossary_cmd::get_glossary,
             commands::glossary_cmd::get_all_glossary,
             commands::glossary_cmd::add_glossary_entry,
