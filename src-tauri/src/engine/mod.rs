@@ -1,4 +1,5 @@
 pub mod baidu;
+pub mod caiyun;
 pub mod deepl;
 pub mod deeplx;
 pub mod google;
@@ -154,6 +155,18 @@ impl Router {
             available.push(EngineEntry {
                 id: "youdao".to_string(),
                 engine: Arc::new(youdao::YoudaoEngine::new().with_client(client.clone())),
+            });
+        }
+
+        // Caiyun Translate engine (excellent for long text, context-aware translation)
+        // Free quota: 1M chars/month
+        if config.engines.caiyun.enabled && !config.engines.caiyun.api_token.is_empty() {
+            available.push(EngineEntry {
+                id: "caiyun".to_string(),
+                engine: Arc::new(
+                    caiyun::CaiyunEngine::new(&config.engines.caiyun.api_token)
+                        .with_client(client.clone()),
+                ),
             });
         }
 

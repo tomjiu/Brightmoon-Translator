@@ -52,6 +52,8 @@ pub struct EnginesConfig {
     pub yandex: YandexConfig,
     #[serde(default)]
     pub offline: OfflineConfig,
+    #[serde(default)]
+    pub caiyun: CaiyunConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,6 +174,22 @@ impl Default for OfflineConfig {
             auto_switch: true,
             downloaded_models: Vec::new(),
             model_dir: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaiyunConfig {
+    pub enabled: bool,
+    pub api_token: String,
+}
+
+impl Default for CaiyunConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            api_token: String::new(),
         }
     }
 }
@@ -828,6 +846,7 @@ impl Default for AppConfig {
                 microsoft: MicrosoftConfig::default(),
                 yandex: YandexConfig::default(),
                 offline: OfflineConfig::default(),
+                caiyun: CaiyunConfig::default(),
             },
             default_from: "auto".into(),
             default_to: "zh".into(),
