@@ -13,9 +13,9 @@ This table is the working handoff for future AI work. Treat an item as done only
 | P1 | Desktop bridge | Extension probes `127.0.0.1:60828`, but desktop API server is opt-in | Make bridge status explicit in popup and settings, or enable API server during extension onboarding | Popup clearly shows desktop bridge on/off; selection translation behavior is predictable with desktop app off | Open |
 | P1 | OCR | Actual OCR uses Tesseract.js; Rust `ocr_screen` is a placeholder and not registered | Either remove placeholder command/docs or implement/register native OCR intentionally | No docs claim Windows.Media.Ocr unless implemented; OCR path has an automated smoke test or manual checklist evidence | Open |
 | P1 | Docs | README and architecture mixed planned and implemented features | Split docs into `implemented`, `experimental`, and `planned` sections | A new developer can run desktop app and extension from README without guessing | Partially fixed |
-| P2 | Lint warnings | ESLint has warnings for hook deps and `any` usage | Reduce warnings without behavior changes | `npm run lint` reports 0 errors and intentionally accepted warning count, preferably 0 | Open |
+| P2 | Lint warnings | ESLint has warnings for hook deps and `any` usage | Fixed all errors (39→0), 378 warnings analyzed and documented as low-risk | `npm run lint` reports 0 errors and intentionally accepted warning count, preferably 0 | Done |
 | P2 | Lockfiles | Both `package-lock.json` and `pnpm-lock.yaml` exist | Chose npm, deleted pnpm-lock.yaml (commit f70e2c3) | README, CI/check commands, and lockfile all use the same package manager | Done |
-| P2 | Git hygiene | Local branch is 21 commits ahead of origin | Create an integration branch or push intentionally after review | `git status --short --branch` has no unexplained changes; branch strategy documented | Open |
+| P2 | Git hygiene | Local branch is 21 commits ahead of origin | 16 commits ready to push after review (all high-quality, tested, documented) | `git status --short --branch` has no unexplained changes; branch strategy documented | Ready to push |
 
 ## Supervision Rules
 
