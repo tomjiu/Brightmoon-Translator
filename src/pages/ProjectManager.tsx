@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useProjectStore, type TranslationProject } from '../stores/projectStore';
 import { useToastStore } from '../stores/toastStore';
 import { useI18n } from '../i18n';
+import ConfirmDialog from '../components/ConfirmDialog';
 import {
   FolderOpen,
   Plus,
@@ -55,6 +56,21 @@ function ProjectManager() {
 
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type?: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    onConfirm: () => {},
+  });
+
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
@@ -84,14 +100,20 @@ function ProjectManager() {
 
   const handleDeleteProject = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    // eslint-disable-next-line no-alert
-    if (window.confirm(t('projects.deleteConfirm'))) {
-      await deleteProject(id);
-      if (currentProject?.id === id) {
-        setCurrentProject(null);
-      }
-      addToast({ type: 'success', message: t('projects.deleted'), duration: 2000 });
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: t('projects.deleteConfirm'),
+      message: t('projects.deleteMessage'),
+      type: 'danger',
+      onConfirm: async () => {
+        await deleteProject(id);
+        if (currentProject?.id === id) {
+          setCurrentProject(null);
+        }
+        addToast({ type: 'success', message: t('projects.deleted'), duration: 2000 });
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
   };
 
   const handleStartEdit = (project: TranslationProject, e: React.MouseEvent) => {
@@ -143,11 +165,17 @@ function ProjectManager() {
 
   const handleDeleteFile = async (fileId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    // eslint-disable-next-line no-alert
-    if (window.confirm(t('projects.removeFileConfirm'))) {
-      await deleteFile(fileId);
-      addToast({ type: 'success', message: t('projects.fileRemoved'), duration: 2000 });
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: t('projects.removeFileConfirm'),
+      message: t('projects.removeFileMessage'),
+      type: 'warning',
+      onConfirm: async () => {
+        await deleteFile(fileId);
+        addToast({ type: 'success', message: t('projects.fileRemoved'), duration: 2000 });
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
   };
 
   const toggleFileExpanded = (fileId: string) => {
@@ -643,6 +671,18 @@ function ProjectManager() {
           </div>
         </div>
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        type={confirmDialog.type}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

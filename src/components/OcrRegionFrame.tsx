@@ -247,8 +247,12 @@ export default function OcrRegionFrame() {
   // ---- Native OS drag (replaces manual setPosition to prevent ghost windows) ----
   const onMouseDown = async (e: React.MouseEvent) => {
     // Allow drag from toolbar background, but not from buttons, selects, or text content
-    if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('select'))
+    if (
+      (e.target as HTMLElement).closest('button') ||
+      (e.target as HTMLElement).closest('select')
+    ) {
       return;
+    }
     e.preventDefault();
     pauseParentRefresh();
     try {
