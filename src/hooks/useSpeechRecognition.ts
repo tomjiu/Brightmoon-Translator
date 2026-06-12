@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-import { useI18n } from "../i18n";
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { useI18n } from '../i18n';
 
 interface SpeechRecognitionHook {
   isListening: boolean;
@@ -14,20 +14,20 @@ interface SpeechRecognitionHook {
 
 // Language code to BCP 47 tag mapping
 const LANG_TO_BCP47: Record<string, string> = {
-  zh: "zh-CN",
-  en: "en-US",
-  ja: "ja-JP",
-  ko: "ko-KR",
-  fr: "fr-FR",
-  de: "de-DE",
-  es: "es-ES",
-  ru: "ru-RU",
-  pt: "pt-BR",
-  it: "it-IT",
-  ar: "ar-SA",
-  th: "th-TH",
-  vi: "vi-VN",
-  auto: "en-US",
+  zh: 'zh-CN',
+  en: 'en-US',
+  ja: 'ja-JP',
+  ko: 'ko-KR',
+  fr: 'fr-FR',
+  de: 'de-DE',
+  es: 'es-ES',
+  ru: 'ru-RU',
+  pt: 'pt-BR',
+  it: 'it-IT',
+  ar: 'ar-SA',
+  th: 'th-TH',
+  vi: 'vi-VN',
+  auto: 'en-US',
 };
 
 // Type definition for SpeechRecognition
@@ -77,20 +77,20 @@ declare global {
 
 // Check support once
 const getSpeechRecognitionAPI = () => {
-  if (typeof window === "undefined") return null;
+  if (typeof window === 'undefined') return null;
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 };
 
 export function useSpeechRecognition(): SpeechRecognitionHook {
   const [isListening, setIsListening] = useState(false);
-  const [interimTranscript, setInterimTranscript] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   // Use ref for accumulated transcript to avoid state timing issues
-  const accumulatedTranscriptRef = useRef("");
+  const accumulatedTranscriptRef = useRef('');
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const isListeningRef = useRef(false);
-  const langRef = useRef("en-US");
+  const langRef = useRef('en-US');
 
   const isSupported = !!getSpeechRecognitionAPI();
 
@@ -120,7 +120,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let interim = "";
+      let interim = '';
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
@@ -137,18 +137,18 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
 
     recognition.onerror = (event: { error: string }) => {
       const t = useI18n.getState().t;
-      console.error("Speech recognition error:", event.error);
-      if (event.error === "not-allowed") {
-        setError(t("speech.micDenied"));
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'not-allowed') {
+        setError(t('speech.micDenied'));
         isListeningRef.current = false;
-      } else if (event.error === "no-speech") {
+      } else if (event.error === 'no-speech') {
         // No speech detected, continue
-      } else if (event.error === "network") {
-        setError(t("speech.networkError"));
-      } else if (event.error === "aborted") {
+      } else if (event.error === 'network') {
+        setError(t('speech.networkError'));
+      } else if (event.error === 'aborted') {
         // Intentional abort, ignore
       } else {
-        setError(t("speech.error", { error: event.error }));
+        setError(t('speech.error', { error: event.error }));
       }
     };
 
@@ -165,7 +165,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         }
       } else {
         setIsListening(false);
-        setInterimTranscript("");
+        setInterimTranscript('');
       }
     };
 
@@ -173,14 +173,14 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
       recognition.start();
       return recognition;
     } catch (err) {
-      console.error("Failed to start speech recognition:", err);
-      setError(useI18n.getState().t("speech.startFailed"));
+      console.error('Failed to start speech recognition:', err);
+      setError(useI18n.getState().t('speech.startFailed'));
       return null;
     }
   }, []);
 
   const startListening = useCallback(
-    (lang: string = "auto") => {
+    (lang = 'auto') => {
       // Stop any existing recognition
       if (recognitionRef.current) {
         isListeningRef.current = false;
@@ -189,9 +189,9 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
       }
 
       setError(null);
-      setInterimTranscript("");
-      accumulatedTranscriptRef.current = "";
-      langRef.current = LANG_TO_BCP47[lang] || LANG_TO_BCP47["en"];
+      setInterimTranscript('');
+      accumulatedTranscriptRef.current = '';
+      langRef.current = LANG_TO_BCP47[lang] || LANG_TO_BCP47.en;
       isListeningRef.current = true;
 
       const recognition = createAndStartRecognition();
@@ -201,7 +201,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         isListeningRef.current = false;
       }
     },
-    [createAndStartRecognition]
+    [createAndStartRecognition],
   );
 
   const stopListening = useCallback(() => {
@@ -211,13 +211,13 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
       recognitionRef.current = null;
     }
     setIsListening(false);
-    setInterimTranscript("");
+    setInterimTranscript('');
   }, []);
 
   /** Consume and return accumulated final transcript, then reset */
   const consumeTranscript = useCallback(() => {
     const text = accumulatedTranscriptRef.current;
-    accumulatedTranscriptRef.current = "";
+    accumulatedTranscriptRef.current = '';
     return text;
   }, []);
 

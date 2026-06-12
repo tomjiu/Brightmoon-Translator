@@ -52,6 +52,7 @@ module.exports = {
     '@typescript-eslint/no-unnecessary-condition': 'warn',
     '@typescript-eslint/no-confusing-void-expression': 'off',
     '@typescript-eslint/unbound-method': 'off',
+    '@typescript-eslint/require-await': 'warn',
 
     // General rules
     'no-console': ['warn', { allow: ['warn', 'error'] }],
@@ -72,4 +73,13 @@ module.exports = {
     'react-hooks/rules-of-hooks': 'error',
     'react-hooks/exhaustive-deps': 'warn',
   },
+  overrides: [
+    {
+      files: ['**/*.test.ts', '**/*.test.tsx', 'src/test/**/*.ts'],
+      rules: {
+        '@typescript-eslint/no-empty-function': 'off',
+        '@typescript-eslint/require-await': 'off',
+      },
+    },
+  ],
 };

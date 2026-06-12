@@ -1,12 +1,11 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-import { safeInvoke } from "../services/invoke";
-import { captureScreen, ocrImage } from "../services/ocr";
-import { useTranslateStore } from "../stores/translateStore";
-import { useConfigStore } from "../stores/configStore";
-import { checkQuality, JITTER_WINDOW, MAX_CONSECUTIVE_EMPTY } from "./ocrQuality";
-import { WindowBindingManager } from "./ocrWindowBinding";
-import type { BoundWindow } from "./ocrWindowBinding";
-import { OverlaySyncManager } from "./ocrOverlaySync";
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { safeInvoke } from '../services/invoke';
+import { captureScreen, ocrImage } from '../services/ocr';
+import { useTranslateStore } from '../stores/translateStore';
+import { useConfigStore } from '../stores/configStore';
+import { checkQuality, JITTER_WINDOW, MAX_CONSECUTIVE_EMPTY } from './ocrQuality';
+import { WindowBindingManager, type BoundWindow } from './ocrWindowBinding';
+import { OverlaySyncManager } from './ocrOverlaySync';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,8 +51,8 @@ export function useOcrMonitor() {
     paused: false,
     autoPaused: false,
     region: null,
-    lastText: "",
-    lastGoodText: "",
+    lastText: '',
+    lastGoodText: '',
     interval: 2000,
     clickThrough: false,
     pinned: false,
@@ -65,8 +64,8 @@ export function useOcrMonitor() {
 
   // ── Refs ──
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastTextRef = useRef<string>("");
-  const lastGoodTextRef = useRef<string>("");
+  const lastTextRef = useRef<string>('');
+  const lastGoodTextRef = useRef<string>('');
   const busyRef = useRef(false);
   const noChangeCountRef = useRef(0);
   const baseIntervalRef = useRef(2000);
@@ -81,7 +80,9 @@ export function useOcrMonitor() {
   const { setSourceText, translate } = useTranslateStore();
 
   // Window binding manager — created once, callbacks updated via ref pattern
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
   const autoPauseRef = useRef<() => void>(() => {});
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
   const autoResumeRef = useRef<() => void>(() => {});
 
   const windowBindingRef = useRef<WindowBindingManager>(
@@ -99,7 +100,7 @@ export function useOcrMonitor() {
       onOverlayPositionSync: (x, y) => {
         overlayRef.current.updatePosition(x, y);
       },
-    })
+    }),
   );
 
   // ── Adaptive delay ──
@@ -120,7 +121,7 @@ export function useOcrMonitor() {
         captureAndOcr(regionRef.current || region);
       }, delay);
     },
-    [getAdaptiveDelay]
+    [getAdaptiveDelay],
   );
 
   // ── Main capture-OCR-translate cycle ──
@@ -139,7 +140,7 @@ export function useOcrMonitor() {
         translateMs: 0,
         textChanged: false,
         skipped: false,
-        skipReason: "",
+        skipReason: '',
         qualityScore: 0,
         textLen: 0,
       };
@@ -151,7 +152,7 @@ export function useOcrMonitor() {
           currentRegion.x,
           currentRegion.y,
           currentRegion.width,
-          currentRegion.height
+          currentRegion.height,
         );
         diag.captureMs = performance.now() - t0;
 
@@ -170,11 +171,15 @@ export function useOcrMonitor() {
           diag.skipReason = quality.reason;
           skipCountRef.current += 1;
 
-          if (quality.reason === "similar" || quality.reason === "jitter" || quality.reason === "noisy") {
+          if (
+            quality.reason === 'similar' ||
+            quality.reason === 'jitter' ||
+            quality.reason === 'noisy'
+          ) {
             noChangeCountRef.current += 1;
           }
 
-          if (quality.reason === "empty" || quality.reason === "too_short") {
+          if (quality.reason === 'empty' || quality.reason === 'too_short') {
             consecutiveEmptyRef.current += 1;
             noChangeCountRef.current += 1;
           }
@@ -221,9 +226,9 @@ export function useOcrMonitor() {
 
         // Performance diagnostics available in diag object if needed
       } catch (e) {
-        console.error("[OCR] Monitor error:", e);
+        console.error('[OCR] Monitor error:', e);
         diag.skipped = true;
-        diag.skipReason = "error";
+        diag.skipReason = 'error';
       } finally {
         busyRef.current = false;
         setState((prev) => ({
@@ -237,7 +242,7 @@ export function useOcrMonitor() {
         }
       }
     },
-    [setSourceText, translate, scheduleNext]
+    [setSourceText, translate, scheduleNext],
   );
 
   // ── Stop monitoring ──
@@ -318,16 +323,13 @@ export function useOcrMonitor() {
 
   // ── Window binding (delegated to ocrWindowBinding module) ──
 
-  const bindWindow = useCallback(
-    async (region: OcrRegion) => {
-      const bound = await windowBindingRef.current.bind(region);
-      if (bound) {
-        windowBindingRef.current.setRegionRef(regionRef.current);
-        setState((prev) => ({ ...prev, boundWindow: bound }));
-      }
-    },
-    []
-  );
+  const bindWindow = useCallback(async (region: OcrRegion) => {
+    const bound = await windowBindingRef.current.bind(region);
+    if (bound) {
+      windowBindingRef.current.setRegionRef(regionRef.current);
+      setState((prev) => ({ ...prev, boundWindow: bound }));
+    }
+  }, []);
 
   const unbindWindow = useCallback(() => {
     windowBindingRef.current.unbind();
@@ -339,7 +341,7 @@ export function useOcrMonitor() {
       unbindWindow();
       await bindWindow(region);
     },
-    [unbindWindow, bindWindow]
+    [unbindWindow, bindWindow],
   );
 
   // ── Start monitoring ──
@@ -366,8 +368,8 @@ export function useOcrMonitor() {
         paused: false,
         autoPaused: false,
         region,
-        lastText: "",
-        lastGoodText: "",
+        lastText: '',
+        lastGoodText: '',
         interval: resolvedInterval,
         clickThrough,
         pinned: false,
@@ -377,13 +379,17 @@ export function useOcrMonitor() {
         lastDiag: null,
       });
 
-      lastTextRef.current = "";
-      lastGoodTextRef.current = "";
+      lastTextRef.current = '';
+      lastGoodTextRef.current = '';
 
       if (clickThrough) {
-        const [, err] = await safeInvoke("set_overlay_click_through", { ignore: true }, { silent: true });
+        const [, err] = await safeInvoke(
+          'set_overlay_click_through',
+          { ignore: true },
+          { silent: true },
+        );
         if (err) {
-          console.warn("[OCR] Failed to set click-through:", err);
+          console.warn('[OCR] Failed to set click-through:', err);
         }
       }
 
@@ -394,20 +400,20 @@ export function useOcrMonitor() {
 
       captureAndOcr(region);
     },
-    [captureAndOcr, stopMonitoring, bindWindow]
+    [captureAndOcr, stopMonitoring, bindWindow],
   );
 
   // ── Overlay controls ──
 
   const toggleClickThrough = useCallback(async () => {
     const newValue = !state.clickThrough;
-    await safeInvoke("set_overlay_click_through", { ignore: newValue }, { silent: true });
+    await safeInvoke('set_overlay_click_through', { ignore: newValue }, { silent: true });
     setState((prev) => ({ ...prev, clickThrough: newValue }));
     useConfigStore.getState().updateConfig((prev) => ({ ...prev, ocrClickThrough: newValue }));
   }, [state.clickThrough]);
 
   const togglePin = useCallback(async () => {
-    const [result] = await safeInvoke<boolean>("pin_overlay", undefined, { silent: true });
+    const [result] = await safeInvoke<boolean>('pin_overlay', undefined, { silent: true });
     if (result !== null) {
       setState((prev) => ({ ...prev, pinned: result }));
     }
@@ -423,9 +429,9 @@ export function useOcrMonitor() {
         autoResume();
       }
     };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [autoPause, autoResume]);
 
@@ -434,7 +440,7 @@ export function useOcrMonitor() {
     let cancelled = false;
     const setupListener = async () => {
       try {
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const appWindow = getCurrentWindow();
         unlisten = await appWindow.onFocusChanged(({ payload: focused }) => {
           if (focused) {

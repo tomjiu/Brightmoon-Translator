@@ -1,13 +1,13 @@
-import { useState, useCallback } from "react";
-import { useConfigStore } from "../stores/configStore";
-import { useToastStore } from "../stores/toastStore";
-import { useI18n } from "../i18n";
+import { useState, useCallback } from 'react';
+import { useConfigStore } from '../stores/configStore';
+import { useToastStore } from '../stores/toastStore';
+import { useI18n } from '../i18n';
 import {
   aiExtractTerms,
   aiLearnStyle,
   type AiTermEntry,
   type TranslationStyle,
-} from "../services/ai";
+} from '../services/ai';
 import {
   Sparkles,
   BookOpen,
@@ -18,7 +18,7 @@ import {
   Plus,
   Trash2,
   RefreshCw,
-} from "lucide-react";
+} from 'lucide-react';
 
 interface AiSettingsProps {
   onTermsExtracted?: (terms: AiTermEntry[]) => void;
@@ -29,22 +29,20 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
   const config = useConfigStore((s) => s.config);
   const addToast = useToastStore((s) => s.addToast);
 
-  const [expandedSection, setExpandedSection] = useState<string | null>("polish");
+  const [expandedSection, setExpandedSection] = useState<string | null>('polish');
   const [isExtracting, setIsExtracting] = useState(false);
   const [isLearning, setIsLearning] = useState(false);
   const [extractedTerms, setExtractedTerms] = useState<AiTermEntry[]>([]);
   const [learnedStyle, setLearnedStyle] = useState<TranslationStyle | null>(null);
 
   // Sample texts for term extraction
-  const [sampleTexts, setSampleTexts] = useState<[string, string][]>([
-    ["", ""],
-  ]);
+  const [sampleTexts, setSampleTexts] = useState<Array<[string, string]>>([['', '']]);
 
   // History for style learning
-  const [styleHistory, setStyleHistory] = useState<[string, string][]>([
-    ["", ""],
-    ["", ""],
-    ["", ""],
+  const [styleHistory, setStyleHistory] = useState<Array<[string, string]>>([
+    ['', ''],
+    ['', ''],
+    ['', ''],
   ]);
 
   const toggleSection = (section: string) => {
@@ -55,8 +53,8 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
     const validTexts = sampleTexts.filter(([s, t]) => s.trim() && t.trim());
     if (validTexts.length === 0) {
       addToast({
-        type: "warning",
-        message: t("aiSettings.needSamplePair") || "请添加至少一对翻译文本",
+        type: 'warning',
+        message: t('aiSettings.needSamplePair') || '请添加至少一对翻译文本',
         duration: 3000,
       });
       return;
@@ -66,20 +64,22 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
     try {
       const terms = await aiExtractTerms({
         texts: validTexts,
-        fromLang: config?.defaultFrom || "auto",
-        toLang: config?.defaultTo || "zh",
+        fromLang: config.defaultFrom || 'auto',
+        toLang: config.defaultTo || 'zh',
       });
       setExtractedTerms(terms);
       onTermsExtracted?.(terms);
       addToast({
-        type: "success",
-        message: t("aiSettings.extractedCount", { count: terms.length }) || `提取了 ${terms.length} 个术语`,
+        type: 'success',
+        message:
+          t('aiSettings.extractedCount', { count: terms.length }) ||
+          `提取了 ${terms.length} 个术语`,
         duration: 3000,
       });
     } catch (err) {
       addToast({
-        type: "error",
-        message: t("aiSettings.extractFailed") || "术语提取失败",
+        type: 'error',
+        message: t('aiSettings.extractFailed') || '术语提取失败',
         detail: String(err),
         duration: 5000,
       });
@@ -92,8 +92,8 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
     const validHistory = styleHistory.filter(([s, t]) => s.trim() && t.trim());
     if (validHistory.length < 3) {
       addToast({
-        type: "warning",
-        message: t("aiSettings.need3Samples") || "请至少添加3对翻译样本",
+        type: 'warning',
+        message: t('aiSettings.need3Samples') || '请至少添加3对翻译样本',
         duration: 3000,
       });
       return;
@@ -103,19 +103,19 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
     try {
       const style = await aiLearnStyle({
         history: validHistory,
-        fromLang: config?.defaultFrom || "auto",
-        toLang: config?.defaultTo || "zh",
+        fromLang: config.defaultFrom || 'auto',
+        toLang: config.defaultTo || 'zh',
       });
       setLearnedStyle(style);
       addToast({
-        type: "success",
-        message: t("aiSettings.styleLearned") || "风格学习完成",
+        type: 'success',
+        message: t('aiSettings.styleLearned') || '风格学习完成',
         duration: 3000,
       });
     } catch (err) {
       addToast({
-        type: "error",
-        message: t("aiSettings.learnFailed") || "风格学习失败",
+        type: 'error',
+        message: t('aiSettings.learnFailed') || '风格学习失败',
         detail: String(err),
         duration: 5000,
       });
@@ -125,7 +125,7 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
   }, [styleHistory, config, addToast]);
 
   const addSampleText = () => {
-    setSampleTexts([...sampleTexts, ["", ""]]);
+    setSampleTexts([...sampleTexts, ['', '']]);
   };
 
   const removeSampleText = (index: number) => {
@@ -134,7 +134,7 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
 
   const updateSampleText = (index: number, field: 0 | 1, value: string) => {
     const updated = sampleTexts.map((item, i) =>
-      i === index ? ([...item] as [string, string]) : item
+      i === index ? ([...item] as [string, string]) : item,
     );
     updated[index][field] = value;
     setSampleTexts(updated);
@@ -142,7 +142,7 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
 
   const updateStyleHistory = (index: number, field: 0 | 1, value: string) => {
     const updated = styleHistory.map((item, i) =>
-      i === index ? ([...item] as [string, string]) : item
+      i === index ? ([...item] as [string, string]) : item,
     );
     updated[index][field] = value;
     setStyleHistory(updated);
@@ -152,37 +152,57 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-text-primary flex items-center gap-2">
         <Sparkles className="w-5 h-5 text-primary" />
-        {t("aiSettings.title") || "AI 增强功能"}
+        {t('aiSettings.title') || 'AI 增强功能'}
       </h3>
 
       {/* Polish Style Section */}
       <div className="border border-border rounded-lg overflow-hidden">
         <button
           className="w-full px-4 py-3 flex items-center justify-between bg-bg-secondary hover:bg-bg-tertiary transition-colors"
-          onClick={() => toggleSection("polish")}
+          onClick={() => toggleSection('polish')}
         >
           <div className="flex items-center gap-2">
             <Wand2 className="w-4 h-4 text-primary" />
-            <span className="font-medium">{t("aiSettings.polishStyle") || "润色风格"}</span>
+            <span className="font-medium">{t('aiSettings.polishStyle') || '润色风格'}</span>
           </div>
-          {expandedSection === "polish" ? (
+          {expandedSection === 'polish' ? (
             <ChevronUp className="w-4 h-4 text-text-secondary" />
           ) : (
             <ChevronDown className="w-4 h-4 text-text-secondary" />
           )}
         </button>
-        {expandedSection === "polish" && (
+        {expandedSection === 'polish' && (
           <div className="p-4 space-y-3">
             <p className="text-sm text-text-secondary">
               AI 润色可以优化翻译结果，使其更加自然流畅。支持多种风格：
             </p>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { id: "natural", label: t("aiSettings.styleNatural") || "自然流畅", desc: "日常表达" },
-                { id: "formal", label: t("aiSettings.styleFormal") || "正式专业", desc: "商务学术" },
-                { id: "casual", label: t("aiSettings.styleCasual") || "轻松口语", desc: "日常对话" },
-                { id: "technical", label: t("aiSettings.styleTechnical") || "技术精确", desc: "专业术语" },
-                { id: "literary", label: t("aiSettings.styleLiterary") || "文学优雅", desc: "修辞韵律" },
+                {
+                  id: 'natural',
+                  label: t('aiSettings.styleNatural') || '自然流畅',
+                  desc: '日常表达',
+                },
+                {
+                  id: 'formal',
+                  label: t('aiSettings.styleFormal') || '正式专业',
+                  desc: '商务学术',
+                },
+                {
+                  id: 'casual',
+                  label: t('aiSettings.styleCasual') || '轻松口语',
+                  desc: '日常对话',
+                },
+                {
+                  id: 'technical',
+                  label: t('aiSettings.styleTechnical') || '技术精确',
+                  desc: '专业术语',
+                },
+                {
+                  id: 'literary',
+                  label: t('aiSettings.styleLiterary') || '文学优雅',
+                  desc: '修辞韵律',
+                },
               ].map((style) => (
                 <div
                   key={style.id}
@@ -201,41 +221,41 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
       <div className="border border-border rounded-lg overflow-hidden">
         <button
           className="w-full px-4 py-3 flex items-center justify-between bg-bg-secondary hover:bg-bg-tertiary transition-colors"
-          onClick={() => toggleSection("terms")}
+          onClick={() => toggleSection('terms')}
         >
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-primary" />
-            <span className="font-medium">{t("aiSettings.termExtraction") || "术语提取"}</span>
+            <span className="font-medium">{t('aiSettings.termExtraction') || '术语提取'}</span>
           </div>
-          {expandedSection === "terms" ? (
+          {expandedSection === 'terms' ? (
             <ChevronUp className="w-4 h-4 text-text-secondary" />
           ) : (
             <ChevronDown className="w-4 h-4 text-text-secondary" />
           )}
         </button>
-        {expandedSection === "terms" && (
+        {expandedSection === 'terms' && (
           <div className="p-4 space-y-4">
-            <p className="text-sm text-text-secondary">
-              从翻译对中自动提取专业术语，生成术语表。
-            </p>
+            <p className="text-sm text-text-secondary">从翻译对中自动提取专业术语，生成术语表。</p>
 
             {/* Sample texts input */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t("aiSettings.sampleTexts") || "翻译样本"}：</label>
+              <label className="text-sm font-medium">
+                {t('aiSettings.sampleTexts') || '翻译样本'}：
+              </label>
               {sampleTexts.map(([source, target], index) => (
                 <div key={index} className="flex gap-2">
                   <input
                     type="text"
                     value={source}
                     onChange={(e) => updateSampleText(index, 0, e.target.value)}
-                    placeholder={t("common.sourceText") || "原文"}
+                    placeholder={t('common.sourceText') || '原文'}
                     className="flex-1 px-3 py-2 bg-bg-primary border border-border rounded-md text-sm"
                   />
                   <input
                     type="text"
                     value={target}
                     onChange={(e) => updateSampleText(index, 1, e.target.value)}
-                    placeholder={t("common.targetText") || "译文"}
+                    placeholder={t('common.targetText') || '译文'}
                     className="flex-1 px-3 py-2 bg-bg-primary border border-border rounded-md text-sm"
                   />
                   <button
@@ -266,13 +286,17 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
               ) : (
                 <Sparkles className="w-4 h-4" />
               )}
-              {isExtracting ? (t("aiSettings.extracting") || "提取中...") : (t("aiSettings.extractTerms") || "提取术语")}
+              {isExtracting
+                ? t('aiSettings.extracting') || '提取中...'
+                : t('aiSettings.extractTerms') || '提取术语'}
             </button>
 
             {/* Extracted terms */}
             {extractedTerms.length > 0 && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">{t("aiSettings.extractResult") || "提取结果"}：</label>
+                <label className="text-sm font-medium">
+                  {t('aiSettings.extractResult') || '提取结果'}：
+                </label>
                 <div className="max-h-48 overflow-y-auto space-y-1">
                   {extractedTerms.map((term, index) => (
                     <div
@@ -284,9 +308,7 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
                         <span className="text-sm text-text-secondary mx-2">→</span>
                         <span className="text-sm">{term.target}</span>
                         {term.context && (
-                          <span className="text-xs text-text-secondary ml-2">
-                            ({term.context})
-                          </span>
+                          <span className="text-xs text-text-secondary ml-2">({term.context})</span>
                         )}
                       </div>
                       <span className="text-xs text-text-secondary">
@@ -305,19 +327,19 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
       <div className="border border-border rounded-lg overflow-hidden">
         <button
           className="w-full px-4 py-3 flex items-center justify-between bg-bg-secondary hover:bg-bg-tertiary transition-colors"
-          onClick={() => toggleSection("style")}
+          onClick={() => toggleSection('style')}
         >
           <div className="flex items-center gap-2">
             <Palette className="w-4 h-4 text-primary" />
-            <span className="font-medium">{t("aiSettings.styleLearning") || "风格学习"}</span>
+            <span className="font-medium">{t('aiSettings.styleLearning') || '风格学习'}</span>
           </div>
-          {expandedSection === "style" ? (
+          {expandedSection === 'style' ? (
             <ChevronUp className="w-4 h-4 text-text-secondary" />
           ) : (
             <ChevronDown className="w-4 h-4 text-text-secondary" />
           )}
         </button>
-        {expandedSection === "style" && (
+        {expandedSection === 'style' && (
           <div className="p-4 space-y-4">
             <p className="text-sm text-text-secondary">
               从您的历史翻译中学习风格特征，应用到新翻译中。
@@ -325,21 +347,23 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
 
             {/* History input */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t("aiSettings.sampleTexts") || "翻译样本"}（至少3对）：</label>
+              <label className="text-sm font-medium">
+                {t('aiSettings.sampleTexts') || '翻译样本'}（至少3对）：
+              </label>
               {styleHistory.map(([source, target], index) => (
                 <div key={index} className="flex gap-2">
                   <input
                     type="text"
                     value={source}
                     onChange={(e) => updateStyleHistory(index, 0, e.target.value)}
-                    placeholder={t("common.sourceText") || "原文"}
+                    placeholder={t('common.sourceText') || '原文'}
                     className="flex-1 px-3 py-2 bg-bg-primary border border-border rounded-md text-sm"
                   />
                   <input
                     type="text"
                     value={target}
                     onChange={(e) => updateStyleHistory(index, 1, e.target.value)}
-                    placeholder={t("common.targetText") || "译文"}
+                    placeholder={t('common.targetText') || '译文'}
                     className="flex-1 px-3 py-2 bg-bg-primary border border-border rounded-md text-sm"
                   />
                 </div>
@@ -357,28 +381,40 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
               ) : (
                 <Palette className="w-4 h-4" />
               )}
-              {isLearning ? (t("aiSettings.learning") || "学习中...") : (t("aiSettings.learnStyle") || "学习风格")}
+              {isLearning
+                ? t('aiSettings.learning') || '学习中...'
+                : t('aiSettings.learnStyle') || '学习风格'}
             </button>
 
             {/* Learned style */}
             {learnedStyle && (
               <div className="p-4 bg-bg-secondary rounded-lg space-y-3">
-                <h4 className="font-medium text-sm">{t("aiSettings.learnResult") || "学习结果"}：</h4>
+                <h4 className="font-medium text-sm">
+                  {t('aiSettings.learnResult') || '学习结果'}：
+                </h4>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <span className="text-xs text-text-secondary">{t("aiSettings.vocabLevel") || "词汇难度"}</span>
+                    <span className="text-xs text-text-secondary">
+                      {t('aiSettings.vocabLevel') || '词汇难度'}
+                    </span>
                     <div className="text-sm font-medium">{learnedStyle.vocabularyLevel}</div>
                   </div>
                   <div>
-                    <span className="text-xs text-text-secondary">{t("aiSettings.formality") || "正式程度"}</span>
+                    <span className="text-xs text-text-secondary">
+                      {t('aiSettings.formality') || '正式程度'}
+                    </span>
                     <div className="text-sm font-medium">{learnedStyle.formality}</div>
                   </div>
                   <div>
-                    <span className="text-xs text-text-secondary">{t("aiSettings.sentenceStructure") || "句式特点"}</span>
+                    <span className="text-xs text-text-secondary">
+                      {t('aiSettings.sentenceStructure') || '句式特点'}
+                    </span>
                     <div className="text-sm font-medium">{learnedStyle.sentenceStructure}</div>
                   </div>
                   <div>
-                    <span className="text-xs text-text-secondary">{t("aiSettings.tone") || "语气特征"}</span>
+                    <span className="text-xs text-text-secondary">
+                      {t('aiSettings.tone') || '语气特征'}
+                    </span>
                     <div className="text-sm font-medium">{learnedStyle.tone}</div>
                   </div>
                 </div>

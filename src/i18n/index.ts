@@ -1,10 +1,10 @@
-import { create } from "zustand";
-import zh from "./zh.json";
-import en from "./en.json";
-import ja from "./ja.json";
-import ko from "./ko.json";
+import { create } from 'zustand';
+import zh from './zh.json';
+import en from './en.json';
+import ja from './ja.json';
+import ko from './ko.json';
 
-export type Locale = "zh" | "en" | "ja" | "ko";
+export type Locale = 'zh' | 'en' | 'ja' | 'ko';
 
 const locales: Record<Locale, Record<string, unknown>> = { zh, en, ja, ko };
 
@@ -15,28 +15,28 @@ interface I18nState {
 }
 
 function getNestedValue(obj: Record<string, unknown>, path: string): string | undefined {
-  const parts = path.split(".");
+  const parts = path.split('.');
   let current: unknown = obj;
   for (const part of parts) {
-    if (current && typeof current === "object" && part in (current as Record<string, unknown>)) {
+    if (current && typeof current === 'object' && part in (current as Record<string, unknown>)) {
       current = (current as Record<string, unknown>)[part];
     } else {
       return undefined;
     }
   }
-  return typeof current === "string" ? current : undefined;
+  return typeof current === 'string' ? current : undefined;
 }
 
 export const useI18n = create<I18nState>((set, get) => ({
-  locale: (localStorage.getItem("locale") as Locale) || "zh",
+  locale: (localStorage.getItem('locale') as Locale) || 'zh',
   setLocale: (locale: Locale) => {
-    localStorage.setItem("locale", locale);
+    localStorage.setItem('locale', locale);
     set({ locale });
   },
   t: (key: string, params?: Record<string, string | number>) => {
     const { locale } = get();
     const messages = locales[locale] || locales.zh;
-    let value = getNestedValue(messages as Record<string, unknown>, key);
+    let value = getNestedValue(messages, key);
 
     if (value === undefined) {
       // Fallback to Chinese

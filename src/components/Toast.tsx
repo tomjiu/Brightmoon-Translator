@@ -1,5 +1,5 @@
-import { useToastStore, ToastType } from "../stores/toastStore";
-import { AlertCircle, CheckCircle, AlertTriangle, Info, X } from "lucide-react";
+import { useToastStore, type ToastType } from '../stores/toastStore';
+import { AlertCircle, CheckCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 const iconMap: Record<ToastType, typeof AlertCircle> = {
   error: AlertCircle,
@@ -9,10 +9,10 @@ const iconMap: Record<ToastType, typeof AlertCircle> = {
 };
 
 const colorMap: Record<ToastType, string> = {
-  error: "bg-red-500/90 border-red-400",
-  success: "bg-green-500/90 border-green-400",
-  warning: "bg-yellow-500/90 border-yellow-400",
-  info: "bg-blue-500/90 border-blue-400",
+  error: 'bg-red-500/90 border-red-400',
+  success: 'bg-green-500/90 border-green-400',
+  warning: 'bg-yellow-500/90 border-yellow-400',
+  info: 'bg-blue-500/90 border-blue-400',
 };
 
 export default function ToastContainer() {

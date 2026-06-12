@@ -1,8 +1,8 @@
-import { useState, useCallback } from "react";
-import { useToastStore } from "../stores/toastStore";
-import { aiPolishTranslation, type PolishStyle } from "../services/ai";
-import { useI18n } from "../i18n";
-import { Sparkles, ChevronDown, Loader2 } from "lucide-react";
+import { useState, useCallback } from 'react';
+import { useToastStore } from '../stores/toastStore';
+import { aiPolishTranslation, type PolishStyle } from '../services/ai';
+import { useI18n } from '../i18n';
+import { Sparkles, ChevronDown, Loader2 } from 'lucide-react';
 
 interface AiPolishButtonProps {
   sourceText: string;
@@ -12,12 +12,12 @@ interface AiPolishButtonProps {
   onPolished: (polishedText: string) => void;
 }
 
-const POLISH_STYLES: { id: PolishStyle; labelKey: string; icon: string }[] = [
-  { id: "natural", labelKey: "aiPolish.styleNatural", icon: "✨" },
-  { id: "formal", labelKey: "aiPolish.styleFormal", icon: "📋" },
-  { id: "casual", labelKey: "aiPolish.styleCasual", icon: "💬" },
-  { id: "technical", labelKey: "aiPolish.styleTechnical", icon: "⚙️" },
-  { id: "literary", labelKey: "aiPolish.styleLiterary", icon: "📖" },
+const POLISH_STYLES: Array<{ id: PolishStyle; labelKey: string; icon: string }> = [
+  { id: 'natural', labelKey: 'aiPolish.styleNatural', icon: '✨' },
+  { id: 'formal', labelKey: 'aiPolish.styleFormal', icon: '📋' },
+  { id: 'casual', labelKey: 'aiPolish.styleCasual', icon: '💬' },
+  { id: 'technical', labelKey: 'aiPolish.styleTechnical', icon: '⚙️' },
+  { id: 'literary', labelKey: 'aiPolish.styleLiterary', icon: '📖' },
 ];
 
 export default function AiPolishButton({
@@ -32,14 +32,14 @@ export default function AiPolishButton({
 
   const [isPolishing, setIsPolishing] = useState(false);
   const [showStyles, setShowStyles] = useState(false);
-  const [selectedStyle, setSelectedStyle] = useState<PolishStyle>("natural");
+  const [selectedStyle, setSelectedStyle] = useState<PolishStyle>('natural');
 
   const handlePolish = useCallback(
     async (style?: PolishStyle) => {
       if (!sourceText || !translatedText) {
         addToast({
-          type: "warning",
-          message: t("aiPolish.translateFirst"),
+          type: 'warning',
+          message: t('aiPolish.translateFirst'),
           duration: 3000,
         });
         return;
@@ -58,14 +58,14 @@ export default function AiPolishButton({
         });
         onPolished(polished);
         addToast({
-          type: "success",
-          message: t("aiPolish.completed"),
+          type: 'success',
+          message: t('aiPolish.completed'),
           duration: 2000,
         });
       } catch (err) {
         addToast({
-          type: "error",
-          message: t("aiPolish.failed"),
+          type: 'error',
+          message: t('aiPolish.failed'),
           detail: String(err),
           duration: 5000,
         });
@@ -73,7 +73,7 @@ export default function AiPolishButton({
         setIsPolishing(false);
       }
     },
-    [sourceText, translatedText, fromLang, toLang, selectedStyle, onPolished, addToast]
+    [sourceText, translatedText, fromLang, toLang, selectedStyle, onPolished, addToast],
   );
 
   return (
@@ -89,7 +89,7 @@ export default function AiPolishButton({
         ) : (
           <Sparkles className="w-4 h-4" />
         )}
-        {isPolishing ? t("aiPolish.polishing") : t("aiPolish.button")}
+        {isPolishing ? t('aiPolish.polishing') : t('aiPolish.button')}
       </button>
 
       {/* Style selector dropdown */}
@@ -112,7 +112,7 @@ export default function AiPolishButton({
                   handlePolish(style.id);
                 }}
                 className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-bg-tertiary transition-colors ${
-                  selectedStyle === style.id ? "bg-primary/10 text-primary" : ""
+                  selectedStyle === style.id ? 'bg-primary/10 text-primary' : ''
                 }`}
               >
                 <span>{style.icon}</span>

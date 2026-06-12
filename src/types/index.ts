@@ -24,7 +24,7 @@ export interface HistoryItem {
 
 // Config types
 interface LlmConfig {
-  provider: "openai" | "deepseek" | "custom";
+  provider: 'openai' | 'deepseek' | 'custom';
   apiKey: string;
   apiKeys: string[];
   baseUrl: string;
@@ -73,15 +73,15 @@ interface PromptTemplate {
   prompt: string;
 }
 
-export type AutoCopyMode = "translated" | "source" | "both" | "none";
+export type AutoCopyMode = 'translated' | 'source' | 'both' | 'none';
 export type RoutingStrategy =
-  | "PrimaryOnly"
-  | "FallbackOnError"
-  | "ParallelCompare"
-  | "CostAware"
-  | "LatencyFirst";
-export type OcrEngine = "auto" | "winrt" | "youdao" | "tesseract";
-type WindowFollowMode = "none" | "cursor";
+  | 'PrimaryOnly'
+  | 'FallbackOnError'
+  | 'ParallelCompare'
+  | 'CostAware'
+  | 'LatencyFirst';
+export type OcrEngine = 'auto' | 'winrt' | 'youdao' | 'tesseract';
+type WindowFollowMode = 'none' | 'cursor';
 
 export interface SyncConfig {
   enabled: boolean;
@@ -131,7 +131,7 @@ export interface AppConfig {
   ocrEngine: OcrEngine;
   overlayLevel?: number;
   overlayAutoDismissMs?: number;
-  overlayFollowMode?: "none" | "cursor" | "target_bounds";
+  overlayFollowMode?: 'none' | 'cursor' | 'target_bounds';
   ocrInterval?: number;
   ocrClickThrough?: boolean;
   ocrAutoBindWindow?: boolean;
@@ -166,20 +166,20 @@ interface HookConfig {
 
 // Language definitions
 export const LANGUAGES = [
-  { code: "auto", name: "自动检测" },
-  { code: "zh", name: "中文" },
-  { code: "en", name: "English" },
-  { code: "ja", name: "日本語" },
-  { code: "ko", name: "한국어" },
-  { code: "fr", name: "Français" },
-  { code: "de", name: "Deutsch" },
-  { code: "es", name: "Español" },
-  { code: "ru", name: "Русский" },
-  { code: "pt", name: "Português" },
-  { code: "it", name: "Italiano" },
-  { code: "ar", name: "العربية" },
-  { code: "th", name: "ไทย" },
-  { code: "vi", name: "Tiếng Việt" },
+  { code: 'auto', name: '自动检测' },
+  { code: 'zh', name: '中文' },
+  { code: 'en', name: 'English' },
+  { code: 'ja', name: '日本語' },
+  { code: 'ko', name: '한국어' },
+  { code: 'fr', name: 'Français' },
+  { code: 'de', name: 'Deutsch' },
+  { code: 'es', name: 'Español' },
+  { code: 'ru', name: 'Русский' },
+  { code: 'pt', name: 'Português' },
+  { code: 'it', name: 'Italiano' },
+  { code: 'ar', name: 'العربية' },
+  { code: 'th', name: 'ไทย' },
+  { code: 'vi', name: 'Tiếng Việt' },
 ] as const;
 
 // Language detection types
@@ -228,27 +228,27 @@ export interface DictionaryResult {
 
 // Variable name format types
 export type VariableFormat =
-  | "snake_case"
-  | "SNAKE_CASE"
-  | "kebab-case"
-  | "camelCase"
-  | "PascalCase"
-  | "dot.notation"
-  | "Title Case";
+  | 'snake_case'
+  | 'SNAKE_CASE'
+  | 'kebab-case'
+  | 'camelCase'
+  | 'PascalCase'
+  | 'dot.notation'
+  | 'Title Case';
 
 export const VARIABLE_FORMATS: VariableFormat[] = [
-  "snake_case",
-  "SNAKE_CASE",
-  "kebab-case",
-  "camelCase",
-  "PascalCase",
-  "dot.notation",
-  "Title Case",
+  'snake_case',
+  'SNAKE_CASE',
+  'kebab-case',
+  'camelCase',
+  'PascalCase',
+  'dot.notation',
+  'Title Case',
 ];
 
 // Batch translation types
-export type BatchTaskStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
-export type BatchJobStatus = "idle" | "running" | "paused" | "completed" | "cancelled" | "failed";
+export type BatchTaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type BatchJobStatus = 'idle' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed';
 
 export interface BatchConfig {
   concurrency: number;
@@ -296,7 +296,7 @@ export interface TmExportData {
 
 export interface TmStats {
   total: number;
-  langPairs: [string, string, number][];
+  langPairs: Array<[string, string, number]>;
 }
 
 // Translation quality scoring types

@@ -1,4 +1,4 @@
-import { safeInvoke } from "./invoke";
+import { safeInvoke } from './invoke';
 
 export interface OverlayPosition {
   x: number;
@@ -15,18 +15,22 @@ export async function showOverlayAt(
   pos: OverlayPosition,
   text: string,
   source: string,
-  overlayLevel: number = 2
+  overlayLevel = 2,
 ): Promise<void> {
   // Overlay update is best-effort, silently ignore errors
-  await safeInvoke("update_overlay", {
-    x: Math.round(pos.x),
-    y: Math.round(pos.y),
-    width: Math.round(pos.width),
-    height: Math.round(pos.height),
-    text,
-    source,
-    overlayLevel,
-  }, { silent: true });
+  await safeInvoke(
+    'update_overlay',
+    {
+      x: Math.round(pos.x),
+      y: Math.round(pos.y),
+      width: Math.round(pos.width),
+      height: Math.round(pos.height),
+      text,
+      source,
+      overlayLevel,
+    },
+    { silent: true },
+  );
 }
 
 /**
@@ -39,7 +43,7 @@ export function positionBelowText(
   textW: number,
   textH: number,
   overlayWidth = 500,
-  overlayHeight = 180
+  overlayHeight = 180,
 ): OverlayPosition {
   const w = Math.min(overlayWidth, textW + 60);
   const x = textX + (textW - w) / 2;
@@ -61,7 +65,7 @@ export function positionAtWindowBottom(
   winW: number,
   winH: number,
   overlayWidth = 500,
-  overlayHeight = 180
+  overlayHeight = 180,
 ): OverlayPosition {
   const w = Math.min(overlayWidth, winW - 40);
   const x = winX + (winW - w) / 2;
