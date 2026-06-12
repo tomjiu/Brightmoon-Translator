@@ -1,8 +1,8 @@
-import { useState, useCallback } from "react";
-import { invokeOrThrow } from "../../services/invoke";
-import { useConfigStore } from "../../stores/configStore";
-import { useI18n } from "../../i18n";
-import type { SyncConfig, SyncStatus } from "../../types";
+import { useState, useCallback } from 'react';
+import { invokeOrThrow } from '../../services/invoke';
+import { useConfigStore } from '../../stores/configStore';
+import { useI18n } from '../../i18n';
+import type { SyncConfig, SyncStatus } from '../../types';
 import {
   Cloud,
   RefreshCw,
@@ -19,7 +19,7 @@ import {
   BookOpen,
   Database,
   Settings as SettingsIcon,
-} from "lucide-react";
+} from 'lucide-react';
 
 function SyncSettings() {
   const { config, saved, saveConfig, updateConfig } = useConfigStore();
@@ -36,23 +36,25 @@ function SyncSettings() {
     (updater: (prev: SyncConfig) => SyncConfig) => {
       updateConfig((prev) => ({
         ...prev,
-        sync: updater(prev.sync || {
-          enabled: false,
-          serverUrl: "",
-          username: "",
-          password: "",
-          remoteDir: "moontranslator",
-          intervalMins: 30,
-          syncConfig: true,
-          syncGlossary: true,
-          syncHistory: true,
-          syncWordbook: true,
-          lastSyncAt: 0,
-          lastSyncStatus: "",
-        }),
+        sync: updater(
+          prev.sync || {
+            enabled: false,
+            serverUrl: '',
+            username: '',
+            password: '',
+            remoteDir: 'moontranslator',
+            intervalMins: 30,
+            syncConfig: true,
+            syncGlossary: true,
+            syncHistory: true,
+            syncWordbook: true,
+            lastSyncAt: 0,
+            lastSyncStatus: '',
+          },
+        ),
       }));
     },
-    [updateConfig]
+    [updateConfig],
   );
 
   const handleTestConnection = async () => {
@@ -60,8 +62,8 @@ function SyncSettings() {
     setTestResult(null);
     try {
       // Save config first so backend uses latest settings
-      await saveConfig();
-      const result = await invokeOrThrow<string>("test_webdav_connection");
+      await void saveConfig();
+      const result = await invokeOrThrow<string>('test_webdav_connection');
       setTestResult({ success: true, message: result });
     } catch (err) {
       setTestResult({
@@ -78,8 +80,8 @@ function SyncSettings() {
     setSyncResult(null);
     try {
       // Save config first
-      await saveConfig();
-      const result = await invokeOrThrow<SyncStatus>("sync_now");
+      await void saveConfig();
+      const result = await invokeOrThrow<SyncStatus>('sync_now');
       setSyncResult(result);
       // Reload config to get updated lastSyncAt
       // Config is automatically updated on backend
@@ -97,7 +99,7 @@ function SyncSettings() {
   };
 
   const formatTimestamp = (ts: number) => {
-    if (!ts) return t("settings.sync.never");
+    if (!ts) return t('settings.sync.never');
     return new Date(ts).toLocaleString();
   };
 
@@ -105,30 +107,26 @@ function SyncSettings() {
     <section className="bg-bg-secondary border border-border rounded-xl p-5 mb-5">
       <h2 className="text-base font-semibold text-primary mb-4 flex items-center gap-2">
         <Cloud size={18} />
-        {t("settings.sync.title")}
+        {t('settings.sync.title')}
       </h2>
-      <p className="text-xs text-text-secondary mb-4">
-        {t("settings.sync.description")}
-      </p>
+      <p className="text-xs text-text-secondary mb-4">{t('settings.sync.description')}</p>
 
       <div className="space-y-4">
         {/* Enable Sync Toggle */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-text-primary font-medium">{t("settings.sync.enable")}</p>
-            <p className="text-xs text-text-secondary mt-1">
-              {t("settings.sync.enableHint")}
-            </p>
+            <p className="text-sm text-text-primary font-medium">{t('settings.sync.enable')}</p>
+            <p className="text-xs text-text-secondary mt-1">{t('settings.sync.enableHint')}</p>
           </div>
           <button
             className={`relative w-12 h-6 rounded-full transition-colors ${
-              sync?.enabled ? "bg-primary" : "bg-bg-tertiary"
+              sync?.enabled ? 'bg-primary' : 'bg-bg-tertiary'
             }`}
             onClick={() => updateSync((prev) => ({ ...prev, enabled: !prev.enabled }))}
           >
             <div
               className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-                sync?.enabled ? "translate-x-6" : "translate-x-0.5"
+                sync?.enabled ? 'translate-x-6' : 'translate-x-0.5'
               }`}
             />
           </button>
@@ -138,20 +136,22 @@ function SyncSettings() {
         {sync?.enabled && (
           <>
             <div>
-              <label className="block text-xs text-text-secondary mb-1.5">{t("settings.sync.serverUrl")}</label>
+              <label className="block text-xs text-text-secondary mb-1.5">
+                {t('settings.sync.serverUrl')}
+              </label>
               <input
                 value={sync.serverUrl}
                 onChange={(e) => updateSync((prev) => ({ ...prev, serverUrl: e.target.value }))}
                 placeholder="https://dav.jianguoyun.com/dav/"
                 className="w-full bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
               />
-              <p className="text-xs text-text-secondary mt-1">
-                {t("settings.sync.serverUrlHint")}
-              </p>
+              <p className="text-xs text-text-secondary mt-1">{t('settings.sync.serverUrlHint')}</p>
             </div>
 
             <div>
-              <label className="block text-xs text-text-secondary mb-1.5">{t("settings.sync.username")}</label>
+              <label className="block text-xs text-text-secondary mb-1.5">
+                {t('settings.sync.username')}
+              </label>
               <input
                 value={sync.username}
                 onChange={(e) => updateSync((prev) => ({ ...prev, username: e.target.value }))}
@@ -161,13 +161,15 @@ function SyncSettings() {
             </div>
 
             <div>
-              <label className="block text-xs text-text-secondary mb-1.5">{t("settings.sync.password")}</label>
+              <label className="block text-xs text-text-secondary mb-1.5">
+                {t('settings.sync.password')}
+              </label>
               <div className="relative">
                 <input
-                  type={showPassword ? "text" : "password"}
+                  type={showPassword ? 'text' : 'password'}
                   value={sync.password}
                   onChange={(e) => updateSync((prev) => ({ ...prev, password: e.target.value }))}
-                  placeholder={t("settings.sync.passwordPlaceholder")}
+                  placeholder={t('settings.sync.passwordPlaceholder')}
                   className="w-full bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 pr-10 text-sm focus:border-primary outline-none"
                 />
                 <button
@@ -181,7 +183,9 @@ function SyncSettings() {
             </div>
 
             <div>
-              <label className="block text-xs text-text-secondary mb-1.5">{t("settings.sync.remoteDir")}</label>
+              <label className="block text-xs text-text-secondary mb-1.5">
+                {t('settings.sync.remoteDir')}
+              </label>
               <div className="flex items-center gap-2">
                 <FolderOpen size={14} className="text-text-secondary" />
                 <input
@@ -195,7 +199,7 @@ function SyncSettings() {
 
             <div>
               <label className="block text-xs text-text-secondary mb-1.5">
-                {t("settings.sync.autoSyncInterval")}
+                {t('settings.sync.autoSyncInterval')}
               </label>
               <div className="flex items-center gap-3">
                 <Clock size={14} className="text-text-secondary" />
@@ -213,54 +217,74 @@ function SyncSettings() {
                   className="w-24 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
                 />
                 <span className="text-xs text-text-secondary">
-                  {sync.intervalMins === 0 ? t("settings.sync.manualOnly") : t("settings.sync.everyNmin", { mins: sync.intervalMins })}
+                  {sync.intervalMins === 0
+                    ? t('settings.sync.manualOnly')
+                    : t('settings.sync.everyNmin', { mins: sync.intervalMins })}
                 </span>
               </div>
             </div>
 
             {/* Sync Items */}
             <div className="border-t border-border pt-4">
-              <p className="text-xs text-text-secondary mb-3 font-medium">{t("settings.sync.itemsToSync")}</p>
+              <p className="text-xs text-text-secondary mb-3 font-medium">
+                {t('settings.sync.itemsToSync')}
+              </p>
               <div className="space-y-2">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={sync.syncConfig}
-                    onChange={(e) => updateSync((prev) => ({ ...prev, syncConfig: e.target.checked }))}
+                    onChange={(e) =>
+                      updateSync((prev) => ({ ...prev, syncConfig: e.target.checked }))
+                    }
                     className="w-4 h-4 rounded border-border accent-primary"
                   />
                   <SettingsIcon size={14} className="text-text-secondary" />
-                  <span className="text-sm text-text-primary">{t("settings.sync.syncConfigItem")}</span>
+                  <span className="text-sm text-text-primary">
+                    {t('settings.sync.syncConfigItem')}
+                  </span>
                 </label>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={sync.syncGlossary}
-                    onChange={(e) => updateSync((prev) => ({ ...prev, syncGlossary: e.target.checked }))}
+                    onChange={(e) =>
+                      updateSync((prev) => ({ ...prev, syncGlossary: e.target.checked }))
+                    }
                     className="w-4 h-4 rounded border-border accent-primary"
                   />
                   <BookOpen size={14} className="text-text-secondary" />
-                  <span className="text-sm text-text-primary">{t("settings.sync.syncGlossaryItem")}</span>
+                  <span className="text-sm text-text-primary">
+                    {t('settings.sync.syncGlossaryItem')}
+                  </span>
                 </label>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={sync.syncHistory}
-                    onChange={(e) => updateSync((prev) => ({ ...prev, syncHistory: e.target.checked }))}
+                    onChange={(e) =>
+                      updateSync((prev) => ({ ...prev, syncHistory: e.target.checked }))
+                    }
                     className="w-4 h-4 rounded border-border accent-primary"
                   />
                   <Database size={14} className="text-text-secondary" />
-                  <span className="text-sm text-text-primary">{t("settings.sync.syncHistoryItem")}</span>
+                  <span className="text-sm text-text-primary">
+                    {t('settings.sync.syncHistoryItem')}
+                  </span>
                 </label>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={sync.syncWordbook}
-                    onChange={(e) => updateSync((prev) => ({ ...prev, syncWordbook: e.target.checked }))}
+                    onChange={(e) =>
+                      updateSync((prev) => ({ ...prev, syncWordbook: e.target.checked }))
+                    }
                     className="w-4 h-4 rounded border-border accent-primary"
                   />
                   <FileText size={14} className="text-text-secondary" />
-                  <span className="text-sm text-text-primary">{t("settings.sync.syncWordbookItem")}</span>
+                  <span className="text-sm text-text-primary">
+                    {t('settings.sync.syncWordbookItem')}
+                  </span>
                 </label>
               </div>
             </div>
@@ -273,8 +297,12 @@ function SyncSettings() {
                   disabled={testing || !sync.serverUrl}
                   className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
                 >
-                  {testing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                  {t("settings.sync.testConnection")}
+                  {testing ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={14} />
+                  )}
+                  {t('settings.sync.testConnection')}
                 </button>
               </div>
 
@@ -282,8 +310,8 @@ function SyncSettings() {
                 <div
                   className={`mt-3 p-3 rounded-lg flex items-start gap-2 text-xs ${
                     testResult.success
-                      ? "bg-green-500/10 border border-green-500/20 text-green-400"
-                      : "bg-red-500/10 border border-red-500/20 text-red-400"
+                      ? 'bg-green-500/10 border border-green-500/20 text-green-400'
+                      : 'bg-red-500/10 border border-red-500/20 text-red-400'
                   }`}
                 >
                   {testResult.success ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
@@ -296,9 +324,11 @@ function SyncSettings() {
             <div className="border-t border-border pt-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="text-sm text-text-primary font-medium">{t("settings.sync.manualSync")}</p>
+                  <p className="text-sm text-text-primary font-medium">
+                    {t('settings.sync.manualSync')}
+                  </p>
                   <p className="text-xs text-text-secondary mt-1">
-                    {t("settings.sync.lastSynced", { time: formatTimestamp(sync.lastSyncAt) })}
+                    {t('settings.sync.lastSynced', { time: formatTimestamp(sync.lastSyncAt) })}
                   </p>
                 </div>
                 <button
@@ -306,12 +336,8 @@ function SyncSettings() {
                   disabled={syncing || !sync.serverUrl}
                   className="bg-primary text-bg-primary font-semibold rounded-lg px-4 py-2 text-sm hover:bg-primary-hover transition-colors flex items-center gap-2 disabled:opacity-50"
                 >
-                  {syncing ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <Cloud size={14} />
-                  )}
-                  {syncing ? t("settings.sync.syncing") : t("settings.sync.syncNow")}
+                  {syncing ? <Loader2 size={14} className="animate-spin" /> : <Cloud size={14} />}
+                  {syncing ? t('settings.sync.syncing') : t('settings.sync.syncNow')}
                 </button>
               </div>
 
@@ -323,19 +349,19 @@ function SyncSettings() {
                 <div
                   className={`p-3 rounded-lg text-xs ${
                     syncResult.success
-                      ? "bg-green-500/10 border border-green-500/20 text-green-400"
-                      : "bg-red-500/10 border border-red-500/20 text-red-400"
+                      ? 'bg-green-500/10 border border-green-500/20 text-green-400'
+                      : 'bg-red-500/10 border border-red-500/20 text-red-400'
                   }`}
                 >
                   <p className="font-medium mb-1">{syncResult.message}</p>
                   {syncResult.uploaded.length > 0 && (
                     <p className="text-text-secondary">
-                      {t("settings.sync.uploaded", { files: syncResult.uploaded.join(", ") })}
+                      {t('settings.sync.uploaded', { files: syncResult.uploaded.join(', ') })}
                     </p>
                   )}
                   {syncResult.downloaded.length > 0 && (
                     <p className="text-text-secondary">
-                      {t("settings.sync.downloaded", { files: syncResult.downloaded.join(", ") })}
+                      {t('settings.sync.downloaded', { files: syncResult.downloaded.join(', ') })}
                     </p>
                   )}
                 </div>
@@ -354,12 +380,12 @@ function SyncSettings() {
           {saved ? (
             <>
               <Check size={16} />
-              {t("settings.saved")}
+              {t('settings.saved')}
             </>
           ) : (
             <>
               <Save size={16} />
-              {t("settings.save")}
+              {t('settings.save')}
             </>
           )}
         </button>
