@@ -122,7 +122,7 @@ Before submitting translations:
 
 ## Testing Translations
 
-1. Run `pnpm dev` to start development server
+1. Run `npm run dev` to start development server
 2. Go to Settings > Language
 3. Select your language
 4. Verify all UI elements display correctly

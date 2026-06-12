@@ -282,7 +282,7 @@ async fn batch_translate(&self, texts: &[String], from: &str, to: &str) -> Vec<S
 
 ### Phase 1: 项目骨架 + 可编译运行
 - 清理现有代码，重新搭建项目结构
-- 确保 `pnpm tauri dev` 能启动
+- 确保 `npm run tauri dev` 能启动
 - 前端能看到基本界面
 
 ### Phase 2: 核心翻译功能
