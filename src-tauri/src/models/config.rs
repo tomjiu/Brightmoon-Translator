@@ -308,7 +308,7 @@ fn default_ocr_timeout_secs() -> u64 {
 }
 
 fn default_ocr_engine() -> String {
-    "auto".to_string()
+    "winrt".to_string() // Changed from "auto" - WinRT is fast and reliable on Windows
 }
 
 fn default_llm_timeout_secs() -> u64 {

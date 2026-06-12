@@ -1115,6 +1115,10 @@ function Settings() {
             <p className="text-xs text-text-secondary">
               {t('settings.ocr.description') || '选择 OCR 截图翻译使用的识别引擎'}
             </p>
+            <div className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg p-3">
+              ⚠️ 有道 OCR 当前不可用（API 返回404）。推荐使用 <strong>Windows 原生 OCR</strong>
+              （快速、准确、免费）
+            </div>
             <select
               value={config.ocrEngine || 'auto'}
               onChange={(e) =>
@@ -1125,9 +1129,9 @@ function Settings() {
               }
               className="w-full bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
             >
-              <option value="auto">{t('settings.ocr.auto') || '自动选择 (推荐)'}</option>
-              <option value="winrt">{t('settings.ocr.winrt') || 'Windows 原生 OCR'}</option>
-              <option value="youdao">{t('settings.ocr.youdao') || '有道 OCR'}</option>
+              <option value="auto">{t('settings.ocr.auto') || '自动选择'}</option>
+              <option value="winrt">{t('settings.ocr.winrt') || 'Windows 原生 OCR (推荐)'}</option>
+              <option value="youdao">{t('settings.ocr.youdao') || '有道 OCR (当前不可用)'}</option>
               <option value="tesseract">
                 {t('settings.ocr.tesseract') || 'Tesseract.js (离线)'}
               </option>

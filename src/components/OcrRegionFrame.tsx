@@ -166,16 +166,16 @@ export default function OcrRegionFrame() {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
 
-    // Timeout: show error if no data received within 15 seconds
-    // OCR + translation pipeline can take several seconds on first run
+    // Timeout: show error if no data received within 30 seconds
+    // OCR + translation pipeline can take time, especially with fallbacks
     const timeout = window.setTimeout(() => {
       if (cancelled) return;
       if (!data) {
-        console.warn('[OcrRegionFrame] Data timeout after 15 seconds');
+        console.warn('[OcrRegionFrame] Data timeout after 30 seconds');
         setError(tf('ocrRegion.dataTimeout', '等待数据超时，请点击重试'));
         setLoading(false);
       }
-    }, 15000);
+    }, 30000);
 
     listen<OcrRegionData>('ocr-region-update-data', (event) => {
       console.log('[OcrRegionFrame] Received ocr-region-update-data:', event.payload);
