@@ -10,7 +10,7 @@
 
 - **Rust**: stable 版本 (1.70+)
 - **Node.js**: 18+
-- **pnpm**: 9+ (推荐)
+- **npm**: 9+ (推荐)
 - **Windows 10/11**: 项目依赖 Windows UI Automation API
 
 ### 安装步骤
@@ -25,13 +25,13 @@ cd moontranslator
 2. **安装前端依赖**
 
 ```bash
-pnpm install
+npm install
 ```
 
 3. **启动开发服务器**
 
 ```bash
-pnpm tauri dev
+npm tauri dev
 ```
 
 这会同时启动 Vite 前端开发服务器和 Tauri 后端。
@@ -203,9 +203,9 @@ git checkout -b fix/your-fix master
 
 ```bash
 # 前端检查
-pnpm check
-pnpm lint
-pnpm test
+npm check
+npm lint
+npm test
 
 # 后端检查
 cd src-tauri
@@ -436,10 +436,10 @@ const navItems: NavItem[] = [
 
 ```bash
 # 运行所有测试
-pnpm test
+npm test
 
 # 监听模式
-pnpm test:watch
+npm test:watch
 ```
 
 测试文件命名: `*.test.ts` 或 `*.test.tsx`
