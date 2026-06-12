@@ -497,6 +497,9 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       const appWindow = getCurrentWindow();
       await appWindow.hide();
 
+      // Wait 50ms to ensure window is fully hidden before screenshot
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       console.log('[OCR] Preparing screenshot snapshot...');
       const info = await withTimeout(
         prepareScreenshotSnapshot(),

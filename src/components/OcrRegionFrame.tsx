@@ -113,7 +113,7 @@ export default function OcrRegionFrame() {
     [t],
   );
   const [data, setData] = useState<OcrRegionData | null>(null);
-  const [continuous, setContinuous] = useState(true);
+  const [continuous, setContinuous] = useState(false); // Default: off to avoid flicker
   const [displayMode, setDisplayMode] = useState<DisplayMode>('translation');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -393,14 +393,14 @@ export default function OcrRegionFrame() {
 
   return (
     <div ref={containerRef} className="fixed inset-0 select-none" onMouseDown={onMouseDown}>
-      {/* ---- Top Toolbar (floating, absolute positioned) ---- */}
+      {/* ---- Top Toolbar (fixed position, independent of detection area) ---- */}
       <div
-        className="absolute top-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-b border-sky-400/30 px-2 flex items-center gap-1.5 text-[11px] z-50"
-        style={{ height: TOOLBAR_HEIGHT }}
+        className="fixed top-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-b border-sky-400/30 px-2 flex items-center gap-1.5 text-xs z-50"
+        style={{ height: `${TOOLBAR_HEIGHT}px` }}
       >
         {/* Display mode toggle */}
         <button
-          className={`px-2 py-0.5 rounded font-medium transition-colors ${
+          className={`px-2 py-1 rounded font-medium transition-colors text-xs ${
             displayMode === 'translation'
               ? 'bg-sky-500/30 text-sky-300'
               : 'text-gray-400 hover:text-gray-200 hover:bg-white/10'
@@ -417,40 +417,40 @@ export default function OcrRegionFrame() {
 
         {/* Copy source */}
         <button
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors"
+          className="flex items-center gap-1 px-2 py-1 rounded text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors text-xs"
           onClick={() => data && copyToClipboard(data.sourceText)}
           title={tf('ocrRegion.copySource', '复制原文')}
         >
-          <Copy size={11} />
+          <Copy size={13} />
           {tf('common.sourceText', '原文')}
         </button>
 
         {/* Copy translation */}
         <button
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors"
+          className="flex items-center gap-1 px-2 py-1 rounded text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors text-xs"
           onClick={() => data && copyToClipboard(data.translatedText)}
           title={tf('ocrRegion.copyTarget', '复制译文')}
         >
-          <Copy size={11} />
+          <Copy size={13} />
           {tf('common.targetText', '译文')}
         </button>
 
         {/* Copy screenshot */}
         <button
-          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors"
+          className="flex items-center gap-1 px-2 py-1 rounded text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors text-xs"
           onClick={handleCopyScreenshot}
           title={tf('ocrRegion.copyScreenshot', '复制截图')}
         >
-          <Image size={11} />
+          <Image size={13} />
           {tf('ocrRegion.screenshot', '截图')}
         </button>
 
         <span className="w-px h-4 bg-gray-700" />
 
         {/* Language selectors */}
-        <Languages size={11} className="text-gray-500" />
+        <Languages size={13} className="text-gray-500" />
         <select
-          className="bg-gray-800 text-gray-300 rounded border border-gray-700 px-1 py-0.5 text-[11px] cursor-pointer"
+          className="bg-gray-800 text-gray-300 rounded border border-gray-700 px-2 py-1 text-xs cursor-pointer"
           value={sourceLang}
           onChange={(e) => handleLangChange('source', e.target.value)}
         >
@@ -460,9 +460,9 @@ export default function OcrRegionFrame() {
             </option>
           ))}
         </select>
-        <span className="text-gray-500 text-[10px]">→</span>
+        <span className="text-gray-500 text-xs">→</span>
         <select
-          className="bg-gray-800 text-gray-300 rounded border border-gray-700 px-1 py-0.5 text-[11px] cursor-pointer"
+          className="bg-gray-800 text-gray-300 rounded border border-gray-700 px-2 py-1 text-xs cursor-pointer"
           value={targetLang}
           onChange={(e) => handleLangChange('target', e.target.value)}
         >
@@ -477,7 +477,7 @@ export default function OcrRegionFrame() {
 
         {/* Auto refresh toggle */}
         <button
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
+          className={`flex items-center gap-1 px-2 py-1 rounded transition-colors text-xs ${
             continuous
               ? 'text-sky-400 bg-sky-400/15'
               : 'text-gray-400 hover:text-gray-200 hover:bg-white/10'
@@ -489,18 +489,18 @@ export default function OcrRegionFrame() {
               : tf('ocrRegion.resumeRefresh', '开启自动刷新')
           }
         >
-          {continuous ? <Pause size={11} /> : <Play size={11} />}
+          {continuous ? <Pause size={13} /> : <Play size={13} />}
           {tf('ocrRegion.auto', '自动')}
           {continuous && <span className="text-[10px] opacity-80">{refreshIntervalLabel}</span>}
         </button>
 
         {/* Manual refresh */}
         <button
-          className="flex items-center justify-center w-5 h-5 rounded text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors"
+          className="flex items-center justify-center w-6 h-6 rounded text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors"
           onClick={handleRefresh}
           title={tf('ocrRegion.refreshNow', '立即刷新')}
         >
-          <RefreshCw size={11} />
+          <RefreshCw size={13} />
         </button>
 
         {/* Spacer */}
@@ -508,11 +508,11 @@ export default function OcrRegionFrame() {
 
         {/* Close */}
         <button
-          className="flex items-center justify-center w-5 h-5 rounded text-gray-400 hover:text-red-400 hover:bg-red-400/15 transition-colors"
+          className="flex items-center justify-center w-6 h-6 rounded text-gray-400 hover:text-red-400 hover:bg-red-400/15 transition-colors"
           onClick={handleClose}
           title={tf('common.close', '关闭')}
         >
-          <X size={12} />
+          <X size={14} />
         </button>
       </div>
 
