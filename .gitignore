@@ -10,8 +10,9 @@ coverage/
 dist/
 build/
 
-# Tauri
+# Tauri / Rust build artifacts
 src-tauri/target/
+/target/
 
 # IDE
 .vscode/
@@ -20,6 +21,11 @@ src-tauri/target/
 *.swp
 *.swo
 *~
+
+# Editor / agent backup files
+*.backup
+*.bak
+*.orig
 
 # OS
 .DS_Store
