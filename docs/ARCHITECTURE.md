@@ -113,10 +113,11 @@ moontranslator/
 │   └── popup/
 │       └── popup.js
 │
-├── firefox-extension/            # Firefox 扩展
 ├── scripts/                      # 工具脚本
 └── docs/                         # 文档
 ```
+
+> **注**: `extension/` 同时支持 Chrome 和 Firefox，通过 `build.js` 构建到 `dist/chrome/` 和 `dist/firefox/`。
 
 ---
 
