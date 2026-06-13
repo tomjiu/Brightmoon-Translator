@@ -1,7 +1,7 @@
 import { useConfigStore } from '../../stores/configStore';
 import Card from '../../components/Card';
 import Badge from '../../components/Badge';
-import { AlertCircle, CheckCircle } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
 
 export default function OcrSettings() {
   const config = useConfigStore((s) => s.config);
@@ -33,10 +33,13 @@ export default function OcrSettings() {
     {
       id: 'youdao',
       name: '有道 OCR',
-      description: '有道提供的 OCR 服务',
+      description: '有道提供的免费 OCR 服务（已逆向工程，无需 API Key）',
       icon: '📘',
-      status: 'unavailable',
-      badges: [{ label: '不可用', variant: 'error' as const }],
+      status: 'available',
+      badges: [
+        { label: '免费', variant: 'success' as const },
+        { label: '无需配置', variant: 'info' as const },
+      ],
     },
     {
       id: 'tesseract',
@@ -55,11 +58,11 @@ export default function OcrSettings() {
   const currentEngineInfo = ocrEngines.find((e) => e.id === currentEngine);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* 页面标题 */}
       <div>
-        <h1 className="text-2xl font-bold text-text-primary">OCR 设置</h1>
-        <p className="text-sm text-text-secondary mt-1">配置屏幕截图 OCR 识别引擎</p>
+        <h1 className="text-xl font-semibold text-text-primary">OCR 设置</h1>
+        <p className="text-xs text-text-secondary mt-1">配置屏幕截图 OCR 识别引擎</p>
       </div>
 
       {/* 当前使用的引擎 */}
@@ -72,23 +75,15 @@ export default function OcrSettings() {
           </div>
           <CheckCircle size={24} className="text-primary" />
         </div>
-      </Card>
-
-      {/* Youdao OCR 警告 */}
-      <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-        <div className="flex items-start gap-3">
-          <AlertCircle size={20} className="text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
-          <div className="text-sm">
-            <p className="font-medium text-yellow-600 dark:text-yellow-400 mb-1">
-              ⚠️ 有道 OCR 当前不可用
-            </p>
-            <p className="text-text-secondary">
-              有道 OCR API 返回 404 错误。推荐使用 <strong>Windows 原生 OCR</strong>
-              （快速、准确、免费）
+        {(currentEngine === 'winrt' || currentEngine === 'tesseract') && (
+          <div className="mt-3 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+            <p className="text-sm text-green-700 dark:text-green-400">
+              ✅ {currentEngine === 'winrt' ? 'Windows 原生 OCR' : 'Tesseract.js'}{' '}
+              已开箱即用，无需配置，完全免费！
             </p>
           </div>
-        </div>
-      </div>
+        )}
+      </Card>
 
       {/* OCR 引擎选择 */}
       <Card title="选择 OCR 引擎" description="选择一个 OCR 引擎用于屏幕截图翻译">

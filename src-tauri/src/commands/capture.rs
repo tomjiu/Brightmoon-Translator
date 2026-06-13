@@ -1105,7 +1105,8 @@ fn extract_bounding_box(item: &serde_json::Value) -> (f64, f64, f64, f64) {
     (x, y, w, h)
 }
 
-/// Run Youdao OCR using ocrtransapi endpoint (no signing required).
+/// Run Youdao OCR using the reverse-engineered imgtranocr endpoint (free, no API key needed).
+/// Uses the signing algorithm from YodaoDict analysis.
 /// Returns per-line details with bounding boxes.
 #[command]
 pub async fn youdao_ocr(
@@ -1158,8 +1159,12 @@ pub async fn youdao_ocr(
         raw
     };
 
-    // Use simpler ocrtransapi endpoint (no signing required)
-    let endpoint = "https://ocrtran.youdao.com/ocrtranapi";
+    // Use reverse-engineered imgtranocr endpoint (free, no API key required)
+    // Reference: E:\Code\ai\YodaoDict\youdao_translate.py
+    let endpoint = "https://ocrtran.youdao.com/ocr/imgtranocr";
+
+    // OCR key from reverse engineering (public key from desktop client)
+    let ocr_key = "VPaHE3kX_vl4BhgYiu2n";
 
     let lang_from = match lang.as_deref() {
         Some("zh" | "zh-CN" | "zh-CHS") => "zh-CHS",
@@ -1169,7 +1174,37 @@ pub async fn youdao_ocr(
         _ => "auto",
     };
 
-    tracing::info!("[Youdao OCR] Using ocrtranapi endpoint");
+    // Generate signature following the Python implementation:
+    // raw = f"deskdict{b64str[:10]}{len(b64str)}{b64str[-10:]}{salt}{ocr_key}"
+    // sig = hashlib.md5(raw.encode()).hexdigest()
+    let salt = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
+        .to_string();
+
+    let image_base64 =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
+
+    let b64_len = image_base64.len();
+    let b64_first10 = if b64_len >= 10 {
+        &image_base64[..10]
+    } else {
+        &image_base64[..]
+    };
+    let b64_last10 = if b64_len >= 10 {
+        &image_base64[b64_len - 10..]
+    } else {
+        &image_base64[..]
+    };
+
+    let sign_raw = format!(
+        "deskdict{}{}{}{}{}",
+        b64_first10, b64_len, b64_last10, salt, ocr_key
+    );
+    let sign = format!("{:x}", md5::compute(sign_raw.as_bytes()));
+
+    tracing::info!("[Youdao OCR] Using free imgtranocr endpoint (no API key required)");
     tracing::info!(
         "[Youdao OCR] Image size: {}KB, lang: {}",
         image_bytes.len() / 1024,
@@ -1181,14 +1216,22 @@ pub async fn youdao_ocr(
         .build()
         .map_err(|e| format!("HTTP client: {}", e))?;
 
-    // Build form data - simpler format for ocrtransapi
-    let image_base64 =
-        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
+    // Build multipart form with image file
+    let part = reqwest::multipart::Part::bytes(image_bytes)
+        .file_name("img.png")
+        .mime_str("image/png")
+        .map_err(|e| format!("Failed to create multipart: {}", e))?;
+
     let form = reqwest::multipart::Form::new()
-        .text("img", image_base64)
-        .text("lang", lang_from.to_string())
-        .text("type", "1".to_string())
-        .text("docType", "json".to_string());
+        .part("multipartFile", part)
+        .text("clientele", "deskdict")
+        .text("salt", salt)
+        .text("sign", sign)
+        .text("from", lang_from.to_string())
+        .text("to", "zh-CHS")
+        .text("isSaveHistory", "true")
+        .text("isSyncSaveHistory", "true")
+        .text("funDesc", "photo_translate");
 
     tracing::info!("[Youdao OCR] Sending request to {}", endpoint);
 

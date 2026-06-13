@@ -207,12 +207,17 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
                 },
               });
               return response.results[0]?.text ?? line.text;
-            } catch {
+            } catch (err) {
+              console.warn('[OCR] Line translation failed:', line.text, err);
               return line.text; // Fallback to original text on error
             }
           });
 
-          lineTranslations = await Promise.all(translatePromises);
+          // Use allSettled to isolate errors - one line failure won't break entire OCR
+          const settledResults = await Promise.allSettled(translatePromises);
+          lineTranslations = settledResults.map((result, idx) =>
+            result.status === 'fulfilled' ? result.value : lines[idx].text,
+          );
           translatedText = lineTranslations.join('\n');
           console.log('[OCR] Translation complete:', translatedText);
 
@@ -290,6 +295,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     // Manual refresh
     void registerListener<unknown>('ocr-region-refresh', () => {
       if (regionRef.current) {
+        lastOcrTextRef.current = '';
         void captureAndTranslate(regionRef.current);
       }
     });
@@ -333,16 +339,44 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     };
   }, [captureAndTranslate, isTauri]);
 
-  // ---- Continuous refresh timer ----
+  // ---- Intelligent continuous refresh with content change detection ----
   useEffect(() => {
     if (!continuous || !regionRef.current) return;
 
-    const id = window.setInterval(() => {
+    let lastScreenshotHash = '';
+
+    const checkForChanges = async () => {
       const r = regionRef.current;
-      if (r && continuousRef.current && !busyRef.current) {
-        void captureAndTranslate(r);
+      if (!r || !continuousRef.current || busyRef.current) return;
+
+      try {
+        // Capture a quick screenshot to check for changes
+        const screenshot = await captureScreenshotRegion({
+          left: r.x,
+          top: r.y,
+          width: r.width,
+          height: r.height,
+        });
+
+        // Simple hash: Use length and a chunk from the middle to detect visual changes
+        const mid = Math.floor(screenshot.length / 2);
+        const currentHash = `${screenshot.length}-${screenshot.substring(mid, mid + 100)}`;
+
+        // Only trigger OCR + translation if content actually changed
+        if (currentHash !== lastScreenshotHash) {
+          console.log('[OCR] Content changed detected, triggering OCR...');
+          lastScreenshotHash = currentHash;
+          void captureAndTranslate(r);
+        } else {
+          console.log('[OCR] No content change, skipping OCR');
+        }
+      } catch (err) {
+        console.error('[OCR] Content change detection failed:', err);
       }
-    }, ocrIntervalMs);
+    };
+
+    // Check for changes at the configured interval
+    const id = window.setInterval(checkForChanges, ocrIntervalMs);
 
     return () => window.clearInterval(id);
   }, [continuous, captureAndTranslate, ocrIntervalMs]);

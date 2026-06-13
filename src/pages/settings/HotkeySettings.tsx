@@ -20,10 +20,10 @@ export default function HotkeySettings() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-text-primary">快捷键设置</h1>
-        <p className="text-sm text-text-secondary mt-1">配置全局快捷键</p>
+        <h1 className="text-xl font-semibold text-text-primary">快捷键设置</h1>
+        <p className="text-xs text-text-secondary mt-1">配置全局快捷键</p>
       </div>
 
       <Card title="全局快捷键" description="设置系统级快捷键">

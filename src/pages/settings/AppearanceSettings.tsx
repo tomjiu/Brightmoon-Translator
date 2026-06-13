@@ -51,10 +51,10 @@ export default function AppearanceSettings() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-text-primary">外观主题</h1>
-        <p className="text-sm text-text-secondary mt-1">配置应用主题和外观</p>
+        <h1 className="text-xl font-semibold text-text-primary">外观主题</h1>
+        <p className="text-xs text-text-secondary mt-1">配置应用主题和外观</p>
       </div>
 
       <Card title="主题模式" description="选择应用的颜色主题">

@@ -76,11 +76,11 @@ interface PromptTemplate {
 
 export type AutoCopyMode = 'translated' | 'source' | 'both' | 'none';
 export type RoutingStrategy =
-  | 'PrimaryOnly'
-  | 'FallbackOnError'
-  | 'ParallelCompare'
-  | 'CostAware'
-  | 'LatencyFirst';
+  | 'primary_only'
+  | 'fallback_on_error'
+  | 'parallel_compare'
+  | 'cost_aware'
+  | 'latency_first';
 export type OcrEngine = 'auto' | 'winrt' | 'youdao' | 'tesseract';
 type WindowFollowMode = 'none' | 'cursor';
 
@@ -114,6 +114,8 @@ export interface AppConfig {
   defaultTo: string;
   customPrompt: string;
   promptTemplates: PromptTemplate[];
+  llmTemperature: number;
+  llmMaxTokens: number;
   clipboardMonitor: boolean;
   autoCopyResult: boolean;
   autoCopyMode: AutoCopyMode;
@@ -129,6 +131,7 @@ export interface AppConfig {
   windowFollowMode: WindowFollowMode;
   translationBlacklist: string[];
   routingStrategy?: RoutingStrategy | null;
+  engineOrder?: string[];
   ocrEngine: OcrEngine;
   overlayLevel?: number;
   overlayAutoDismissMs?: number;

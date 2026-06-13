@@ -84,11 +84,11 @@ pub struct YoudaoConfig {
 }
 
 fn default_youdao_ocr_app_key() -> String {
-    "3d9fa94028675971".to_string()
+    String::new()
 }
 
 fn default_youdao_ocr_app_secret() -> String {
-    "5X2CJlMERfGOkOP0PFqokVJkSgDIOD0p".to_string()
+    String::new()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -315,6 +315,14 @@ fn default_llm_timeout_secs() -> u64 {
     120
 }
 
+fn default_llm_temperature() -> f32 {
+    0.3
+}
+
+fn default_llm_max_tokens() -> u32 {
+    4096
+}
+
 fn default_translation_timeout_secs() -> u64 {
     30
 }
@@ -465,6 +473,9 @@ pub struct AppConfig {
     pub translation_blacklist: Vec<String>,
     #[serde(default)]
     pub routing_strategy: Option<RoutingStrategy>,
+    /// Engine execution order for fallback routing (e.g., ["llm", "youdao", "google"])
+    #[serde(default)]
+    pub engine_order: Vec<String>,
     /// OCR engine preference: "auto", "winrt", "youdao", "tesseract"
     #[serde(default = "default_ocr_engine")]
     pub ocr_engine: String,
@@ -512,6 +523,12 @@ pub struct AppConfig {
     /// LLM request timeout in seconds (default: 120)
     #[serde(default = "default_llm_timeout_secs")]
     pub llm_timeout_secs: u64,
+    /// LLM temperature (creativity) - 0.0 to 2.0, default 0.3
+    #[serde(default = "default_llm_temperature")]
+    pub llm_temperature: f32,
+    /// LLM max tokens (output limit), default 4096
+    #[serde(default = "default_llm_max_tokens")]
+    pub llm_max_tokens: u32,
     /// Translation engine request timeout in seconds (default: 30)
     #[serde(default = "default_translation_timeout_secs")]
     pub translation_timeout_secs: u64,
@@ -575,11 +592,8 @@ mod tests {
         assert!(config.engines.baidu.secret.is_empty());
         assert!(config.engines.youdao.enabled);
         assert!(!config.engines.youdao.use_ai);
-        assert_eq!(config.engines.youdao.ocr_app_key, "3d9fa94028675971");
-        assert_eq!(
-            config.engines.youdao.ocr_app_secret,
-            "5X2CJlMERfGOkOP0PFqokVJkSgDIOD0p"
-        );
+        assert!(config.engines.youdao.ocr_app_key.is_empty());
+        assert!(config.engines.youdao.ocr_app_secret.is_empty());
         assert!(!config.engines.deepl.enabled);
         assert!(!config.engines.deeplx.enabled);
         assert!(!config.engines.microsoft.enabled);
@@ -867,6 +881,7 @@ impl Default for AppConfig {
             window_follow_mode: "none".to_string(),
             translation_blacklist: Vec::new(),
             routing_strategy: None,
+            engine_order: Vec::new(),
             ocr_engine: default_ocr_engine(),
             overlay_level: 2,
             overlay_auto_dismiss_ms: 3000,
@@ -883,6 +898,8 @@ impl Default for AppConfig {
             http_timeout_secs: default_http_timeout_secs(),
             ocr_timeout_secs: default_ocr_timeout_secs(),
             llm_timeout_secs: default_llm_timeout_secs(),
+            llm_temperature: default_llm_temperature(),
+            llm_max_tokens: default_llm_max_tokens(),
             translation_timeout_secs: default_translation_timeout_secs(),
             edge_tts_token: default_edge_tts_token(),
             sync: SyncConfig::default(),

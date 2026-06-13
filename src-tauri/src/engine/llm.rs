@@ -22,6 +22,8 @@ pub struct LlmEngine {
     base_url: String,
     model: String,
     custom_prompt: String,
+    temperature: f32,
+    max_tokens: u32,
     client: Client,
     key_index: AtomicUsize,
 }
@@ -82,6 +84,8 @@ impl LlmEngine {
             base_url: base_url.trim_end_matches('/').to_string(),
             model: model.to_string(),
             custom_prompt: String::new(),
+            temperature: 0.3,
+            max_tokens: 4096,
             client: Client::new(),
             key_index: AtomicUsize::new(0),
         }
@@ -93,6 +97,8 @@ impl LlmEngine {
             base_url: base_url.trim_end_matches('/').to_string(),
             model: model.to_string(),
             custom_prompt: String::new(),
+            temperature: 0.3,
+            max_tokens: 4096,
             client: Client::new(),
             key_index: AtomicUsize::new(0),
         }
@@ -105,6 +111,16 @@ impl LlmEngine {
 
     pub fn with_custom_prompt(mut self, prompt: &str) -> Self {
         self.custom_prompt = prompt.to_string();
+        self
+    }
+
+    pub fn with_temperature(mut self, temp: f32) -> Self {
+        self.temperature = temp.clamp(0.0, 2.0);
+        self
+    }
+
+    pub fn with_max_tokens(mut self, tokens: u32) -> Self {
+        self.max_tokens = tokens;
         self
     }
 
@@ -173,8 +189,8 @@ impl LlmEngine {
                     content: user_text.to_string(),
                 },
             ],
-            temperature: 0.3,
-            max_tokens: 4096,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
             stream,
         }
     }
@@ -186,8 +202,8 @@ impl LlmEngine {
         let request = ChatRequest {
             model: self.model.clone(),
             messages,
-            temperature: 0.3,
-            max_tokens: 4096,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
             stream: false,
         };
 
@@ -276,7 +292,7 @@ impl LlmEngine {
                 },
             ],
             temperature,
-            max_tokens: 4096,
+            max_tokens: self.max_tokens,
             stream: false,
         };
 
@@ -349,8 +365,8 @@ impl LlmEngine {
         let request = ChatRequest {
             model: self.model.clone(),
             messages,
-            temperature: 0.3,
-            max_tokens: 4096,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
             stream: true,
         };
 

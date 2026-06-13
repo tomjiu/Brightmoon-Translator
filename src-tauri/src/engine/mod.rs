@@ -133,17 +133,19 @@ impl Router {
         // LLM engine (primary) - supports multiple API keys
         let llm_keys = config.llm.all_keys();
         if !llm_keys.is_empty() {
-            let engine = llm::LlmEngine::with_multiple_keys(
+            let mut engine = llm::LlmEngine::with_multiple_keys(
                 llm_keys,
                 &config.llm.base_url,
                 &config.llm.model,
             )
-            .with_client(llm_client.clone());
-            let engine = if !config.custom_prompt.is_empty() {
-                engine.with_custom_prompt(&config.custom_prompt)
-            } else {
-                engine
-            };
+            .with_client(llm_client.clone())
+            .with_temperature(config.llm_temperature)
+            .with_max_tokens(config.llm_max_tokens);
+
+            if !config.custom_prompt.is_empty() {
+                engine = engine.with_custom_prompt(&config.custom_prompt);
+            }
+
             available.push(EngineEntry {
                 id: "llm".to_string(),
                 engine: Arc::new(engine),
@@ -279,7 +281,7 @@ impl Router {
         }
 
         // Order engines according to config
-        let engines = order_engines(available, &[]);
+        let engines = order_engines(available, &config.engine_order);
 
         // Log configured engines for debugging
         if engines.is_empty() {

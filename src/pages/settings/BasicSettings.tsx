@@ -8,10 +8,10 @@ export default function BasicSettings() {
   const saveConfig = useConfigStore((s) => s.saveConfig);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-text-primary">基础设置</h1>
-        <p className="text-sm text-text-secondary mt-1">配置默认语言和基本翻译选项</p>
+        <h1 className="text-xl font-semibold text-text-primary">基础设置</h1>
+        <p className="text-xs text-text-secondary mt-1">配置默认语言和基本翻译选项</p>
       </div>
 
       <Card title="默认语言" description="设置翻译的默认源语言和目标语言">

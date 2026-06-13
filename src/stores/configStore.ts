@@ -1,6 +1,6 @@
-import { create } from "zustand";
-import { safeInvoke, invokeOrDefault } from "../services/invoke";
-import type { AppConfig } from "../types";
+import { create } from 'zustand';
+import { safeInvoke, invokeOrDefault } from '../services/invoke';
+import type { AppConfig } from '../types';
 
 /**
  * Minimal initial config — only used before the Rust backend returns
@@ -8,55 +8,64 @@ import type { AppConfig } from "../types";
  * All values here are safe placeholders; they will be replaced on startup.
  */
 const INITIAL_CONFIG: AppConfig = {
-  llm: { provider: "deepseek", apiKey: "", apiKeys: [], baseUrl: "", model: "" },
+  llm: { provider: 'deepseek', apiKey: '', apiKeys: [], baseUrl: '', model: '' },
   engines: {
     google: { enabled: false },
-    baidu: { enabled: false, appId: "", secret: "" },
-    youdao: { enabled: false, useAi: false, ocrAppKey: "", ocrAppSecret: "" },
-    deepl: { enabled: false, apiKey: "", pro: false },
+    baidu: { enabled: false, appId: '', secret: '' },
+    youdao: { enabled: false, useAi: false, ocrAppKey: '', ocrAppSecret: '' },
+    deepl: { enabled: false, apiKey: '', pro: false },
     deeplx: { enabled: false, pro: false },
     microsoft: { enabled: false },
     yandex: { enabled: false },
-    offline: { enabled: false, autoSwitch: true, downloadedModels: [], modelDir: "" },
+    offline: { enabled: false, autoSwitch: true, downloadedModels: [], modelDir: '' },
   },
-  defaultFrom: "auto",
-  defaultTo: "zh",
-  customPrompt: "",
+  defaultFrom: 'auto',
+  defaultTo: 'zh',
+  customPrompt: '',
   promptTemplates: [],
+  llmTemperature: 0.3,
+  llmMaxTokens: 4096,
   clipboardMonitor: false,
   autoCopyResult: false,
-  autoCopyMode: "translated",
+  autoCopyMode: 'translated',
   translationMask: false,
   apiServerEnabled: false,
   apiServerPort: 60828,
-  hotkeys: { ocrTranslate: "", showWindow: "", translateSelection: "" },
-  proxy: { enabled: false, proxyType: "http", host: "", port: 7890, username: "", password: "" },
-  windowFollowMode: "none",
+  hotkeys: { ocrTranslate: '', showWindow: '', translateSelection: '' },
+  proxy: { enabled: false, proxyType: 'http', host: '', port: 7890, username: '', password: '' },
+  windowFollowMode: 'none',
   translationBlacklist: [],
-  routingStrategy: "FallbackOnError",
-  ocrEngine: "auto",
+  routingStrategy: 'fallback_on_error',
+  ocrEngine: 'auto',
   overlayLevel: 2,
   overlayAutoDismissMs: 3000,
-  overlayFollowMode: "none",
-  hook: { enabledSources: [], showOverlay: true, autoCopy: false, enabled: true, uiaIntervalMs: 500, ocrIntervalMs: 5000 },
+  overlayFollowMode: 'none',
+  hook: {
+    enabledSources: [],
+    showOverlay: true,
+    autoCopy: false,
+    enabled: true,
+    uiaIntervalMs: 500,
+    ocrIntervalMs: 5000,
+  },
   tmEnabled: false,
   tmThreshold: 0.8,
   furiganaEnabled: false,
   ttsAutoPlay: false,
-  ttsVoice: "",
+  ttsVoice: '',
   sync: {
     enabled: false,
-    serverUrl: "",
-    username: "",
-    password: "",
-    remoteDir: "moontranslator",
+    serverUrl: '',
+    username: '',
+    password: '',
+    remoteDir: 'moontranslator',
     intervalMins: 30,
     syncConfig: true,
     syncGlossary: true,
     syncHistory: true,
     syncWordbook: true,
     lastSyncAt: 0,
-    lastSyncStatus: "",
+    lastSyncStatus: '',
   },
 };
 
@@ -88,7 +97,7 @@ interface ConfigState {
   loadConfig: () => Promise<void>;
   saveConfig: () => Promise<void>;
   updateConfig: (updater: (prev: AppConfig) => AppConfig) => void;
-  updateLlm: (field: keyof AppConfig["llm"], value: string) => void;
+  updateLlm: (field: keyof AppConfig['llm'], value: string) => void;
   loadCacheSize: () => Promise<void>;
   clearCache: () => Promise<void>;
   loadCacheStats: () => Promise<void>;
@@ -106,9 +115,9 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
    * Call once at app startup to replace INITIAL_CONFIG.
    */
   loadDefaults: async () => {
-    const [defaults, error] = await safeInvoke<AppConfig>("get_default_config");
+    const [defaults, error] = await safeInvoke<AppConfig>('get_default_config');
     if (error || !defaults) {
-      console.error("Failed to load default config:", error);
+      console.error('Failed to load default config:', error);
       return;
     }
     // Only apply defaults if config hasn't been loaded yet
@@ -124,9 +133,9 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
    * so no deep merge is needed — the returned config is complete.
    */
   loadConfig: async () => {
-    const [loaded, error] = await safeInvoke<AppConfig>("get_config");
+    const [loaded, error] = await safeInvoke<AppConfig>('get_config');
     if (error || !loaded) {
-      console.error("Failed to load config:", error);
+      console.error('Failed to load config:', error);
       set({ loaded: true });
       return;
     }
@@ -135,9 +144,9 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
   saveConfig: async () => {
     const { config } = get();
-    const [, error] = await safeInvoke("save_config", { config });
+    const [, error] = await safeInvoke('save_config', { config });
     if (error) {
-      console.error("Failed to save config:", error);
+      console.error('Failed to save config:', error);
       return;
     }
     set({ saved: true });
@@ -158,23 +167,23 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   },
 
   loadCacheSize: async () => {
-    const size = await invokeOrDefault<number>("cache_size", undefined, 0);
+    const size = await invokeOrDefault<number>('cache_size', undefined, 0);
     set({ cacheSize: size });
   },
 
   clearCache: async () => {
-    const [, error] = await safeInvoke("clear_cache");
+    const [, error] = await safeInvoke('clear_cache');
     if (error) {
-      console.error("Failed to clear cache:", error);
+      console.error('Failed to clear cache:', error);
       return;
     }
     set({ cacheSize: 0 });
   },
 
   loadCacheStats: async () => {
-    const [stats, error] = await safeInvoke<CacheStats>("cache_stats");
+    const [stats, error] = await safeInvoke<CacheStats>('cache_stats');
     if (error || !stats) {
-      console.error("Failed to load cache stats:", error);
+      console.error('Failed to load cache stats:', error);
       return;
     }
     set({ cacheStats: stats });

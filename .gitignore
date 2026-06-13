@@ -3,6 +3,11 @@ node_modules/
 .pnp
 .pnp.js
 
+# Use npm (CI runs `npm ci`); ignore other package managers' lockfiles
+pnpm-lock.yaml
+yarn.lock
+bun.lockb
+
 # Testing
 coverage/
 

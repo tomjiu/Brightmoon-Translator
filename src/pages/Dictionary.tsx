@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useToastStore } from '../stores/toastStore';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import {
@@ -11,10 +12,13 @@ import {
   GraduationCap,
   Brain,
   Repeat,
+  Loader2,
 } from 'lucide-react';
 import { useI18n } from '../i18n';
+import { invokeOrThrow } from '../services/invoke';
+import type { DictionaryResult } from '../types';
 
-// 临时类型定义 - 后续可以移到types/index.ts
+// Temporary type definitions - can be moved to types/index.ts later
 interface VocabularyEntry {
   id: string;
   word: string;
@@ -34,11 +38,15 @@ interface VocabularyEntry {
 
 export default function Dictionary() {
   const { t } = useI18n();
+  const { addToast } = useToastStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEntry, setSelectedEntry] = useState<VocabularyEntry | null>(null);
   const [filterTag, setFilterTag] = useState<'all' | 'today' | 'review' | 'mastered'>('all');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
-  // 模拟数据 - 后续从Store获取
+  // Real vocabulary data would come from a backend store (TODO: implement vocabulary management)
+  // For now, using mock data as placeholder
   const [entries] = useState<VocabularyEntry[]>([
     {
       id: '1',
@@ -80,6 +88,47 @@ export default function Dictionary() {
       tags: ['动词', '常用'],
     },
   ]);
+
+  // Search using backend dictionary lookup
+  const handleSearch = async () => {
+    const query = searchQuery.trim();
+    if (!query) return;
+
+    setIsSearching(true);
+    setSearchError(null);
+
+    try {
+      const results = await invokeOrThrow<DictionaryResult[]>('lookup_dictionary', { text: query });
+
+      if (results.length > 0) {
+        const result = results[0];
+        // Convert backend DictionaryResult to VocabularyEntry format
+        const entry: VocabularyEntry = {
+          id: `search_${Date.now()}`,
+          word: result.word,
+          phonetic: result.phonetic || undefined,
+          translation: result.meanings
+            .map((m) => m.definitions.map((d) => d.definition).join('; '))
+            .join(' | '),
+          partOfSpeech: result.meanings[0]?.partOfSpeech,
+          examples: result.meanings.flatMap((m) =>
+            m.definitions.flatMap((d) => (d.example ? [d.example] : [])),
+          ),
+          addedAt: Date.now(),
+          reviewCount: 0,
+          memoryStrength: 0,
+          tags: ['搜索结果'],
+        };
+        setSelectedEntry(entry);
+      } else {
+        setSearchError('未找到该单词的释义');
+      }
+    } catch (err) {
+      setSearchError(String(err));
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   const filteredEntries = entries.filter((entry) => {
     // 搜索过滤
@@ -129,32 +178,50 @@ export default function Dictionary() {
         <div className="p-4 border-b border-border bg-bg-primary">
           <div className="grid grid-cols-3 gap-2">
             <button
-              className="flex flex-col items-center gap-1 p-2 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors border border-primary/30"
-              title="开始学习（开发中）"
-              disabled
+              className="flex flex-col items-center gap-1 p-2 rounded-lg bg-bg-tertiary hover:bg-bg-secondary transition-colors border border-border"
+              title="学习模式（即将推出）"
+              onClick={() =>
+                addToast({
+                  type: 'info',
+                  message: '学习模式功能即将推出，敬请期待！',
+                  duration: 3000,
+                })
+              }
             >
-              <GraduationCap size={18} className="text-primary" />
-              <span className="text-xs text-primary">学习模式</span>
+              <GraduationCap size={18} className="text-text-secondary" />
+              <span className="text-xs text-text-secondary">学习模式</span>
             </button>
             <button
               className="flex flex-col items-center gap-1 p-2 rounded-lg bg-bg-tertiary hover:bg-bg-secondary transition-colors border border-border"
-              title="智能复习（开发中）"
-              disabled
+              title="智能复习（即将推出）"
+              onClick={() =>
+                addToast({
+                  type: 'info',
+                  message: '智能复习功能即将推出，敬请期待！',
+                  duration: 3000,
+                })
+              }
             >
               <Brain size={18} className="text-text-secondary" />
               <span className="text-xs text-text-secondary">智能复习</span>
             </button>
             <button
               className="flex flex-col items-center gap-1 p-2 rounded-lg bg-bg-tertiary hover:bg-bg-secondary transition-colors border border-border"
-              title="今日复习（开发中）"
-              disabled
+              title="今日复习（即将推出）"
+              onClick={() =>
+                addToast({
+                  type: 'info',
+                  message: '今日复习功能即将推出，敬请期待！',
+                  duration: 3000,
+                })
+              }
             >
               <Repeat size={18} className="text-text-secondary" />
               <span className="text-xs text-text-secondary">今日复习</span>
             </button>
           </div>
           <p className="text-xs text-text-secondary mt-2 text-center">
-            <Badge variant="info">学习功能开发中</Badge>
+            💡 提示：搜索功能已接入后端词典，学习功能即将推出
           </p>
         </div>
 
@@ -169,10 +236,31 @@ export default function Dictionary() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleSearch();
+                }
+              }}
               placeholder={t('dictionary.search') || '搜索单词...'}
-              className="w-full pl-10 pr-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+              className="w-full pl-10 pr-10 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             />
+            {isSearching && (
+              <Loader2
+                size={18}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-primary animate-spin"
+              />
+            )}
+            {!isSearching && searchQuery && (
+              <button
+                onClick={handleSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:text-primary/80"
+                title="搜索"
+              >
+                <Search size={18} />
+              </button>
+            )}
           </div>
+          {searchError && <p className="text-xs text-error mt-1">{searchError}</p>}
         </div>
 
         {/* 过滤器 */}

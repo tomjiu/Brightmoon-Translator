@@ -58,6 +58,45 @@ use tauri::{
 };
 use tokio::sync::{Mutex, OnceCell as TokioOnceCell};
 
+fn saved_window_bounds_are_visible(
+    app: &tauri::App,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> bool {
+    if !x.is_finite()
+        || !y.is_finite()
+        || !width.is_finite()
+        || !height.is_finite()
+        || width < 300.0
+        || height < 200.0
+    {
+        return false;
+    }
+
+    let Ok(monitors) = app.available_monitors() else {
+        return true;
+    };
+
+    let right = x + width;
+    let bottom = y + height;
+
+    monitors.into_iter().any(|monitor| {
+        let pos = monitor.position();
+        let size = monitor.size();
+        let monitor_left = f64::from(pos.x);
+        let monitor_top = f64::from(pos.y);
+        let monitor_right = monitor_left + f64::from(size.width);
+        let monitor_bottom = monitor_top + f64::from(size.height);
+
+        let visible_width = right.min(monitor_right) - x.max(monitor_left);
+        let visible_height = bottom.min(monitor_bottom) - y.max(monitor_top);
+
+        visible_width >= 100.0 && visible_height >= 100.0
+    })
+}
+
 /// Top-level application state.
 /// Composed of sub-contexts for separation of concerns.
 /// Commands can access either the full AppState or specific sub-contexts.
@@ -104,7 +143,9 @@ pub fn run() {
         .manage(state)
         .manage(commands::hook_inject_cmd::HookState::new())
         .setup(|app| {
-            // Restore window position from config
+            // Restore window position from config only when it is still visible on
+            // the current monitor layout. Otherwise keep tauri.conf.json defaults
+            // (centered window) to avoid launching off-screen after DPI/display changes.
             if let Some(window) = app.get_webview_window("main") {
                 let app_state = app.state::<AppState>();
                 let config = app_state.system.config.blocking_lock();
@@ -114,14 +155,29 @@ pub fn run() {
                     config.window_width,
                     config.window_height,
                 ) {
-                    let _ = window.set_position(tauri::Position::Physical(
-                        tauri::PhysicalPosition::new(x as i32, y as i32),
-                    ));
-                    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-                        w as u32,
-                        h as u32,
-                    )));
+                    if saved_window_bounds_are_visible(app, x, y, w, h) {
+                        let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+                            w as u32,
+                            h as u32,
+                        )));
+                        let _ = window.set_position(tauri::Position::Physical(
+                            tauri::PhysicalPosition::new(x as i32, y as i32),
+                        ));
+                    } else {
+                        tracing::warn!(
+                            "Ignoring saved off-screen window bounds: ({}, {}) {}x{}",
+                            x,
+                            y,
+                            w,
+                            h
+                        );
+                        let _ = window.center();
+                    }
                 }
+
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
             }
 
             // Initialize capability implementations (needs AppHandle)
