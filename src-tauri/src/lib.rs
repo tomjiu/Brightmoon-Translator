@@ -527,6 +527,14 @@ pub fn run() {
             commands::sync_cmd::sync_now,
             commands::sync_cmd::get_sync_config,
             commands::sync_cmd::save_sync_config,
+            commands::vocabulary_cmd::get_core_vocabulary,
+            commands::vocabulary_cmd::search_core_vocabulary,
+            commands::vocabulary_cmd::create_card,
+            commands::vocabulary_cmd::get_card,
+            commands::vocabulary_cmd::get_due_cards,
+            commands::vocabulary_cmd::generate_card_content,
+            commands::vocabulary_cmd::submit_review,
+            commands::vocabulary_cmd::get_learning_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

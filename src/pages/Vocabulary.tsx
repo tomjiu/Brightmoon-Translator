@@ -1,19 +1,31 @@
 import { useState } from 'react';
 import Dictionary from './Dictionary';
 import Glossary from './Glossary';
+import VocabularyLearning from './VocabularyLearning';
 import { useI18n } from '../i18n';
-import { Book, BookOpen } from 'lucide-react';
+import { Book, BookOpen, GraduationCap } from 'lucide-react';
 
-type VocabTab = 'wordbook' | 'glossary';
+type VocabTab = 'wordbook' | 'glossary' | 'learning';
 
 function Vocabulary() {
-  const [activeTab, setActiveTab] = useState<VocabTab>('wordbook');
+  const [activeTab, setActiveTab] = useState<VocabTab>('learning');
   const { t } = useI18n();
 
   return (
     <div className="h-full flex flex-col">
       {/* Tab Bar */}
       <div className="flex items-center gap-1 px-4 py-2 border-b border-border bg-bg-secondary">
+        <button
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            activeTab === 'learning'
+              ? 'bg-primary text-white'
+              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+          }`}
+          onClick={() => setActiveTab('learning')}
+        >
+          <GraduationCap size={14} />
+          AI Learning
+        </button>
         <button
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             activeTab === 'wordbook'
@@ -40,6 +52,7 @@ function Vocabulary() {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
+        {activeTab === 'learning' && <VocabularyLearning />}
         {activeTab === 'wordbook' && <Dictionary />}
         {activeTab === 'glossary' && <Glossary />}
       </div>
