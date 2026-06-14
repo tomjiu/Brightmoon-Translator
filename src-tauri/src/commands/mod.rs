@@ -29,5 +29,6 @@ pub mod sync_cmd;
 pub mod tools_cmd;
 pub mod translate;
 pub mod tts_cmd;
+pub mod vocabulary_cmd;
 pub mod window;
 pub mod wordbook_cmd;
