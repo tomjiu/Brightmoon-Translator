@@ -1,3 +1,6 @@
+pub mod domain;
+pub mod infrastructure;
+
 pub mod ai_enhanced;
 pub mod alignment;
 pub mod api_server;

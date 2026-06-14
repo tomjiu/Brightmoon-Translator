@@ -37,6 +37,7 @@ screenshots = "0.8"
 axum = "0.7"
 tower-http = { version = "0.5", features = ["cors"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "macros"] }
 pdf-extract = "0.7"
 epub = "2"
 regex = "1"
