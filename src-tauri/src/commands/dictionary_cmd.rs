@@ -1,16 +1,15 @@
 // Dictionary Commands - 词典查询相关命令（多源聚合）
 
-use crate::app_context::AppState;
-use crate::models::dictionary::DictionaryResult;
+use crate::models::dictionary::{Definition, DictionaryResult, Meaning};
 use crate::services::multi_dictionary::{DictionaryEntry, MultiSourceDictionary};
-use sqlx::SqlitePool;
+use sqlx::{Row, SqlitePool};
 use tauri::State;
 
 /// 多源词典查询（优先在线 API，兜底本地）
 #[tauri::command]
 pub async fn lookup_word_multi_source(
     word: String,
-    state: State<'_, AppState>,
+    pool: State<'_, SqlitePool>,
 ) -> Result<DictionaryEntry, String> {
     let dict = MultiSourceDictionary::new();
 
@@ -27,106 +26,88 @@ pub async fn lookup_word_multi_source(
     }
 
     // 2. 如果在线失败，尝试本地 ECDICT
-    match lookup_word_detail_local(word, state).await {
-        Ok(local_result) => {
-            // 转换 DictionaryResult 到 DictionaryEntry
-            Ok(convert_local_to_entry(local_result))
-        }
+    match lookup_word_detail_local(word, pool.inner()).await {
+        Ok(local_result) => Ok(local_result),
         Err(e) => Err(format!("查询失败: {}", e)),
     }
 }
 
-/// 本地 ECDICT 查询（兜底）
+/// 本地 ECDICT 查询（返回 DictionaryEntry 格式）
 async fn lookup_word_detail_local(
     word: String,
-    state: State<'_, AppState>,
-) -> Result<DictionaryResult, String> {
-    let pool = state.db_pool.lock().await;
-    if pool.is_none() {
-        return Err("Database not initialized".to_string());
-    }
-    let pool = pool.as_ref().unwrap();
-
+    pool: &SqlitePool,
+) -> Result<DictionaryEntry, String> {
     let word_lower = word.to_lowercase();
 
-    let result = sqlx::query!(
-        r#"
-        SELECT
-            word,
-            phonetic,
-            definition,
-            translation,
-            pos,
-            collins,
-            oxford,
-            tag,
-            bnc,
-            frq,
-            exchange
-        FROM ecdict
-        WHERE LOWER(word) = ?1
-        "#,
-        word_lower
+    let row = sqlx::query(
+        "SELECT word, phonetic, definition, translation FROM ecdict WHERE LOWER(word) = ?1"
     )
+    .bind(&word_lower)
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    if let Some(row) = result {
-        Ok(DictionaryResult {
-            word: row.word,
-            phonetic: row.phonetic,
-            definition: row.definition,
-            translation: row.translation,
-            pos: row.pos,
-            collins: row.collins,
-            oxford: row.oxford,
-            tag: row.tag,
-            bnc: row.bnc,
-            frq: row.frq,
-            exchange: row.exchange,
-        })
-    } else {
-        Err(format!("Word '{}' not found in local database", word))
-    }
-}
+    if let Some(row) = row {
+        use crate::services::multi_dictionary::Phonetic;
 
-/// 转换本地结果到统一格式
-fn convert_local_to_entry(local: DictionaryResult) -> DictionaryEntry {
-    use crate::services::multi_dictionary::{Definition, Meaning, Phonetic};
+        let word: String = row.get("word");
+        let phonetic: Option<String> = row.get("phonetic");
+        let definition: Option<String> = row.get("definition");
+        let translation: Option<String> = row.get("translation");
 
-    let phonetics = if let Some(phonetic) = local.phonetic {
-        vec![Phonetic {
-            text: Some(phonetic),
-            audio: None,
-        }]
-    } else {
-        vec![]
-    };
+        let phonetics = if let Some(phonetic) = phonetic {
+            vec![Phonetic {
+                text: Some(phonetic),
+                audio: None,
+            }]
+        } else {
+            vec![]
+        };
 
-    let mut meanings = Vec::new();
+        let mut meanings = Vec::new();
 
-    if let Some(definition) = local.definition {
-        let defs: Vec<String> = definition.split("\\n").map(|s| s.to_string()).collect();
-        meanings.push(Meaning {
-            part_of_speech: local.pos.unwrap_or_else(|| "n.".to_string()),
-            definitions: defs
+        // 处理 definition 字段
+        if let Some(definition) = definition {
+            let defs: Vec<&str> = definition.split("\\n").collect();
+            let definitions: Vec<crate::services::multi_dictionary::Definition> = defs
                 .into_iter()
-                .map(|d| Definition {
-                    definition: d,
+                .map(|d| crate::services::multi_dictionary::Definition {
+                    definition: d.to_string(),
                     example: None,
                     synonyms: vec![],
                     antonyms: vec![],
                 })
-                .collect(),
-        });
-    }
+                .collect();
 
-    DictionaryEntry {
-        word: local.word,
-        phonetics,
-        meanings,
-        source: "ECDICT (Local)".to_string(),
+            meanings.push(crate::services::multi_dictionary::Meaning {
+                part_of_speech: "词义".to_string(),
+                definitions,
+            });
+        }
+
+        // 处理 translation 字段
+        if let Some(translation) = translation {
+            let trans_defs = vec![crate::services::multi_dictionary::Definition {
+                definition: translation,
+                example: None,
+                synonyms: vec![],
+                antonyms: vec![],
+            }];
+
+            meanings.push(crate::services::multi_dictionary::Meaning {
+                part_of_speech: "中文释义".to_string(),
+                definitions: trans_defs,
+            });
+        }
+
+        Ok(DictionaryEntry {
+            word,
+            phonetics,
+            meanings,
+            source: "ECDICT (本地)".to_string(),
+        })
+    } else {
+        Err(format!("单词 '{}' 未在本地数据库找到", word))
     }
 }
 
@@ -135,42 +116,88 @@ fn convert_local_to_entry(local: DictionaryResult) -> DictionaryEntry {
 pub async fn search_word_suggestions(
     query: String,
     limit: i32,
-    state: State<'_, AppState>,
+    pool: State<'_, SqlitePool>,
 ) -> Result<Vec<String>, String> {
-    let pool = state.db_pool.lock().await;
-    if pool.is_none() {
-        return Err("Database not initialized".to_string());
-    }
-    let pool = pool.as_ref().unwrap();
-
     let query_lower = query.to_lowercase();
     let pattern = format!("{}%", query_lower);
 
-    let results = sqlx::query!(
-        r#"
-        SELECT word
-        FROM ecdict
-        WHERE LOWER(word) LIKE ?1
-        ORDER BY frq DESC, word ASC
-        LIMIT ?2
-        "#,
-        pattern,
-        limit
+    let rows = sqlx::query(
+        "SELECT word FROM ecdict WHERE LOWER(word) LIKE ?1 ORDER BY frq DESC, word ASC LIMIT ?2"
     )
-    .fetch_all(pool)
+    .bind(&pattern)
+    .bind(limit)
+    .fetch_all(pool.inner())
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(results.into_iter().map(|r| r.word).collect())
+    Ok(rows.into_iter().map(|r| r.get("word")).collect())
 }
 
-/// 详细查询单词（仅本地，用于兼容）
+/// 详细查询单词（兼容旧接口，返回 DictionaryResult）
 #[tauri::command]
 pub async fn lookup_word_detail(
     word: String,
-    state: State<'_, AppState>,
+    pool: State<'_, SqlitePool>,
 ) -> Result<DictionaryResult, String> {
-    lookup_word_detail_local(word, state).await
+    let word_lower = word.to_lowercase();
+
+    let row = sqlx::query(
+        "SELECT word, phonetic, definition, translation FROM ecdict WHERE LOWER(word) = ?1"
+    )
+    .bind(&word_lower)
+    .fetch_optional(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some(row) = row {
+        let word: String = row.get("word");
+        let phonetic: Option<String> = row.get("phonetic");
+        let definition: Option<String> = row.get("definition");
+        let translation: Option<String> = row.get("translation");
+
+        let mut meanings = Vec::new();
+
+        // 处理 definition
+        if let Some(definition) = definition {
+            let defs: Vec<&str> = definition.split("\\n").collect();
+            let definitions: Vec<Definition> = defs
+                .into_iter()
+                .map(|d| Definition {
+                    definition: d.to_string(),
+                    example: None,
+                    synonyms: vec![],
+                    antonyms: vec![],
+                })
+                .collect();
+
+            meanings.push(Meaning {
+                part_of_speech: "词义".to_string(),
+                definitions,
+            });
+        }
+
+        // 处理 translation
+        if let Some(translation) = translation {
+            meanings.push(Meaning {
+                part_of_speech: "中文释义".to_string(),
+                definitions: vec![Definition {
+                    definition: translation,
+                    example: None,
+                    synonyms: vec![],
+                    antonyms: vec![],
+                }],
+            });
+        }
+
+        Ok(DictionaryResult {
+            word,
+            phonetic,
+            meanings,
+            source_urls: vec![],
+        })
+    } else {
+        Err(format!("Word '{}' not found", word))
+    }
 }
 
 /// 模糊搜索（包含匹配）
@@ -178,18 +205,13 @@ pub async fn lookup_word_detail(
 pub async fn fuzzy_search_words(
     query: String,
     limit: i32,
-    state: State<'_, AppState>,
+    pool: State<'_, SqlitePool>,
 ) -> Result<Vec<String>, String> {
-    let pool = state.db_pool.lock().await;
-    if pool.is_none() {
-        return Err("Database not initialized".to_string());
-    }
-    let pool = pool.as_ref().unwrap();
-
     let query_lower = query.to_lowercase();
     let pattern = format!("%{}%", query_lower);
+    let prefix_pattern = format!("{}%", query_lower);
 
-    let results = sqlx::query!(
+    let rows = sqlx::query(
         r#"
         SELECT word
         FROM ecdict
@@ -204,15 +226,15 @@ pub async fn fuzzy_search_words(
             frq DESC,
             word ASC
         LIMIT ?4
-        "#,
-        pattern,
-        query_lower,
-        format!("{}%", query_lower),
-        limit
+        "#
     )
-    .fetch_all(pool)
+    .bind(&pattern)
+    .bind(&query_lower)
+    .bind(&prefix_pattern)
+    .bind(limit)
+    .fetch_all(pool.inner())
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(results.into_iter().map(|r| r.word).collect())
+    Ok(rows.into_iter().map(|r| r.get("word")).collect())
 }
