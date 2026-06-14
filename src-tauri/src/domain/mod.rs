@@ -3,6 +3,7 @@
 pub mod card;
 pub mod event;
 pub mod fsrs_engine;
+pub mod learning_plan;
 pub mod patch_applicator;
 pub mod patch_validator;
 pub mod state_machine;
@@ -15,6 +16,10 @@ pub use event::{
 pub use card::{BaseData, ErrorRecord, ErrorType, WordCard};
 
 pub use fsrs_engine::{FsrsEngine, RatingIntervals, RatingPreview};
+pub use learning_plan::{
+    CreatePlanRequest, LearningPlan, PlanProgressStats, PlanStatus, PlanSummary, PlanType,
+    PlanWord, PresetWordlist, TargetExam,
+};
 pub use patch_applicator::PatchApplicator;
 pub use patch_validator::{PatchValidationError, PatchValidator};
 pub use state_machine::{LearningPhase, LearningState, NextAction, OptimizeTrigger, StateMachine};
