@@ -3,6 +3,7 @@ pub mod batch_cmd;
 pub mod cache_cmd;
 pub mod capture;
 pub mod config_cmd;
+pub mod dictionary_cmd;
 pub mod docx_cmd;
 pub mod epub_cmd;
 pub mod excel_cmd;

@@ -535,6 +535,9 @@ pub fn run() {
             commands::vocabulary_cmd::generate_card_content,
             commands::vocabulary_cmd::submit_review,
             commands::vocabulary_cmd::get_learning_stats,
+            commands::dictionary_cmd::search_word_suggestions,
+            commands::dictionary_cmd::lookup_word_detail,
+            commands::dictionary_cmd::fuzzy_search_words,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
