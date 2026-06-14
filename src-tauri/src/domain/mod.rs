@@ -5,6 +5,7 @@ pub mod event;
 pub mod fsrs_engine;
 pub mod patch_applicator;
 pub mod patch_validator;
+pub mod state_machine;
 
 pub use event::{
     AiContent, Annotation, CardEvent, CardPatch, CardState, Etymology, Mnemonic, MnemonicType,
@@ -16,3 +17,4 @@ pub use card::{BaseData, ErrorRecord, ErrorType, WordCard};
 pub use fsrs_engine::{FsrsEngine, RatingIntervals, RatingPreview};
 pub use patch_applicator::PatchApplicator;
 pub use patch_validator::{PatchValidationError, PatchValidator};
+pub use state_machine::{LearningPhase, LearningState, NextAction, OptimizeTrigger, StateMachine};

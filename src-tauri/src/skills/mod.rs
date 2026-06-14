@@ -5,6 +5,7 @@ pub mod dictionary;
 pub mod generate_card;
 pub mod llm_provider;
 pub mod morphology;
+pub mod optimize_card;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -17,6 +18,7 @@ pub use llm_provider::{
     LlmMessage, LlmProvider, LlmRequest, LlmResponse, OpenAiCompatibleProvider,
 };
 pub use morphology::MorphologySkill;
+pub use optimize_card::OptimizeCardSkill;
 
 /// Skill 输入
 #[derive(Debug, Clone)]
