@@ -11,7 +11,7 @@ import {
   submitReview,
   getLearningStats,
   type Rating,
-} from './vocabulary';
+} from '../services/vocabulary';
 
 // ============================================
 // Query Keys
