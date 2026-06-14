@@ -222,7 +222,7 @@ pub struct Annotation {
 }
 
 /// FSRS 评分
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Rating {
     Again, // 完全不记得
@@ -234,8 +234,8 @@ pub enum Rating {
 /// FSRS 卡片状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CardState {
-    pub stability: f32,
-    pub difficulty: f32,
+    pub stability: f64,
+    pub difficulty: f64,
     pub elapsed_days: u32,
     pub scheduled_days: u32,
     pub reps: u32,

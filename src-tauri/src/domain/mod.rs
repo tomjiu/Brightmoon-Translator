@@ -2,6 +2,7 @@
 
 pub mod card;
 pub mod event;
+pub mod fsrs_engine;
 pub mod patch_applicator;
 pub mod patch_validator;
 
@@ -12,5 +13,6 @@ pub use event::{
 
 pub use card::{BaseData, ErrorRecord, ErrorType, WordCard};
 
+pub use fsrs_engine::{FsrsEngine, RatingIntervals, RatingPreview};
 pub use patch_applicator::PatchApplicator;
 pub use patch_validator::{PatchValidationError, PatchValidator};
