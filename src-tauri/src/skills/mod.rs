@@ -2,6 +2,8 @@
 // Skills 是独立的、可组合的能力单元
 
 pub mod dictionary;
+pub mod generate_card;
+pub mod llm_provider;
 pub mod morphology;
 
 use anyhow::Result;
@@ -10,6 +12,10 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 pub use dictionary::DictionarySkill;
+pub use generate_card::GenerateCardSkill;
+pub use llm_provider::{
+    LlmMessage, LlmProvider, LlmRequest, LlmResponse, OpenAiCompatibleProvider,
+};
 pub use morphology::MorphologySkill;
 
 /// Skill 输入
