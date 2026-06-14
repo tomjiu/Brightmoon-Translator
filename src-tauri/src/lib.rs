@@ -1,5 +1,6 @@
 pub mod domain;
 pub mod infrastructure;
+pub mod skills;
 
 pub mod ai_enhanced;
 pub mod alignment;
