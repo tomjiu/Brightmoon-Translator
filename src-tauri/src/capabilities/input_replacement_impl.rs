@@ -60,7 +60,12 @@ impl InputReplacement for DefaultInputReplacement {
         // Translate
         let translated = self
             .translation_service
-            .translate_primary(&original, from, to)
+            .run_primary(
+                crate::models::translation::TranslateChannel::Replace,
+                &original,
+                from,
+                to,
+            )
             .await?;
         tracing::info!(
             "[replace_translate] Translated: '{}' -> '{}'",
@@ -118,10 +123,15 @@ impl InputReplacement for DefaultInputReplacement {
             return Err(TranslationError::InvalidInput("Text is empty".to_string()));
         }
 
-        // Translate
+        // Translate via façade (channel=replace)
         let translated = self
             .translation_service
-            .translate_primary(text, from, to)
+            .run_primary(
+                crate::models::translation::TranslateChannel::Replace,
+                text,
+                from,
+                to,
+            )
             .await?;
 
         // Replace in target app via clipboard

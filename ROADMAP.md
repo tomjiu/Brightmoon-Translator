@@ -1,5 +1,9 @@
 # Moon Translator 开发计划
 
+> **Authority:** near-term sequencing is `docs/CURRENT_FOCUS.md` + `docs/MODULE_MAP.md`.  
+> Multi-platform/cloud plan: `docs/ROADMAP.md` (frozen until desktop OCR/engines stable).  
+> Feature truth: root `FEATURES.md` (2026-07-25 rewrite).
+
 ## 与 LunaTranslator 对比：功能差距
 
 ### A. 核心功能差距
@@ -25,7 +29,7 @@
 | A2 | hook_cmd 包含业务逻辑 | is_translatable/去重在 command 层 | 1.3 |
 | A3 | 配置默认值三重复制 | Rust Default / TS DEFAULT / configStore | 1.4 |
 | A4 | lib.rs 职责混乱 | 热键解析 80 行嵌在 setup 闭包 | 1.2 |
-| A5 | overlay 定位逻辑重复 | HookMonitor 和 OcrMonitor 各自计算 | 1.5 |
+| A5 | overlay 定位逻辑重复 | HookMonitor vs OCR region frame (OcrMonitor removed) | 1.5 |
 | A6 | 无集中错误处理 | 每个 invoke 各自 .catch(() => {}) | 3.4 |
 | A7 | TranslationService 方法冗余 | 三个 translate* 方法重复预处理 | - |
 | A8 | Rust/TS 类型不同步 | 手动维护两边类型 | 1.4 |

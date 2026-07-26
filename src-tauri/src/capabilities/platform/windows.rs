@@ -53,30 +53,15 @@ unsafe fn set_clipboard_text(text: &str) -> Result<(), String> {
 /// Replace text in the foreground application via clipboard + Ctrl+V simulation.
 /// Saves and restores the original clipboard content.
 pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
-    #[repr(C)]
-    struct INPUT {
-        type_: u32,
-        union_data: [u8; 24],
-    }
+    use std::mem::size_of;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
+        VIRTUAL_KEY, VK_CONTROL, VK_V,
+    };
 
-    #[repr(C)]
-    #[allow(non_snake_case)]
-    struct KEYBDINPUT {
-        wVk: u16,
-        wScan: u16,
-        dwFlags: u32,
-        time: u32,
-        dwExtraInfo: usize,
-    }
-
-    const INPUT_KEYBOARD: u32 = 1;
-    const KEYEVENTF_KEYUP: u32 = 0x0002;
-    const VK_CONTROL: u16 = 0x11;
-    const VK_V: u16 = 0x56;
     const CF_UNICODETEXT: u32 = 13;
 
     extern "system" {
-        fn SendInput(cInputs: u32, pInputs: *const INPUT, cbSize: i32) -> u32;
         fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
         fn CloseClipboard() -> i32;
         fn EmptyClipboard() -> i32;
@@ -124,42 +109,30 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             format!("set translated clipboard failed: {}", e)
         })?;
 
-        // Simulate Ctrl+V
-        fn make_input(vk: u16, flags: u32) -> INPUT {
-            let mut input = INPUT {
-                type_: INPUT_KEYBOARD,
-                union_data: [0u8; 24],
-            };
-            let ki = KEYBDINPUT {
-                wVk: vk,
-                wScan: 0,
-                dwFlags: flags,
-                time: 0,
-                dwExtraInfo: 0,
-            };
-            // SAFETY: copy_nonoverlapping for KEYBDINPUT into INPUT union.
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    &ki as *const _ as *const u8,
-                    input.union_data.as_mut_ptr(),
-                    std::mem::size_of::<KEYBDINPUT>(),
-                );
+        // Simulate Ctrl+V — windows crate INPUT is 40 bytes on x64 (manual type+[u8;24] was 28).
+        fn make_input(vk: VIRTUAL_KEY, flags: KEYBD_EVENT_FLAGS) -> INPUT {
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: vk,
+                        wScan: 0,
+                        dwFlags: flags,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
             }
-            input
         }
 
         let inputs = [
-            make_input(VK_CONTROL, 0),
-            make_input(VK_V, 0),
+            make_input(VK_CONTROL, KEYBD_EVENT_FLAGS(0)),
+            make_input(VK_V, KEYBD_EVENT_FLAGS(0)),
             make_input(VK_V, KEYEVENTF_KEYUP),
             make_input(VK_CONTROL, KEYEVENTF_KEYUP),
         ];
 
-        let sent = SendInput(
-            inputs.len() as u32,
-            inputs.as_ptr(),
-            std::mem::size_of::<INPUT>() as i32,
-        );
+        let sent = SendInput(&inputs, size_of::<INPUT>() as i32);
         if sent == 0 {
             tracing::warn!("[replace] paste delivery uncertain: SendInput returned 0");
         }

@@ -119,7 +119,7 @@ function Plugins() {
             {t('plugins.title')}
           </h1>
           <button
-            className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-primary hover:text-white hover:border-primary transition-colors flex items-center gap-1.5"
+            className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
             onClick={loadPlugins}
           >
             <RefreshCw size={14} />

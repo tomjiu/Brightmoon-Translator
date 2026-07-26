@@ -206,6 +206,13 @@ impl Default for FsrsEngine {
     }
 }
 
+impl FsrsEngine {
+    /// 获取当前参数
+    pub fn get_params(&self) -> &[f64; 17] {
+        &self.w
+    }
+}
+
 /// 评分预览
 #[derive(Debug, Clone)]
 pub struct RatingPreview {

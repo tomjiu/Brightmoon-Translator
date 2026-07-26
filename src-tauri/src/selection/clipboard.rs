@@ -47,29 +47,13 @@ impl SelectionProvider for ClipboardSelectionProvider {
 fn get_clipboard_selection() -> Option<(String, String)> {
     #[cfg(target_os = "windows")]
     {
-        #[repr(C)]
-        struct INPUT {
-            type_: u32,
-            union_data: [u8; 24],
-        }
-
-        #[repr(C)]
-        #[allow(non_snake_case)]
-        struct KEYBDINPUT {
-            wVk: u16,
-            wScan: u16,
-            dwFlags: u32,
-            time: u32,
-            dwExtraInfo: usize,
-        }
-
-        const INPUT_KEYBOARD: u32 = 1;
-        const KEYEVENTF_KEYUP: u32 = 0x0002;
-        const VK_CONTROL: u16 = 0x11;
-        const VK_C: u16 = 0x43;
+        use std::mem::size_of;
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+            KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_C, VK_CONTROL,
+        };
 
         extern "system" {
-            fn SendInput(cInputs: u32, pInputs: *const INPUT, cbSize: i32) -> u32;
             fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
             fn CloseClipboard() -> i32;
             fn EmptyClipboard() -> i32;
@@ -86,27 +70,20 @@ fn get_clipboard_selection() -> Option<(String, String)> {
         const CF_UNICODETEXT: u32 = 13;
         const GMEM_MOVEABLE: u32 = 0x0002;
 
-        fn make_input(vk: u16, flags: u32) -> INPUT {
-            let mut input = INPUT {
-                type_: INPUT_KEYBOARD,
-                union_data: [0u8; 24],
-            };
-            let ki = KEYBDINPUT {
-                wVk: vk,
-                wScan: 0,
-                dwFlags: flags,
-                time: 0,
-                dwExtraInfo: 0,
-            };
-            // SAFETY: copy_nonoverlapping for KEYBDINPUT into INPUT union.
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    &ki as *const _ as *const u8,
-                    input.union_data.as_mut_ptr(),
-                    std::mem::size_of::<KEYBDINPUT>(),
-                );
+        // Use windows crate INPUT (40 bytes on x64) — manual type+ [u8;24] was 28 and broke SendInput.
+        fn make_input(vk: VIRTUAL_KEY, flags: KEYBD_EVENT_FLAGS) -> INPUT {
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: vk,
+                        wScan: 0,
+                        dwFlags: flags,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
             }
-            input
         }
 
         // SAFETY: Win32 clipboard and input simulation APIs.
@@ -149,16 +126,12 @@ fn get_clipboard_selection() -> Option<(String, String)> {
 
             // Simulate Ctrl+C
             let inputs = [
-                make_input(VK_CONTROL, 0),
-                make_input(VK_C, 0),
+                make_input(VK_CONTROL, KEYBD_EVENT_FLAGS(0)),
+                make_input(VK_C, KEYBD_EVENT_FLAGS(0)),
                 make_input(VK_C, KEYEVENTF_KEYUP),
                 make_input(VK_CONTROL, KEYEVENTF_KEYUP),
             ];
-            let sent = SendInput(
-                inputs.len() as u32,
-                inputs.as_ptr(),
-                std::mem::size_of::<INPUT>() as i32,
-            );
+            let sent = SendInput(&inputs, size_of::<INPUT>() as i32);
             if sent == 0 {
                 tracing::warn!(
                     "[clipboard] SendInput returned 0 — Ctrl+C may not have been delivered"

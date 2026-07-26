@@ -1,5 +1,5 @@
-import { create } from "zustand";
-import type { TranslationResult } from "../types";
+import { create } from 'zustand';
+import type { TranslationResult } from '../types';
 
 export interface IncrementalEntry {
   id: string;

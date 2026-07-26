@@ -154,7 +154,12 @@ impl SelectionTranslation for DefaultSelectionTranslation {
 
         let response = self
             .translation_service
-            .translate(&selection.text, &from, &to)
+            .run_full(
+                crate::models::translation::TranslateChannel::Selection,
+                &selection.text,
+                &from,
+                &to,
+            )
             .await?;
 
         // Step 3: Show overlay with app-context-aware presentation
@@ -217,7 +222,15 @@ impl SelectionTranslation for DefaultSelectionTranslation {
             .unwrap_or_else(|| config.default_to.clone());
         drop(config);
 
-        let response = self.translation_service.translate(text, &from, &to).await?;
+        let response = self
+            .translation_service
+            .run_full(
+                crate::models::translation::TranslateChannel::Selection,
+                text,
+                &from,
+                &to,
+            )
+            .await?;
 
         // Show overlay if requested (no bounds info for direct text)
         if options.show_overlay {

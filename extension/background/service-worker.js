@@ -7,6 +7,17 @@
 
 const DESKTOP_URL = "http://127.0.0.1:60828";
 
+/** Auth headers for desktop bridge (token from chrome.storage.local.desktopApiToken). */
+async function desktopAuthHeaders(extra = {}) {
+  const { desktopApiToken } = await chrome.storage.local.get(["desktopApiToken"]);
+  const headers = { ...extra };
+  if (desktopApiToken) {
+    headers["Authorization"] = `Bearer ${desktopApiToken}`;
+    headers["X-Api-Token"] = desktopApiToken;
+  }
+  return headers;
+}
+
 // ==================== Translation Cache ====================
 // In-memory LRU cache shared across all tabs to avoid redundant API calls.
 
@@ -119,14 +130,14 @@ const DesktopBridge = {
 
     const resp = await fetch(`${DESKTOP_URL}/browser/translate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await desktopAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15000)
     });
 
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      throw new Error(err.message || `Desktop API error: ${resp.status}`);
+      throw new Error(err.message || err.error || `Desktop API error: ${resp.status}`);
     }
 
     const data = await resp.json();
@@ -157,7 +168,7 @@ const DesktopBridge = {
 
     const resp = await fetch(`${DESKTOP_URL}/browser/translate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: await desktopAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(30000)
     });
@@ -195,7 +206,7 @@ const DEFAULT_CONFIG = {
     },
     youdao: { enabled: true },
     deepl: { enabled: false, apiKey: "", pro: false },
-    deeplx: { enabled: false, endpoint: "http://localhost:1188" },
+    deeplx: { enabled: false, apiKey: "", pro: false },
     microsoft: { enabled: false }
   },
   targetLang: "zh",

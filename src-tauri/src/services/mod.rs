@@ -5,4 +5,7 @@ pub use multi_dictionary::{DictionaryEntry, MultiSourceDictionary};
 pub use translation::TranslationService;
 
 // Re-export shared types from models
-pub use crate::models::translation::{TranslationContext, TranslationJob, TranslationMode};
+pub use crate::models::translation::{
+    TranslateChannel, TranslateOutcome, TranslateRequest, TranslationContext, TranslationJob,
+    TranslationMode,
+};

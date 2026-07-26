@@ -8,7 +8,7 @@ import type { AppConfig } from '../types';
  * All values here are safe placeholders; they will be replaced on startup.
  */
 const INITIAL_CONFIG: AppConfig = {
-  llm: { provider: 'deepseek', apiKey: '', apiKeys: [], baseUrl: '', model: '' },
+  llm: { provider: 'deepseek', apiKey: '', apiKeys: [], baseUrl: '', model: '', providers: [] },
   engines: {
     google: { enabled: false },
     baidu: { enabled: false, appId: '', secret: '' },
@@ -31,17 +31,27 @@ const INITIAL_CONFIG: AppConfig = {
   translationMask: false,
   apiServerEnabled: false,
   apiServerPort: 60828,
-  hotkeys: { ocrTranslate: '', showWindow: '', translateSelection: '' },
+  apiServerToken: '',
+  // Placeholders only — replaced by get_config / get_default_config at startup.
+  hotkeys: {
+    ocrTranslate: '',
+    showWindow: '',
+    translateSelection: '',
+    replaceTranslate: '',
+    toggleOverlayClickThrough: '',
+  },
   proxy: { enabled: false, proxyType: 'http', host: '', port: 7890, username: '', password: '' },
   windowFollowMode: 'none',
   translationBlacklist: [],
-  routingStrategy: 'fallback_on_error',
-  ocrEngine: 'auto',
+  routingStrategy: null,
+  ocrEngine: 'winrt',
+  /** Screenshot OCR continuous refresh (ms). Distinct from hook.ocrIntervalMs. */
+  ocrInterval: 2000,
   overlayLevel: 2,
   overlayAutoDismissMs: 3000,
   overlayFollowMode: 'none',
   hook: {
-    enabledSources: [],
+    enabledSources: ['uia', 'clipboard'],
     showOverlay: true,
     autoCopy: false,
     enabled: true,
@@ -53,6 +63,11 @@ const INITIAL_CONFIG: AppConfig = {
   furiganaEnabled: false,
   ttsAutoPlay: false,
   ttsVoice: '',
+  httpTimeoutSecs: 30,
+  ocrTimeoutSecs: 30,
+  llmTimeoutSecs: 120,
+  translationTimeoutSecs: 30,
+  edgeTtsToken: '',
   sync: {
     enabled: false,
     serverUrl: '',
@@ -112,7 +127,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
   /**
    * Fetch authoritative defaults from Rust backend.
-   * Call once at app startup to replace INITIAL_CONFIG.
+   * Prefer loadConfig() at startup; this is for reset-to-defaults UX.
    */
   loadDefaults: async () => {
     const [defaults, error] = await safeInvoke<AppConfig>('get_default_config');
@@ -120,7 +135,6 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       console.error('Failed to load default config:', error);
       return;
     }
-    // Only apply defaults if config hasn't been loaded yet
     const { loaded } = get();
     if (!loaded) {
       set({ config: defaults });
@@ -128,22 +142,32 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   },
 
   /**
-   * Load saved config from Rust backend.
-   * Rust serde already fills missing fields with defaults,
-   * so no deep merge is needed — the returned config is complete.
+   * Load saved config from Rust backend (disk + defaults).
+   * Must run once at MainApp mount before any saveConfig.
    */
   loadConfig: async () => {
-    const [loaded, error] = await safeInvoke<AppConfig>('get_config');
-    if (error || !loaded) {
+    const [loadedCfg, error] = await safeInvoke<AppConfig>('get_config');
+    if (error || !loadedCfg) {
       console.error('Failed to load config:', error);
-      set({ loaded: true });
+      // Fall back to compile-time defaults so UI can still open; mark loaded
+      // so we do not block forever — but refuse save until a successful load.
+      const [defaults] = await safeInvoke<AppConfig>('get_default_config');
+      if (defaults) {
+        set({ config: defaults, loaded: true });
+      } else {
+        set({ loaded: true });
+      }
       return;
     }
-    set({ config: loaded, loaded: true });
+    set({ config: loadedCfg, loaded: true });
   },
 
   saveConfig: async () => {
-    const { config } = get();
+    const { config, loaded } = get();
+    if (!loaded) {
+      console.error('Refusing saveConfig: config not loaded yet (would clobber disk)');
+      return;
+    }
     const [, error] = await safeInvoke('save_config', { config });
     if (error) {
       console.error('Failed to save config:', error);

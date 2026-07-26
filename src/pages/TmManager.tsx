@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
-import { useI18n } from "../i18n";
-import { useToastStore } from "../stores/toastStore";
-import { invokeOrThrow, safeInvoke } from "../services/invoke";
-import { isTauriRuntime } from "../services/tauriRuntime";
+import { useState, useEffect } from 'react';
+import { useI18n } from '../i18n';
+import { useToastStore } from '../stores/toastStore';
+import { invokeOrThrow, safeInvoke } from '../services/invoke';
+import { isTauriRuntime } from '../services/tauriRuntime';
 import {
   Search,
   Trash2,
@@ -15,7 +15,7 @@ import {
   FileText,
   Loader2,
   Check,
-} from "lucide-react";
+} from 'lucide-react';
 
 // ── Types ───────────────────────────────────────────────────────────────────────
 
@@ -44,9 +44,9 @@ function TmManager() {
   const [stats, setStats] = useState<TmStats | null>(null);
   const [entries, setEntries] = useState<TmExportEntry[]>([]);
   const [totalResults, setTotalResults] = useState(0);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [fromLang, setFromLang] = useState("");
-  const [toLang, setToLang] = useState("");
+  const [searchQuery, setSearchQuery] = useState('');
+  const [fromLang, setFromLang] = useState('');
+  const [toLang, setToLang] = useState('');
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -73,7 +73,7 @@ function TmManager() {
     if (!isTauri) return;
 
     try {
-      const data = await invokeOrThrow<TmStats>("tm_get_stats");
+      const data = await invokeOrThrow<TmStats>('tm_get_stats');
       setStats(data);
     } catch {
       // Error already shown by invokeOrThrow
@@ -85,7 +85,7 @@ function TmManager() {
 
     setLoading(true);
     try {
-      const [data, err] = await safeInvoke<[TmExportEntry[], number]>("tm_search", {
+      const [data, err] = await safeInvoke<[TmExportEntry[], number]>('tm_search', {
         query: searchQuery,
         fromLang: fromLang || undefined,
         toLang: toLang || undefined,
@@ -103,9 +103,9 @@ function TmManager() {
 
   const handleDelete = async (entry: TmExportEntry) => {
     // eslint-disable-next-line no-alert
-    if (!confirm(t("tm.deleteConfirm"))) return;
+    if (!confirm(t('tm.deleteConfirm'))) return;
     try {
-      await invokeOrThrow<number>("tm_delete", {
+      await invokeOrThrow<number>('tm_delete', {
         source: entry.source,
         target: entry.target,
         fromLang: entry.fromLang,
@@ -122,7 +122,7 @@ function TmManager() {
   const handleBatchDelete = async () => {
     if (selected.size === 0) return;
     // eslint-disable-next-line no-alert
-    if (!confirm(t("tm.batchDeleteConfirm", { count: selected.size }))) return;
+    if (!confirm(t('tm.batchDeleteConfirm', { count: selected.size }))) return;
     try {
       const entriesToDelete = Array.from(selected).map((i) => [
         entries[i].source,
@@ -130,7 +130,7 @@ function TmManager() {
         entries[i].fromLang,
         entries[i].toLang,
       ]);
-      await invokeOrThrow<number>("tm_batch_delete", { entries: entriesToDelete });
+      await invokeOrThrow<number>('tm_batch_delete', { entries: entriesToDelete });
       setSelected(new Set());
       await searchEntries();
       await loadStats();
@@ -142,11 +142,11 @@ function TmManager() {
   const handleExportJson = async () => {
     setExporting(true);
     try {
-      const json = await invokeOrThrow<string>("tm_export", {
+      const json = await invokeOrThrow<string>('tm_export', {
         fromLang: fromLang || undefined,
         toLang: toLang || undefined,
       });
-      downloadFile(json, "tm-export.json", "application/json");
+      downloadFile(json, 'tm-export.json', 'application/json');
     } finally {
       setExporting(false);
     }
@@ -155,26 +155,30 @@ function TmManager() {
   const handleExportTmx = async () => {
     setExporting(true);
     try {
-      const xml = await invokeOrThrow<string>("tm_export_tmx", {
+      const xml = await invokeOrThrow<string>('tm_export_tmx', {
         fromLang: fromLang || undefined,
         toLang: toLang || undefined,
       });
-      downloadFile(xml, "tm-export.tmx", "application/xml");
+      downloadFile(xml, 'tm-export.tmx', 'application/xml');
     } finally {
       setExporting(false);
     }
   };
 
   const handleImportJson = async () => {
-    const content = await selectFile(".json");
+    const content = await selectFile('.json');
     if (!content) return;
     setImporting(true);
     try {
-      const [imported, duplicates] = await invokeOrThrow<[number, number]>("tm_import", {
+      const [imported, duplicates] = await invokeOrThrow<[number, number]>('tm_import', {
         json: content,
         deduplicate: true,
       });
-      addToast({ type: "success", message: `${t("tm.imported") || "导入"}: ${imported}, ${t("tm.duplicatesSkipped") || "跳过重复"}: ${duplicates}`, duration: 3000 });
+      addToast({
+        type: 'success',
+        message: `${t('tm.imported') || '导入'}: ${imported}, ${t('tm.duplicatesSkipped') || '跳过重复'}: ${duplicates}`,
+        duration: 3000,
+      });
       await searchEntries();
       await loadStats();
     } finally {
@@ -183,15 +187,19 @@ function TmManager() {
   };
 
   const handleImportTmx = async () => {
-    const content = await selectFile(".tmx,.xml");
+    const content = await selectFile('.tmx,.xml');
     if (!content) return;
     setImporting(true);
     try {
-      const [imported, duplicates] = await invokeOrThrow<[number, number]>("tm_import_tmx", {
+      const [imported, duplicates] = await invokeOrThrow<[number, number]>('tm_import_tmx', {
         xml: content,
         deduplicate: true,
       });
-      addToast({ type: "success", message: `${t("tm.imported") || "导入"}: ${imported}, ${t("tm.duplicatesSkipped") || "跳过重复"}: ${duplicates}`, duration: 3000 });
+      addToast({
+        type: 'success',
+        message: `${t('tm.imported') || '导入'}: ${imported}, ${t('tm.duplicatesSkipped') || '跳过重复'}: ${duplicates}`,
+        duration: 3000,
+      });
       await searchEntries();
       await loadStats();
     } finally {
@@ -229,7 +237,7 @@ function TmManager() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Database size={24} className="text-primary" />
-            {t("tm.title")}
+            {t('tm.title')}
           </h1>
           <div className="flex gap-2">
             <button
@@ -238,7 +246,7 @@ function TmManager() {
               className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
             >
               {exporting ? <Loader2 size={14} className="animate-spin" /> : <FileJson size={14} />}
-              {t("tm.exportJson")}
+              {t('tm.exportJson')}
             </button>
             <button
               onClick={handleExportTmx}
@@ -246,7 +254,7 @@ function TmManager() {
               className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
             >
               {exporting ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-              {t("tm.exportTmx")}
+              {t('tm.exportTmx')}
             </button>
             <button
               onClick={handleImportJson}
@@ -254,7 +262,7 @@ function TmManager() {
               className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
             >
               {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {t("tm.importJson")}
+              {t('tm.importJson')}
             </button>
             <button
               onClick={handleImportTmx}
@@ -262,7 +270,7 @@ function TmManager() {
               className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
             >
               {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {t("tm.importTmx")}
+              {t('tm.importTmx')}
             </button>
           </div>
         </div>
@@ -270,10 +278,10 @@ function TmManager() {
         {/* Statistics */}
         {stats && (
           <div className="bg-bg-secondary border border-border rounded-xl p-4 mb-6">
-            <h2 className="text-sm font-semibold text-text-primary mb-3">{t("tm.statistics")}</h2>
+            <h2 className="text-sm font-semibold text-text-primary mb-3">{t('tm.statistics')}</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <p className="text-xs text-text-secondary">{t("tm.totalEntries")}</p>
+                <p className="text-xs text-text-secondary">{t('tm.totalEntries')}</p>
                 <p className="text-lg font-bold text-primary">{stats.total.toLocaleString()}</p>
               </div>
               {stats.langPairs.slice(0, 3).map(([from, to, count]) => (
@@ -290,17 +298,26 @@ function TmManager() {
         <div className="bg-bg-secondary border border-border rounded-xl p-4 mb-6">
           <div className="flex flex-col md:flex-row gap-3">
             <div className="relative flex-1">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary"
+              />
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setPage(0); }}
-                placeholder={t("tm.searchPlaceholder")}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(0);
+                }}
+                placeholder={t('tm.searchPlaceholder')}
                 className="w-full bg-bg-tertiary text-text-primary border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-primary"
               />
               {searchQuery && (
                 <button
-                  onClick={() => { setSearchQuery(""); setPage(0); }}
+                  onClick={() => {
+                    setSearchQuery('');
+                    setPage(0);
+                  }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
                 >
                   <X size={14} />
@@ -309,22 +326,32 @@ function TmManager() {
             </div>
             <select
               value={fromLang}
-              onChange={(e) => { setFromLang(e.target.value); setPage(0); }}
+              onChange={(e) => {
+                setFromLang(e.target.value);
+                setPage(0);
+              }}
               className="bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
             >
-              <option value="">{t("tm.anySourceLang")}</option>
+              <option value="">{t('tm.anySourceLang')}</option>
               {uniqueLangs.map((lang) => (
-                <option key={lang} value={lang}>{lang}</option>
+                <option key={lang} value={lang}>
+                  {lang}
+                </option>
               ))}
             </select>
             <select
               value={toLang}
-              onChange={(e) => { setToLang(e.target.value); setPage(0); }}
+              onChange={(e) => {
+                setToLang(e.target.value);
+                setPage(0);
+              }}
               className="bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
             >
-              <option value="">{t("tm.anyTargetLang")}</option>
+              <option value="">{t('tm.anyTargetLang')}</option>
               {uniqueLangs.map((lang) => (
-                <option key={lang} value={lang}>{lang}</option>
+                <option key={lang} value={lang}>
+                  {lang}
+                </option>
               ))}
             </select>
           </div>
@@ -333,18 +360,20 @@ function TmManager() {
         {/* Results Info & Batch Actions */}
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm text-text-secondary">
-            {t("tm.resultsFound", { count: totalResults })}
-            {totalPages > 1 && ` · ${t("tm.pageInfo", { current: page + 1, total: totalPages })}`}
+            {t('tm.resultsFound', { count: totalResults })}
+            {totalPages > 1 && ` · ${t('tm.pageInfo', { current: page + 1, total: totalPages })}`}
           </p>
           {selected.size > 0 && (
             <div className="flex items-center gap-3">
-              <span className="text-sm text-primary">{t("tm.selected", { count: selected.size })}</span>
+              <span className="text-sm text-primary">
+                {t('tm.selected', { count: selected.size })}
+              </span>
               <button
                 onClick={handleBatchDelete}
                 className="bg-error/10 text-error text-xs px-3 py-1.5 rounded-lg hover:bg-error/20 transition-colors flex items-center gap-1"
               >
                 <Trash2 size={12} />
-                {t("tm.batchDelete")}
+                {t('tm.batchDelete')}
               </button>
             </div>
           )}
@@ -359,7 +388,7 @@ function TmManager() {
           ) : entries.length === 0 ? (
             <div className="text-center py-12 text-text-secondary">
               <Database size={48} className="mx-auto mb-3 opacity-30" />
-              <p>{t("tm.noResults")}</p>
+              <p>{t('tm.noResults')}</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -376,11 +405,21 @@ function TmManager() {
                         )}
                       </button>
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">{t("tm.source")}</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">{t("tm.target")}</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">{t("tm.engine")}</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">{t("tm.time")}</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">{t("tm.actions")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                      {t('tm.source')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                      {t('tm.target')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                      {t('tm.engine')}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                      {t('tm.time')}
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
+                      {t('tm.actions')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -390,22 +429,28 @@ function TmManager() {
                         <button
                           onClick={() => toggleSelect(i)}
                           className={`w-4 h-4 rounded border transition-colors ${
-                            selected.has(i)
-                              ? "bg-primary border-primary"
-                              : "border-border"
+                            selected.has(i) ? 'bg-primary border-primary' : 'border-border'
                           }`}
                         >
                           {selected.has(i) && <Check size={12} className="text-white" />}
                         </button>
                       </td>
-                      <td className="px-4 py-3 max-w-[200px] truncate text-text-primary" title={entry.source}>
+                      <td
+                        className="px-4 py-3 max-w-[200px] truncate text-text-primary"
+                        title={entry.source}
+                      >
                         {entry.source}
                       </td>
-                      <td className="px-4 py-3 max-w-[200px] truncate text-text-primary" title={entry.target}>
+                      <td
+                        className="px-4 py-3 max-w-[200px] truncate text-text-primary"
+                        title={entry.target}
+                      >
                         {entry.target}
                       </td>
                       <td className="px-4 py-3 text-text-secondary">
-                        <span className="text-xs bg-bg-tertiary px-2 py-0.5 rounded">{entry.engine}</span>
+                        <span className="text-xs bg-bg-tertiary px-2 py-0.5 rounded">
+                          {entry.engine}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-text-secondary text-xs">
                         {new Date(entry.timestamp).toLocaleString()}
@@ -414,7 +459,7 @@ function TmManager() {
                         <button
                           onClick={() => handleDelete(entry)}
                           className="text-text-secondary hover:text-error transition-colors p-1"
-                          title={t("tm.delete")}
+                          title={t('tm.delete')}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -459,7 +504,7 @@ function TmManager() {
 function downloadFile(content: string, filename: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
+  const a = document.createElement('a');
   a.href = url;
   a.download = filename;
   a.click();
@@ -468,8 +513,8 @@ function downloadFile(content: string, filename: string, mimeType: string) {
 
 function selectFile(accept: string): Promise<string | null> {
   return new Promise((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
+    const input = document.createElement('input');
+    input.type = 'file';
     input.accept = accept;
     input.onchange = async () => {
       const file = input.files?.[0];

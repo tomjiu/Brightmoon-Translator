@@ -228,7 +228,12 @@ pub async fn handle_browser_request(
                 });
             }
             let response = translation_service
-                .translate(&sel.text, from, to)
+                .run_full(
+                    crate::models::translation::TranslateChannel::Browser,
+                    &sel.text,
+                    from,
+                    to,
+                )
                 .await
                 .map_err(|e| BrowserTranslateError {
                     message: e.to_string(),
@@ -256,7 +261,13 @@ pub async fn handle_browser_request(
                 .map(|(i, s)| (i, s.text.as_str()))
                 .collect();
             let batch_results = translation_service
-                .translate_batch(&lines, from, to, 3)
+                .run_batch(
+                    crate::models::translation::TranslateChannel::Browser,
+                    &lines,
+                    from,
+                    to,
+                    3,
+                )
                 .await;
 
             let segment_translations: Vec<SegmentTranslation> = batch_results
@@ -299,7 +310,12 @@ pub async fn handle_browser_request(
                 });
             }
             let response = translation_service
-                .translate(&hover.text, from, to)
+                .run_full(
+                    crate::models::translation::TranslateChannel::Browser,
+                    &hover.text,
+                    from,
+                    to,
+                )
                 .await
                 .map_err(|e| BrowserTranslateError {
                     message: e.to_string(),

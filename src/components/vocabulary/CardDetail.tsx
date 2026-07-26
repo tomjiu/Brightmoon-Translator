@@ -4,10 +4,19 @@ import { useCard, useGenerateCardContent } from '../../hooks/useVocabulary';
 import {
   type Mnemonic,
   type PersonalizedExample,
+  type LearningPhase,
+  LearningPhase as LearningPhaseEnum,
   getPhaseDisplayText,
   getPhaseColorClass,
   formatTimestamp,
 } from '../../services/vocabulary';
+
+// 从 CardState 推断学习阶段
+function inferPhase(fsrsState: { reps: number; stability: number }): LearningPhase {
+  if (fsrsState.reps === 0) return LearningPhaseEnum.New;
+  if (fsrsState.stability > 21) return LearningPhaseEnum.Mastered;
+  return LearningPhaseEnum.Review;
+}
 
 interface CardDetailProps {
   cardId: string | null;
@@ -35,11 +44,7 @@ export function CardDetail({ cardId, onClose }: CardDetailProps) {
   }
 
   if (!card) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-500">
-        卡牌不存在
-      </div>
-    );
+    return <div className="flex items-center justify-center h-full text-gray-500">卡牌不存在</div>;
   }
 
   const handleGenerateContent = () => {
@@ -56,8 +61,10 @@ export function CardDetail({ cardId, onClose }: CardDetailProps) {
           <div>
             <h1 className="text-3xl font-bold mb-2">{card.word}</h1>
             <div className="flex items-center gap-2">
-              <span className={`text-xs px-2 py-1 rounded ${getPhaseColorClass(card.fsrs_state)}`}>
-                {getPhaseDisplayText(card.fsrs_state)}
+              <span
+                className={`text-xs px-2 py-1 rounded ${getPhaseColorClass(inferPhase(card.fsrs_state))}`}
+              >
+                {getPhaseDisplayText(inferPhase(card.fsrs_state))}
               </span>
               {card.base_data.phonetic && (
                 <span className="text-sm text-gray-600">/{card.base_data.phonetic}/</span>
@@ -113,14 +120,14 @@ export function CardDetail({ cardId, onClose }: CardDetailProps) {
             {card.ai_content.etymology && (
               <section>
                 <h2 className="text-lg font-semibold mb-3">词源</h2>
-                <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="bg-bg-tertiary p-4 rounded-lg">
                   <p className="text-gray-700 mb-3">{card.ai_content.etymology.origin}</p>
                   {card.ai_content.etymology.root_breakdown.length > 0 && (
                     <div className="space-y-2">
                       <h3 className="text-sm font-medium text-gray-700">词根拆解</h3>
                       {card.ai_content.etymology.root_breakdown.map((root, i) => (
                         <div key={i} className="bg-white p-2 rounded">
-                          <span className="font-medium text-blue-600">{root.part}</span>
+                          <span className="font-medium text-primary">{root.part}</span>
                           <span className="text-gray-600"> - {root.meaning}</span>
                         </div>
                       ))}
@@ -153,6 +160,112 @@ export function CardDetail({ cardId, onClose }: CardDetailProps) {
                 </div>
               </section>
             )}
+
+            {/* 常见搭配 */}
+            {card.ai_content.collocations && card.ai_content.collocations.length > 0 && (
+              <section>
+                <h2 className="text-lg font-semibold mb-3">常见搭配</h2>
+                <div className="flex flex-wrap gap-2">
+                  {card.ai_content.collocations.map((collocation, i) => (
+                    <span
+                      key={i}
+                      className="px-3 py-1.5 bg-green-50 text-green-700 rounded-full text-sm"
+                    >
+                      {collocation}
+                    </span>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* 词族 */}
+            {card.ai_content.word_family && card.ai_content.word_family.length > 0 && (
+              <section>
+                <h2 className="text-lg font-semibold mb-3">词族</h2>
+                <div className="grid grid-cols-2 gap-2">
+                  {card.ai_content.word_family.map((item, i) => (
+                    <div key={i} className="flex items-center gap-2 p-2 bg-bg-tertiary rounded">
+                      <span className="font-medium text-primary">{item.word}</span>
+                      <span className="text-xs text-primary">({item.pos})</span>
+                      <span className="text-xs text-gray-500">{item.meaning}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* 用法提示 */}
+            {card.ai_content.usage_tips && card.ai_content.usage_tips.length > 0 && (
+              <section>
+                <h2 className="text-lg font-semibold mb-3">用法提示</h2>
+                <ul className="space-y-2">
+                  {card.ai_content.usage_tips.map((tip, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                      <span className="text-primary mt-1">💡</span>
+                      <span>{tip}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {/* 常见错误 */}
+            {card.ai_content.common_mistakes && card.ai_content.common_mistakes.length > 0 && (
+              <section>
+                <h2 className="text-lg font-semibold mb-3">常见错误</h2>
+                <ul className="space-y-2">
+                  {card.ai_content.common_mistakes.map((mistake, i) => (
+                    <li
+                      key={i}
+                      className="flex items-start gap-2 text-sm text-red-600 bg-red-50 p-2 rounded"
+                    >
+                      <span className="mt-1">⚠️</span>
+                      <span>{mistake}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {/* 近义词/反义词 */}
+            {((card.ai_content.synonyms && card.ai_content.synonyms.length > 0) ||
+              (card.ai_content.antonyms && card.ai_content.antonyms.length > 0)) && (
+              <section>
+                <h2 className="text-lg font-semibold mb-3">近义词 / 反义词</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  {card.ai_content.synonyms && card.ai_content.synonyms.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">近义词</h3>
+                      <div className="flex flex-wrap gap-1.5">
+                        {card.ai_content.synonyms.map((word, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-1 bg-bg-tertiary text-primary rounded text-sm"
+                          >
+                            {word}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {card.ai_content.antonyms && card.ai_content.antonyms.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">反义词</h3>
+                      <div className="flex flex-wrap gap-1.5">
+                        {card.ai_content.antonyms.map((word, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-1 bg-orange-50 text-orange-600 rounded text-sm"
+                          >
+                            {word}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
           </>
         ) : (
           <div className="text-center py-8">
@@ -160,7 +273,7 @@ export function CardDetail({ cardId, onClose }: CardDetailProps) {
             <button
               onClick={handleGenerateContent}
               disabled={generateContent.isPending}
-              className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+              className="px-6 py-2 bg-primary text-primary-fg rounded-lg hover:bg-primary-hover disabled:opacity-50"
             >
               {generateContent.isPending ? '生成中...' : 'AI 生成学习内容'}
             </button>
@@ -211,6 +324,7 @@ function MnemonicCard({ mnemonic }: { mnemonic: Mnemonic }) {
     homophone: '谐音',
     visual: '视觉',
     chunking: '拆分',
+    comparison: '对比',
   };
 
   return (

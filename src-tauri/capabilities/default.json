@@ -23,6 +23,9 @@
     "core:event:default",
     "core:event:allow-listen",
     "core:event:allow-emit",
-    "core:event:allow-emit-to"
+    "core:event:allow-emit-to",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

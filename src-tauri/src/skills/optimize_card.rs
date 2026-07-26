@@ -2,7 +2,7 @@
 
 use super::llm_provider::{LlmMessage, LlmProvider, LlmRequest};
 use super::{Skill, SkillInput, SkillOutput};
-use crate::domain::{CardPatch, OptimizeTrigger, PatchOperation, WordCard};
+use crate::domain::{CardPatch, OptimizeTrigger, PatchOperation};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

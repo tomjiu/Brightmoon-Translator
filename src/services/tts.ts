@@ -1,4 +1,4 @@
-import { invokeOrThrow } from "./invoke";
+import { invokeOrThrow } from './invoke';
 
 // Keep track of current audio to allow cancellation
 let currentAudio: HTMLAudioElement | null = null;
@@ -8,18 +8,17 @@ let currentAudio: HTMLAudioElement | null = null;
  * Returns a promise that resolves when playback ends.
  * If called again while playing, the previous playback is stopped.
  */
-export async function speakText(text: string, lang: string): Promise<void> {
+export async function speakText(text: string, lang: string, voice?: string): Promise<void> {
   // Stop any currently playing audio
   stopSpeaking();
 
-  const base64Audio = await invokeOrThrow<string>("text_to_speech", {
+  const base64Audio = await invokeOrThrow<string>('text_to_speech', {
     text,
     lang,
+    voice: voice || undefined,
   });
-  const audioBytes = Uint8Array.from(atob(base64Audio), (c) =>
-    c.charCodeAt(0)
-  );
-  const audioBlob = new Blob([audioBytes], { type: "audio/mp3" });
+  const audioBytes = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
+  const audioBlob = new Blob([audioBytes], { type: 'audio/mp3' });
   const audioUrl = URL.createObjectURL(audioBlob);
   const audio = new Audio(audioUrl);
   currentAudio = audio;

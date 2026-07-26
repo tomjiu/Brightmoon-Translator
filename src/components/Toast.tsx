@@ -12,7 +12,7 @@ const colorMap: Record<ToastType, string> = {
   error: 'bg-red-500/90 border-red-400',
   success: 'bg-green-500/90 border-green-400',
   warning: 'bg-yellow-500/90 border-yellow-400',
-  info: 'bg-blue-500/90 border-blue-400',
+  info: 'bg-primary/90 border-border',
 };
 
 export default function ToastContainer() {

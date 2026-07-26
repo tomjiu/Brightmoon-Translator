@@ -1,4 +1,5 @@
 import { useConfigStore } from '../../stores/configStore';
+import { useTranslateStore } from '../../stores/translateStore';
 import Card from '../../components/Card';
 import { LANGUAGES } from '../../types';
 
@@ -6,6 +7,7 @@ export default function BasicSettings() {
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
+  const syncClipboardMonitorFromConfig = useTranslateStore((s) => s.syncClipboardMonitorFromConfig);
 
   return (
     <div className="space-y-5">
@@ -62,14 +64,19 @@ export default function BasicSettings() {
               type="checkbox"
               checked={config.clipboardMonitor || false}
               onChange={(e) => {
-                updateConfig((prev) => ({ ...prev, clipboardMonitor: e.target.checked }));
+                const enabled = e.target.checked;
+                updateConfig((prev) => ({ ...prev, clipboardMonitor: enabled }));
                 void saveConfig();
+                // Wire preference to real event-driven backend listener
+                void syncClipboardMonitorFromConfig(enabled);
               }}
               className="rounded"
             />
             <div>
               <p className="text-sm font-medium text-text-primary">剪贴板监听</p>
-              <p className="text-xs text-text-secondary">自动翻译复制的文本</p>
+              <p className="text-xs text-text-secondary">
+                监听剪贴板变化并自动翻译（Windows 事件驱动；与主界面剪贴板按钮同步）
+              </p>
             </div>
           </label>
 

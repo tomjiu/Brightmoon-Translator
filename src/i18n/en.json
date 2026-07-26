@@ -501,7 +501,9 @@
     "continuousRefreshing": "Continuous refresh active",
     "detectedLang": "Detected language",
     "originalText": "Original text",
-    "translationResult": "Translation result"
+    "translationResult": "Translation result",
+    "sameLang": "Source and target language are the same",
+    "translateFailed": "Translation failed — check keys/network/engines"
   },
   "hook": {
     "title": "Hook Immersive Translate",
@@ -527,8 +529,9 @@
     "source.ocr": "OCR Screenshot - universal fallback",
     "source.hook": "Win32 Event Hook - system-level text change monitor",
     "hcode": {
-      "title": "H-Code DLL Injection",
-      "description": "Inject DLL to hook text rendering APIs (TextOut/DrawText) in games/applications, directly capturing internal program text.",
+      "experimental": "Experimental",
+      "title": "H-Code DLL Injection (Experimental)",
+      "description": "Experimental. Inject DLL to hook text rendering APIs (TextOut/DrawText). May inject with no text; not production-ready.",
       "pid": "Process PID",
       "pidPlaceholder": "Enter target process PID",
       "processName": "Process Name",
@@ -684,7 +687,8 @@
     "targetText": "Translation",
     "processing": "Processing...",
     "detecting": "Detecting...",
-    "retry": "Retry"
+    "retry": "Retry",
+    "copied": "Copied"
   },
   "aiMultiRound": {
     "enterText": "Please enter text to translate",
@@ -760,5 +764,32 @@
       "de": "German",
       "es": "Spanish"
     }
+  },
+  "ocrRegion": {
+    "copySource": "Copy source",
+    "copyTarget": "Copy translation",
+    "copyScreenshot": "Copy screenshot",
+    "saveScreenshot": "Save screenshot",
+    "watchOn": "Watch on",
+    "watchOff": "Watch off",
+    "pauseWatch": "Pause region watch",
+    "startWatch": "Start region watch (translate on change)",
+    "recognizing": "Recognizing…",
+    "dataTimeout": "Timed out waiting for data — retry",
+    "toggleDisplay": "Toggle source/translation",
+    "refreshNow": "Refresh now",
+    "followOn": "Follow window",
+    "followOff": "Unfollow",
+    "pinned": "Pinned",
+    "unpinned": "Unpinned",
+    "copiedImage": "Screenshot copied",
+    "savedImage": "Saved",
+    "pin": "Pin on top",
+    "unpin": "Unpin",
+    "follow": "Follow target window",
+    "unfollow": "Stop following",
+    "resize": "Drag to resize",
+    "refreshing": "Refreshing…",
+    "needOcr": "Available after recognition"
   }
 }

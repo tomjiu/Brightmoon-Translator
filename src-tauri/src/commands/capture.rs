@@ -2,7 +2,6 @@ use base64::Engine;
 #[cfg(not(target_os = "windows"))]
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
-use std::io::Cursor;
 use std::path::PathBuf;
 use tauri::command;
 use uuid::Uuid;
@@ -22,16 +21,33 @@ pub struct ScreenshotSnapshotInfo {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenshotSnapshot {
-    pub image: String,
+    /// Absolute path for FE `convertFileSrc` (pot-desktop path — no full-screen base64 IPC).
+    pub image_path: String,
     pub info: ScreenshotSnapshotInfo,
 }
 
+/// pot-style: CompressionType::Fast for snapshot files (preview via asset protocol, not base64).
+/// Crops / OCR still use base64 of small regions only.
+fn encode_png_bytes_fast(image: &screenshots::image::DynamicImage) -> Result<Vec<u8>, String> {
+    use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+    use image::ImageEncoder;
+
+    let rgba = image.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let mut buf = Vec::with_capacity((w as usize).saturating_mul(h as usize) / 2);
+    {
+        let encoder =
+            PngEncoder::new_with_quality(&mut buf, CompressionType::Fast, FilterType::NoFilter);
+        encoder
+            .write_image(rgba.as_raw(), w, h, image::ExtendedColorType::Rgba8)
+            .map_err(|e| format!("Failed to encode PNG: {}", e))?;
+    }
+    Ok(buf)
+}
+
 fn image_to_base64_png(image: &screenshots::image::DynamicImage) -> Result<String, String> {
-    let mut buf = Cursor::new(Vec::new());
-    image
-        .write_to(&mut buf, screenshots::image::ImageFormat::Png)
-        .map_err(|e| format!("Failed to encode PNG: {}", e))?;
-    let base64_str = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+    let raw = encode_png_bytes_fast(image)?;
+    let base64_str = base64::engine::general_purpose::STANDARD.encode(raw);
     Ok(format!("data:image/png;base64,{}", base64_str))
 }
 
@@ -43,9 +59,10 @@ fn ocr_snapshot_meta_path() -> PathBuf {
     std::env::temp_dir().join("moontranslator_ocr_snapshot.json")
 }
 
-fn encode_png_bytes(raw: &[u8]) -> String {
-    let base64_str = base64::engine::general_purpose::STANDARD.encode(raw);
-    format!("data:image/png;base64,{}", base64_str)
+fn snapshot_path_string() -> String {
+    ocr_snapshot_image_path()
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 /// Generate a unique temp file path for OCR to avoid race conditions
@@ -72,6 +89,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 struct CachedSnapshot {
     png_bytes: Vec<u8>,
+    /// Lazily decoded for crop (avoid re-decode PNG on every crop_screenshot_snapshot).
+    decoded: Option<screenshots::image::DynamicImage>,
     info: ScreenshotSnapshotInfo,
     timestamp: u64, // Unix timestamp in seconds
 }
@@ -92,18 +111,32 @@ fn cache_snapshot(png_bytes: Vec<u8>, info: &ScreenshotSnapshotInfo) {
 
         *cache = Some(CachedSnapshot {
             png_bytes,
+            decoded: None,
             info: info.clone(),
             timestamp,
         });
     }
 }
 
-fn read_cached_snapshot() -> Option<ScreenshotSnapshot> {
+fn read_cached_snapshot_info() -> Option<ScreenshotSnapshotInfo> {
     let cache = snapshot_cache().lock().ok()?;
-    let cached = cache.as_ref()?;
+    cache.as_ref().map(|c| c.info.clone())
+}
+
+fn read_cached_snapshot() -> Option<ScreenshotSnapshot> {
+    let info = read_cached_snapshot_info()?;
+    // Ensure disk file exists for convertFileSrc (prepare writes it; rewrite if missing).
+    let path = ocr_snapshot_image_path();
+    if !path.exists() {
+        if let Ok(guard) = snapshot_cache().lock() {
+            if let Some(ref c) = *guard {
+                let _ = std::fs::write(&path, &c.png_bytes);
+            }
+        }
+    }
     Some(ScreenshotSnapshot {
-        image: encode_png_bytes(&cached.png_bytes),
-        info: cached.info.clone(),
+        image_path: snapshot_path_string(),
+        info,
     })
 }
 
@@ -278,6 +311,7 @@ fn virtual_screen_info() -> Result<ScreenshotSnapshotInfo, String> {
     })
 }
 
+#[cfg_attr(target_os = "windows", allow(dead_code))]
 fn crop_image_to_base64(
     image: &screenshots::image::DynamicImage,
     left: u32,
@@ -296,6 +330,53 @@ fn crop_image_to_base64(
     let crop_height = height.min(image.height() - top);
     let cropped = image.crop_imm(left, top, crop_width, crop_height);
     image_to_base64_png(&cropped)
+}
+
+/// Pixel fingerprint for continuous OCR skip (better than base64 string sampling).
+/// Downscale to 24×24 grayscale, FNV-ish hash over luminance samples.
+fn fingerprint_dynamic_image(image: &screenshots::image::DynamicImage) -> String {
+    use screenshots::image::GenericImageView;
+    const GRID: u32 = 24;
+    let (w, h) = image.dimensions();
+    if w == 0 || h == 0 {
+        return String::new();
+    }
+    let mut hash: u32 = 2166136261;
+    hash = hash.wrapping_mul(16777619) ^ w;
+    hash = hash.wrapping_mul(16777619) ^ h;
+    for gy in 0..GRID {
+        for gx in 0..GRID {
+            let x = (gx * w / GRID).min(w.saturating_sub(1));
+            let y = (gy * h / GRID).min(h.saturating_sub(1));
+            let p = image.get_pixel(x, y).0;
+            // Rec. 601 luma
+            let y8 = ((p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000) as u8;
+            hash = hash.wrapping_mul(16777619) ^ (y8 as u32);
+        }
+    }
+    format!("{}x{}:{:x}", w, h, hash)
+}
+
+fn decode_data_url_image(data_url: &str) -> Result<screenshots::image::DynamicImage, String> {
+    let b64 = data_url.split_once(',').map(|(_, b)| b).unwrap_or(data_url);
+    let raw = base64::engine::general_purpose::STANDARD
+        .decode(b64.trim())
+        .map_err(|e| format!("base64 decode: {}", e))?;
+    screenshots::image::load_from_memory(&raw).map_err(|e| format!("image decode: {}", e))
+}
+
+/// Fingerprint a crop/region image (data URL) for watch-mode skip gate.
+#[command]
+pub async fn image_data_url_fingerprint(data_url: String) -> Result<String, String> {
+    if data_url.is_empty() {
+        return Ok(String::new());
+    }
+    tokio::task::spawn_blocking(move || {
+        let image = decode_data_url_image(&data_url)?;
+        Ok(fingerprint_dynamic_image(&image))
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[command]
@@ -369,19 +450,23 @@ pub async fn capture_full_screen() -> Result<String, String> {
 }
 
 #[command]
-pub async fn prepare_screenshot_snapshot() -> Result<ScreenshotSnapshotInfo, String> {
-    // Smart cache: If cache is fresh (within 30 seconds), return cached info instantly
-    // This eliminates the 1-2 second lag when user clicks OCR button repeatedly
-    if is_cache_fresh(30) {
-        if let Some(cached) = read_cached_snapshot() {
+pub async fn prepare_screenshot_snapshot(
+    force_refresh: Option<bool>,
+) -> Result<ScreenshotSnapshotInfo, String> {
+    // Smart cache only when NOT force-refreshing (warmup / non-user paths).
+    // User-triggered OCR must pass force_refresh=true so the selector never shows a stale desktop.
+    let force = force_refresh.unwrap_or(false);
+    if !force && is_cache_fresh(30) {
+        if let Some(info) = read_cached_snapshot_info() {
             tracing::info!("prepare_screenshot_snapshot: returning fresh cache (instant response)");
-            return Ok(cached.info);
+            return Ok(info);
         }
     }
 
-    // Cache expired or not available, capture fresh screenshot
+    // Capture fresh screenshot
     tracing::info!(
-        "prepare_screenshot_snapshot: cache expired or not available, capturing fresh screenshot"
+        "prepare_screenshot_snapshot: capturing fresh screenshot (force={})",
+        force
     );
 
     // Use spawn_blocking to avoid blocking the async runtime with GDI calls
@@ -406,10 +491,8 @@ pub async fn prepare_screenshot_snapshot() -> Result<ScreenshotSnapshotInfo, Str
                 info.image_width,
                 info.image_height
             );
-            let mut buf = std::io::Cursor::new(Vec::new());
-            img.write_to(&mut buf, screenshots::image::ImageFormat::Png)
-                .map_err(|e| format!("PNG encode: {}", e))?;
-            (info, buf.into_inner())
+            let png_bytes = encode_png_bytes_fast(&img)?;
+            (info, png_bytes)
         };
 
         #[cfg(not(target_os = "windows"))]
@@ -430,11 +513,9 @@ pub async fn prepare_screenshot_snapshot() -> Result<ScreenshotSnapshotInfo, Str
                 image_width: buffer.width(),
                 image_height: buffer.height(),
             };
-            let mut buf = std::io::Cursor::new(Vec::new());
-            screenshots::image::DynamicImage::ImageRgba8(buffer)
-                .write_to(&mut buf, screenshots::image::ImageFormat::Png)
-                .map_err(|e| format!("PNG encode: {}", e))?;
-            (info, buf.into_inner())
+            let dyn_img = screenshots::image::DynamicImage::ImageRgba8(buffer);
+            let png_bytes = encode_png_bytes_fast(&dyn_img)?;
+            (info, png_bytes)
         };
 
         // Save to disk as backup first (uses reference, no clone needed)
@@ -488,7 +569,7 @@ pub async fn load_screenshot_snapshot() -> Result<ScreenshotSnapshot, String> {
     };
 
     Ok(ScreenshotSnapshot {
-        image: encode_png_bytes(&raw),
+        image_path: snapshot_path_string(),
         info,
     })
 }
@@ -500,13 +581,62 @@ pub async fn crop_screenshot_snapshot(
     width: u32,
     height: u32,
 ) -> Result<String, String> {
-    // Use spawn_blocking to avoid blocking async runtime with disk I/O and image processing
+    // Prefer decoded RGBA; hold lock only for decode + crop_imm; encode outside lock.
     tokio::task::spawn_blocking(move || {
-        let raw = std::fs::read(ocr_snapshot_image_path())
-            .map_err(|e| format!("Failed to read screenshot snapshot: {}", e))?;
-        let image = screenshots::image::load_from_memory(&raw)
-            .map_err(|e| format!("Failed to load screenshot snapshot: {}", e))?;
-        crop_image_to_base64(&image, left, top, width, height)
+        let cropped: screenshots::image::DynamicImage = {
+            if let Ok(mut guard) = snapshot_cache().lock() {
+                if let Some(ref mut cached) = *guard {
+                    if cached.decoded.is_none() {
+                        match screenshots::image::load_from_memory(&cached.png_bytes) {
+                            Ok(img) => cached.decoded = Some(img),
+                            Err(e) => {
+                                return Err(format!("Failed to load screenshot snapshot: {}", e));
+                            },
+                        }
+                    }
+                    if let Some(ref decoded) = cached.decoded {
+                        let l = left.min(decoded.width().saturating_sub(1));
+                        let t = top.min(decoded.height().saturating_sub(1));
+                        let w = width.min(decoded.width().saturating_sub(l)).max(1);
+                        let h = height.min(decoded.height().saturating_sub(t)).max(1);
+                        decoded.crop_imm(l, t, w, h)
+                    } else {
+                        drop(guard);
+                        let raw = std::fs::read(ocr_snapshot_image_path())
+                            .map_err(|e| format!("Failed to read screenshot snapshot: {}", e))?;
+                        let image = screenshots::image::load_from_memory(&raw)
+                            .map_err(|e| format!("Failed to load screenshot snapshot: {}", e))?;
+                        let l = left.min(image.width().saturating_sub(1));
+                        let t = top.min(image.height().saturating_sub(1));
+                        let w = width.min(image.width().saturating_sub(l)).max(1);
+                        let h = height.min(image.height().saturating_sub(t)).max(1);
+                        image.crop_imm(l, t, w, h)
+                    }
+                } else {
+                    drop(guard);
+                    let raw = std::fs::read(ocr_snapshot_image_path())
+                        .map_err(|e| format!("Failed to read screenshot snapshot: {}", e))?;
+                    let image = screenshots::image::load_from_memory(&raw)
+                        .map_err(|e| format!("Failed to load screenshot snapshot: {}", e))?;
+                    let l = left.min(image.width().saturating_sub(1));
+                    let t = top.min(image.height().saturating_sub(1));
+                    let w = width.min(image.width().saturating_sub(l)).max(1);
+                    let h = height.min(image.height().saturating_sub(t)).max(1);
+                    image.crop_imm(l, t, w, h)
+                }
+            } else {
+                let raw = std::fs::read(ocr_snapshot_image_path())
+                    .map_err(|e| format!("Failed to read screenshot snapshot: {}", e))?;
+                let image = screenshots::image::load_from_memory(&raw)
+                    .map_err(|e| format!("Failed to load screenshot snapshot: {}", e))?;
+                let l = left.min(image.width().saturating_sub(1));
+                let t = top.min(image.height().saturating_sub(1));
+                let w = width.min(image.width().saturating_sub(l)).max(1);
+                let h = height.min(image.height().saturating_sub(t)).max(1);
+                image.crop_imm(l, t, w, h)
+            }
+        };
+        image_to_base64_png(&cropped)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
@@ -564,6 +694,55 @@ pub async fn detect_foreground_hwnd() -> Result<isize, String> {
         }
     }
     Ok(0)
+}
+
+/// Resolve the top-level window under a physical screen point.
+/// Used by OCR follow-mode so binding targets the content under the region
+/// instead of the always-on-top OCR frame itself.
+#[command]
+pub async fn hwnd_from_point(x: i32, y: i32) -> Result<isize, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, WindowFromPoint, GA_ROOT};
+
+        // SAFETY: WindowFromPoint/GetAncestor are standard Win32 APIs.
+        // Caller should hide OCR frame first so the hit test reaches content underneath.
+        unsafe {
+            let point = POINT { x, y };
+            let mut hwnd = WindowFromPoint(point);
+            if hwnd.0.is_null() {
+                return Ok(0);
+            }
+            let root = GetAncestor(hwnd, GA_ROOT);
+            if !root.0.is_null() {
+                hwnd = root;
+            }
+
+            let mut title_buf = [0u16; 256];
+            let title_len =
+                windows::Win32::UI::WindowsAndMessaging::GetWindowTextW(hwnd, &mut title_buf);
+            if title_len > 0 {
+                let title = String::from_utf16_lossy(&title_buf[..title_len as usize]);
+                // Keep in sync with window.rs titles (selector is "OCR-v2 Screenshot").
+                if title == "OCR Region"
+                    || title == "OCR Screenshot"
+                    || title == "OCR-v2 Screenshot"
+                    || title == "Moon Translator"
+                {
+                    return Ok(0);
+                }
+            }
+
+            Ok(hwnd.0 as isize)
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (x, y);
+        Ok(0)
+    }
 }
 
 /// Get the window title for a given HWND.
@@ -886,7 +1065,7 @@ pub async fn system_ocr(base64_data: String, lang: Option<String>) -> Result<Str
 
         if text.is_empty() {
             tracing::warn!("[WinRT OCR] OCR returned empty text");
-            return Err("OCR returned empty text".to_string());
+            return Ok(String::new());
         }
         tracing::info!("[WinRT OCR] Success: {} chars", text.len());
         Ok(text)
@@ -1051,8 +1230,12 @@ pub async fn system_ocr_detailed(
             .join("\n");
 
         if full_text.is_empty() {
+            // Empty is a valid UI state (I4) — let FE show retry, do not throw.
             tracing::warn!("[WinRT OCR Detailed] OCR returned empty text");
-            return Err("OCR returned empty text".to_string());
+            return Ok(OcrResultDetailed {
+                text: String::new(),
+                lines: vec![],
+            });
         }
 
         tracing::info!(
@@ -1416,7 +1599,11 @@ pub async fn youdao_ocr(
             "[Youdao OCR] No text extracted, response keys: {:?}",
             json.as_object().map(|m| m.keys().collect::<Vec<_>>())
         );
-        return Err("OCR returned empty result".to_string());
+        // Empty is valid for FE I4 retry UI — do not throw.
+        return Ok(OcrResultDetailed {
+            text: String::new(),
+            lines: vec![],
+        });
     }
 
     tracing::info!(

@@ -1,42 +1,108 @@
-// DictionarySearch - 多源词典查询（在线 API + 本地兜底）
+// DictionarySearch - 多源聚合词典查询
 
-import { useState, useEffect, useRef } from 'react';
-import { Search, Volume2, BookMarked, Copy, Loader2, X, Globe, Database } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Search,
+  Volume2,
+  Copy,
+  Loader2,
+  X,
+  Database,
+  Globe,
+  BookOpen,
+  Sparkles,
+} from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
-interface Phonetic {
+interface PhoneticInfo {
   text?: string;
   audio?: string;
+  source: string;
 }
 
-interface Definition {
+interface OnlineDefinition {
   definition: string;
   example?: string;
   synonyms: string[];
   antonyms: string[];
 }
 
-interface Meaning {
-  part_of_speech: string;
-  definitions: Definition[];
+interface OnlineMeaning {
+  partOfSpeech: string;
+  definitions: OnlineDefinition[];
 }
 
-interface DictionaryEntry {
+interface ComprehensiveEntry {
   word: string;
-  phonetics: Phonetic[];
-  meanings: Meaning[];
-  source: string;
+  phonetics: PhoneticInfo[];
+  chineseTranslation?: string;
+  englishDefinitions: string[];
+  oxfordDefinition?: string;
+  onlineMeanings: OnlineMeaning[];
+  gptAnalysis?: string;
+  audioUrl?: string;
+  usAudioUrl?: string;
+  ukAudioUrl?: string;
+  examples: BilingualExample[];
+  collinsEntries: CollinsEntry[];
+  sources: string[];
+}
+
+interface CollinsEntry {
+  pos: string;
+  posCn: string;
+  englishDef: string;
+  examples: BilingualExample[];
+}
+
+interface BilingualExample {
+  en: string;
+  zh: string;
+}
+
+interface SuggestionItem {
+  word: string;
+  preview?: string;
 }
 
 function DictionarySearch() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
-  const [result, setResult] = useState<DictionaryEntry | null>(null);
+  const [result, setResult] = useState<ComprehensiveEntry | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+
+  // 自动检测并导入词典数据（仅首次）
+  useEffect(() => {
+    const checkAndImport = async () => {
+      try {
+        const status = await invoke<{ imported: boolean; vocabCount: number }>(
+          'check_dictionary_imported',
+        );
+        if (!status.imported) {
+          setIsImporting(true);
+          setImportStatus('首次使用，正在导入词典数据...');
+          try {
+            const msg = await invoke<string>('import_dictionary_data');
+            setImportStatus(msg);
+          } catch (err) {
+            setImportStatus(`导入失败: ${err}`);
+          } finally {
+            setIsImporting(false);
+          }
+        }
+      } catch {
+        // ignore check errors
+      }
+    };
+    void checkAndImport();
+  }, []);
+  const [history, setHistory] = useState<string[]>([]);
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -48,97 +114,81 @@ function DictionarySearch() {
         setSuggestions([]);
         return;
       }
-
       setIsSuggestionsLoading(true);
       try {
-        const data = await invoke<string[]>('search_word_suggestions', {
+        const data = await invoke<SuggestionItem[]>('search_word_suggestions', {
           query: searchQuery.trim(),
           limit: 10,
         });
         setSuggestions(data);
         setShowSuggestions(true);
         setSelectedIndex(-1);
-      } catch (err) {
-        console.error('Failed to fetch suggestions:', err);
+      } catch {
         setSuggestions([]);
       } finally {
         setIsSuggestionsLoading(false);
       }
     };
-
     const debounce = setTimeout(fetchSuggestions, 200);
     return () => clearTimeout(debounce);
   }, [searchQuery]);
 
-  // 点击外部关闭建议列表
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowSuggestions(false);
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleLookup = async (word: string) => {
+  const handleLookup = useCallback(async (word: string) => {
     if (!word.trim()) return;
-
     setIsLoading(true);
     setError(null);
     setShowSuggestions(false);
-
     try {
-      // 使用多源查询 API
-      const data = await invoke<DictionaryEntry>('lookup_word_multi_source', {
+      const data = await invoke<ComprehensiveEntry>('lookup_word_multi_source', {
         word: word.trim(),
       });
       setResult(data);
       setSearchQuery(data.word);
+      // 添加到搜索历史（去重，最新在前）
+      setHistory((prev) => {
+        const filtered = prev.filter((w) => w.toLowerCase() !== data.word.toLowerCase());
+        return [data.word, ...filtered].slice(0, 20);
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : '查询失败');
       setResult(null);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!showSuggestions || suggestions.length === 0) {
-      if (e.key === 'Enter') {
-        handleLookup(searchQuery);
-      }
+      if (e.key === 'Enter') void handleLookup(searchQuery);
       return;
     }
-
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setSelectedIndex((prev) =>
-          prev < suggestions.length - 1 ? prev + 1 : prev
-        );
+        setSelectedIndex((p) => (p < suggestions.length - 1 ? p + 1 : p));
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : -1));
+        setSelectedIndex((p) => (p > 0 ? p - 1 : -1));
         break;
       case 'Enter':
         e.preventDefault();
-        if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
-          handleLookup(suggestions[selectedIndex]);
-        } else {
-          handleLookup(searchQuery);
-        }
+        void handleLookup(selectedIndex >= 0 ? suggestions[selectedIndex].word : searchQuery);
         break;
       case 'Escape':
         setShowSuggestions(false);
         break;
     }
-  };
-
-  const handleSuggestionClick = (word: string) => {
-    handleLookup(word);
   };
 
   const handleClear = () => {
@@ -149,16 +199,23 @@ function DictionarySearch() {
     inputRef.current?.focus();
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const playAudio = (url: string) => {
+    if (audioRef.current) audioRef.current.pause();
+    audioRef.current = new Audio(url);
+    audioRef.current.play();
   };
 
-  const playAudio = (audioUrl: string) => {
-    if (audioRef.current) {
-      audioRef.current.pause();
+  const handleImport = async () => {
+    setIsImporting(true);
+    setImportStatus('导入中...');
+    try {
+      const msg = await invoke<string>('import_dictionary_data');
+      setImportStatus(msg);
+    } catch (err) {
+      setImportStatus(`导入失败: ${err}`);
+    } finally {
+      setIsImporting(false);
     }
-    audioRef.current = new Audio(audioUrl);
-    audioRef.current.play();
   };
 
   return (
@@ -172,11 +229,22 @@ function DictionarySearch() {
               <Globe size={12} />
               多源聚合
             </span>
+            <button
+              onClick={handleImport}
+              disabled={isImporting}
+              className="ml-auto text-xs px-3 py-1 bg-bg-tertiary text-text-secondary rounded hover:text-primary border border-border disabled:opacity-50"
+            >
+              {isImporting ? '导入中...' : '重新导入词典'}
+            </button>
           </div>
+          {importStatus && <p className="text-xs text-primary mb-2">{importStatus}</p>}
           <div ref={searchRef} className="relative">
             <div className="flex gap-2">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" size={20} />
+                <Search
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
+                  size={20}
+                />
                 <input
                   ref={inputRef}
                   type="text"
@@ -198,31 +266,32 @@ function DictionarySearch() {
                 )}
               </div>
               <button
-                onClick={() => handleLookup(searchQuery)}
+                onClick={() => void handleLookup(searchQuery)}
                 disabled={isLoading || !searchQuery.trim()}
-                className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                className="px-6 py-3 bg-primary text-primary-fg rounded-lg hover:bg-primary/90 disabled:opacity-50 font-medium"
               >
                 {isLoading ? <Loader2 className="animate-spin" size={20} /> : '查询'}
               </button>
             </div>
-
-            {/* Suggestions Dropdown */}
             {showSuggestions && (suggestions.length > 0 || isSuggestionsLoading) && (
               <div className="absolute top-full left-0 right-16 mt-1 bg-bg-secondary border border-border rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
                 {isSuggestionsLoading ? (
-                  <div className="p-4 text-center text-text-secondary">
+                  <div className="p-4 text-center">
                     <Loader2 className="animate-spin inline-block" size={20} />
                   </div>
                 ) : (
-                  suggestions.map((word, index) => (
+                  suggestions.map((item, i) => (
                     <button
-                      key={word}
-                      onClick={() => handleSuggestionClick(word)}
-                      className={`w-full px-4 py-2 text-left hover:bg-bg-tertiary transition-colors ${
-                        index === selectedIndex ? 'bg-bg-tertiary' : ''
-                      }`}
+                      key={item.word}
+                      onClick={() => void handleLookup(item.word)}
+                      className={`w-full px-4 py-2 text-left hover:bg-bg-tertiary ${i === selectedIndex ? 'bg-bg-tertiary' : ''}`}
                     >
-                      <span className="text-text-primary font-medium">{word}</span>
+                      <span className="text-text-primary font-medium">{item.word}</span>
+                      {item.preview && (
+                        <span className="text-xs text-text-tertiary ml-2 truncate max-w-xs inline-block align-bottom">
+                          {item.preview}
+                        </span>
+                      )}
                     </button>
                   ))
                 )}
@@ -230,8 +299,26 @@ function DictionarySearch() {
             )}
           </div>
           <p className="text-xs text-text-secondary mt-2">
-            💡 优先使用 <strong>DictionaryAPI.dev</strong> 在线查询，失败时自动切换本地 ECDICT
+            💡 ECDICT（中文）+ 有道（音频/例句）+ Oxford（权威）+ GPT4（词根）+ DictionaryAPI.dev
           </p>
+          {/* 搜索历史 */}
+          {history.length > 0 && (
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <span className="text-xs text-text-tertiary">最近：</span>
+              {history.slice(0, 8).map((w) => (
+                <button
+                  key={w}
+                  onClick={() => {
+                    setSearchQuery(w);
+                    void handleLookup(w);
+                  }}
+                  className="text-xs px-2 py-0.5 bg-bg-tertiary text-text-secondary rounded hover:text-primary hover:bg-bg-primary border border-border"
+                >
+                  {w}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -243,458 +330,231 @@ function DictionarySearch() {
               {error}
             </div>
           )}
-
           {!result && !isLoading && !error && (
             <div className="text-center text-text-secondary py-12">
               <Search size={48} className="mx-auto mb-4 opacity-50" />
               <p className="text-lg font-medium">输入英文单词开始查询</p>
-              <p className="text-sm mt-2">支持多源查询：DictionaryAPI.dev + 本地 ECDICT</p>
-              <p className="text-sm mt-1">输入时自动显示联想词汇</p>
+              <p className="text-sm mt-2">多源聚合：自动合并多个词典的数据</p>
             </div>
           )}
-
-          {result && <DictionaryResultCard result={result} onCopy={copyToClipboard} onPlayAudio={playAudio} />}
+          {result && <ResultCard result={result} onPlayAudio={playAudio} />}
         </div>
       </div>
     </div>
   );
 }
 
-interface DictionaryResultCardProps {
-  result: DictionaryEntry;
-  onCopy: (text: string) => void;
+function ResultCard({
+  result,
+  onPlayAudio,
+}: {
+  result: ComprehensiveEntry;
   onPlayAudio: (url: string) => void;
-}
+}) {
+  const primaryPhonetic = result.phonetics.find((p) => p.text);
+  const [collected, setCollected] = useState(false);
 
-function DictionaryResultCard({ result, onCopy, onPlayAudio }: DictionaryResultCardProps) {
-  const primaryPhonetic = result.phonetics.find((p) => p.text) || result.phonetics[0];
-  const audioPhonetic = result.phonetics.find((p) => p.audio);
-
-  return (
-    <div className="bg-bg-secondary border border-border rounded-lg p-6 mb-4 animate-fadeIn">
-      {/* Word Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <h2 className="text-3xl font-bold text-text-primary mb-2">{result.word}</h2>
-          <div className="flex items-center gap-4 flex-wrap">
-            {primaryPhonetic?.text && (
-              <div className="flex items-center gap-2">
-                <span className="text-text-secondary">/{primaryPhonetic.text}/</span>
-                {audioPhonetic?.audio && (
-                  <button
-                    onClick={() => onPlayAudio(audioPhonetic.audio!)}
-                    className="p-1 hover:bg-bg-tertiary rounded transition-colors"
-                    title="播放发音"
-                  >
-                    <Volume2 size={16} className="text-primary" />
-                  </button>
-                )}
-              </div>
-            )}
-            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded flex items-center gap-1">
-              {result.source === 'ECDICT (Local)' ? (
-                <>
-                  <Database size={12} />
-                  本地数据
-                </>
-              ) : (
-                <>
-                  <Globe size={12} />
-                  在线查询
-                </>
-              )}
-            </span>
-          </div>
-        </div>
-
-        <button
-          onClick={() => onCopy(result.word)}
-          className="p-2 hover:bg-bg-tertiary rounded transition-colors"
-          title="复制"
-        >
-          <Copy size={16} className="text-text-secondary" />
-        </button>
-      </div>
-
-      {/* Meanings */}
-      {result.meanings.map((meaning, mIndex) => (
-        <div key={mIndex} className="mb-6">
-          <h3 className="text-sm font-semibold text-primary mb-3">{meaning.part_of_speech}</h3>
-          <div className="space-y-3">
-            {meaning.definitions.map((def, dIndex) => (
-              <div key={dIndex} className="pl-4 border-l-2 border-border">
-                <p className="text-text-primary mb-1">{def.definition}</p>
-                {def.example && (
-                  <p className="text-sm text-text-secondary italic">例: {def.example}</p>
-                )}
-                {(def.synonyms.length > 0 || def.antonyms.length > 0) && (
-                  <div className="mt-2 flex gap-4 text-xs">
-                    {def.synonyms.length > 0 && (
-                      <div>
-                        <span className="text-text-tertiary">同义词: </span>
-                        <span className="text-text-secondary">{def.synonyms.join(', ')}</span>
-                      </div>
-                    )}
-                    {def.antonyms.length > 0 && (
-                      <div>
-                        <span className="text-text-tertiary">反义词: </span>
-                        <span className="text-text-secondary">{def.antonyms.join(', ')}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      {/* Source Footer */}
-      <div className="mt-4 pt-4 border-t border-border text-xs text-text-secondary">
-        数据来源: {result.source}
-      </div>
-    </div>
-  );
-}
-
-export default DictionarySearch;
-import { Search, Volume2, BookMarked, Copy, Loader2, X } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
-
-interface DictionaryResult {
-  word: string;
-  phonetic?: string;
-  definition?: string;
-  translation?: string;
-  pos?: string;
-  collins?: number;
-  oxford?: number;
-  bnc?: number;
-  frq?: number;
-  exchange?: string;
-  tag?: string;
-}
-
-function DictionarySearch() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(-1);
-  const [result, setResult] = useState<DictionaryResult | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const searchRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // 实时联想搜索
-  useEffect(() => {
-    const fetchSuggestions = async () => {
-      if (!searchQuery.trim() || searchQuery.length < 2) {
-        setSuggestions([]);
-        return;
-      }
-
-      setIsSuggestionsLoading(true);
-      try {
-        const data = await invoke<string[]>('search_word_suggestions', {
-          query: searchQuery.trim(),
-          limit: 10,
-        });
-        setSuggestions(data);
-        setShowSuggestions(true);
-        setSelectedIndex(-1);
-      } catch (err) {
-        console.error('Failed to fetch suggestions:', err);
-        setSuggestions([]);
-      } finally {
-        setIsSuggestionsLoading(false);
-      }
-    };
-
-    const debounce = setTimeout(fetchSuggestions, 200);
-    return () => clearTimeout(debounce);
-  }, [searchQuery]);
-
-  // 点击外部关闭建议列表
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleLookup = async (word: string) => {
-    if (!word.trim()) return;
-
-    setIsLoading(true);
-    setError(null);
-    setShowSuggestions(false);
-
+  const handleCollect = async () => {
     try {
-      const data = await invoke<DictionaryResult>('lookup_word_detail', {
-        word: word.trim(),
+      await invoke('add_wordbook_entry', {
+        word: result.word,
+        translation: result.chineseTranslation || '',
+        fromLang: 'en',
+        toLang: 'zh',
+        note: null,
       });
-      setResult(data);
-      setSearchQuery(data.word);
+      setCollected(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '查询失败');
-      setResult(null);
-    } finally {
-      setIsLoading(false);
+      console.error('Failed to add to wordbook:', err);
     }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!showSuggestions || suggestions.length === 0) {
-      if (e.key === 'Enter') {
-        handleLookup(searchQuery);
-      }
-      return;
-    }
-
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        setSelectedIndex((prev) =>
-          prev < suggestions.length - 1 ? prev + 1 : prev
-        );
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : -1));
-        break;
-      case 'Enter':
-        e.preventDefault();
-        if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
-          handleLookup(suggestions[selectedIndex]);
-        } else {
-          handleLookup(searchQuery);
-        }
-        break;
-      case 'Escape':
-        setShowSuggestions(false);
-        break;
-    }
-  };
-
-  const handleSuggestionClick = (word: string) => {
-    handleLookup(word);
-  };
-
-  const handleClear = () => {
-    setSearchQuery('');
-    setResult(null);
-    setError(null);
-    setSuggestions([]);
-    inputRef.current?.focus();
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
   };
 
   return (
-    <div className="h-full flex flex-col bg-bg-primary">
-      {/* Search Bar */}
-      <div className="p-6 border-b border-border bg-bg-secondary">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="text-2xl font-bold mb-4 text-text-primary">词典查询</h1>
-          <div ref={searchRef} className="relative">
-            <div className="flex gap-2">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" size={20} />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-                  placeholder="输入单词查询..."
-                  className="w-full pl-10 pr-10 py-3 bg-bg-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                  autoComplete="off"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={handleClear}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
-                  >
-                    <X size={18} />
-                  </button>
-                )}
-              </div>
-              <button
-                onClick={() => handleLookup(searchQuery)}
-                disabled={isLoading || !searchQuery.trim()}
-                className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-              >
-                {isLoading ? <Loader2 className="animate-spin" size={20} /> : '查询'}
-              </button>
+    <div className="space-y-4">
+      <div className="bg-bg-secondary border border-border rounded-lg p-6 animate-fadeIn">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h2 className="text-3xl font-bold text-text-primary mb-2">{result.word}</h2>
+            <div className="flex items-center gap-3 flex-wrap">
+              {primaryPhonetic?.text && (
+                <span className="text-text-secondary">/{primaryPhonetic.text}/</span>
+              )}
+              {/* 美音按钮 */}
+              {result.usAudioUrl && (
+                <button
+                  onClick={() => onPlayAudio(result.usAudioUrl!)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-bg-tertiary text-primary rounded hover:bg-bg-tertiary"
+                  title="美式发音"
+                >
+                  <Volume2 size={12} /> 美音
+                </button>
+              )}
+              {/* 英音按钮 */}
+              {result.ukAudioUrl && (
+                <button
+                  onClick={() => onPlayAudio(result.ukAudioUrl!)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-600 rounded hover:bg-green-100"
+                  title="英式发音"
+                >
+                  <Volume2 size={12} /> 英音
+                </button>
+              )}
+              {result.sources.map((s) => (
+                <span key={s} className="text-xs px-2 py-0.5 bg-bg-tertiary text-primary rounded">
+                  {s}
+                </span>
+              ))}
             </div>
-
-            {/* Suggestions Dropdown */}
-            {showSuggestions && (suggestions.length > 0 || isSuggestionsLoading) && (
-              <div className="absolute top-full left-0 right-16 mt-1 bg-bg-secondary border border-border rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
-                {isSuggestionsLoading ? (
-                  <div className="p-4 text-center text-text-secondary">
-                    <Loader2 className="animate-spin inline-block" size={20} />
-                  </div>
-                ) : (
-                  suggestions.map((word, index) => (
-                    <button
-                      key={word}
-                      onClick={() => handleSuggestionClick(word)}
-                      className={`w-full px-4 py-2 text-left hover:bg-bg-tertiary transition-colors ${
-                        index === selectedIndex ? 'bg-bg-tertiary' : ''
-                      }`}
-                    >
-                      <span className="text-text-primary font-medium">{word}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
           </div>
-          <p className="text-xs text-text-secondary mt-2">
-            💡 提示：输入 2 个字母以上自动显示联想词汇
+          <div className="flex items-center gap-1">
+            {/* 收藏到词本 */}
+            <button
+              onClick={handleCollect}
+              disabled={collected}
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded transition-colors ${
+                collected
+                  ? 'bg-red-50 text-red-500 border border-red-200'
+                  : 'bg-bg-tertiary text-text-secondary hover:text-red-500 border border-border'
+              }`}
+              title={collected ? '已收藏' : '收藏到词本'}
+            >
+              {collected ? '❤️ 已收藏' : '🤍 收藏'}
+            </button>
+            <button
+              onClick={() => navigator.clipboard.writeText(result.word)}
+              className="p-2 hover:bg-bg-tertiary rounded"
+            >
+              <Copy size={16} className="text-text-secondary" />
+            </button>
+          </div>
+        </div>
+
+        {/* 中文释义（ECDICT） */}
+        {result.chineseTranslation && (
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-primary mb-2 flex items-center gap-1.5">
+              <Database size={14} /> 中文释义
+            </h3>
+            <p className="text-text-primary leading-relaxed bg-bg-primary p-3 rounded border border-border">
+              {result.chineseTranslation}
+            </p>
+          </div>
+        )}
+
+        {/* 英文释义（ECDICT） */}
+        {result.englishDefinitions.length > 0 && (
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold text-primary mb-2">英文释义</h3>
+            <ul className="space-y-1">
+              {result.englishDefinitions.map((d, i) => (
+                <li key={i} className="text-sm text-text-primary pl-3 border-l-2 border-border">
+                  {d}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* Oxford 权威释义 */}
+      {result.oxfordDefinition && (
+        <div className="bg-bg-secondary border border-border rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-amber-600 mb-2 flex items-center gap-1.5">
+            <BookOpen size={14} /> Oxford 释义
+          </h3>
+          <p className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">
+            {result.oxfordDefinition}
           </p>
         </div>
-      </div>
-
-      {/* Results */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-3xl mx-auto">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg mb-4">
-              {error}
-            </div>
-          )}
-
-          {!result && !isLoading && !error && (
-            <div className="text-center text-text-secondary py-12">
-              <Search size={48} className="mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">输入单词开始查询</p>
-              <p className="text-sm mt-2">支持英汉、汉英双向查询</p>
-              <p className="text-sm mt-1">输入时自动显示联想词汇</p>
-            </div>
-          )}
-
-          {result && <DictionaryResultCard result={result} onCopy={copyToClipboard} />}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface DictionaryResultCardProps {
-  result: DictionaryResult;
-  onCopy: (text: string) => void;
-}
-
-function DictionaryResultCard({ result, onCopy }: DictionaryResultCardProps) {
-  // 解析释义
-  const definitions = result.definition
-    ? result.definition.split('\\n').filter((d) => d.trim())
-    : [];
-
-  return (
-    <div className="bg-bg-secondary border border-border rounded-lg p-6 mb-4 animate-fadeIn">
-      {/* Word Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <h2 className="text-3xl font-bold text-text-primary mb-2">{result.word}</h2>
-          <div className="flex items-center gap-4 flex-wrap">
-            {result.phonetic && (
-              <div className="flex items-center gap-2">
-                <span className="text-text-secondary">/{result.phonetic}/</span>
-                <button
-                  className="p-1 hover:bg-bg-tertiary rounded transition-colors"
-                  title="发音"
-                >
-                  <Volume2 size={16} className="text-primary" />
-                </button>
-              </div>
-            )}
-            {result.collins && result.collins > 0 && (
-              <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
-                {'★'.repeat(result.collins)} Collins
-              </span>
-            )}
-            {result.oxford && result.oxford > 0 && (
-              <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
-                Oxford 3000
-              </span>
-            )}
-          </div>
-        </div>
-
-        <button
-          onClick={() => onCopy(result.word)}
-          className="p-2 hover:bg-bg-tertiary rounded transition-colors"
-          title="复制"
-        >
-          <Copy size={16} className="text-text-secondary" />
-        </button>
-      </div>
-
-      {/* Translation */}
-      {result.translation && (
-        <div className="mb-4 pb-4 border-b border-border">
-          <h3 className="text-sm font-semibold text-text-secondary mb-2">翻译</h3>
-          <p className="text-text-primary text-lg">{result.translation}</p>
-        </div>
       )}
 
-      {/* Definitions */}
-      {definitions.length > 0 && (
-        <div className="mb-4 pb-4 border-b border-border">
-          <h3 className="text-sm font-semibold text-text-secondary mb-2">详细释义</h3>
-          <div className="space-y-2">
-            {definitions.map((def, i) => (
-              <div key={i} className="flex gap-2">
-                <span className="text-primary font-medium min-w-[24px]">{i + 1}.</span>
-                <span className="text-text-primary">{def}</span>
+      {/* 柯林斯词典（权威英英释义 + 双语例句） */}
+      {result.collinsEntries.length > 0 && (
+        <div className="bg-bg-secondary border border-border rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-orange-600 mb-3 flex items-center gap-1.5">
+            <BookOpen size={14} /> 柯林斯词典
+          </h3>
+          <div className="space-y-4">
+            {result.collinsEntries.map((ce, i) => (
+              <div key={i}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-mono">
+                    {ce.pos}
+                  </span>
+                  {ce.posCn && <span className="text-xs text-text-secondary">{ce.posCn}</span>}
+                </div>
+                <p className="text-sm text-text-primary leading-relaxed mb-2">{ce.englishDef}</p>
+                {ce.examples.length > 0 && (
+                  <div className="space-y-1.5 ml-2">
+                    {ce.examples.map((ex, j) => (
+                      <div key={j} className="pl-3 border-l-2 border-orange-200">
+                        <p className="text-xs text-text-primary italic">{ex.en}</p>
+                        <p className="text-xs text-text-secondary">{ex.zh}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Word Forms */}
-      {result.exchange && (
-        <div className="mb-4 pb-4 border-b border-border">
-          <h3 className="text-sm font-semibold text-text-secondary mb-2">词形变化</h3>
-          <p className="text-text-primary text-sm">{result.exchange}</p>
+      {/* DictionaryAPI.dev 在线释义 */}
+      {result.onlineMeanings.length > 0 && (
+        <div className="bg-bg-secondary border border-border rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-green-600 mb-3 flex items-center gap-1.5">
+            <Globe size={14} /> 在线释义（含例句）
+          </h3>
+          {result.onlineMeanings.map((m, mi) => (
+            <div key={mi} className="mb-4 last:mb-0">
+              <h4 className="text-xs font-semibold text-primary mb-2">{m.partOfSpeech}</h4>
+              <div className="space-y-2">
+                {m.definitions.map((d, di) => (
+                  <div key={di} className="pl-3 border-l-2 border-border">
+                    <p className="text-sm text-text-primary">{d.definition}</p>
+                    {d.example && (
+                      <p className="text-xs text-text-secondary italic mt-0.5">例: {d.example}</p>
+                    )}
+                    {d.synonyms.length > 0 && (
+                      <p className="text-xs text-text-tertiary mt-0.5">
+                        同义: {d.synonyms.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Tags */}
-      {result.tag && (
-        <div className="mb-4 pb-4 border-b border-border">
-          <h3 className="text-sm font-semibold text-text-secondary mb-2">标签</h3>
-          <div className="flex gap-2 flex-wrap">
-            {result.tag.split(' ').map((tag) => (
-              <span
-                key={tag}
-                className="text-xs px-2 py-1 bg-bg-tertiary text-text-secondary rounded"
-              >
-                {tag}
-              </span>
+      {/* 有道双语例句 */}
+      {result.examples.length > 0 && (
+        <div className="bg-bg-secondary border border-border rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-neutral-500 mb-3 flex items-center gap-1.5">
+            <BookOpen size={14} /> 双语例句
+          </h3>
+          <div className="space-y-3">
+            {result.examples.map((ex, i) => (
+              <div key={i} className="pl-3 border-l-2 border-border">
+                <p className="text-sm text-text-primary">{ex.en}</p>
+                <p className="text-xs text-text-secondary mt-0.5">{ex.zh}</p>
+              </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Frequency Info */}
-      {(result.frq || result.bnc) && (
-        <div className="flex gap-4 text-sm text-text-secondary">
-          {result.frq && <span>词频: {result.frq}</span>}
-          {result.bnc && <span>BNC: {result.bnc}</span>}
+      {/* GPT4 词根分析 */}
+      {result.gptAnalysis && (
+        <div className="bg-bg-secondary border border-border rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-primary mb-2 flex items-center gap-1.5">
+            <Sparkles size={14} /> AI 词根分析
+          </h3>
+          <div className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">
+            {result.gptAnalysis}
+          </div>
         </div>
       )}
     </div>

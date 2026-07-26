@@ -1,11 +1,28 @@
 import { useEffect, useRef, useState, useCallback, memo, useLayoutEffect } from 'react';
-import { emit, listen } from '@tauri-apps/api/event';
+import { emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { PhysicalSize } from '@tauri-apps/api/dpi';
-import { RefreshCw, Play, Pause, X, Copy, Image, Languages } from 'lucide-react';
+import {
+  RefreshCw,
+  Play,
+  Pause,
+  X,
+  Copy,
+  Image,
+  Languages,
+  Pin,
+  Link2,
+  Download,
+} from 'lucide-react';
 import type { OcrLineResult } from '../services/ocr';
 import { useI18n } from '../i18n';
-import { frameToCaptureRegion } from './ocrRegionGeometry';
+import {
+  frameToCaptureRegion,
+  ocrLineToCssRect,
+  fitImageDisplayRect,
+  OCR_TOOLBAR_HEIGHT_CSS,
+  OCR_MIN_FRAME_WIDTH_CSS,
+} from './ocrRegionGeometry';
 
 interface OcrRegionData {
   screenshot: string;
@@ -16,14 +33,21 @@ interface OcrRegionData {
   sourceLang: string;
   targetLang: string;
   refreshIntervalMs?: number;
+  /** Crop / OCR image size in pixels — set immediately so lines align before img onLoad (I5). */
+  imageWidth?: number;
+  imageHeight?: number;
+  /** When true, do not clear existing error banner (translate failed after OCR). */
+  keepError?: boolean;
 }
 
 type DisplayMode = 'translation' | 'source';
 
-const SUPPORTED_LANGS = ['auto', 'zh-CN', 'en', 'ja', 'ko', 'fr', 'de', 'ru', 'es'];
+// Use engine codes (zh not zh-CN) so translate/detect match Rust config defaults
+const SUPPORTED_LANGS = ['auto', 'zh', 'en', 'ja', 'ko', 'fr', 'de', 'ru', 'es'];
 
 const LANG_I18N_KEYS: Record<string, string> = {
   auto: 'common.autoDetect',
+  zh: 'lang.zh',
   'zh-CN': 'lang.zh',
   en: 'lang.en',
   ja: 'lang.ja',
@@ -34,8 +58,10 @@ const LANG_I18N_KEYS: Record<string, string> = {
   es: 'lang.es',
 };
 
+/** Short labels for the narrow OCR toolbar selects (keep short so arrow fits). */
 const LANG_FALLBACK: Record<string, string> = {
-  auto: '自动检测',
+  auto: '自动',
+  zh: '中文',
   'zh-CN': '中文',
   en: '英语',
   ja: '日语',
@@ -43,57 +69,88 @@ const LANG_FALLBACK: Record<string, string> = {
   fr: '法语',
   de: '德语',
   ru: '俄语',
-  es: '西班牙语',
+  es: '西语',
 };
 
-// Toolbar height in pixels
-const TOOLBAR_HEIGHT = 32;
+// From ocrRegionGeometry — MUST match Rust OCR_TOOLBAR_CSS_PX / OCR_MIN_FRAME_CSS_W (I2/I3).
+const TOOLBAR_HEIGHT = OCR_TOOLBAR_HEIGHT_CSS;
+const MIN_FRAME_LOGICAL_W = OCR_MIN_FRAME_WIDTH_CSS;
 
-// Memoized translation line component to prevent unnecessary re-renders
+// Memoized translation line — position uses image→CSS mapping, not raw DPR.
 interface TranslationLineProps {
   line: OcrLineResult;
   translation: string;
-  scaleFactor: number;
+  contentCssWidth: number;
+  contentCssHeight: number;
+  imagePixelWidth: number;
+  imagePixelHeight: number;
+  fallbackScale: number;
 }
 
-const TranslationLine = memo(({ line, translation, scaleFactor }: TranslationLineProps) => {
-  const left = line.x / scaleFactor - 2;
-  const top = line.y / scaleFactor - 1;
-  const width = line.width / scaleFactor + 4;
-  const height = line.height / scaleFactor;
-  const fontSize = Math.max(10, Math.min(14, height * 0.6));
+const TranslationLine = memo(
+  ({
+    line,
+    translation,
+    contentCssWidth,
+    contentCssHeight,
+    imagePixelWidth,
+    imagePixelHeight,
+    fallbackScale,
+  }: TranslationLineProps) => {
+    const rect = ocrLineToCssRect(
+      line,
+      contentCssWidth,
+      contentCssHeight,
+      imagePixelWidth,
+      imagePixelHeight,
+      fallbackScale,
+    );
+    const left = rect.x - 2;
+    const top = rect.y - 1;
+    const width = rect.width + 4;
+    const height = Math.max(rect.height, 12);
+    const fontSize = Math.max(11, Math.min(16, height * 0.72));
 
-  return (
-    <div
-      className="absolute group"
-      style={{
-        left,
-        top,
-        minWidth: width,
-        willChange: 'contents',
-      }}
-    >
-      {/* Background that matches original text area */}
+    return (
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-[2px] rounded-sm"
-        style={{ minWidth: width }}
-      />
-      {/* Translation text overlay - selectable for copying */}
-      <div
-        className="relative text-white font-medium drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)] whitespace-nowrap px-1.5 py-0.5 select-text cursor-text"
+        className="absolute group"
         style={{
-          minWidth: line.width / scaleFactor,
-          fontSize: `${fontSize}px`,
-          lineHeight: `${height}px`,
-          userSelect: 'text',
-          WebkitUserSelect: 'text',
+          left,
+          top,
+          minWidth: width,
+          maxWidth: Math.max(
+            width,
+            contentCssWidth > 0 ? Math.max(0, contentCssWidth - left - 4) : width,
+          ),
         }}
       >
-        {translation}
+        <div
+          className="absolute inset-0 rounded-md"
+          style={{
+            minWidth: width,
+            background: 'rgba(12, 12, 14, 0.72)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            boxShadow: '0 1px 6px rgba(0,0,0,0.35)',
+          }}
+        />
+        <div
+          className="relative text-white/95 font-medium whitespace-pre-wrap break-words px-1.5 py-0.5 select-text cursor-text"
+          style={{
+            minWidth: rect.width,
+            fontSize: `${fontSize}px`,
+            lineHeight: `${Math.max(height, fontSize + 2)}px`,
+            textShadow: '0 1px 2px rgba(0,0,0,0.85)',
+            userSelect: 'text',
+            WebkitUserSelect: 'text',
+          }}
+        >
+          {translation}
+        </div>
       </div>
-    </div>
-  );
-});
+    );
+  },
+);
 
 TranslationLine.displayName = 'TranslationLine';
 
@@ -118,37 +175,27 @@ export default function OcrRegionFrame() {
     [t],
   );
   const [data, setData] = useState<OcrRegionData | null>(null);
-  const [continuous, setContinuous] = useState(false); // Default: OFF to prevent flickering
+  const [continuous, setContinuous] = useState(false); // Default OFF — continuous hide/OCR/show flickers
   const [displayMode, setDisplayMode] = useState<DisplayMode>('translation');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pinned, setPinned] = useState(true); // always-on-top pin
+  const [followWindow, setFollowWindow] = useState(false); // track target window move
 
-  // Track if we're currently updating to prevent flash
-  const isUpdatingRef = useRef(false);
   const resizeStart = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const [sourceLang, setSourceLang] = useState('auto');
-  const [targetLang, setTargetLang] = useState('en');
-  // DPI scaling: OCR coordinates are in physical pixels, display is in logical pixels
-  const scaleFactor = window.devicePixelRatio || 1;
+  // Placeholder until first payload; app default is zh (do not hardcode en — confuses UI before data arrives)
+  const [targetLang, setTargetLang] = useState('zh');
+  // Prefer image natural size for line layout; DPR only as geometry fallback (I5).
+  // Re-read on resize so multi-monitor DPI moves stay correct (I2).
+  const [scaleFactor, setScaleFactor] = useState(() => window.devicePixelRatio || 1);
   const sourceLangRef = useRef(sourceLang);
   const targetLangRef = useRef(targetLang);
+  const dataRef = useRef<OcrRegionData | null>(null);
+  const displayModeRef = useRef<DisplayMode>(displayMode);
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const [toolbarActualHeight, setToolbarActualHeight] = useState(TOOLBAR_HEIGHT);
-
-  useLayoutEffect(() => {
-    if (!toolbarRef.current) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.borderBoxSize && entry.borderBoxSize.length > 0) {
-          setToolbarActualHeight(entry.borderBoxSize[0].blockSize);
-        } else {
-          setToolbarActualHeight(entry.target.getBoundingClientRect().height);
-        }
-      }
-    });
-    observer.observe(toolbarRef.current);
-    return () => observer.disconnect();
-  }, []);
+  const [contentSize, setContentSize] = useState({ w: 0, h: 0 });
+  const [imageSize, setImageSize] = useState({ w: 0, h: 0 });
 
   useEffect(() => {
     sourceLangRef.current = sourceLang;
@@ -156,6 +203,25 @@ export default function OcrRegionFrame() {
   useEffect(() => {
     targetLangRef.current = targetLang;
   }, [targetLang]);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+  useEffect(() => {
+    displayModeRef.current = displayMode;
+  }, [displayMode]);
+
+  useEffect(() => {
+    const syncDpr = () => setScaleFactor(window.devicePixelRatio || 1);
+    syncDpr();
+    const mq = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    const onChange = () => syncDpr();
+    mq.addEventListener('change', onChange);
+    window.addEventListener('resize', syncDpr);
+    return () => {
+      mq.removeEventListener('change', onChange);
+      window.removeEventListener('resize', syncDpr);
+    };
+  }, []);
 
   // Change detection: store previous OCR text for comparison
   const prevSourceTextRef = useRef<string>('');
@@ -165,122 +231,354 @@ export default function OcrRegionFrame() {
   const screenshotImgRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  /**
+   * Screen capture rect under the frame. When min-width expands the window wider
+   * than the OCR image, image is centered — report the painted content origin,
+   * not the full chrome width (keeps drag/refresh aligned with desktop text).
+   */
   const getCaptureRegion = useCallback(async () => {
-    const pos = await win.outerPosition();
-    const size = await win.outerSize();
-    return frameToCaptureRegion(
+    // Prefer INNER (client) geometry — outer is shifted by DWM chrome after force_hwnd_cover.
+    // Capture math is client-aligned with create_ocr_region_frame.
+    let pos = await win.outerPosition();
+    let size = await win.outerSize();
+    try {
+      pos = await win.innerPosition();
+      size = await win.innerSize();
+    } catch {
+      /* outer fallback */
+    }
+    // Prefer OS scale factor for the window's monitor (more accurate than JS DPR alone).
+    let scale = scaleFactor;
+    try {
+      scale = await win.scaleFactor();
+    } catch {
+      /* keep devicePixelRatio fallback */
+    }
+    // Fixed toolbar height so capture rect matches create_ocr_region_frame (I2).
+    let region = frameToCaptureRegion(
       { x: pos.x, y: pos.y, width: size.width, height: size.height },
-      Math.round(toolbarActualHeight),
-      scaleFactor,
+      TOOLBAR_HEIGHT,
+      scale,
     );
-  }, [scaleFactor, win, toolbarActualHeight]);
+    // Min-width chrome is wider than the true crop; image is centered in content CSS.
+    // Report the painted image rect (not full chrome) so drag/refresh stay on text.
+    const iw = imageSize.w;
+    const ih = imageSize.h;
+    const cw = contentSize.w;
+    const ch = contentSize.h;
+    if (iw > 0 && ih > 0 && cw > 0 && ch > 0) {
+      const painted = fitImageDisplayRect(cw, ch, iw, ih);
+      if (painted.width > 0 && painted.width + 1 < cw) {
+        const leftPadPhys = painted.x * scale;
+        const paintWPhys = painted.width * scale;
+        region = {
+          x: Math.round(region.x + leftPadPhys),
+          y: region.y,
+          width: Math.round(paintWPhys),
+          height: region.height,
+        };
+      }
+    }
+    return region;
+  }, [scaleFactor, win, imageSize.w, imageSize.h, contentSize.w, contentSize.h]);
 
-  // Solid dark background (no transparency to prevent ghost frames on move/resize)
+  // Dark translucent chrome (Youdao-like glass). Window itself is transparent.
+  // Strip any global accent blue that might paint borders/focus rings.
   useEffect(() => {
-    document.body.style.backgroundColor = '#0a0a0a';
+    const s = document.createElement('style');
+    s.setAttribute('data-ocr-region-neutral', '1');
+    s.textContent =
+      'html,body,#root{background:transparent!important;margin:0!important;outline:none!important}' +
+      '*{outline:none!important}' +
+      '::selection{background:rgba(255,255,255,0.15)!important}';
+    document.head.appendChild(s);
+    document.documentElement.style.background = 'transparent';
+    document.body.style.backgroundColor = 'transparent';
+    document.body.style.margin = '0';
     const root = document.getElementById('root');
-    if (root) root.style.backgroundColor = '#0a0a0a';
+    if (root) root.style.backgroundColor = 'transparent';
+    return () => {
+      s.remove();
+    };
   }, []);
 
-  // Listen for data updates from main window
-  // Uses `cancelled` flag to handle React StrictMode double-mount
-  useEffect(() => {
-    console.log('[OcrRegionFrame] Registering ocr-region-update-data listener...');
-    let cancelled = false;
-    let unlisten: (() => void) | undefined;
+  // Content size for I5: bootstrap + observe (not only when `data` arrives).
+  useLayoutEffect(() => {
+    const bootW = window.innerWidth;
+    const bootH = Math.max(1, window.innerHeight - TOOLBAR_HEIGHT);
+    if (bootW > 0 && bootH > 0) setContentSize({ w: bootW, h: bootH });
 
-    // Timeout: show error if no data received within 30 seconds
-    // OCR + translation pipeline can take time, especially with fallbacks
-    const timeout = window.setTimeout(() => {
-      if (cancelled) return;
-      if (!data) {
+    const contentEl = () =>
+      containerRef.current?.querySelector('[data-ocr-content]') as HTMLElement | null;
+    const apply = () => {
+      const el = contentEl();
+      if (!el) {
+        const w = window.innerWidth;
+        const h = Math.max(1, window.innerHeight - TOOLBAR_HEIGHT);
+        if (w > 0 && h > 0) setContentSize({ w, h });
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      setContentSize({ w: r.width, h: r.height });
+    };
+    apply();
+    const el = contentEl();
+    if (!el) {
+      window.addEventListener('resize', apply);
+      return () => window.removeEventListener('resize', apply);
+    }
+    const observer = new ResizeObserver(apply);
+    observer.observe(el);
+    window.addEventListener('resize', apply);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', apply);
+    };
+  }, []);
+
+  // Focus window so keyboard shortcuts work (handlers registered after copyToClipboard).
+  useEffect(() => {
+    void win.setFocus().catch(() => undefined);
+  }, [win]);
+
+  // Listen for data updates; emit ready only AFTER listeners are registered (selection waits on it).
+  useEffect(() => {
+    let cancelled = false;
+    const unlisteners: Array<() => void> = [];
+    const receivedDataRef = { current: false };
+
+    let dataTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    const armDataTimeout = () => {
+      if (dataTimeoutId) window.clearTimeout(dataTimeoutId);
+      dataTimeoutId = window.setTimeout(() => {
+        if (cancelled || receivedDataRef.current) return;
         console.warn('[OcrRegionFrame] Data timeout after 30 seconds');
         setError(tf('ocrRegion.dataTimeout', '等待数据超时，请点击重试'));
         setLoading(false);
+      }, 30000);
+    };
+
+    const applySessionReset = () => {
+      receivedDataRef.current = false;
+      armDataTimeout();
+      setContinuous(false);
+      setLoading(true);
+      setError(null);
+      setFollowWindow(false);
+      setDisplayMode('translation');
+      setActionHint(null);
+      prevSourceTextRef.current = '';
+      screenshotUrlRef.current = '';
+      if (screenshotImgRef.current) {
+        screenshotImgRef.current.removeAttribute('src');
       }
-    }, 30000);
+      setData(null);
+      setImageSize({ w: 0, h: 0 });
+      void emitTo('main', 'ocr-region-session-reset-ack', null).catch(() => undefined);
+    };
 
-    listen<OcrRegionData>('ocr-region-update-data', (event) => {
-      console.log('[OcrRegionFrame] Received ocr-region-update-data:', event.payload);
-      if (cancelled || isUpdatingRef.current) return;
+    armDataTimeout();
 
-      const d = event.payload;
-
-      // Change detection: compare with previous OCR result
-      const hasChanged = prevSourceTextRef.current !== d.sourceText;
-      if (!hasChanged && data) {
-        // No text change, skip update to prevent flash
-        return;
-      }
-
-      if (hasChanged) {
-        console.log('[OcrRegionFrame] Content changed, updating display');
-        prevSourceTextRef.current = d.sourceText;
-      }
-
-      // Mark as updating
-      isUpdatingRef.current = true;
-
-      // Only update screenshot if it actually changed (prevent re-render)
-      if (d.screenshot && d.screenshot !== screenshotUrlRef.current) {
-        screenshotUrlRef.current = d.screenshot;
-        // Update image directly without re-render
-        if (screenshotImgRef.current) {
-          screenshotImgRef.current.src = d.screenshot;
+    // Register all critical listeners, then emit ready once (no partial-listen race).
+    void (async () => {
+      try {
+        const unPing = await listen('ocr-region-ping-ready', () => {
+          if (cancelled) return;
+          void emitTo('main', 'ocr-region-frame-ready', null).catch(() => undefined);
+        });
+        if (cancelled) {
+          unPing();
+          return;
         }
-      }
+        unlisteners.push(unPing);
 
-      // Use requestAnimationFrame to batch updates
-      requestAnimationFrame(() => {
-        if (cancelled) return;
-        setData(d);
-        setLoading(false);
-        setError(null);
-        setSourceLang(d.sourceLang);
-        setTargetLang(d.targetLang);
+        const unReset = await listen('ocr-region-session-reset', () => {
+          if (cancelled) return;
+          applySessionReset();
+        });
+        if (cancelled) {
+          unReset();
+          return;
+        }
+        unlisteners.push(unReset);
 
-        // Release update lock after render
-        setTimeout(() => {
-          isUpdatingRef.current = false;
-        }, 100);
-      });
-    }).then((fn) => {
-      console.log('[OcrRegionFrame] Listener registered successfully');
-      if (cancelled) {
-        fn();
-      } else {
-        unlisten = fn;
+        const unData = await listen<OcrRegionData>('ocr-region-update-data', (event) => {
+          if (cancelled) return;
+          const d = event.payload;
+
+          const textChanged = prevSourceTextRef.current !== d.sourceText;
+          const screenshotChanged = !!d.screenshot && d.screenshot !== screenshotUrlRef.current;
+          const linesChanged =
+            !dataRef.current ||
+            dataRef.current.ocrLines.length !== (d.ocrLines.length ?? 0) ||
+            d.ocrLines.some((l, i) => {
+              const p = dataRef.current?.ocrLines[i];
+              return (
+                !p || p.x !== l.x || p.y !== l.y || p.width !== l.width || p.height !== l.height
+              );
+            });
+          const transChanged =
+            d.translatedText !== dataRef.current?.translatedText ||
+            (d.lineTranslations.length ?? 0) !== (dataRef.current.lineTranslations.length ?? 0);
+          if (
+            !textChanged &&
+            prevSourceTextRef.current &&
+            !screenshotChanged &&
+            !linesChanged &&
+            !transChanged
+          ) {
+            if (d.imageWidth && d.imageHeight && d.imageWidth > 0 && d.imageHeight > 0) {
+              setImageSize({ w: d.imageWidth, h: d.imageHeight });
+            }
+            receivedDataRef.current = true;
+            setLoading(false);
+            return;
+          }
+
+          if (textChanged) {
+            prevSourceTextRef.current = d.sourceText;
+          }
+          receivedDataRef.current = true;
+
+          if (d.screenshot && d.screenshot !== screenshotUrlRef.current) {
+            screenshotUrlRef.current = d.screenshot;
+            if (screenshotImgRef.current) {
+              screenshotImgRef.current.src = d.screenshot;
+            }
+          }
+
+          if (d.imageWidth && d.imageHeight && d.imageWidth > 0 && d.imageHeight > 0) {
+            setImageSize({ w: d.imageWidth, h: d.imageHeight });
+          }
+          setData(d);
+          setLoading(false);
+          if (!d.keepError) setError(null);
+          setSourceLang(d.sourceLang);
+          setTargetLang(d.targetLang);
+        });
+        if (cancelled) {
+          unData();
+          return;
+        }
+        unlisteners.push(unData);
+
+        void emitTo('main', 'ocr-region-frame-ready', null).catch(() => undefined);
+      } catch (e) {
+        console.warn('[OcrRegionFrame] listener setup failed', e);
       }
-    });
+    })();
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timeout);
+      if (dataTimeoutId) window.clearTimeout(dataTimeoutId);
+      unlisteners.forEach((fn) => fn());
+    };
+  }, [tf]);
+
+  // Emit initial position only for follow offset sync — parent must NOT re-OCR on this
+  // and must NOT adopt min-width-expanded width (see OcrScreenshotTranslator handler).
+  // Fire after first paint (rAF×2) instead of fixed 400ms delay.
+  useEffect(() => {
+    let cancelled = false;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        if (cancelled) return;
+        void getCaptureRegion()
+          .then((r) => emitTo('main', 'ocr-region-position-changed', r))
+          .catch(() => undefined);
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [getCaptureRegion]);
+
+  // Sync follow button if main window fails to bind target window
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ enabled: boolean }>('ocr-region-follow-state', (event) => {
+      if (cancelled) return;
+      setFollowWindow(event.payload.enabled);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, []);
 
-  // Emit initial position
+  // OCR / translate errors from main window (keep frame open)
   useEffect(() => {
-    const timer = setTimeout(async () => {
-      try {
-        await emit('ocr-region-position-changed', await getCaptureRegion());
-      } catch {
-        // window may already be closed
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ message: string }>('ocr-region-error', (event) => {
+      if (cancelled) return;
+      setError(event.payload.message || tf('ocr.noTextRecognized', 'OCR 没有识别到文本'));
+      setLoading(false);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [tf]);
+
+  // Soft busy during refresh/continuous grab (frame stays visible — spinner only)
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ loading: boolean }>('ocr-region-loading', (event) => {
+      if (cancelled) return;
+      if (event.payload.loading) {
+        setError(null);
+        setLoading(true);
+      } else {
+        setLoading(false);
       }
-    }, 200);
-    return () => clearTimeout(timer);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // Main may pause continuous (e.g. target minimized) — keep toolbar in sync
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ enabled: boolean }>('ocr-region-continuous-state', (event) => {
+      if (cancelled) return;
+      setContinuous(!!event.payload.enabled);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   const pauseParentRefresh = useCallback(() => {
     if (continuous) {
-      void emit('ocr-region-continuous', { enabled: false });
+      void emitTo('main', 'ocr-region-continuous', { enabled: false });
     }
   }, [continuous]);
 
   const restoreParentRefresh = useCallback(() => {
     if (continuous) {
-      void emit('ocr-region-continuous', { enabled: true });
+      void emitTo('main', 'ocr-region-continuous', { enabled: true });
     }
   }, [continuous]);
 
@@ -298,7 +596,7 @@ export default function OcrRegionFrame() {
     try {
       await win.startDragging();
       // After drag completes, notify the main window of new position
-      await emit('ocr-region-position-changed', await getCaptureRegion());
+      await emitTo('main', 'ocr-region-position-changed', await getCaptureRegion());
     } catch {
       /* ignore */
     } finally {
@@ -319,10 +617,12 @@ export default function OcrRegionFrame() {
       if (!resizing.current) return;
       const dx = ev.screenX - resizeStart.current.x;
       const dy = ev.screenY - resizeStart.current.y;
+      const minW = Math.round(MIN_FRAME_LOGICAL_W * scaleFactor);
+      const minH = Math.round((TOOLBAR_HEIGHT + 48) * scaleFactor);
       void win.setSize(
         new PhysicalSize(
-          Math.max(80, resizeStart.current.width + dx),
-          Math.max(60, resizeStart.current.height + dy),
+          Math.max(minW, resizeStart.current.width + dx),
+          Math.max(minH, resizeStart.current.height + dy),
         ),
       );
     };
@@ -331,7 +631,7 @@ export default function OcrRegionFrame() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       try {
-        await emit('ocr-region-size-changed', await getCaptureRegion());
+        await emitTo('main', 'ocr-region-size-changed', await getCaptureRegion());
       } catch {
         /* ignore */
       } finally {
@@ -342,42 +642,173 @@ export default function OcrRegionFrame() {
     window.addEventListener('mouseup', onUp);
   };
 
+  const [actionHint, setActionHint] = useState<string | null>(null);
+  const actionHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashHint = useCallback((msg: string) => {
+    setActionHint(msg);
+    if (actionHintTimer.current) window.clearTimeout(actionHintTimer.current);
+    actionHintTimer.current = window.setTimeout(() => setActionHint(null), 1200);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (actionHintTimer.current) window.clearTimeout(actionHintTimer.current);
+    };
+  }, []);
+
+  // Non-blocking hints (same-lang, etc.) — toolbar flash, not red error panel
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ message: string }>('ocr-region-hint', (event) => {
+      if (cancelled) return;
+      const msg = event.payload.message;
+      if (msg) flashHint(msg);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [flashHint]);
+
   // ---- Button handlers ----
   const handleRefresh = useCallback(() => {
-    void emit('ocr-region-refresh', null);
-  }, []);
+    setError(null);
+    setLoading(true);
+    flashHint(tf('ocrRegion.refreshing', '刷新中…'));
+    void emitTo('main', 'ocr-region-refresh', null);
+  }, [flashHint, tf]);
 
   const handleToggleContinuous = useCallback(() => {
     const next = !continuous;
     setContinuous(next);
-    void emit('ocr-region-continuous', { enabled: next });
-  }, [continuous]);
+    void emitTo('main', 'ocr-region-continuous', { enabled: next });
+    flashHint(
+      next ? tf('ocrRegion.watchOn', '监视已开启') : tf('ocrRegion.watchOff', '监视已关闭'),
+    );
+  }, [continuous, flashHint, tf]);
 
   const handleClose = useCallback(() => {
     // Just emit the close event — the main window will close this window
     // via the Rust `close_ocr_region_frame` command, then show itself.
     // This avoids both windows being visible at the same time.
-    void emit('ocr-region-close', null);
+    void emitTo('main', 'ocr-region-close', null);
   }, []);
 
-  const copyToClipboard = useCallback(async (text: string) => {
+  const handleTogglePin = useCallback(async () => {
+    const next = !pinned;
     try {
-      await navigator.clipboard.writeText(text);
+      await win.setAlwaysOnTop(next);
+      setPinned(next);
+      flashHint(next ? tf('ocrRegion.pinned', '已置顶') : tf('ocrRegion.unpinned', '取消置顶'));
     } catch {
-      // fallback
+      // ignore — window may be closing
     }
-  }, []);
+  }, [pinned, win, flashHint, tf]);
+
+  const handleToggleFollow = useCallback(() => {
+    const next = !followWindow;
+    setFollowWindow(next);
+    void emitTo('main', 'ocr-region-follow', { enabled: next });
+    flashHint(next ? tf('ocrRegion.followOn', '跟随窗口') : tf('ocrRegion.followOff', '取消跟随'));
+  }, [followWindow, flashHint, tf]);
+
+  const copyToClipboard = useCallback(
+    async (text: string) => {
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        flashHint(tf('common.copied', '已复制'));
+        return;
+      } catch {
+        // fall through
+      }
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        flashHint(tf('common.copied', '已复制'));
+      } catch {
+        console.warn('[OcrRegionFrame] copy failed');
+      }
+    },
+    [flashHint, tf],
+  );
+
+  // Esc closes; Ctrl/Cmd+C copies; R refreshes (ignore when focus in select/input).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        void emitTo('main', 'ocr-region-close', null);
+        return;
+      }
+      const tag = (e.target as HTMLElement).tagName;
+      const typing =
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        (e.target as HTMLElement).isContentEditable;
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        const sel = window.getSelection()?.toString();
+        if (sel && sel.length > 0) return;
+        e.preventDefault();
+        const d = dataRef.current;
+        if (!d) return;
+        const text =
+          displayModeRef.current === 'source' ? d.sourceText : d.translatedText || d.sourceText;
+        void copyToClipboard(text);
+        return;
+      }
+      if (!typing && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        handleRefresh();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [copyToClipboard, handleRefresh]);
 
   const handleCopyScreenshot = useCallback(async () => {
     if (!data?.screenshot) return;
     try {
       const blob = await (await fetch(data.screenshot)).blob();
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      flashHint(tf('ocrRegion.copiedImage', '截图已复制'));
     } catch {
-      // fallback — copy as text
       await copyToClipboard(data.sourceText);
     }
-  }, [data, copyToClipboard]);
+  }, [data, copyToClipboard, flashHint, tf]);
+
+  /** Save region crop PNG to disk (dialog). */
+  const handleSaveScreenshot = useCallback(async () => {
+    if (!data?.screenshot) return;
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const path = await save({
+        defaultPath: `ocr-region-${Date.now()}.png`,
+        filters: [{ name: 'PNG', extensions: ['png'] }],
+      });
+      if (!path) return;
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('write_file_base64', {
+        filePath: path,
+        base64Data: data.screenshot,
+      });
+      flashHint(tf('ocrRegion.savedImage', '已保存'));
+    } catch (e) {
+      console.warn('[OcrRegionFrame] save screenshot failed', e);
+      await handleCopyScreenshot();
+    }
+  }, [data, handleCopyScreenshot, flashHint, tf]);
 
   const handleLangChange = useCallback((type: 'source' | 'target', value: string) => {
     if (type === 'source') {
@@ -387,13 +818,13 @@ export default function OcrRegionFrame() {
       setTargetLang(value);
       targetLangRef.current = value;
     }
-    void emit('ocr-region-lang-change', {
+    void emitTo('main', 'ocr-region-lang-change', {
       sourceLang: type === 'source' ? value : sourceLangRef.current,
       targetLang: type === 'target' ? value : targetLangRef.current,
     });
   }, []);
 
-  // ---- Compute text area bounds from OCR lines ----
+  // ---- Compute text area bounds from OCR lines (CSS space) ----
   const textAreaBounds = useCallback(() => {
     if (!data?.ocrLines.length) return null;
     const validLines = data.ocrLines.filter((l) => l.width > 0 && l.height > 0);
@@ -403,37 +834,83 @@ export default function OcrRegionFrame() {
       maxR = -Infinity,
       maxB = -Infinity;
     for (const l of validLines) {
-      if (l.x < minX) minX = l.x;
-      if (l.y < minY) minY = l.y;
-      if (l.x + l.width > maxR) maxR = l.x + l.width;
-      if (l.y + l.height > maxB) maxB = l.y + l.height;
+      const r = ocrLineToCssRect(
+        l,
+        contentSize.w,
+        contentSize.h,
+        imageSize.w,
+        imageSize.h,
+        scaleFactor,
+      );
+      if (r.x < minX) minX = r.x;
+      if (r.y < minY) minY = r.y;
+      if (r.x + r.width > maxR) maxR = r.x + r.width;
+      if (r.y + r.height > maxB) maxB = r.y + r.height;
     }
     return { x: minX, y: minY, width: maxR - minX, height: maxB - minY };
-  }, [data]);
+  }, [data, contentSize.w, contentSize.h, imageSize.w, imageSize.h, scaleFactor]);
 
   const bounds = textAreaBounds();
   const refreshIntervalLabel = `${Math.round(((data?.refreshIntervalMs ?? 2000) / 1000) * 10) / 10}s`;
+  // Action availability — never shrink buttons; disable when data missing
+  const hasSource = Boolean(data?.sourceText.trim());
+  const hasTarget = Boolean(data?.translatedText.trim());
+  const hasShot = Boolean(data?.screenshot);
+  const canCopySource = hasSource;
+  const canCopyTarget = hasTarget || hasSource;
+  const canCopyShot = hasShot;
+  const canSaveShot = hasShot;
+  const canToggleDisplay = hasSource || hasTarget;
+  const canRefresh = !loading;
+  const btnBase =
+    'flex items-center justify-center w-5 h-5 rounded transition-colors flex-shrink-0 shrink-0';
+  const btnIdle = 'text-white/55 hover:text-white hover:bg-white/10';
+  const btnOff = 'text-white/25 cursor-not-allowed';
 
   return (
-    <div ref={containerRef} className="fixed inset-0 select-none" onMouseDown={onMouseDown}>
-      {/* ---- Top Toolbar (fixed position, independent of detection area) ---- */}
+    <div
+      ref={containerRef}
+      className="fixed inset-0 select-none outline-none overflow-visible"
+      onMouseDown={onMouseDown}
+      style={{
+        // Do NOT use overflow:hidden on the root — it clips toolbar icons on narrow frames.
+        minWidth: MIN_FRAME_LOGICAL_W,
+        background: 'rgba(12, 12, 14, 0.42)',
+        // Neutral gray border only — never sky/accent blue
+        border: '1px solid rgba(200, 200, 205, 0.28)',
+        borderRadius: 10,
+        boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
+        outline: 'none',
+        WebkitTapHighlightColor: 'transparent',
+      }}
+    >
+      {/* Full toolbar strip: fixed height, never shrink buttons; window min-width holds full bar (I3=360). */}
       <div
         ref={toolbarRef}
-        className="fixed top-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-b border-sky-400/30 px-1.5 flex flex-wrap items-center gap-1 text-xs z-50 overflow-y-auto [&::-webkit-scrollbar]:hidden"
+        className="absolute top-0 left-0 right-0 z-50 px-1.5 flex flex-nowrap items-center gap-0.5 text-xs overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden"
         style={{
+          height: `${TOOLBAR_HEIGHT}px`,
           minHeight: `${TOOLBAR_HEIGHT}px`,
-          maxHeight: '70%',
-          alignContent: 'flex-start',
-          paddingBottom: '4px',
-          paddingTop: '4px',
+          maxHeight: `${TOOLBAR_HEIGHT}px`,
+          minWidth: MIN_FRAME_LOGICAL_W,
+          background: 'rgba(12, 12, 14, 0.92)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.10)',
+          borderTopLeftRadius: 10,
+          borderTopRightRadius: 10,
         }}
       >
         {/* Display mode toggle - compact */}
         <button
-          className={`px-1.5 py-0.5 rounded font-medium transition-colors text-[11px] flex-shrink-0 ${
-            displayMode === 'translation'
-              ? 'bg-sky-500/30 text-sky-300'
-              : 'text-gray-400 hover:text-gray-200 hover:bg-white/10'
+          type="button"
+          disabled={!canToggleDisplay}
+          className={`px-1.5 py-0.5 rounded font-medium transition-colors text-[11px] flex-shrink-0 shrink-0 ${
+            !canToggleDisplay
+              ? btnOff
+              : displayMode === 'translation'
+                ? 'bg-white/15 text-white'
+                : 'text-white/55 hover:text-white hover:bg-white/10'
           }`}
           onClick={() => setDisplayMode(displayMode === 'translation' ? 'source' : 'translation')}
           title={tf('ocrRegion.toggleDisplay', '切换原文/译文显示')}
@@ -441,40 +918,88 @@ export default function OcrRegionFrame() {
           {displayMode === 'translation' ? '译' : '原'}
         </button>
 
-        <span className="w-px h-3 bg-gray-700 flex-shrink-0" />
+        <span className="w-px h-3 bg-white/15 flex-shrink-0" />
 
         {/* Copy buttons - icon only */}
         <button
-          className="flex items-center justify-center w-5 h-5 rounded text-gray-400 hover:text-sky-300 hover:bg-white/10 transition-colors flex-shrink-0"
-          onClick={() => data && copyToClipboard(data.sourceText)}
-          title={tf('ocrRegion.copySource', '复制原文')}
+          type="button"
+          disabled={!canCopySource}
+          className={`${btnBase} ${canCopySource ? btnIdle : btnOff}`}
+          onClick={() => canCopySource && data && copyToClipboard(data.sourceText)}
+          title={
+            canCopySource
+              ? tf('ocrRegion.copySource', '复制原文')
+              : tf('ocrRegion.needOcr', '识别完成后可用')
+          }
+          aria-label={tf('ocrRegion.copySource', '复制原文')}
         >
           <Copy size={11} />
         </button>
 
         <button
-          className="flex items-center justify-center w-5 h-5 rounded text-sky-400 hover:text-sky-300 hover:bg-white/10 transition-colors flex-shrink-0"
-          onClick={() => data && copyToClipboard(data.translatedText)}
-          title={tf('ocrRegion.copyTarget', '复制译文')}
+          type="button"
+          disabled={!canCopyTarget}
+          className={`${btnBase} ${canCopyTarget ? 'text-white/70 hover:text-white hover:bg-white/10' : btnOff}`}
+          onClick={() =>
+            canCopyTarget && data && copyToClipboard(data.translatedText || data.sourceText)
+          }
+          title={
+            canCopyTarget
+              ? tf('ocrRegion.copyTarget', '复制译文')
+              : tf('ocrRegion.needOcr', '识别完成后可用')
+          }
+          aria-label={tf('ocrRegion.copyTarget', '复制译文')}
         >
-          <Copy size={11} />
+          <span className="text-[9px] font-semibold leading-none">译</span>
         </button>
 
         <button
-          className="flex items-center justify-center w-5 h-5 rounded text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors flex-shrink-0"
-          onClick={handleCopyScreenshot}
-          title={tf('ocrRegion.copyScreenshot', '复制截图')}
+          type="button"
+          disabled={!canCopyShot}
+          className={`${btnBase} ${canCopyShot ? btnIdle : btnOff}`}
+          onClick={() => {
+            if (canCopyShot) void handleCopyScreenshot();
+          }}
+          title={
+            canCopyShot
+              ? tf('ocrRegion.copyScreenshot', '复制截图')
+              : tf('ocrRegion.needOcr', '识别完成后可用')
+          }
         >
           <Image size={11} />
         </button>
 
-        <span className="w-px h-3 bg-gray-700 flex-shrink-0" />
+        <button
+          type="button"
+          disabled={!canSaveShot}
+          className={`${btnBase} ${canSaveShot ? btnIdle : btnOff}`}
+          onClick={() => {
+            if (canSaveShot) void handleSaveScreenshot();
+          }}
+          title={
+            canSaveShot
+              ? tf('ocrRegion.saveScreenshot', '保存截图')
+              : tf('ocrRegion.needOcr', '识别完成后可用')
+          }
+          aria-label={tf('ocrRegion.saveScreenshot', '保存截图')}
+        >
+          <Download size={11} />
+        </button>
 
-        {/* Language selectors - ultra compact */}
-        <Languages size={10} className="text-gray-500 flex-shrink-0" />
+        <span className="w-px h-3 bg-white/15 flex-shrink-0" />
+
+        {/* Language always shown — window min-width fits full toolbar (no hide-on-narrow). */}
+        <Languages size={10} className="text-white/40 flex-shrink-0" />
         <select
-          className="bg-gray-800 text-gray-300 rounded border border-gray-700 px-1 py-0.5 text-[10px] cursor-pointer flex-shrink-0"
-          style={{ width: '50px' }}
+          className="bg-black/40 text-white/80 rounded border border-white/10 pl-1 pr-4 py-0.5 text-[10px] cursor-pointer flex-shrink-0 shrink-0 appearance-auto"
+          style={{
+            width: '4.5rem',
+            minWidth: '4.5rem',
+            maxWidth: '5.5rem',
+            // Room for native dropdown arrow (WebView often overlays it on text)
+            paddingRight: '1.1rem',
+            textOverflow: 'ellipsis',
+          }}
           value={sourceLang}
           onChange={(e) => handleLangChange('source', e.target.value)}
           title={getLangName(sourceLang)}
@@ -485,10 +1010,16 @@ export default function OcrRegionFrame() {
             </option>
           ))}
         </select>
-        <span className="text-gray-500 text-[10px] flex-shrink-0">→</span>
+        <span className="text-white/40 text-[10px] flex-shrink-0">→</span>
         <select
-          className="bg-gray-800 text-gray-300 rounded border border-gray-700 px-1 py-0.5 text-[10px] cursor-pointer flex-shrink-0"
-          style={{ width: '50px' }}
+          className="bg-black/40 text-white/80 rounded border border-white/10 pl-1 pr-4 py-0.5 text-[10px] cursor-pointer flex-shrink-0 shrink-0 appearance-auto"
+          style={{
+            width: '4rem',
+            minWidth: '4rem',
+            maxWidth: '5rem',
+            paddingRight: '1.1rem',
+            textOverflow: 'ellipsis',
+          }}
           value={targetLang}
           onChange={(e) => handleLangChange('target', e.target.value)}
           title={getLangName(targetLang)}
@@ -499,21 +1030,41 @@ export default function OcrRegionFrame() {
             </option>
           ))}
         </select>
+        <span className="w-px h-3 bg-white/15 flex-shrink-0" />
 
-        <span className="w-px h-3 bg-gray-700 flex-shrink-0" />
+        {/* Pin always-on-top */}
+        <button
+          type="button"
+          className={`${btnBase} ${pinned ? 'text-amber-300 bg-amber-400/15' : btnIdle}`}
+          onClick={() => void handleTogglePin()}
+          title={pinned ? tf('ocrRegion.unpin', '取消钉住') : tf('ocrRegion.pin', '钉住置顶')}
+        >
+          <Pin size={11} />
+        </button>
+
+        {/* Follow target window */}
+        <button
+          type="button"
+          className={`${btnBase} ${followWindow ? 'text-emerald-300 bg-emerald-400/15' : btnIdle}`}
+          onClick={handleToggleFollow}
+          title={
+            followWindow
+              ? tf('ocrRegion.unfollow', '停止跟随窗口')
+              : tf('ocrRegion.follow', '跟随目标窗口（先点目标窗口再点此按钮）')
+          }
+        >
+          <Link2 size={11} />
+        </button>
 
         {/* Auto refresh toggle - icon only */}
         <button
-          className={`flex items-center justify-center w-5 h-5 rounded transition-colors flex-shrink-0 ${
-            continuous
-              ? 'text-sky-400 bg-sky-400/20'
-              : 'text-gray-400 hover:text-gray-200 hover:bg-white/10'
-          }`}
+          type="button"
+          className={`${btnBase} ${continuous ? 'text-white bg-white/15' : btnIdle}`}
           onClick={handleToggleContinuous}
           title={
             continuous
-              ? `${tf('ocrRegion.pauseRefresh', '暂停自动刷新')} (${refreshIntervalLabel})`
-              : tf('ocrRegion.resumeRefresh', '开启自动刷新')
+              ? `${tf('ocrRegion.pauseWatch', '暂停区域监视')} (${refreshIntervalLabel})`
+              : tf('ocrRegion.startWatch', '开启区域监视（内容变化才翻译）')
           }
         >
           {continuous ? <Pause size={11} /> : <Play size={11} />}
@@ -521,46 +1072,66 @@ export default function OcrRegionFrame() {
 
         {/* Manual refresh */}
         <button
-          className="flex items-center justify-center w-5 h-5 rounded text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors flex-shrink-0"
-          onClick={handleRefresh}
-          title={tf('ocrRegion.refreshNow', '立即刷新')}
+          type="button"
+          disabled={!canRefresh}
+          className={`${btnBase} ${canRefresh ? btnIdle : btnOff}`}
+          onClick={() => {
+            if (canRefresh) handleRefresh();
+          }}
+          title={
+            canRefresh
+              ? tf('ocrRegion.refreshNow', '立即刷新')
+              : tf('ocrRegion.refreshing', '刷新中…')
+          }
         >
-          <RefreshCw size={11} />
+          <RefreshCw size={11} className={loading ? 'animate-spin' : undefined} />
         </button>
 
-        {/* Spacer */}
-        <div className="flex-1 min-w-2" />
+        <span className="w-2 flex-shrink-0" />
 
-        {/* Close */}
+        {/* Close — always available */}
         <button
-          className="flex items-center justify-center w-5 h-5 rounded text-gray-400 hover:text-red-400 hover:bg-red-400/15 transition-colors flex-shrink-0"
+          type="button"
+          className={`${btnBase} text-white/55 hover:text-red-300 hover:bg-red-400/15`}
           onClick={handleClose}
           title={tf('common.close', '关闭')}
         >
           <X size={12} />
         </button>
+
+        {actionHint ? (
+          <span className="ml-1 text-[10px] text-emerald-300/90 pointer-events-none whitespace-nowrap flex-shrink-0">
+            {actionHint}
+          </span>
+        ) : null}
       </div>
 
       {/* ---- Content Area (translation overlays) ---- */}
       <div
+        data-ocr-content
         className="absolute overflow-hidden"
-        style={{ top: toolbarActualHeight, left: 0, right: 0, bottom: 0 }}
+        style={{ top: TOOLBAR_HEIGHT, left: 0, right: 0, bottom: 0 }}
+        onDoubleClick={(e) => {
+          // Double-click empty chrome refreshes; ignore when selecting overlay text.
+          if ((e.target as HTMLElement).closest('button, select, .select-text')) return;
+          handleRefresh();
+        }}
       >
-        {/* Loading state */}
+        {/* Loading: keep previous overlays visible under a light veil (manual refresh). */}
         {loading && !error && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="text-gray-400 text-sm animate-pulse">
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20 bg-black/25">
+            <div className="text-white/80 text-xs animate-pulse px-2 py-1 rounded bg-black/50">
               {tf('ocrRegion.recognizing', '正在识别文本...')}
             </div>
           </div>
         )}
 
-        {/* Error state */}
+        {/* Error state — keep prior overlays under a dim panel when possible */}
         {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-auto">
-            <div className="text-red-400 text-sm">{error}</div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-auto z-30 bg-black/40">
+            <div className="text-red-200 text-sm px-3 text-center max-w-[90%]">{error}</div>
             <button
-              className="px-3 py-1.5 bg-sky-500/20 text-sky-300 rounded text-xs hover:bg-sky-500/30 transition-colors"
+              className="px-3 py-1.5 bg-white/15 text-white/90 rounded text-xs hover:bg-white/25 transition-colors"
               onClick={() => {
                 setError(null);
                 setLoading(true);
@@ -573,14 +1144,40 @@ export default function OcrRegionFrame() {
         )}
 
         {/* Captured screenshot as dimmed background - use ref to prevent re-render */}
-        <img
-          ref={screenshotImgRef}
-          src={screenshotUrlRef.current || ''}
-          className="absolute inset-0 w-full h-full pointer-events-none select-none"
-          style={{ opacity: 0.12 }}
-          alt=""
-          draggable={false}
-        />
+        {(() => {
+          const painted = fitImageDisplayRect(
+            contentSize.w,
+            contentSize.h,
+            imageSize.w,
+            imageSize.h,
+          );
+          return (
+            <img
+              ref={screenshotImgRef}
+              src={screenshotUrlRef.current || ''}
+              className="absolute pointer-events-none select-none"
+              style={{
+                opacity: 0.18,
+                left: painted.x,
+                top: painted.y,
+                // Same contain + horizontal center as ocrLineToCssRect.
+                width: painted.width > 0 ? painted.width : undefined,
+                height: painted.height > 0 ? painted.height : undefined,
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'fill',
+              }}
+              alt=""
+              draggable={false}
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                  setImageSize({ w: img.naturalWidth, h: img.naturalHeight });
+                }
+              }}
+            />
+          );
+        })()}
 
         {/* Translation overlay at source text position — immersive line-by-line replacement */}
         {data && displayMode === 'translation' && data.ocrLines.length > 0 && (
@@ -588,35 +1185,45 @@ export default function OcrRegionFrame() {
             {data.ocrLines.map((line, i) =>
               line.width > 0 && line.height > 0 ? (
                 <TranslationLine
-                  key={`${line.x}-${line.y}-${line.width}-${line.height}`}
+                  key={`${line.x}-${line.y}-${line.width}-${line.height}-${i}`}
                   line={line}
                   translation={data.lineTranslations[i] || line.text}
-                  scaleFactor={scaleFactor}
+                  contentCssWidth={contentSize.w}
+                  contentCssHeight={contentSize.h}
+                  imagePixelWidth={imageSize.w}
+                  imagePixelHeight={imageSize.h}
+                  fallbackScale={scaleFactor}
                 />
               ) : null,
             )}
           </div>
         )}
 
-        {/* Fallback: show full translation if no line translations available */}
+        {/* Fallback: full translation when no usable line boxes (zero-size / empty geometry). */}
         {data &&
           displayMode === 'translation' &&
           data.translatedText &&
-          (!data.lineTranslations || data.lineTranslations.length === 0) &&
+          data.translatedText !== data.sourceText &&
+          (!data.ocrLines.some((l) => l.width > 0 && l.height > 0) ||
+            !data.lineTranslations.length) &&
           bounds && (
             <div
               className="absolute"
               style={{
-                left: bounds.x / scaleFactor - 4,
-                top: bounds.y / scaleFactor - 2,
-                maxWidth: Math.min(
-                  bounds.width / scaleFactor + 8,
-                  window.innerWidth - bounds.x / scaleFactor - 8,
-                ),
+                left: Math.max(0, bounds.x - 4),
+                top: Math.max(0, bounds.y - 2),
+                maxWidth: Math.min(bounds.width + 8, Math.max(80, contentSize.w - bounds.x - 8)),
               }}
             >
-              <div className="bg-black/60 backdrop-blur-[2px] rounded px-2 py-1">
-                <div className="text-xs leading-normal text-white font-medium drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)] select-text cursor-text">
+              <div
+                className="rounded-md px-2 py-1"
+                style={{
+                  background: 'rgba(12, 12, 14, 0.72)',
+                  backdropFilter: 'blur(6px)',
+                  WebkitBackdropFilter: 'blur(6px)',
+                }}
+              >
+                <div className="text-xs leading-normal text-white font-medium select-text cursor-text">
                   {data.translatedText}
                 </div>
               </div>
@@ -626,21 +1233,31 @@ export default function OcrRegionFrame() {
         {/* Source text overlay */}
         {data && displayMode === 'source' && data.ocrLines.length > 0 && (
           <div className="absolute inset-0">
-            {data.ocrLines.map((line) =>
-              line.width > 0 && line.height > 0 ? (
+            {data.ocrLines.map((line, i) => {
+              if (!(line.width > 0 && line.height > 0)) return null;
+              const r = ocrLineToCssRect(
+                line,
+                contentSize.w,
+                contentSize.h,
+                imageSize.w,
+                imageSize.h,
+                scaleFactor,
+              );
+              return (
                 <div
-                  key={`${line.x}-${line.y}-${line.width}-${line.height}`}
-                  className="absolute bg-gray-900/60 rounded px-1 text-xs leading-tight text-gray-300 whitespace-nowrap select-text cursor-text"
+                  key={`${line.x}-${line.y}-${line.width}-${line.height}-${i}`}
+                  className="absolute rounded px-1 text-xs leading-tight text-white/80 whitespace-nowrap select-text cursor-text"
                   style={{
-                    left: line.x / scaleFactor,
-                    top: line.y / scaleFactor - 2,
-                    maxWidth: line.width / scaleFactor + 4,
+                    left: r.x,
+                    top: r.y - 2,
+                    maxWidth: r.width + 4,
+                    background: 'rgba(12, 12, 14, 0.55)',
                   }}
                 >
                   {line.text}
                 </div>
-              ) : null,
-            )}
+              );
+            })}
           </div>
         )}
 
@@ -648,9 +1265,12 @@ export default function OcrRegionFrame() {
         <div
           className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize pointer-events-auto z-10"
           onMouseDown={onResizeStart}
+          title={tf('ocrRegion.resize', '拖动调整大小')}
+          role="separator"
+          aria-label={tf('ocrRegion.resize', '拖动调整大小')}
         >
           <svg
-            className="absolute bottom-0.5 right-0.5 text-sky-400/60"
+            className="absolute bottom-0.5 right-0.5 text-white/45"
             width="12"
             height="12"
             viewBox="0 0 12 12"

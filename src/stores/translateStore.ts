@@ -1,7 +1,13 @@
-import { create } from "zustand";
-import { safeInvoke } from "../services/invoke";
-import { listen } from "@tauri-apps/api/event";
-import type { TranslationResult, TranslateResponse, DictionaryResult, DetectionResult, EmbeddedLine } from "../types";
+import { create } from 'zustand';
+import { safeInvoke } from '../services/invoke';
+import { listen } from '@tauri-apps/api/event';
+import type {
+  TranslationResult,
+  TranslateResponse,
+  DictionaryResult,
+  DetectionResult,
+  EmbeddedLine,
+} from '../types';
 
 export interface IncrementalEntry {
   id: string;
@@ -31,6 +37,8 @@ interface TranslateState {
   isStreaming: boolean;
   clipboardMonitorEnabled: boolean;
   clipboardUnlisten: (() => void) | null;
+  /** Persist preference via configStore when true/false after start/stop */
+  onClipboardMonitorChange?: ((enabled: boolean) => void) | null;
   incrementalMode: boolean;
   incrementalEntries: IncrementalEntry[];
   translationHistory: HistoryEntry[];
@@ -58,6 +66,9 @@ interface TranslateState {
   toggleClipboardMonitor: () => void;
   startClipboardMonitor: () => Promise<void>;
   stopClipboardMonitor: () => Promise<void>;
+  /** Apply config.clipboardMonitor once after load (starts listener if true). */
+  syncClipboardMonitorFromConfig: (enabled: boolean) => Promise<void>;
+  setClipboardMonitorChangeHandler: (handler: ((enabled: boolean) => void) | null) => void;
   goToPreviousTranslation: () => void;
   goToNextTranslation: () => void;
   moveWindowToCursor: () => Promise<void>;
@@ -68,19 +79,20 @@ interface TranslateState {
 }
 
 export const useTranslateStore = create<TranslateState>((set, get) => ({
-  sourceText: "",
+  sourceText: '',
   results: [],
   dictionaryResults: [],
   backTranslation: null,
-  fromLang: "auto",
-  toLang: "zh",
+  fromLang: 'auto',
+  toLang: 'zh',
   loading: false,
-  detectedLang: "",
+  detectedLang: '',
   error: null,
-  streamingText: "",
+  streamingText: '',
   isStreaming: false,
   clipboardMonitorEnabled: false,
   clipboardUnlisten: null,
+  onClipboardMonitorChange: null,
   incrementalMode: false,
   incrementalEntries: [],
   translationHistory: [],
@@ -99,7 +111,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
   swapLanguages: () => {
     const { fromLang, toLang, results } = get();
-    if (fromLang === "auto") return;
+    if (fromLang === 'auto') return;
     const newFrom = toLang;
     const newTo = fromLang;
     set({ fromLang: newFrom, toLang: newTo });
@@ -112,7 +124,14 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   },
 
   translate: async () => {
-    const { sourceText, fromLang, toLang, incrementalMode, incrementalEntries, translationHistory } = get();
+    const {
+      sourceText,
+      fromLang,
+      toLang,
+      incrementalMode,
+      incrementalEntries,
+      translationHistory,
+    } = get();
     if (!sourceText.trim()) {
       if (!incrementalMode) {
         set({ results: [], error: null });
@@ -122,7 +141,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
     set({ loading: true, error: null });
 
-    const [response, error] = await safeInvoke<TranslateResponse>("translate", {
+    const [response, error] = await safeInvoke<TranslateResponse>('translate', {
       request: {
         text: sourceText.trim(),
         from: fromLang,
@@ -132,8 +151,19 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
     if (error || !response) {
       set({
-        error: error?.message || "Translation failed",
+        error: error?.message || 'Translation failed',
         loading: false,
+      });
+      return;
+    }
+
+    // PrimaryOnly / all-engine failure often returns 200 with empty results — surface it
+    if (!response.results.length || !response.results.some((r) => r.text.trim())) {
+      set({
+        results: response.results || [],
+        error: '翻译无结果：请检查引擎是否启用、密钥/网络，或切换路由策略为失败回退',
+        loading: false,
+        detectedLang: response.detectedLanguage || '',
       });
       return;
     }
@@ -160,16 +190,18 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       set({
         results: response.results,
         incrementalEntries: [...incrementalEntries, entry],
-        detectedLang: response.detectedLanguage || "",
+        detectedLang: response.detectedLanguage || '',
         loading: false,
+        error: null,
         translationHistory: newHistory,
         historyIndex: newHistory.length - 1,
       });
     } else {
       set({
         results: response.results,
-        detectedLang: response.detectedLanguage || "",
+        detectedLang: response.detectedLanguage || '',
         loading: false,
+        error: null,
         translationHistory: newHistory,
         historyIndex: newHistory.length - 1,
       });
@@ -177,7 +209,14 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   },
 
   translateStream: async () => {
-    const { sourceText, fromLang, toLang, incrementalMode, incrementalEntries, translationHistory } = get();
+    const {
+      sourceText,
+      fromLang,
+      toLang,
+      incrementalMode,
+      incrementalEntries,
+      translationHistory,
+    } = get();
     if (!sourceText.trim()) {
       if (!incrementalMode) {
         set({ results: [], error: null });
@@ -185,14 +224,14 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       return;
     }
 
-    set({ loading: true, error: null, isStreaming: true, streamingText: "" });
+    set({ loading: true, error: null, isStreaming: true, streamingText: '' });
 
     // Listen for streaming chunks
-    let fullText = "";
-    const unlisten = await listen<{ chunk: string; done: boolean }>("stream-chunk", (event) => {
+    let fullText = '';
+    const unlisten = await listen<{ chunk: string; done: boolean }>('stream-chunk', (event) => {
       if (event.payload.done) {
         // Streaming complete
-        const newResults = [{ engine: "LLM", text: fullText }];
+        const newResults = [{ engine: 'LLM', text: fullText }];
         const historyEntry: HistoryEntry = {
           sourceText: sourceText.trim(),
           results: newResults,
@@ -214,7 +253,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
             incrementalEntries: [...incrementalEntries, entry],
             loading: false,
             isStreaming: false,
-            streamingText: "",
+            streamingText: '',
             translationHistory: newHistory,
             historyIndex: newHistory.length - 1,
           });
@@ -223,7 +262,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
             results: newResults,
             loading: false,
             isStreaming: false,
-            streamingText: "",
+            streamingText: '',
             translationHistory: newHistory,
             historyIndex: newHistory.length - 1,
           });
@@ -236,7 +275,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     });
 
     // Invoke backend streaming (returns when complete)
-    const [, error] = await safeInvoke<string>("translate_stream", {
+    const [, error] = await safeInvoke<string>('translate_stream', {
       request: {
         text: sourceText.trim(),
         from: fromLang,
@@ -261,9 +300,13 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       return;
     }
 
-    const [results, error] = await safeInvoke<DictionaryResult[]>("lookup_dictionary", {
-      text: sourceText.trim(),
-    }, { silent: true });
+    const [results, error] = await safeInvoke<DictionaryResult[]>(
+      'lookup_dictionary',
+      {
+        text: sourceText.trim(),
+      },
+      { silent: true },
+    );
 
     if (error || !results) {
       set({ dictionaryResults: [] });
@@ -279,11 +322,15 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       return;
     }
 
-    const [result, error] = await safeInvoke<string>("back_translate", {
-      text: text.trim(),
-      from: fromLang,
-      to: toLang,
-    }, { silent: true });
+    const [result, error] = await safeInvoke<string>(
+      'back_translate',
+      {
+        text: text.trim(),
+        from: fromLang,
+        to: toLang,
+      },
+      { silent: true },
+    );
 
     if (error || !result) {
       set({ backTranslation: null });
@@ -301,7 +348,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     set({ polishing: true });
 
     const translatedText = results[0].text;
-    const [polished, error] = await safeInvoke<string>("polish_translation", {
+    const [polished, error] = await safeInvoke<string>('polish_translation', {
       sourceText: sourceText.trim(),
       translatedText,
       fromLang,
@@ -309,7 +356,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     });
 
     if (error || !polished) {
-      console.error("Polish failed:", error);
+      console.error('Polish failed:', error);
     } else {
       // Update the first result with polished text
       const newResults = [...results];
@@ -322,16 +369,20 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
   detectLanguage: async (text: string) => {
     if (!text.trim()) {
-      set({ detectedLang: "" });
+      set({ detectedLang: '' });
       return;
     }
 
-    const [result, error] = await safeInvoke<DetectionResult>("detect_language", {
-      text: text.trim(),
-    }, { silent: true });
+    const [result, error] = await safeInvoke<DetectionResult>(
+      'detect_language',
+      {
+        text: text.trim(),
+      },
+      { silent: true },
+    );
 
-    if (error || !result || result.language === "auto") {
-      set({ detectedLang: "" });
+    if (error || !result || result.language === 'auto') {
+      set({ detectedLang: '' });
       return;
     }
     set({ detectedLang: result.name });
@@ -339,20 +390,20 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
   clear: () =>
     set({
-      sourceText: "",
+      sourceText: '',
       results: [],
       dictionaryResults: [],
       backTranslation: null,
       error: null,
-      detectedLang: "",
-      streamingText: "",
+      detectedLang: '',
+      streamingText: '',
     }),
 
   clearIncremental: () =>
     set({
       incrementalEntries: [],
       results: [],
-      sourceText: "",
+      sourceText: '',
     }),
 
   removeIncrementalEntry: (id: string) => {
@@ -365,60 +416,75 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     set((state) => ({ incrementalMode: !state.incrementalMode }));
   },
 
+  setClipboardMonitorChangeHandler: (handler) => {
+    set({ onClipboardMonitorChange: handler });
+  },
+
+  syncClipboardMonitorFromConfig: async (enabled) => {
+    const { clipboardMonitorEnabled } = get();
+    if (enabled && !clipboardMonitorEnabled) {
+      await get().startClipboardMonitor();
+    } else if (!enabled && clipboardMonitorEnabled) {
+      await get().stopClipboardMonitor();
+    }
+  },
+
   toggleClipboardMonitor: () => {
     const { clipboardMonitorEnabled } = get();
     if (clipboardMonitorEnabled) {
-      get().stopClipboardMonitor();
+      void get().stopClipboardMonitor();
     } else {
-      get().startClipboardMonitor();
+      void get().startClipboardMonitor();
     }
   },
 
   startClipboardMonitor: async () => {
-    // Clean up existing listener if any
-    const { clipboardUnlisten } = get();
+    const { clipboardUnlisten, clipboardMonitorEnabled } = get();
     if (clipboardUnlisten) {
       clipboardUnlisten();
     }
 
-    const [, error] = await safeInvoke("start_clipboard_monitor");
+    const [, error] = await safeInvoke('start_clipboard_monitor');
     if (error) {
-      console.error("Failed to start clipboard monitor:", error);
+      console.error('Failed to start clipboard monitor:', error);
+      set({ clipboardMonitorEnabled: false, clipboardUnlisten: null });
+      get().onClipboardMonitorChange?.(false);
       return;
     }
 
-    // Listen for clipboard read events and save unlisten function
-    const unlisten = await listen("read-clipboard", async () => {
-      try {
-        const text = await navigator.clipboard.readText();
-        const { sourceText } = get();
-        if (text && text !== sourceText) {
-          set({ sourceText: text });
-          // Auto-translate clipboard content
-          setTimeout(() => get().translate(), 100);
-        }
-      } catch {
-        // Clipboard read failed silently
-      }
+    // Backend emits clipboard-changed with text (native CF_UNICODETEXT reader)
+    const unlisten = await listen<string>('clipboard-changed', (event) => {
+      const text = (event.payload ?? '').trim();
+      if (!text) return;
+      const { sourceText } = get();
+      if (text === sourceText) return;
+      set({ sourceText: text });
+      setTimeout(() => {
+        void get().translate();
+      }, 100);
     });
 
     set({ clipboardMonitorEnabled: true, clipboardUnlisten: unlisten });
+    if (!clipboardMonitorEnabled) {
+      get().onClipboardMonitorChange?.(true);
+    }
   },
 
   stopClipboardMonitor: async () => {
-    const [, error] = await safeInvoke("stop_clipboard_monitor");
+    const [, error] = await safeInvoke('stop_clipboard_monitor');
     if (error) {
-      console.error("Failed to stop clipboard monitor:", error);
-      return;
+      console.error('Failed to stop clipboard monitor:', error);
     }
 
-    // Clean up event listener
-    const { clipboardUnlisten } = get();
+    const { clipboardUnlisten, clipboardMonitorEnabled } = get();
     if (clipboardUnlisten) {
       clipboardUnlisten();
     }
 
     set({ clipboardMonitorEnabled: false, clipboardUnlisten: null });
+    if (clipboardMonitorEnabled) {
+      get().onClipboardMonitorChange?.(false);
+    }
   },
 
   goToPreviousTranslation: () => {
@@ -452,9 +518,9 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
   },
 
   moveWindowToCursor: async () => {
-    const [, error] = await safeInvoke("move_window_to_cursor", undefined, { silent: true });
+    const [, error] = await safeInvoke('move_window_to_cursor', undefined, { silent: true });
     if (error) {
-      console.error("Failed to move window to cursor:", error);
+      console.error('Failed to move window to cursor:', error);
     }
   },
 
@@ -467,14 +533,14 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
     set({ loading: true, error: null });
 
-    const [results, error] = await safeInvoke<EmbeddedLine[]>("translate_embedded", {
+    const [results, error] = await safeInvoke<EmbeddedLine[]>('translate_embedded', {
       text: sourceText.trim(),
       from: fromLang,
       to: toLang,
     });
 
     if (error || !results) {
-      set({ error: error?.message || "Embedded translation failed", loading: false });
+      set({ error: error?.message || 'Embedded translation failed', loading: false });
       return;
     }
     set({ embeddedLines: results, loading: false });

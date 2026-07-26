@@ -309,6 +309,16 @@ impl HookManager {
 
     // --- Internal helpers ---
 
+    /// Whether moon_hook.dll is discoverable (for UI preflight).
+    pub fn dll_available(&self) -> bool {
+        self.find_hook_dll().is_ok()
+    }
+
+    /// Resolved absolute path if present.
+    pub fn dll_path(&self) -> Option<String> {
+        self.find_hook_dll().ok()
+    }
+
     fn find_hook_dll(&self) -> Result<String, String> {
         // Look for moon_hook.dll in several locations
         let exe_dir = std::env::current_exe()
@@ -319,12 +329,18 @@ impl HookManager {
         let candidates = vec![
             exe_dir.join("moon_hook.dll"),
             exe_dir.join("..\\..\\src-tauri\\bin\\moon_hook.dll"),
+            // Dev build output (CMake Release) — primary location in this repo
+            exe_dir.join("..\\..\\src-tauri\\hook-dll\\build\\Release\\moon_hook.dll"),
             std::path::PathBuf::from("src-tauri\\bin\\moon_hook.dll"),
+            std::path::PathBuf::from("src-tauri\\hook-dll\\build\\Release\\moon_hook.dll"),
+            std::path::PathBuf::from("hook-dll\\build\\Release\\moon_hook.dll"),
         ];
 
         for candidate in &candidates {
             if candidate.exists() {
                 return candidate
+                    .canonicalize()
+                    .unwrap_or_else(|_| candidate.clone())
                     .to_str()
                     .ok_or("Invalid path".to_string())
                     .map(|s| s.to_string());

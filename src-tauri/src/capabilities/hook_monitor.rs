@@ -41,6 +41,8 @@ pub struct HookMonitor {
     sender: Option<mpsc::UnboundedSender<MonitoredText>>,
     /// Thread IDs for message-loop threads that need WM_QUIT to exit
     message_loop_tids: Arc<std::sync::Mutex<Vec<u32>>>,
+    /// JoinHandles for message-loop OS threads (clipboard / win-event hook)
+    message_loop_handles: Arc<std::sync::Mutex<Vec<std::thread::JoinHandle<()>>>>,
 }
 
 impl HookMonitor {
@@ -49,6 +51,7 @@ impl HookMonitor {
             running: Arc::new(Mutex::new(false)),
             sender: None,
             message_loop_tids: Arc::new(std::sync::Mutex::new(Vec::new())),
+            message_loop_handles: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 
@@ -113,27 +116,41 @@ impl HookMonitor {
                         source_lang.clone()
                     };
 
-                    // Translate
+                    // Translate via façade (channel=hook)
                     match translation_service
-                        .translate(&text.text, &effective_source, &target_lang)
+                        .run_full(
+                            crate::models::translation::TranslateChannel::Hook,
+                            &text.text,
+                            &effective_source,
+                            &target_lang,
+                        )
                         .await
                     {
                         Ok(response) => {
-                            if let Some(result) = response.results.first() {
-                                let _ = app_handle.emit(
-                                    "hook-text-translated",
-                                    serde_json::json!({
-                                        "window_title": text.window_title,
-                                        "process_name": text.process_name,
-                                        "original": text.text,
-                                        "translated": result.text,
-                                        "engine": result.engine,
-                                        "timestamp": text.timestamp,
-                                        "source": text.source,
-                                        "text_rect": text.text_rect.map(|(x, y, w, h)| [x, y, w, h]),
-                                    }),
-                                );
-                            }
+                            // Emit all results (for ParallelCompare) or first result
+                            let results_json: Vec<_> = response.results.iter()
+                                .map(|r| serde_json::json!({
+                                    "engine": r.engine,
+                                    "text": r.text,
+                                    "latencyMs": r.latency_ms,
+                                }))
+                                .collect();
+
+                            let _ = app_handle.emit(
+                                "hook-text-translated",
+                                serde_json::json!({
+                                    "window_title": text.window_title,
+                                    "process_name": text.process_name,
+                                    "original": text.text,
+                                    "translated": response.results.first().map(|r| r.text.clone()).unwrap_or_default(),
+                                    "engine": response.results.first().map(|r| r.engine.clone()).unwrap_or_default(),
+                                    "timestamp": text.timestamp,
+                                    "source": text.source,
+                                    "text_rect": text.text_rect.map(|(x, y, w, h)| [x, y, w, h]),
+                                    "results": results_json,
+                                    "detectedLanguage": response.detected_language,
+                                }),
+                            );
                         }
                         Err(e) => {
                             tracing::warn!("[HookMonitor] Translation failed: {}", e);
@@ -159,12 +176,27 @@ impl HookMonitor {
         *running = true;
         drop(running);
 
-        // Clear and reuse the shared thread ID list
+        // Clear thread IDs; join any leftover handles (clear would detach/orphan)
         self.message_loop_tids
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
+        {
+            let leftover: Vec<std::thread::JoinHandle<()>> = self
+                .message_loop_handles
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .drain(..)
+                .collect();
+            if !leftover.is_empty() {
+                let _ = tokio::task::spawn_blocking(move || {
+                    join_message_loop_handles(leftover, std::time::Duration::from_secs(2));
+                })
+                .await;
+            }
+        }
         let thread_ids = self.message_loop_tids.clone();
+        let thread_handles = self.message_loop_handles.clone();
 
         let (tx, mut rx) = mpsc::unbounded_channel::<MonitoredText>();
         self.sender = Some(tx.clone());
@@ -192,8 +224,9 @@ impl HookMonitor {
             let tx_clip = tx.clone();
             let running_clip = running_clone.clone();
             let clip_tids = thread_ids.clone();
+            let clip_handles = thread_handles.clone();
             tokio::spawn(async move {
-                clipboard_monitor_task(running_clip, tx_clip, clip_tids).await;
+                clipboard_monitor_task(running_clip, tx_clip, clip_tids, clip_handles).await;
             });
         }
 
@@ -211,8 +244,9 @@ impl HookMonitor {
             let tx_hook = tx.clone();
             let running_hook = running_clone.clone();
             let hook_tids = thread_ids.clone();
+            let hook_handles = thread_handles.clone();
             tokio::spawn(async move {
-                win_event_hook_task(running_hook, tx_hook, hook_tids).await;
+                win_event_hook_task(running_hook, tx_hook, hook_tids, hook_handles).await;
             });
         }
 
@@ -225,17 +259,31 @@ impl HookMonitor {
         drop(running);
 
         // Post WM_QUIT to all message-loop threads so they exit cleanly
-        let tids = self
-            .message_loop_tids
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        for tid in tids.iter() {
-            // SAFETY: PostThreadMessageW with valid thread IDs. WM_QUIT causes GetMessageW to return FALSE.
-            // SAFETY: Win32 API calls for window info and screen capture.
-            // All HWND values are validated before use.
-            unsafe {
-                let _ = PostThreadMessageW(*tid, WM_QUIT, WPARAM(0), LPARAM(0));
+        {
+            let tids = self
+                .message_loop_tids
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            for tid in tids.iter() {
+                // SAFETY: PostThreadMessageW with valid thread IDs. WM_QUIT causes GetMessageW to return FALSE.
+                unsafe {
+                    let _ = PostThreadMessageW(*tid, WM_QUIT, WPARAM(0), LPARAM(0));
+                }
             }
+        }
+
+        // Join message-loop threads so they are not orphaned (drop(JoinHandle) detaches).
+        let handles: Vec<std::thread::JoinHandle<()>> = self
+            .message_loop_handles
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .drain(..)
+            .collect();
+        if !handles.is_empty() {
+            let _ = tokio::task::spawn_blocking(move || {
+                join_message_loop_handles(handles, std::time::Duration::from_secs(2));
+            })
+            .await;
         }
     }
 
@@ -246,9 +294,8 @@ impl HookMonitor {
 
 impl Drop for HookMonitor {
     fn drop(&mut self) {
-        // Post WM_QUIT to all message-loop threads so they exit cleanly.
-        // stop() is async and may not have been called, so we do the critical
-        // cleanup here synchronously.
+        // Post WM_QUIT and join message-loop threads.
+        // stop() is async and may not have been called, so do critical cleanup here.
         if let Ok(tids) = self.message_loop_tids.lock() {
             for tid in tids.iter() {
                 // SAFETY: PostThreadMessageW with valid thread IDs. WM_QUIT causes GetMessageW to return FALSE.
@@ -256,6 +303,38 @@ impl Drop for HookMonitor {
                     let _ = PostThreadMessageW(*tid, WM_QUIT, WPARAM(0), LPARAM(0));
                 }
             }
+        }
+        let handles: Vec<std::thread::JoinHandle<()>> = self
+            .message_loop_handles
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .drain(..)
+            .collect();
+        join_message_loop_handles(handles, std::time::Duration::from_secs(2));
+    }
+}
+
+/// Join OS message-loop threads with a timeout so stop/drop never hangs forever.
+/// On timeout, remaining JoinHandles are dropped (detached) as a last resort.
+fn join_message_loop_handles(
+    handles: Vec<std::thread::JoinHandle<()>>,
+    timeout: std::time::Duration,
+) {
+    for handle in handles {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = handle.join();
+            let _ = tx.send(());
+        });
+        match rx.recv_timeout(timeout) {
+            Ok(()) => {},
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                tracing::warn!(
+                    "[HookMonitor] message-loop thread did not exit within {:?}; detaching",
+                    timeout
+                );
+            },
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {},
         }
     }
 }
@@ -320,6 +399,7 @@ async fn clipboard_monitor_task(
     running: Arc<Mutex<bool>>,
     tx: mpsc::UnboundedSender<MonitoredText>,
     thread_ids: Arc<std::sync::Mutex<Vec<u32>>>,
+    thread_handles: Arc<std::sync::Mutex<Vec<std::thread::JoinHandle<()>>>>,
 ) {
     // Channel from the clipboard listener thread to async runtime
     let (clip_tx, mut clip_rx) = mpsc::unbounded_channel::<String>();
@@ -394,6 +474,11 @@ async fn clipboard_monitor_task(
         let _ = DestroyWindow(hwnd);
     });
 
+    // Own JoinHandle on HookMonitor so stop()/Drop can join (not orphan via drop).
+    if let Ok(mut handles) = thread_handles.lock() {
+        handles.push(listener_thread);
+    }
+
     // Process clipboard events from the listener thread
     let mut last_clip = String::new();
     loop {
@@ -406,6 +491,11 @@ async fn clipboard_monitor_task(
 
         while let Ok(trimmed) = clip_rx.try_recv() {
             if trimmed == last_clip {
+                continue;
+            }
+            // Shared claim with main clipboard monitor — first path wins.
+            if !crate::clipboard_dedupe::claim_clipboard_text(&trimmed) {
+                last_clip = trimmed;
                 continue;
             }
             last_clip = trimmed.clone();
@@ -429,10 +519,7 @@ async fn clipboard_monitor_task(
 
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
-
-    // Signal the listener thread to quit by posting WM_QUIT
-    // The thread will exit its message loop
-    drop(listener_thread);
+    // Message-loop thread is signaled (WM_QUIT) and joined by HookMonitor::stop / Drop.
 }
 
 thread_local! {
@@ -611,6 +698,7 @@ async fn win_event_hook_task(
     running: Arc<Mutex<bool>>,
     tx: mpsc::UnboundedSender<MonitoredText>,
     thread_ids: Arc<std::sync::Mutex<Vec<u32>>>,
+    thread_handles: Arc<std::sync::Mutex<Vec<std::thread::JoinHandle<()>>>>,
 ) {
     // Channel from the Win32 callback (OS thread) to async runtime
     let (hook_tx, mut hook_rx) = mpsc::unbounded_channel::<(isize, String, String)>();
@@ -673,6 +761,11 @@ async fn win_event_hook_task(
         }
     });
 
+    // Own JoinHandle on HookMonitor so stop()/Drop can join (not orphan via drop).
+    if let Ok(mut handles) = thread_handles.lock() {
+        handles.push(hook_thread);
+    }
+
     // Process events from the hook thread
     let mut last_text = String::new();
     loop {
@@ -708,10 +801,7 @@ async fn win_event_hook_task(
 
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
-
-    // Signal the hook thread to quit
-    // (It will exit its message loop when the thread is dropped)
-    drop(hook_thread);
+    // Message-loop thread is signaled (WM_QUIT) and joined by HookMonitor::stop / Drop.
 }
 
 thread_local! {

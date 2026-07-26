@@ -7,6 +7,9 @@ use crate::memory::HistoryStore;
 use crate::metrics::MetricsCollector;
 use crate::models::error::TranslationError;
 pub use crate::models::translation::BatchTranslationResult;
+use crate::models::translation::{
+    TranslateChannel, TranslateOutcome, TranslateRequest, TranslationMode,
+};
 use crate::post_process::PostProcessor;
 use crate::pre_process::PreProcessor;
 use std::collections::HashMap;
@@ -110,7 +113,9 @@ impl TranslationService {
         ac.corrected
     }
 
-    /// Apply post-processing + auto-correct to batch results (no blacklist)
+    /// Apply post-processing + auto-correct to batch results (no blacklist).
+    /// Prefer per-segment `finalize` in batch core; kept for callers that skip prepare.
+    #[allow(dead_code)]
     async fn finalize_batch(&self, results: &mut [BatchTranslationResult], from: &str, to: &str) {
         let pp = self.post_processor.lock().await;
         for result in results.iter_mut() {
@@ -124,6 +129,150 @@ impl TranslationService {
                 );
             }
             result.translated = ac.corrected;
+        }
+    }
+
+    /// Façade entry: dispatch by `TranslateRequest.mode` (stream uses `translate_stream`).
+    pub async fn run(&self, req: TranslateRequest) -> Result<TranslateOutcome, TranslationError> {
+        let channel = format!("{:?}", req.channel);
+        let span = info_span!(
+            "translate_run",
+            channel = %channel,
+            mode = ?req.mode,
+            chars = req.text.len(),
+            from = %req.from,
+            to = %req.to,
+        );
+        async {
+            match req.mode {
+                TranslationMode::Full => {
+                    let r = self.translate(&req.text, &req.from, &req.to).await?;
+                    Ok(TranslateOutcome::Full(r))
+                },
+                TranslationMode::Primary => {
+                    let r = self
+                        .translate_primary(&req.text, &req.from, &req.to)
+                        .await?;
+                    Ok(TranslateOutcome::Primary(r))
+                },
+                TranslationMode::Batch => {
+                    let lines: Vec<(usize, &str)> = if req.segments.is_empty() {
+                        req.text
+                            .lines()
+                            .enumerate()
+                            .filter(|(_, l)| !l.trim().is_empty())
+                            .map(|(i, l)| (i, l.trim()))
+                            .collect()
+                    } else {
+                        req.segments.iter().map(|(i, s)| (*i, s.as_str())).collect()
+                    };
+                    let r = self
+                        .translate_batch(&lines, &req.from, &req.to, req.concurrency)
+                        .await;
+                    Ok(TranslateOutcome::Batch(r))
+                },
+                TranslationMode::Context => {
+                    let ctx: Vec<TranslationContext> = req
+                        .context
+                        .iter()
+                        .map(|c| TranslationContext {
+                            source: c.source.clone(),
+                            translation: c.translation.clone(),
+                        })
+                        .collect();
+                    let r = self
+                        .translate_with_context(&req.text, &req.from, &req.to, &ctx)
+                        .await?;
+                    Ok(TranslateOutcome::Primary(r))
+                },
+                TranslationMode::Compare => {
+                    let router = self.engine_router.read().await;
+                    let response = router
+                        .translate_parallel_compare(&req.text, &req.from, &req.to)
+                        .await;
+                    drop(router);
+                    Ok(TranslateOutcome::Full(response))
+                },
+                TranslationMode::Stream => Err(TranslationError::StreamingNotSupported),
+            }
+        }
+        .instrument(span)
+        .await
+    }
+
+    /// Convenience: full-mode run for a product channel.
+    pub async fn run_full(
+        &self,
+        channel: TranslateChannel,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<TranslateResponse, TranslationError> {
+        match self
+            .run(TranslateRequest::full(channel, text, from, to))
+            .await?
+        {
+            TranslateOutcome::Full(r) => Ok(r),
+            other => Err(TranslationError::Internal(format!(
+                "unexpected outcome for full: {:?}",
+                other
+            ))),
+        }
+    }
+
+    /// Convenience: primary-mode run for a product channel.
+    pub async fn run_primary(
+        &self,
+        channel: TranslateChannel,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<String, TranslationError> {
+        match self
+            .run(TranslateRequest::primary(channel, text, from, to))
+            .await?
+        {
+            TranslateOutcome::Primary(s) => Ok(s),
+            other => Err(TranslationError::Internal(format!(
+                "unexpected outcome for primary: {:?}",
+                other
+            ))),
+        }
+    }
+
+    /// Convenience: batch-mode run (segments as index+text pairs).
+    pub async fn run_batch(
+        &self,
+        channel: TranslateChannel,
+        lines: &[(usize, &str)],
+        from: &str,
+        to: &str,
+        concurrency: usize,
+    ) -> Vec<BatchTranslationResult> {
+        let segments: Vec<(usize, String)> =
+            lines.iter().map(|(i, s)| (*i, (*s).to_string())).collect();
+        match self
+            .run(TranslateRequest {
+                channel,
+                mode: TranslationMode::Batch,
+                text: String::new(),
+                from: from.to_string(),
+                to: to.to_string(),
+                concurrency: concurrency.max(1).min(10),
+                segments,
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(TranslateOutcome::Batch(b)) => b,
+            Ok(other) => {
+                tracing::warn!("[run_batch] unexpected outcome: {:?}", other);
+                Vec::new()
+            },
+            Err(e) => {
+                tracing::warn!("[run_batch] failed: {}", e);
+                Vec::new()
+            },
         }
     }
 
@@ -308,13 +457,14 @@ impl TranslationService {
                     .await;
             }
 
-            // Log translation results
+            // Log translation results (char-safe prefix — never index UTF-8 by raw bytes)
             for result in &response.results {
+                let preview: String = result.text.chars().take(80).collect();
                 tracing::info!(
                     "[Translation] Engine: {}, Result ({} chars): {:?}",
                     result.engine,
-                    result.text.len(),
-                    &result.text[..result.text.len().min(200)]
+                    result.text.chars().count(),
+                    preview
                 );
             }
 
@@ -514,7 +664,7 @@ impl TranslationService {
         .await
     }
 
-    /// Translate with context for document consistency
+    /// Translate with context for document consistency (prepare + finalize)
     pub async fn translate_with_context(
         &self,
         text: &str,
@@ -522,11 +672,16 @@ impl TranslationService {
         to: &str,
         context: &[crate::engine::llm::TranslationContext],
     ) -> Result<String, TranslationError> {
+        let prepared = self.prepare(text, from, to).await;
         let router = self.engine_router.read().await;
-        router
-            .translate_primary_with_context(text, from, to, context)
+        let raw = router
+            .translate_primary_with_context(&prepared.text, from, to, context)
             .await
-            .map_err(TranslationError::from)
+            .map_err(TranslationError::from)?;
+        drop(router);
+        Ok(self
+            .finalize(&raw, text, from, to, &prepared.blacklist)
+            .await)
     }
 
     /// Get the engine router for advanced operations
@@ -566,10 +721,12 @@ impl TranslationService {
                 let mut handles = Vec::new();
 
                 for &(idx, text) in chunk {
-                    let text = text.to_string();
-                    let from = from.to_string();
-                    let to = to.to_string();
-                    // Convert VecDeque to Vec for the snapshot (small, max 5 entries)
+                    // Pipeline parity: pre-process / glossary / blacklist before engine
+                    let prepared = self.prepare(text, from, to).await;
+                    let original = text.to_string();
+                    let protected = prepared.text.clone();
+                    let from_s = from.to_string();
+                    let to_s = to.to_string();
                     let context_snapshot: Vec<TranslationContext> =
                         context.iter().cloned().collect();
                     let router = self.engine_router.clone();
@@ -577,7 +734,12 @@ impl TranslationService {
                     let handle = tokio::spawn(async move {
                         let router = router.read().await;
                         let translated = match router
-                            .translate_primary_with_context(&text, &from, &to, &context_snapshot)
+                            .translate_primary_with_context(
+                                &protected,
+                                &from_s,
+                                &to_s,
+                                &context_snapshot,
+                            )
                             .await
                         {
                             Ok(t) => t,
@@ -592,27 +754,27 @@ impl TranslationService {
                         };
                         drop(router);
 
-                        BatchTranslationResult {
-                            index: idx,
-                            original: text,
-                            translated,
-                        }
+                        (idx, original, translated, prepared.blacklist)
                     });
 
                     handles.push(handle);
                 }
 
                 for handle in handles {
-                    if let Ok(result) = handle.await {
+                    if let Ok((idx, original, raw, blacklist)) = handle.await {
+                        let translated = self.finalize(&raw, &original, from, to, &blacklist).await;
                         context.push_back(TranslationContext {
-                            source: result.original.clone(),
-                            translation: result.translated.clone(),
+                            source: original.clone(),
+                            translation: translated.clone(),
                         });
-                        // Keep context window at most 5 entries (O(1) pop_front)
                         while context.len() > 5 {
                             context.pop_front();
                         }
-                        results.push(result);
+                        results.push(BatchTranslationResult {
+                            index: idx,
+                            original,
+                            translated,
+                        });
                         completed += 1;
                         on_progress(completed, total);
                     }
@@ -620,7 +782,6 @@ impl TranslationService {
             }
 
             results.sort_by_key(|r| r.index);
-            self.finalize_batch(&mut results, from, to).await;
             results
         }
         .instrument(span)

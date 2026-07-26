@@ -501,7 +501,9 @@
     "continuousRefreshing": "持续刷新中",
     "detectedLang": "检测语言",
     "originalText": "原文",
-    "translationResult": "翻译结果"
+    "translationResult": "翻译结果",
+    "sameLang": "源语言与目标语言相同，请切换目标语",
+    "translateFailed": "翻译失败：引擎无结果（请检查密钥/网络/引擎开关）"
   },
   "hook": {
     "title": "Hook 沉浸式翻译",
@@ -527,8 +529,9 @@
     "source.ocr": "OCR截图识别 - 通用后备方案",
     "source.hook": "Win32事件钩子 - 系统级文本变化监听",
     "hcode": {
-      "title": "H-Code DLL注入",
-      "description": "通过DLL注入钩取游戏/应用程序的文本渲染API（TextOut/DrawText），直接获取程序内部文本。",
+      "experimental": "实验性",
+      "title": "H-Code DLL注入（实验性）",
+      "description": "实验性功能。通过 DLL 注入钩取 TextOut/DrawText。可能注入后无文本，非产品级。",
       "pid": "进程PID",
       "pidPlaceholder": "输入目标进程PID",
       "processName": "进程名",
@@ -684,7 +687,8 @@
     "targetText": "译文",
     "processing": "处理中...",
     "detecting": "检测中...",
-    "retry": "重试"
+    "retry": "重试",
+    "copied": "已复制"
   },
   "aiMultiRound": {
     "enterText": "请输入要翻译的文本",
@@ -760,5 +764,32 @@
       "de": "德文",
       "es": "西班牙文"
     }
+  },
+  "ocrRegion": {
+    "copySource": "复制原文",
+    "copyTarget": "复制译文",
+    "copyScreenshot": "复制截图",
+    "saveScreenshot": "保存截图",
+    "watchOn": "监视已开启",
+    "watchOff": "监视已关闭",
+    "pauseWatch": "暂停区域监视",
+    "startWatch": "开启区域监视（内容变化才翻译）",
+    "recognizing": "正在识别文本...",
+    "dataTimeout": "等待数据超时，请点击重试",
+    "toggleDisplay": "切换原文/译文显示",
+    "refreshNow": "立即刷新",
+    "followOn": "跟随窗口",
+    "followOff": "取消跟随",
+    "pinned": "已置顶",
+    "unpinned": "取消置顶",
+    "copiedImage": "截图已复制",
+    "savedImage": "已保存",
+    "pin": "钉住置顶",
+    "unpin": "取消钉住",
+    "follow": "跟随目标窗口",
+    "unfollow": "停止跟随窗口",
+    "resize": "拖动调整大小",
+    "refreshing": "刷新中…",
+    "needOcr": "识别完成后可用"
   }
 }

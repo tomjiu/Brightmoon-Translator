@@ -49,88 +49,187 @@ pub struct TranslationContext {
 }
 
 /// Translation mode determines how the translation is processed
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TranslationMode {
-    /// Single text translation using routing strategy
-    Single,
-    /// Primary engine only (quick translate)
+    /// Full pipeline + router strategy (multi-engine capable)
+    #[default]
+    #[serde(alias = "single")]
+    Full,
+    /// Primary engine only (quick translate / replace)
     Primary,
     /// Streaming translation (for LLM engines)
     Stream,
     /// Batch translation (for documents, subtitles)
     Batch,
+    /// Parallel compare all engines (pipeline parity still open)
+    Compare,
+    /// Primary with document context segments
+    Context,
 }
 
-/// Unified translation job model
-/// Captures all metadata for a translation request, used across all paths
-/// (main translator, selection translate, subtitle, pdf, epub, API server)
+/// Product channel that initiated the request (metrics / policy later)
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TranslateChannel {
+    #[default]
+    Ui,
+    Ocr,
+    Selection,
+    Replace,
+    Hook,
+    Clipboard,
+    Document,
+    Subtitle,
+    Image,
+    Http,
+    Browser,
+    Plugin,
+    Unknown,
+}
+
+/// Unified façade request — all product paths should build this and call
+/// `TranslationService::run` (or mode-specific helpers that delegate to it).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TranslationJob {
-    /// Source text to translate
-    pub text: String,
-    /// Source language code (e.g., "auto", "en", "zh")
-    pub from: String,
-    /// Target language code (e.g., "zh", "en", "ja")
-    pub to: String,
-    /// Translation mode
+#[serde(rename_all = "camelCase")]
+pub struct TranslateRequest {
+    pub channel: TranslateChannel,
     pub mode: TranslationMode,
-    /// Optional context for document-level consistency
+    pub text: String,
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
     pub context: Vec<TranslationContext>,
-    /// Optional batch ID for grouping related translations
+    #[serde(default)]
     pub batch_id: Option<String>,
-    /// Concurrency for batch operations (default: 3)
+    #[serde(default = "default_concurrency")]
     pub concurrency: usize,
+    /// Pre-split segments for batch mode; if empty, `text` is split by lines.
+    #[serde(default)]
+    pub segments: Vec<(usize, String)>,
 }
 
-impl Default for TranslationJob {
+fn default_concurrency() -> usize {
+    3
+}
+
+impl Default for TranslateRequest {
     fn default() -> Self {
         Self {
+            channel: TranslateChannel::Unknown,
+            mode: TranslationMode::Full,
             text: String::new(),
             from: "auto".to_string(),
             to: "zh".to_string(),
-            mode: TranslationMode::Single,
             context: Vec::new(),
             batch_id: None,
             concurrency: 3,
+            segments: Vec::new(),
         }
     }
 }
 
-impl TranslationJob {
-    /// Create a simple single-text translation job
-    pub fn single(text: &str, from: &str, to: &str) -> Self {
+impl TranslateRequest {
+    pub fn full(channel: TranslateChannel, text: impl Into<String>, from: &str, to: &str) -> Self {
         Self {
-            text: text.to_string(),
+            channel,
+            mode: TranslationMode::Full,
+            text: text.into(),
             from: from.to_string(),
             to: to.to_string(),
-            mode: TranslationMode::Single,
             ..Default::default()
         }
     }
 
-    /// Create a batch translation job for documents/subtitles
-    pub fn batch(text: &str, from: &str, to: &str, concurrency: usize) -> Self {
+    pub fn primary(
+        channel: TranslateChannel,
+        text: impl Into<String>,
+        from: &str,
+        to: &str,
+    ) -> Self {
         Self {
-            text: text.to_string(),
+            channel,
+            mode: TranslationMode::Primary,
+            text: text.into(),
             from: from.to_string(),
             to: to.to_string(),
+            ..Default::default()
+        }
+    }
+
+    pub fn batch(
+        channel: TranslateChannel,
+        text: impl Into<String>,
+        from: &str,
+        to: &str,
+        concurrency: usize,
+    ) -> Self {
+        Self {
+            channel,
             mode: TranslationMode::Batch,
+            text: text.into(),
+            from: from.to_string(),
+            to: to.to_string(),
             concurrency: concurrency.max(1).min(10),
             ..Default::default()
         }
     }
 
-    /// Add context for document-level consistency
     pub fn with_context(mut self, context: Vec<TranslationContext>) -> Self {
         self.context = context;
         self
     }
 
-    /// Set batch ID for grouping related translations
     pub fn with_batch_id(mut self, batch_id: &str) -> Self {
         self.batch_id = Some(batch_id.to_string());
         self
+    }
+
+    pub fn with_segments(mut self, segments: Vec<(usize, String)>) -> Self {
+        self.segments = segments;
+        self
+    }
+}
+
+/// Outcome of `TranslationService::run` (non-stream).
+#[derive(Debug, Clone)]
+pub enum TranslateOutcome {
+    Full(TranslateResponse),
+    Primary(String),
+    Batch(Vec<BatchTranslationResult>),
+}
+
+impl TranslateOutcome {
+    pub fn into_full(self) -> Option<TranslateResponse> {
+        match self {
+            Self::Full(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn into_primary(self) -> Option<String> {
+        match self {
+            Self::Primary(s) => Some(s),
+            Self::Full(r) => r.results.into_iter().next().map(|x| x.text),
+            _ => None,
+        }
+    }
+
+    pub fn into_batch(self) -> Option<Vec<BatchTranslationResult>> {
+        match self {
+            Self::Batch(b) => Some(b),
+            _ => None,
+        }
+    }
+}
+
+/// Legacy alias — prefer [`TranslateRequest`].
+pub type TranslationJob = TranslateRequest;
+
+impl TranslateRequest {
+    /// Create a simple single-text translation job (legacy name)
+    pub fn single(text: &str, from: &str, to: &str) -> Self {
+        Self::full(TranslateChannel::Unknown, text, from, to)
     }
 }
 
@@ -161,5 +260,19 @@ mod tests {
 
         assert_eq!(json["detectedLanguage"], "en");
         assert!(json.get("detected_language").is_none());
+    }
+
+    #[test]
+    fn translate_request_full_builder() {
+        let req = TranslateRequest::full(TranslateChannel::Ui, "hi", "en", "zh");
+        assert_eq!(req.mode, TranslationMode::Full);
+        assert_eq!(req.channel, TranslateChannel::Ui);
+        assert_eq!(req.text, "hi");
+    }
+
+    #[test]
+    fn translation_mode_deserializes_single_as_full() {
+        let mode: TranslationMode = serde_json::from_str("\"single\"").unwrap();
+        assert_eq!(mode, TranslationMode::Full);
     }
 }

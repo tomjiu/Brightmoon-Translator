@@ -498,7 +498,9 @@
     "continuousRefreshing": "連続更新中",
     "detectedLang": "検出言語",
     "originalText": "原文",
-    "translationResult": "翻訳結果"
+    "translationResult": "翻訳結果",
+    "sameLang": "言語が同じです",
+    "translateFailed": "翻訳に失敗"
   },
   "hook": {
     "title": "Hook没入型翻訳",
@@ -524,8 +526,9 @@
     "source.ocr": "OCRスクリーンショット - 汎用フォールバック",
     "source.hook": "Win32イベントフック - システムレベルのテキスト変化監視",
     "hcode": {
-      "title": "H-Code DLLインジェクション",
-      "description": "DLLインジェクションでゲーム/アプリケーションのテキストレンダリングAPI（TextOut/DrawText）をフックし、プログラム内部テキストを直接取得。",
+      "experimental": "実験的",
+      "title": "H-Code DLLインジェクション（実験的）",
+      "description": "実験的機能。TextOut/DrawText をフック。注入してもテキストが取れない場合あり。製品品質ではありません。",
       "pid": "プロセスPID",
       "pidPlaceholder": "対象プロセスのPIDを入力",
       "processName": "プロセス名",
@@ -754,6 +757,34 @@
     "targetText": "訳文",
     "processing": "処理中...",
     "detecting": "検出中...",
-    "retry": "再試行"
+    "retry": "再試行",
+    "copied": "コピーしました"
+  },
+  "ocrRegion": {
+    "copySource": "原文をコピー",
+    "copyTarget": "訳文をコピー",
+    "copyScreenshot": "スクショをコピー",
+    "saveScreenshot": "スクショを保存",
+    "watchOn": "監視オン",
+    "watchOff": "監視オフ",
+    "pauseWatch": "監視を一時停止",
+    "startWatch": "領域監視を開始",
+    "recognizing": "認識中…",
+    "dataTimeout": "タイムアウト",
+    "toggleDisplay": "表示切替",
+    "refreshNow": "今すぐ更新",
+    "followOn": "ウィンドウ追従",
+    "followOff": "追従解除",
+    "pinned": "最前面",
+    "unpinned": "最前面解除",
+    "copiedImage": "コピーしました",
+    "savedImage": "保存しました",
+    "pin": "最前面に固定",
+    "unpin": "固定解除",
+    "follow": "ウィンドウ追従",
+    "unfollow": "追従停止",
+    "resize": "サイズ変更",
+    "refreshing": "更新中…",
+    "needOcr": "認識後に利用可能"
   }
 }

@@ -11,6 +11,7 @@ export default {
         primary: {
           DEFAULT: 'var(--color-primary)',
           hover: 'var(--color-primary-hover)',
+          fg: 'var(--color-primary-fg)',
         },
         accent: 'var(--color-accent)',
         bg: {

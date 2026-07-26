@@ -426,7 +426,12 @@ pub async fn translate_image_file(
 
         // Translate the line
         let translated = match translation_service
-            .translate_primary(line.text.trim(), from_lang, to_lang)
+            .run_primary(
+                crate::models::translation::TranslateChannel::Image,
+                line.text.trim(),
+                from_lang,
+                to_lang,
+            )
             .await
         {
             Ok(t) => t,

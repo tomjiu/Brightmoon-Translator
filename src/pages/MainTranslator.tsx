@@ -266,7 +266,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
           )}
 
           <button
-            className="h-8 w-8 shrink-0 bg-bg-tertiary border border-border text-text-primary rounded-md hover:bg-primary hover:text-white transition-colors flex items-center justify-center"
+            className="h-8 w-8 shrink-0 bg-bg-tertiary border border-border text-text-primary rounded-md hover:bg-primary hover:text-primary-fg transition-colors flex items-center justify-center"
             onClick={swapLanguages}
             title={t('translator.swapLang')}
           >
@@ -288,7 +288,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
 
         <div className="flex shrink-0 items-center gap-1.5">
           <button
-            className="h-8 w-8 shrink-0 bg-primary text-white rounded-md hover:bg-primary-hover transition-colors flex items-center justify-center shadow-sm shadow-primary/20"
+            className="h-8 w-8 shrink-0 bg-primary text-primary-fg rounded-md hover:bg-primary-hover transition-colors flex items-center justify-center shadow-sm shadow-primary/20"
             onClick={onOcrScreenshot}
             title={t('ocr.screenshotTranslate') || 'OCR截图翻译'}
           >
@@ -329,7 +329,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
             <button
               className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
                 clipboardMonitorEnabled
-                  ? 'bg-primary text-white'
+                  ? 'bg-primary text-primary-fg'
                   : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
               }`}
               onClick={toggleClipboardMonitor}
@@ -359,7 +359,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
             <button
               className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
                 embeddedMode
-                  ? 'bg-primary text-white'
+                  ? 'bg-primary text-primary-fg'
                   : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
               }`}
               onClick={() => {
@@ -642,8 +642,8 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
                         <button
                           className={`border border-border rounded-md px-2 py-1 text-xs transition-colors flex items-center gap-1 ${
                             speakingIndex === i
-                              ? 'bg-primary text-white border-primary'
-                              : 'bg-bg-tertiary text-text-secondary hover:bg-primary hover:text-white hover:border-primary'
+                              ? 'bg-primary text-primary-fg border-primary'
+                              : 'bg-bg-tertiary text-text-secondary hover:bg-primary hover:text-primary-fg hover:border-primary'
                           }`}
                           onClick={() => speakText(r.text, toLang, i)}
                           title={t('translator.speak')}
@@ -652,7 +652,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
                           {speakingIndex === i ? t('translator.speaking') : t('translator.speak')}
                         </button>
                         <button
-                          className="bg-bg-tertiary border border-border text-text-secondary rounded-md px-2 py-1 text-xs hover:bg-primary hover:text-white hover:border-primary transition-colors flex items-center gap-1"
+                          className="bg-bg-tertiary border border-border text-text-secondary rounded-md px-2 py-1 text-xs hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1"
                           onClick={() => copyResult(r.text, i)}
                         >
                           {copiedIndex === i ? (

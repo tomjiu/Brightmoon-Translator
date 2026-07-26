@@ -19,8 +19,11 @@
     "https://fanyi.youdao.com/*",
     "https://api-free.deepl.com/*",
     "https://api.deepl.com/*",
+    "https://www2.deepl.com/*",
+    "https://www.deepl.com/*",
     "https://edge.microsoft.com/*",
-    "https://api.cognitive.microsofttranslator.com/*"
+    "https://api.cognitive.microsofttranslator.com/*",
+    "https://api-edge.cognitive.microsofttranslator.com/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js"

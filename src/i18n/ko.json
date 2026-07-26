@@ -498,7 +498,9 @@
     "continuousRefreshing": "연속 새로고침 중",
     "detectedLang": "감지된 언어",
     "originalText": "원문",
-    "translationResult": "번역 결과"
+    "translationResult": "번역 결과",
+    "sameLang": "언어가 같습니다",
+    "translateFailed": "번역 실패"
   },
   "hook": {
     "title": "Hook 몰입형 번역",
@@ -524,8 +526,9 @@
     "source.ocr": "OCR 스크린샷 - 범용 폴백",
     "source.hook": "Win32 이벤트 훅 - 시스템 수준 텍스트 변화 모니터링",
     "hcode": {
-      "title": "H-Code DLL 주입",
-      "description": "DLL 주입으로 게임/애플리케이션의 텍스트 렌더링 API(TextOut/DrawText)를 훅하여 프로그램 내부 텍스트를 직접 캡처.",
+      "experimental": "실험적",
+      "title": "H-Code DLL 주입 (실험적)",
+      "description": "실험적 기능. TextOut/DrawText 훅. 주입 후에도 텍스트가 없을 수 있으며 제품 수준이 아닙니다.",
       "pid": "프로세스 PID",
       "pidPlaceholder": "대상 프로세스 PID 입력",
       "processName": "프로세스 이름",
@@ -754,6 +757,34 @@
     "targetText": "번역",
     "processing": "처리 중...",
     "detecting": "감지 중...",
-    "retry": "재시도"
+    "retry": "재시도",
+    "copied": "복사됨"
+  },
+  "ocrRegion": {
+    "copySource": "원문 복사",
+    "copyTarget": "번역 복사",
+    "copyScreenshot": "스크린샷 복사",
+    "saveScreenshot": "스크린샷 저장",
+    "watchOn": "감시 켜짐",
+    "watchOff": "감시 꺼짐",
+    "pauseWatch": "감시 일시정지",
+    "startWatch": "영역 감시 시작",
+    "recognizing": "인식 중…",
+    "dataTimeout": "시간 초과",
+    "toggleDisplay": "표시 전환",
+    "refreshNow": "지금 새로고침",
+    "followOn": "창 따라가기",
+    "followOff": "따라가기 해제",
+    "pinned": "항상 위",
+    "unpinned": "항상 위 해제",
+    "copiedImage": "복사됨",
+    "savedImage": "저장됨",
+    "pin": "항상 위 고정",
+    "unpin": "고정 해제",
+    "follow": "대상 창 따라가기",
+    "unfollow": "따라가기 중지",
+    "resize": "크기 조절",
+    "refreshing": "새로고침 중…",
+    "needOcr": "인식 후 사용 가능"
   }
 }

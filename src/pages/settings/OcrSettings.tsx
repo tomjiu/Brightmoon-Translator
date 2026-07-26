@@ -2,6 +2,10 @@ import { useConfigStore } from '../../stores/configStore';
 import Card from '../../components/Card';
 import Badge from '../../components/Badge';
 import { CheckCircle } from 'lucide-react';
+import {
+  OCR_WATCH_INTERVAL_DEFAULT_MS,
+  OCR_WATCH_INTERVAL_MIN_MS,
+} from '../../services/ocrConstants';
 
 export default function OcrSettings() {
   const config = useConfigStore((s) => s.config);
@@ -143,25 +147,30 @@ export default function OcrSettings() {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">
-              刷新间隔 (毫秒)
+              区域监视间隔 (毫秒)
             </label>
             <input
               type="number"
-              min="500"
-              max="10000"
-              step="100"
-              value={config.ocrInterval || 2000}
+              min={OCR_WATCH_INTERVAL_MIN_MS}
+              max={10000}
+              step={100}
+              value={config.ocrInterval ?? OCR_WATCH_INTERVAL_DEFAULT_MS}
               onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
                 updateConfig((prev) => ({
                   ...prev,
-                  ocrInterval: parseInt(e.target.value, 10),
+                  ocrInterval: Number.isFinite(n)
+                    ? Math.min(10000, Math.max(OCR_WATCH_INTERVAL_MIN_MS, n))
+                    : OCR_WATCH_INTERVAL_DEFAULT_MS,
                 }));
               }}
               onBlur={() => void saveConfig()}
               className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             />
             <p className="text-xs text-text-secondary mt-1">
-              OCR 区域自动刷新的时间间隔，默认 2000ms
+              结果框开启「区域监视」后的检测间隔（默认 {OCR_WATCH_INTERVAL_DEFAULT_MS}
+              ms，最小 {OCR_WATCH_INTERVAL_MIN_MS}
+              ms）。内容未变时会自动拉长间隔以省电。
             </p>
           </div>
         </div>

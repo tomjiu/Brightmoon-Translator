@@ -294,14 +294,26 @@ pub fn extract_text_from_subtitle(file_path: &str) -> Result<SubtitleDocument, S
     })
 }
 
+fn export_cue_text(entry: &SubtitleEntry, bilingual: bool) -> String {
+    let translated = entry.translated_text.trim();
+    let original = entry.original_text.trim();
+    if bilingual && !original.is_empty() && !translated.is_empty() {
+        format!("{}\n{}", original, translated)
+    } else if !translated.is_empty() {
+        translated.to_string()
+    } else {
+        original.to_string()
+    }
+}
+
 /// Generate SRT output from translated entries
-pub fn generate_srt(entries: &[SubtitleEntry]) -> String {
+pub fn generate_srt(entries: &[SubtitleEntry], bilingual: bool) -> String {
     let mut output = String::new();
 
     for entry in entries {
         output.push_str(&format!("{}\n", entry.index));
         output.push_str(&format!("{} --> {}\n", entry.start_time, entry.end_time));
-        output.push_str(&format!("{}\n\n", entry.translated_text));
+        output.push_str(&format!("{}\n\n", export_cue_text(entry, bilingual)));
     }
 
     output
@@ -367,41 +379,89 @@ pub fn generate_ass_bilingual(original_content: &str, entries: &[SubtitleEntry])
 }
 
 /// Generate VTT output
-pub fn generate_vtt(entries: &[SubtitleEntry]) -> String {
+pub fn generate_vtt(entries: &[SubtitleEntry], bilingual: bool) -> String {
     let mut output = String::from("WEBVTT\n\n");
 
     for entry in entries {
         output.push_str(&format!("{}\n", entry.index));
         output.push_str(&format!("{} --> {}\n", entry.start_time, entry.end_time));
-        output.push_str(&format!("{}\n\n", entry.translated_text));
+        output.push_str(&format!("{}\n\n", export_cue_text(entry, bilingual)));
     }
 
     output
 }
 
-/// Generate LRC output with bilingual text
-pub fn generate_lrc_bilingual(entries: &[SubtitleEntry]) -> String {
+/// Generate LRC output (optionally bilingual)
+pub fn generate_lrc(entries: &[SubtitleEntry], bilingual: bool) -> String {
     let mut output = String::new();
 
     for entry in entries {
-        // Original line
-        output.push_str(&format!("{}{}\n", entry.start_time, entry.original_text));
-        // Translation line (with offset for visual alignment)
-        output.push_str(&format!(
-            "{}[译] {}\n",
-            entry.start_time, entry.translated_text
-        ));
+        if bilingual && !entry.original_text.is_empty() {
+            output.push_str(&format!("{}{}\n", entry.start_time, entry.original_text));
+        }
+        let text = if entry.translated_text.is_empty() {
+            &entry.original_text
+        } else {
+            &entry.translated_text
+        };
+        if bilingual {
+            output.push_str(&format!("{}[译] {}\n", entry.start_time, text));
+        } else {
+            output.push_str(&format!("{}{}\n", entry.start_time, text));
+        }
     }
 
     output
 }
 
-/// Export translated subtitle in the original format
-pub fn export_subtitle(document: &SubtitleDocument, _bilingual: bool) -> String {
+/// Export subtitle from in-memory entries (must include translations).
+pub fn export_subtitle(document: &SubtitleDocument, bilingual: bool) -> String {
     match document.format.as_str() {
-        "srt" => generate_srt(&document.entries),
-        "vtt" => generate_vtt(&document.entries),
-        "lrc" => generate_lrc_bilingual(&document.entries),
-        _ => generate_srt(&document.entries),
+        "srt" => generate_srt(&document.entries, bilingual),
+        "vtt" => generate_vtt(&document.entries, bilingual),
+        "lrc" => generate_lrc(&document.entries, bilingual),
+        _ => generate_srt(&document.entries, bilingual),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_entry(index: usize, original: &str, translated: &str) -> SubtitleEntry {
+        SubtitleEntry {
+            index,
+            start_time: "00:00:01,000".into(),
+            end_time: "00:00:02,000".into(),
+            original_text: original.into(),
+            translated_text: translated.into(),
+        }
+    }
+
+    #[test]
+    fn export_srt_keeps_translations() {
+        let doc = SubtitleDocument {
+            entries: vec![sample_entry(1, "Hello", "你好")],
+            total_entries: 1,
+            format: "srt".into(),
+        };
+        let out = export_subtitle(&doc, false);
+        assert!(
+            out.contains("你好"),
+            "export must use in-memory translation: {out}"
+        );
+        assert!(!out.contains("Hello"));
+    }
+
+    #[test]
+    fn export_srt_bilingual_includes_both() {
+        let doc = SubtitleDocument {
+            entries: vec![sample_entry(1, "Hello", "你好")],
+            total_entries: 1,
+            format: "srt".into(),
+        };
+        let out = export_subtitle(&doc, true);
+        assert!(out.contains("Hello"));
+        assert!(out.contains("你好"));
     }
 }

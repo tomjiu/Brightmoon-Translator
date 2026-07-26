@@ -1,6 +1,7 @@
 pub mod domain;
 pub mod infrastructure;
 pub mod skills;
+pub mod tasks;
 
 pub mod ai_enhanced;
 pub mod alignment;
@@ -10,6 +11,7 @@ pub mod batch;
 pub mod blacklist;
 pub mod cache;
 pub mod capabilities;
+pub mod clipboard_dedupe;
 pub mod commands;
 pub mod config;
 pub mod dictionary;
@@ -53,7 +55,9 @@ use batch::BatchManager;
 use capabilities::{
     DefaultInputReplacement, DefaultSelectionTranslation, InputReplacement, SelectionTranslation,
 };
+use infrastructure::EventStore;
 use speech::SpeechState;
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -121,12 +125,99 @@ pub struct AppState {
 
     // Speech recognition state
     pub speech_state: Arc<Mutex<SpeechState>>,
+
+    // Database for vocabulary/dictionary (ECDICT)
+    pub ecdict_pool: Option<SqlitePool>,
+    // Event store for learning system
+    pub event_store: Option<EventStore>,
 }
 
 pub fn run() {
     let ctx = tokio::runtime::Runtime::new()
         .expect("Failed to create tokio runtime")
         .block_on(build_contexts());
+
+    // Initialize database for dictionary/vocabulary
+    let (ecdict_pool, event_store) = tokio::runtime::Runtime::new()
+        .expect("Failed to create tokio runtime")
+        .block_on(async {
+            // Connect to ECDICT database for dictionary lookups
+            let ecdict_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("dictionaries")
+                .join("ecdict.db");
+            let ecdict_pool = if ecdict_path.exists() {
+                let conn_str = format!(
+                    "sqlite:{}",
+                    ecdict_path.display().to_string().replace('\\', "/")
+                );
+                match sqlx::sqlite::SqlitePoolOptions::new()
+                    .max_connections(2)
+                    .connect(&conn_str)
+                    .await
+                {
+                    Ok(pool) => {
+                        tracing::info!("ECDICT database connected: {}", ecdict_path.display());
+                        Some(pool)
+                    },
+                    Err(e) => {
+                        tracing::warn!("Failed to connect to ECDICT database: {}", e);
+                        None
+                    },
+                }
+            } else {
+                tracing::warn!("ECDICT database not found: {}", ecdict_path.display());
+                None
+            };
+
+            // Initialize vocabulary/event database
+            let mut db_path = dirs::config_dir().unwrap_or_else(|| {
+                tracing::warn!("config_dir not found, using current directory");
+                std::path::PathBuf::from(".")
+            });
+            db_path.push("moontranslator");
+            if let Err(e) = std::fs::create_dir_all(&db_path) {
+                tracing::error!("Failed to create config directory {:?}: {}", db_path, e);
+                return (ecdict_pool, None);
+            }
+            db_path.push("vocabulary.db");
+
+            tracing::info!("Vocabulary database path: {}", db_path.display());
+
+            let event_store = match sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(5)
+                .connect_with(
+                    sqlx::sqlite::SqliteConnectOptions::new()
+                        .filename(&db_path)
+                        .create_if_missing(true),
+                )
+                .await
+            {
+                Ok(pool) => {
+                    let store = EventStore::from_pool(pool);
+                    match store.init_schema().await {
+                        Ok(()) => {
+                            tracing::info!("Vocabulary database initialized");
+                            Some(store)
+                        },
+                        Err(e) => {
+                            tracing::error!("Failed to initialize database schema: {}", e);
+                            None
+                        },
+                    }
+                },
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to open vocabulary database '{}': {:#}",
+                        db_path.display(),
+                        e
+                    );
+                    None
+                },
+            };
+
+            (ecdict_pool, event_store)
+        });
 
     let state = AppState {
         translation: ctx.translation,
@@ -138,6 +229,8 @@ pub fn run() {
         input_replacement: TokioOnceCell::new(),
         batch: Arc::new(BatchManager::new()),
         speech_state: Arc::new(Mutex::new(SpeechState::new())),
+        ecdict_pool,
+        event_store,
     };
 
     tauri::Builder::default()
@@ -230,13 +323,19 @@ pub fn run() {
                 let _ = app_state.input_replacement.set(inp_replacement);
             }
 
-            // Create system tray menu
+            // Create system tray menu (pot-aligned: show / selection / OCR / clipboard / settings / quit)
             let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+            let selection = MenuItem::with_id(app, "selection", "划词翻译", true, None::<&str>)?;
             let ocr = MenuItem::with_id(app, "ocr", "OCR截图翻译", true, None::<&str>)?;
+            let clipboard_monitor =
+                MenuItem::with_id(app, "clipboard_monitor", "剪贴板监听", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
-            let menu = Menu::with_items(app, &[&show, &ocr, &settings, &quit])?;
+            let menu = Menu::with_items(
+                app,
+                &[&show, &selection, &ocr, &clipboard_monitor, &settings, &quit],
+            )?;
 
             // Create system tray
             let icon = app.default_window_icon().cloned().unwrap_or_else(|| {
@@ -254,10 +353,32 @@ pub fn run() {
                             let _ = window.set_focus();
                         }
                     }
+                    "selection" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit("trigger-translate-selection", ());
+                        }
+                    }
                     "ocr" => {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.emit("trigger-ocr-screenshot", ());
                         }
+                    }
+                    "clipboard_monitor" => {
+                        let app_handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = app_handle.state::<AppState>();
+                            let enabled = {
+                                let mut config = state.system.config.lock().await;
+                                config.clipboard_monitor = !config.clipboard_monitor;
+                                let on = config.clipboard_monitor;
+                                config.save();
+                                on
+                            };
+                            // FE syncs listener via config.clipboardMonitor + App effect
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                let _ = window.emit("clipboard-monitor-toggled", enabled);
+                            }
+                        });
                     }
                     "settings" => {
                         if let Some(window) = app.get_webview_window("main") {
@@ -310,7 +431,8 @@ pub fn run() {
                     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
                     tracing::info!("[OCR Warmup] Starting screenshot cache warmup...");
-                    match commands::capture::prepare_screenshot_snapshot().await {
+                    // Warmup may use cache later; force_refresh=None keeps smart cache path
+                    match commands::capture::prepare_screenshot_snapshot(None).await {
                         Ok(_) => {
                             tracing::info!("[OCR Warmup] Screenshot cache warmed up successfully");
                         }
@@ -342,6 +464,7 @@ pub fn run() {
             commands::window::close_overlay,
             commands::window::hide_main_window,
             commands::window::show_main_window,
+            commands::window::set_window_exclude_from_capture,
             commands::window::get_selected_text,
             commands::window::translate_selection,
             commands::window::trigger_selection_translate,
@@ -365,6 +488,9 @@ pub fn run() {
             commands::window::create_ocr_region_frame,
             commands::window::close_ocr_region_frame,
             commands::window::set_ocr_region_frame_visible,
+            commands::window::set_ocr_region_frame_sampling,
+            commands::window::set_ocr_region_frame_click_through,
+            commands::window::move_ocr_region_frame,
             commands::config_cmd::get_config,
             commands::config_cmd::get_default_config,
             commands::config_cmd::save_config,
@@ -390,13 +516,17 @@ pub fn run() {
             commands::capture::load_screenshot_snapshot,
             commands::capture::crop_screenshot_snapshot,
             commands::capture::capture_screenshot_region,
+            commands::capture::image_data_url_fingerprint,
             commands::capture::detect_foreground_hwnd,
+            commands::capture::hwnd_from_point,
             commands::capture::get_window_rect_cmd,
             commands::capture::get_window_title_cmd,
             commands::capture::detect_text_regions,
             commands::hook_inject_cmd::hook_inject,
             commands::hook_inject_cmd::hook_eject,
             commands::hook_inject_cmd::hook_status,
+            commands::hook_inject_cmd::hook_dll_available,
+            commands::hook_inject_cmd::hook_dll_path,
             commands::hook_inject_cmd::hook_read_messages,
             commands::process_list::get_process_list,
             commands::glossary_cmd::get_glossary,
@@ -429,6 +559,18 @@ pub fn run() {
             commands::subtitle_cmd::translate_subtitle,
             commands::subtitle_cmd::export_subtitle_file,
             commands::subtitle_cmd::translate_subtitle_text,
+            commands::docx_cmd::open_docx,
+            commands::docx_cmd::translate_docx,
+            commands::docx_cmd::translate_docx_preview,
+            commands::excel_cmd::open_excel,
+            commands::excel_cmd::translate_excel,
+            commands::excel_cmd::translate_excel_preview,
+            commands::pptx_cmd::open_pptx,
+            commands::pptx_cmd::translate_pptx,
+            commands::pptx_cmd::translate_pptx_preview,
+            commands::image_translate_cmd::translate_image,
+            commands::image_translate_cmd::preview_image_translation,
+            commands::image_translate_cmd::translate_image_base64,
             commands::post_process_cmd::get_post_process_config,
             commands::post_process_cmd::update_post_process_config,
             commands::post_process_cmd::add_replacement_rule,
@@ -535,10 +677,66 @@ pub fn run() {
             commands::vocabulary_cmd::generate_card_content,
             commands::vocabulary_cmd::submit_review,
             commands::vocabulary_cmd::get_learning_stats,
+            commands::vocabulary_cmd::study_word,
+            commands::statistics_cmd::get_learning_statistics,
+            commands::statistics_cmd::get_daily_activity,
+            commands::statistics_cmd::get_heatmap_data,
+            commands::statistics_cmd::get_weak_words,
+            commands::notification_cmd::send_desktop_notification,
+            commands::notification_cmd::check_daily_reminder,
+            commands::notification_cmd::check_due_cards_reminder,
+            commands::notification_cmd::check_milestone_celebration,
+            commands::notification_cmd::check_plan_progress_reminder,
+            commands::model_provider_cmd::fetch_available_models,
+            commands::model_provider_cmd::test_llm_connection,
             commands::dictionary_cmd::search_word_suggestions,
             commands::dictionary_cmd::lookup_word_detail,
             commands::dictionary_cmd::lookup_word_multi_source,
             commands::dictionary_cmd::fuzzy_search_words,
+            commands::dictionary_cmd::import_dictionary_data,
+            commands::dictionary_cmd::check_dictionary_imported,
+            commands::learning_plan_cmd::get_exam_wordlists,
+            commands::learning_plan_cmd::create_learning_plan,
+            commands::learning_plan_cmd::get_learning_plans,
+            commands::learning_plan_cmd::get_plan_today_words,
+            commands::learning_plan_cmd::mark_word_learned,
+            commands::learning_plan_cmd::delete_learning_plan,
+            commands::learning_plan_cmd::import_wordlist_from_file,
+            commands::learning_plan_cmd::import_wordlist_from_text,
+            commands::learning_mode_cmd::generate_choice_questions,
+            commands::learning_mode_cmd::generate_spelling_questions,
+            commands::learning_mode_cmd::generate_cloze_questions,
+            commands::learning_mode_cmd::get_swipe_cards,
+            commands::learning_mode_cmd::submit_swipe_rating,
+            commands::word_detail_cmd::get_word_history,
+            commands::word_detail_cmd::get_fsrs_timeline,
+            commands::word_detail_cmd::update_ai_content,
+            commands::word_detail_cmd::get_related_words,
+            commands::word_detail_cmd::get_corpus_examples,
+            commands::word_detail_cmd::get_word_etymology,
+            commands::data_io_cmd::export_learning_data_json,
+            commands::data_io_cmd::export_anki_tsv,
+            commands::data_io_cmd::import_learning_data_json,
+            commands::data_io_cmd::import_wordlist_csv,
+            commands::data_io_cmd::auto_backup,
+            commands::data_io_cmd::write_file_content,
+            commands::data_io_cmd::write_file_base64,
+            commands::fsrs_optimization_cmd::get_fsrs_analysis,
+            commands::fsrs_optimization_cmd::get_forgetting_curve,
+            commands::fsrs_optimization_cmd::get_review_forecast,
+            commands::fsrs_optimization_cmd::get_best_study_time,
+            commands::fsrs_optimization_cmd::get_difficulty_distribution,
+            commands::dict_optimize_cmd::get_dict_stats,
+            commands::dict_optimize_cmd::export_compressed_dict,
+            commands::dict_optimize_cmd::export_dict_shards,
+            commands::github_export_cmd::export_for_github,
+            commands::github_export_cmd::export_ai_cache_for_github,
+            commands::quality_cmd::score_translation,
+            commands::quality_cmd::compare_engine_quality,
+            commands::speech_cmd::start_speech_recognition,
+            commands::speech_cmd::stop_speech_recognition,
+            commands::speech_cmd::get_speech_recognition_status,
+            commands::speech_cmd::get_speech_languages,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -552,7 +750,8 @@ async fn build_contexts() -> Contexts {
 /// Start API server if enabled in config
 fn start_api_server(app: &tauri::App) {
     let app_state = app.state::<AppState>();
-    let api_state = api_server::ApiState::from_app_state(&app_state);
+    let api_state =
+        api_server::ApiState::from_app_state(&app_state).with_app_handle(app.handle().clone());
     let config = app_state.system.config.blocking_lock();
     let api_port = config.api_server_port;
     let api_enabled = config.api_server_enabled;

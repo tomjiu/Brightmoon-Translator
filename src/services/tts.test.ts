@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { speakText, stopSpeaking } from "./tts";
-import { invokeOrThrow } from "./invoke";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { speakText, stopSpeaking } from './tts';
+import { invokeOrThrow } from './invoke';
 
 // Mock invoke module
-vi.mock("./invoke", () => ({
+vi.mock('./invoke', () => ({
   invokeOrThrow: vi.fn(),
 }));
 
@@ -26,16 +26,16 @@ function createMockAudio(overrides: Partial<MockAudioInstance> = {}): MockAudioI
   };
 }
 
-describe("tts service", () => {
+describe('tts service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stopSpeaking();
   });
 
-  describe("speakText", () => {
-    it("should call invokeOrThrow with correct parameters", async () => {
+  describe('speakText', () => {
+    it('should call invokeOrThrow with correct parameters', async () => {
       // Mock base64 audio response
-      const mockBase64 = btoa("fake-audio-data");
+      const mockBase64 = btoa('fake-audio-data');
       vi.mocked(invokeOrThrow).mockResolvedValue(mockBase64);
 
       // Mock Audio.play to trigger onended immediately
@@ -45,18 +45,40 @@ describe("tts service", () => {
         }),
       });
 
-      vi.spyOn(window, "Audio").mockImplementation(() => mockAudio as unknown as HTMLAudioElement);
+      vi.spyOn(window, 'Audio').mockImplementation(() => mockAudio as unknown as HTMLAudioElement);
 
-      await speakText("Hello", "en");
+      await speakText('Hello', 'en');
 
-      expect(invokeOrThrow).toHaveBeenCalledWith("text_to_speech", {
-        text: "Hello",
-        lang: "en",
+      expect(invokeOrThrow).toHaveBeenCalledWith('text_to_speech', {
+        text: 'Hello',
+        lang: 'en',
+        voice: undefined,
       });
     });
 
-    it("should resolve when audio playback ends", async () => {
-      const mockBase64 = btoa("fake-audio-data");
+    it('should pass optional voice to invoke', async () => {
+      const mockBase64 = btoa('fake-audio-data');
+      vi.mocked(invokeOrThrow).mockResolvedValue(mockBase64);
+
+      const mockAudio = createMockAudio({
+        play: vi.fn().mockImplementation(function (this: MockAudioInstance) {
+          setTimeout(() => this.onended?.(), 0);
+        }),
+      });
+
+      vi.spyOn(window, 'Audio').mockImplementation(() => mockAudio as unknown as HTMLAudioElement);
+
+      await speakText('Hello', 'en', 'en-US-GuyNeural');
+
+      expect(invokeOrThrow).toHaveBeenCalledWith('text_to_speech', {
+        text: 'Hello',
+        lang: 'en',
+        voice: 'en-US-GuyNeural',
+      });
+    });
+
+    it('should resolve when audio playback ends', async () => {
+      const mockBase64 = btoa('fake-audio-data');
       vi.mocked(invokeOrThrow).mockResolvedValue(mockBase64);
 
       const mockAudio = createMockAudio({
@@ -65,13 +87,13 @@ describe("tts service", () => {
         }),
       });
 
-      vi.spyOn(window, "Audio").mockImplementation(() => mockAudio as unknown as HTMLAudioElement);
+      vi.spyOn(window, 'Audio').mockImplementation(() => mockAudio as unknown as HTMLAudioElement);
 
-      await expect(speakText("Test", "zh")).resolves.toBeUndefined();
+      await expect(speakText('Test', 'zh')).resolves.toBeUndefined();
     });
 
-    it("should resolve on audio error", async () => {
-      const mockBase64 = btoa("fake-audio-data");
+    it('should resolve on audio error', async () => {
+      const mockBase64 = btoa('fake-audio-data');
       vi.mocked(invokeOrThrow).mockResolvedValue(mockBase64);
 
       const mockAudio = createMockAudio({
@@ -80,13 +102,13 @@ describe("tts service", () => {
         }),
       });
 
-      vi.spyOn(window, "Audio").mockImplementation(() => mockAudio as unknown as HTMLAudioElement);
+      vi.spyOn(window, 'Audio').mockImplementation(() => mockAudio as unknown as HTMLAudioElement);
 
-      await expect(speakText("Test", "en")).resolves.toBeUndefined();
+      await expect(speakText('Test', 'en')).resolves.toBeUndefined();
     });
 
-    it("should stop previous audio when called again", async () => {
-      const mockBase64 = btoa("fake-audio-data");
+    it('should stop previous audio when called again', async () => {
+      const mockBase64 = btoa('fake-audio-data');
       vi.mocked(invokeOrThrow).mockResolvedValue(mockBase64);
 
       const mockAudio1 = createMockAudio({ currentTime: 5 });
@@ -98,28 +120,28 @@ describe("tts service", () => {
       });
 
       let callCount = 0;
-      vi.spyOn(window, "Audio").mockImplementation(() => {
+      vi.spyOn(window, 'Audio').mockImplementation(() => {
         callCount++;
         return (callCount === 1 ? mockAudio1 : mockAudio2) as unknown as HTMLAudioElement;
       });
 
       // Start first playback (don't await - it won't resolve because play doesn't trigger onended)
-      speakText("First", "en");
+      speakText('First', 'en');
 
       // Small delay to ensure first audio is set up
       await new Promise((r) => setTimeout(r, 20));
 
       // Start second playback - this should stop the first
-      await speakText("Second", "en");
+      await speakText('Second', 'en');
 
       // First audio should have been paused by stopSpeaking()
       expect(mockAudio1.pause).toHaveBeenCalled();
     });
   });
 
-  describe("stopSpeaking", () => {
-    it("should stop currently playing audio", async () => {
-      const mockBase64 = btoa("fake-audio-data");
+  describe('stopSpeaking', () => {
+    it('should stop currently playing audio', async () => {
+      const mockBase64 = btoa('fake-audio-data');
       vi.mocked(invokeOrThrow).mockResolvedValue(mockBase64);
 
       const mockAudio = createMockAudio({
@@ -129,10 +151,10 @@ describe("tts service", () => {
         }),
       });
 
-      vi.spyOn(window, "Audio").mockImplementation(() => mockAudio as unknown as HTMLAudioElement);
+      vi.spyOn(window, 'Audio').mockImplementation(() => mockAudio as unknown as HTMLAudioElement);
 
       // Start playback
-      speakText("Test", "en");
+      speakText('Test', 'en');
 
       // Wait a bit for the mock to be set up
       await new Promise((r) => setTimeout(r, 10));
@@ -144,7 +166,7 @@ describe("tts service", () => {
       expect(mockAudio.currentTime).toBe(0);
     });
 
-    it("should do nothing if no audio is playing", () => {
+    it('should do nothing if no audio is playing', () => {
       // Should not throw
       expect(() => stopSpeaking()).not.toThrow();
     });

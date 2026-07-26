@@ -139,6 +139,27 @@ pub struct AiContent {
     pub mnemonics: Vec<Mnemonic>,
     pub examples: Vec<PersonalizedExample>,
     pub scenes: Vec<Scene>,
+    // 新增精细化内容
+    #[serde(default)]
+    pub collocations: Vec<String>, // 常见搭配
+    #[serde(default)]
+    pub word_family: Vec<WordFamilyItem>, // 词族
+    #[serde(default)]
+    pub usage_tips: Vec<String>, // 用法提示
+    #[serde(default)]
+    pub common_mistakes: Vec<String>, // 常见错误
+    #[serde(default)]
+    pub synonyms: Vec<String>, // 近义词
+    #[serde(default)]
+    pub antonyms: Vec<String>, // 反义词
+}
+
+/// 词族成员
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WordFamilyItem {
+    pub word: String,
+    pub pos: String,
+    pub meaning: String,
 }
 
 /// 词源信息
@@ -169,11 +190,12 @@ pub struct Mnemonic {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MnemonicType {
-    Etymology, // 词根词源
-    Scene,     // 场景联想
-    Homophone, // 谐音
-    Visual,    // 视觉图像
-    Chunking,  // 分块记忆
+    Etymology,  // 词根词源
+    Scene,      // 场景联想
+    Homophone,  // 谐音
+    Visual,     // 视觉图像
+    Chunking,   // 分块记忆
+    Comparison, // 对比记忆
 }
 
 /// 个性化例句

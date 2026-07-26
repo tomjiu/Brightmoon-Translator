@@ -19,24 +19,25 @@ pub fn build_shell_html() -> String {
 <meta charset="UTF-8">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+body { background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; overflow: hidden; }
 .overlay-container { width: 100vw; height: 100vh; display: flex; align-items: flex-start; justify-content: flex-start; }
-.card { background: rgba(26, 27, 38, 0.95); border: 1px solid rgba(59, 66, 97, 0.8); border-radius: 10px; padding: 10px 14px; color: #c0caf5; font-size: 13px; line-height: 1.5; user-select: text; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); max-width: 400px; opacity: 0; transform: translateY(-4px); transition: opacity 0.15s ease-out, transform 0.15s ease-out; }
+/* Dark translucent card (Youdao-like), not Tokyo-night blue-gray */
+.card { background: rgba(18, 18, 20, 0.78); border: 1px solid rgba(255, 255, 255, 0.10); border-radius: 12px; padding: 10px 14px; color: #f3f4f6; font-size: 13px; line-height: 1.55; user-select: text; box-shadow: 0 10px 36px rgba(0, 0, 0, 0.45); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); max-width: 400px; opacity: 0; transform: translateY(-4px); transition: opacity 0.15s ease-out, transform 0.15s ease-out; }
 .card.visible { opacity: 1; transform: translateY(0); }
-.card.level-1 { background: rgba(26, 27, 38, 0.92); border-color: rgba(59, 66, 97, 0.6); border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); max-width: none; }
-.card.level-3 { padding: 12px 16px; font-size: 14px; line-height: 1.6; pointer-events: auto; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); width: 100vw; height: 100vh; max-width: none; overflow: auto; border-radius: 10px; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(59, 66, 97, 0.5); }
-.title { font-size: 11px; color: #7aa2f7; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.card.level-1 { background: rgba(18, 18, 20, 0.72); border-color: rgba(255, 255, 255, 0.08); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); max-width: none; }
+.card.level-3 { padding: 12px 16px; font-size: 14px; line-height: 1.6; pointer-events: auto; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); width: 100vw; height: 100vh; max-width: none; overflow: auto; border-radius: 12px; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.title { font-size: 11px; color: #e5e7eb; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
 .actions { display: flex; gap: 4px; }
-.btn { background: rgba(59, 66, 97, 0.5); border: 1px solid rgba(59, 66, 97, 0.8); color: #a9b1d6; border-radius: 6px; padding: 3px 10px; font-size: 11px; cursor: pointer; transition: all 0.15s ease; }
-.btn:hover { background: rgba(122, 162, 247, 0.2); border-color: #7aa2f7; color: #c0caf5; }
-.btn-close:hover { background: rgba(247, 118, 142, 0.2); border-color: #f7768e; color: #f7768e; }
-.btn-copy.done { background: rgba(158, 206, 106, 0.2); border-color: #9ece6a; color: #9ece6a; }
-.btn-pin.active { background: rgba(249, 226, 175, 0.2); border-color: #f9e2af; color: #f9e2af; }
-.btn-passthrough.active { background: rgba(137, 180, 250, 0.2); border-color: #89b4fa; color: #89b4fa; }
-.source { color: #565f89; font-size: 12px; margin-bottom: 6px; max-height: 60px; overflow: hidden; text-overflow: ellipsis; }
-.source.has-border { margin-bottom: 8px; padding-bottom: 8px; max-height: none; border-bottom: 1px solid rgba(59, 66, 97, 0.3); }
-.translated { color: #c0caf5; white-space: pre-wrap; word-break: break-word; }
+.btn { background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.10); color: #d1d5db; border-radius: 8px; padding: 3px 10px; font-size: 11px; cursor: pointer; transition: all 0.15s ease; }
+.btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.18); color: #fff; }
+.btn-close:hover { background: rgba(239, 68, 68, 0.18); border-color: rgba(239, 68, 68, 0.45); color: #fca5a5; }
+.btn-copy.done { background: rgba(34, 197, 94, 0.16); border-color: rgba(34, 197, 94, 0.4); color: #86efac; }
+.btn-pin.active { background: rgba(251, 191, 36, 0.16); border-color: rgba(251, 191, 36, 0.4); color: #fde68a; }
+.btn-passthrough.active { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.22); color: #fff; }
+.source { color: rgba(255, 255, 255, 0.45); font-size: 12px; margin-bottom: 6px; max-height: 60px; overflow: hidden; text-overflow: ellipsis; }
+.source.has-border { margin-bottom: 8px; padding-bottom: 8px; max-height: none; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.translated { color: #f9fafb; white-space: pre-wrap; word-break: break-word; }
 .source:empty { display: none; }
 .actions-row { display: flex; gap: 4px; margin-top: 8px; justify-content: flex-end; }
 .hidden { display: none !important; }
@@ -50,8 +51,8 @@ body { background: transparent; font-family: -apple-system, BlinkMacSystemFont, 
     <div class="header hidden" id="overlayHeader">
       <span class="title">Translation</span>
       <div class="actions">
-        <button class="btn btn-pin" id="pinBtn" title="Pin">&#128204;</button>
-        <button class="btn btn-passthrough" id="passthroughBtn" title="Click Through">&#128070;</button>
+        <button class="btn btn-pin" id="pinBtn" title="Pin">Pin</button>
+        <button class="btn btn-passthrough" id="passthroughBtn" title="Click Through">Through</button>
         <button class="btn btn-copy" id="headerCopyBtn">Copy</button>
         <button class="btn btn-close" id="headerCloseBtn">Close</button>
       </div>
@@ -159,17 +160,19 @@ fn build_l1_html(translated: &str, dismiss_ms: u64) -> String {
 <meta charset="UTF-8">
 <style>
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }}
+body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; overflow: hidden; }}
 .card {{
-  background: rgba(26, 27, 38, 0.92);
-  border: 1px solid rgba(59, 66, 97, 0.6);
-  border-radius: 8px;
+  background: rgba(18, 18, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
   padding: 10px 14px;
-  color: #c0caf5;
+  color: #f3f4f6;
   font-size: 13px;
   line-height: 1.5;
   user-select: text;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   animation: fadeIn 0.15s ease-out;
 }}
 @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(-4px); }} to {{ opacity: 1; transform: translateY(0); }} }}
@@ -198,34 +201,36 @@ fn build_l2_html(source: &str, translated: &str) -> String {
 <meta charset="UTF-8">
 <style>
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }}
+body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; overflow: hidden; }}
 .card {{
-  background: rgba(26, 27, 38, 0.95);
-  border: 1px solid rgba(59, 66, 97, 0.8);
-  border-radius: 10px;
+  background: rgba(18, 18, 20, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
   padding: 10px 14px;
-  color: #c0caf5;
+  color: #f3f4f6;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
   user-select: text;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   animation: fadeIn 0.15s ease-out;
   max-width: 400px;
 }}
-.source {{ color: #565f89; font-size: 12px; margin-bottom: 6px; max-height: 60px; overflow: hidden; text-overflow: ellipsis; }}
-.translated {{ color: #c0caf5; }}
+.source {{ color: rgba(255, 255, 255, 0.45); font-size: 12px; margin-bottom: 6px; max-height: 60px; overflow: hidden; text-overflow: ellipsis; }}
+.translated {{ color: #f9fafb; }}
 .actions {{ display: flex; gap: 4px; margin-top: 8px; justify-content: flex-end; }}
 .btn {{
-  background: rgba(59, 66, 97, 0.5);
-  border: 1px solid rgba(59, 66, 97, 0.8);
-  color: #a9b1d6;
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #d1d5db;
+  border-radius: 8px;
   padding: 3px 10px;
   font-size: 11px;
   cursor: pointer;
 }}
-.btn:hover {{ background: rgba(122, 162, 247, 0.2); border-color: #7aa2f7; }}
-.btn.done {{ background: rgba(158, 206, 106, 0.2); border-color: #9ece6a; color: #9ece6a; }}
+.btn:hover {{ background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.18); color: #fff; }}
+.btn.done {{ background: rgba(34, 197, 94, 0.16); border-color: rgba(34, 197, 94, 0.4); color: #86efac; }}
 @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(-4px); }} to {{ opacity: 1; transform: translateY(0); }} }}
 </style>
 </head>
@@ -265,18 +270,20 @@ fn build_l3_html(source: &str, translated: &str) -> String {
 <meta charset="UTF-8">
 <style>
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }}
+body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; overflow: hidden; }}
 .card {{
-  background: rgba(26, 27, 38, 0.95);
-  border: 1px solid rgba(59, 66, 97, 0.8);
-  border-radius: 10px;
+  background: rgba(18, 18, 20, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
   padding: 12px 16px;
-  color: #c0caf5;
+  color: #f3f4f6;
   font-size: 14px;
   line-height: 1.6;
   user-select: text;
   pointer-events: auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   animation: fadeIn 0.15s ease-out;
   width: 100vw;
   height: 100vh;
@@ -288,27 +295,27 @@ body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont,
   align-items: center;
   margin-bottom: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(59, 66, 97, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }}
-.title {{ font-size: 11px; color: #7aa2f7; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }}
+.title {{ font-size: 11px; color: #e5e7eb; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }}
 .actions {{ display: flex; gap: 4px; }}
 .btn {{
-  background: rgba(59, 66, 97, 0.5);
-  border: 1px solid rgba(59, 66, 97, 0.8);
-  color: #a9b1d6;
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #d1d5db;
+  border-radius: 8px;
   padding: 4px 10px;
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s ease;
 }}
-.btn:hover {{ background: rgba(122, 162, 247, 0.2); border-color: #7aa2f7; color: #c0caf5; }}
-.btn-close:hover {{ background: rgba(247, 118, 142, 0.2); border-color: #f7768e; color: #f7768e; }}
-.btn-copy.done {{ background: rgba(158, 206, 106, 0.2); border-color: #9ece6a; color: #9ece6a; }}
-.btn-pin.active {{ background: rgba(249, 226, 175, 0.2); border-color: #f9e2af; color: #f9e2af; }}
-.btn-passthrough.active {{ background: rgba(137, 180, 250, 0.2); border-color: #89b4fa; color: #89b4fa; }}
-.source {{ color: #565f89; font-size: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(59, 66, 97, 0.3); }}
-.translated {{ white-space: pre-wrap; word-break: break-word; }}
+.btn:hover {{ background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.18); color: #fff; }}
+.btn-close:hover {{ background: rgba(239, 68, 68, 0.18); border-color: rgba(239, 68, 68, 0.45); color: #fca5a5; }}
+.btn-copy.done {{ background: rgba(34, 197, 94, 0.16); border-color: rgba(34, 197, 94, 0.4); color: #86efac; }}
+.btn-pin.active {{ background: rgba(251, 191, 36, 0.16); border-color: rgba(251, 191, 36, 0.4); color: #fde68a; }}
+.btn-passthrough.active {{ background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.22); color: #fff; }}
+.source {{ color: rgba(255, 255, 255, 0.45); font-size: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }}
+.translated {{ color: #f9fafb; white-space: pre-wrap; word-break: break-word; }}
 @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(-4px); }} to {{ opacity: 1; transform: translateY(0); }} }}
 </style>
 </head>
@@ -317,8 +324,8 @@ body {{ background: transparent; font-family: -apple-system, BlinkMacSystemFont,
   <div class="header">
     <span class="title">Translation</span>
     <div class="actions">
-      <button class="btn btn-pin" id="pinBtn" title="Pin">📌</button>
-      <button class="btn btn-passthrough" id="passthroughBtn" title="Click Through">👆</button>
+      <button class="btn btn-pin" id="pinBtn" title="Pin">Pin</button>
+      <button class="btn btn-passthrough" id="passthroughBtn" title="Click Through">Through</button>
       <button class="btn btn-copy" id="copyBtn">Copy</button>
       <button class="btn btn-close" id="closeBtn">Close</button>
     </div>

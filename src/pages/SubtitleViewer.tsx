@@ -1,9 +1,17 @@
-import { useState, useEffect } from "react";
-import { invokeOrThrow } from "../services/invoke";
-import { listen } from "@tauri-apps/api/event";
-import { useI18n } from "../i18n";
-import { isTauriRuntime } from "../services/tauriRuntime";
-import { FileText, Languages, Download, ChevronLeft, ChevronRight, Subtitles, Loader2 } from "lucide-react";
+import { useState, useEffect } from 'react';
+import { invokeOrThrow } from '../services/invoke';
+import { listen } from '@tauri-apps/api/event';
+import { useI18n } from '../i18n';
+import { isTauriRuntime } from '../services/tauriRuntime';
+import {
+  FileText,
+  Languages,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  Subtitles,
+  Loader2,
+} from 'lucide-react';
 
 interface SubtitleEntry {
   index: number;
@@ -33,7 +41,7 @@ interface ProgressInfo {
 
 function SubtitleViewer() {
   const [filePath, setFilePath] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string>("");
+  const [fileName, setFileName] = useState<string>('');
   const [subtitleDoc, setSubtitleDoc] = useState<SubtitleDocument | null>(null);
   const [translatedSub, setTranslatedSub] = useState<TranslatedSubtitle | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -41,8 +49,8 @@ function SubtitleViewer() {
   const [translating, setTranslating] = useState(false);
   const [progress, setProgress] = useState<ProgressInfo | null>(null);
   const [showBilingual, setShowBilingual] = useState(true);
-  const [fromLang, setFromLang] = useState("auto");
-  const [toLang, setToLang] = useState("zh");
+  const [fromLang, setFromLang] = useState('auto');
+  const [toLang, setToLang] = useState('zh');
   const [itemsPerPage] = useState(20);
   const { t } = useI18n();
   const isTauri = isTauriRuntime();
@@ -51,7 +59,7 @@ function SubtitleViewer() {
   useEffect(() => {
     if (!isTauri) return;
 
-    const unlisten = listen<ProgressInfo>("subtitle-progress", (event) => {
+    const unlisten = listen<ProgressInfo>('subtitle-progress', (event) => {
       setProgress(event.payload);
     });
 
@@ -62,13 +70,13 @@ function SubtitleViewer() {
 
   const openFile = async () => {
     try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
+      const { open } = await import('@tauri-apps/plugin-dialog');
       const selected = await open({
         multiple: false,
         filters: [
           {
-            name: "Subtitle",
-            extensions: ["srt", "ass", "ssa", "vtt", "lrc"],
+            name: 'Subtitle',
+            extensions: ['srt', 'ass', 'ssa', 'vtt', 'lrc'],
           },
         ],
       });
@@ -76,7 +84,7 @@ function SubtitleViewer() {
       if (selected) {
         const path = selected;
         setFilePath(path);
-        setFileName(path.split(/[/\\]/).pop() || "subtitle.srt");
+        setFileName(path.split(/[/\\]/).pop() || 'subtitle.srt');
         setTranslatedSub(null);
         setCurrentPage(1);
         setProgress(null);
@@ -84,16 +92,16 @@ function SubtitleViewer() {
         // Load subtitle content
         setLoading(true);
         try {
-          const doc = await invokeOrThrow<SubtitleDocument>("open_subtitle", { filePath: path });
+          const doc = await invokeOrThrow<SubtitleDocument>('open_subtitle', { filePath: path });
           setSubtitleDoc(doc);
         } catch (err) {
-          console.error("Failed to open subtitle:", err);
+          console.error('Failed to open subtitle:', err);
         } finally {
           setLoading(false);
         }
       }
     } catch (err) {
-      console.error("Failed to open file dialog:", err);
+      console.error('Failed to open file dialog:', err);
     }
   };
 
@@ -103,14 +111,14 @@ function SubtitleViewer() {
     setTranslating(true);
     setProgress(null);
     try {
-      const result = await invokeOrThrow<TranslatedSubtitle>("translate_subtitle", {
+      const result = await invokeOrThrow<TranslatedSubtitle>('translate_subtitle', {
         filePath,
         fromLang,
         toLang,
       });
       setTranslatedSub(result);
     } catch (err) {
-      console.error("Failed to translate subtitle:", err);
+      console.error('Failed to translate subtitle:', err);
     } finally {
       setTranslating(false);
       setProgress(null);
@@ -121,29 +129,30 @@ function SubtitleViewer() {
     if (!translatedSub) return;
 
     try {
-      const { save } = await import("@tauri-apps/plugin-dialog");
-      const ext = subtitleDoc?.format || "srt";
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const ext = subtitleDoc?.format || 'srt';
       const defaultName = fileName.replace(/\.[^.]+$/, `_translated.${ext}`);
 
       const outputPath = await save({
         defaultPath: defaultName,
         filters: [
           {
-            name: "Subtitle",
+            name: 'Subtitle',
             extensions: [ext],
           },
         ],
       });
 
       if (outputPath) {
-        await invokeOrThrow("export_subtitle_file", {
-          filePath: filePath!,
+        await invokeOrThrow('export_subtitle_file', {
+          entries: translatedSub.entries,
+          format: translatedSub.format || subtitleDoc?.format || 'srt',
           outputPath,
           bilingual: showBilingual,
         });
       }
     } catch (err) {
-      console.error("Failed to export:", err);
+      console.error('Failed to export:', err);
     }
   };
 
@@ -153,7 +162,10 @@ function SubtitleViewer() {
   const startIdx = (currentPage - 1) * itemsPerPage;
   const endIdx = Math.min(startIdx + itemsPerPage, totalEntries);
 
-  const currentEntries = (translatedSub?.entries || subtitleDoc?.entries || []).slice(startIdx, endIdx);
+  const currentEntries = (translatedSub?.entries || subtitleDoc?.entries || []).slice(
+    startIdx,
+    endIdx,
+  );
 
   return (
     <div className="h-full flex flex-col p-6">
@@ -161,7 +173,7 @@ function SubtitleViewer() {
       <div className="flex justify-between items-center mb-5">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Subtitles size={24} />
-          {t("subtitle.title")}
+          {t('subtitle.title')}
         </h1>
         <div className="flex items-center gap-3">
           <select
@@ -187,11 +199,11 @@ function SubtitleViewer() {
             <option value="ko">한국어</option>
           </select>
           <button
-            className="bg-primary text-white border border-primary rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors flex items-center gap-1.5"
+            className="bg-primary text-primary-fg border border-primary rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors flex items-center gap-1.5"
             onClick={openFile}
           >
             <FileText size={14} />
-            {t("subtitle.openFile")}
+            {t('subtitle.openFile')}
           </button>
           {subtitleDoc && (
             <button
@@ -204,7 +216,7 @@ function SubtitleViewer() {
               ) : (
                 <Languages size={14} />
               )}
-              {translating ? t("subtitle.translating") : t("subtitle.translate")}
+              {translating ? t('subtitle.translating') : t('subtitle.translate')}
             </button>
           )}
           {translatedSub && (
@@ -212,19 +224,19 @@ function SubtitleViewer() {
               <button
                 className={`border rounded-lg px-4 py-2 text-sm transition-colors ${
                   showBilingual
-                    ? "bg-primary text-white border-primary"
-                    : "bg-bg-tertiary text-text-secondary border-border hover:bg-bg-tertiary/80"
+                    ? 'bg-primary text-primary-fg border-primary'
+                    : 'bg-bg-tertiary text-text-secondary border-border hover:bg-bg-tertiary/80'
                 }`}
                 onClick={() => setShowBilingual(!showBilingual)}
               >
-                {t("subtitle.bilingual")}
+                {t('subtitle.bilingual')}
               </button>
               <button
-                className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-white hover:border-primary transition-colors flex items-center gap-1.5"
+                className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
                 onClick={exportTranslated}
               >
                 <Download size={14} />
-                {t("subtitle.export")}
+                {t('subtitle.export')}
               </button>
             </>
           )}
@@ -235,8 +247,10 @@ function SubtitleViewer() {
       {translating && progress && (
         <div className="mb-4">
           <div className="flex justify-between text-sm text-text-secondary mb-1">
-            <span>{t("subtitle.translating")}</span>
-            <span>{progress.current} / {progress.total}</span>
+            <span>{t('subtitle.translating')}</span>
+            <span>
+              {progress.current} / {progress.total}
+            </span>
           </div>
           <div className="w-full bg-bg-tertiary rounded-full h-2">
             <div
@@ -253,25 +267,24 @@ function SubtitleViewer() {
         {!filePath ? (
           <div className="flex flex-col items-center justify-center h-full text-text-secondary">
             <Subtitles size={64} className="mb-4 opacity-50" />
-            <p className="text-lg mb-2">{t("subtitle.noFile")}</p>
-            <p className="text-sm">{t("subtitle.openHint")}</p>
-            <p className="text-sm mt-2">{t("subtitle.supportedFormats")}</p>
+            <p className="text-lg mb-2">{t('subtitle.noFile')}</p>
+            <p className="text-sm">{t('subtitle.openHint')}</p>
+            <p className="text-sm mt-2">{t('subtitle.supportedFormats')}</p>
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center h-full text-text-secondary">
-            <div className="animate-pulse">{t("subtitle.loading")}</div>
+            <div className="animate-pulse">{t('subtitle.loading')}</div>
           </div>
         ) : subtitleDoc ? (
           <div className="h-full flex flex-col">
             {/* Entry Info & Pagination */}
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm text-text-secondary">
-                {t("subtitle.entryInfo", {
+                {t('subtitle.entryInfo', {
                   current: String(currentPage),
                   total: String(totalPages),
                   count: String(totalEntries),
-                })}
-                {" "}
+                })}{' '}
                 <span className="bg-bg-tertiary px-2 py-0.5 rounded text-xs uppercase">
                   {subtitleDoc.format}
                 </span>
@@ -303,16 +316,25 @@ function SubtitleViewer() {
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-2 px-3 text-text-secondary font-medium w-16">#</th>
-                    <th className="text-left py-2 px-3 text-text-secondary font-medium w-32">{t("subtitle.time")}</th>
-                    <th className="text-left py-2 px-3 text-text-secondary font-medium">{t("subtitle.original")}</th>
+                    <th className="text-left py-2 px-3 text-text-secondary font-medium w-32">
+                      {t('subtitle.time')}
+                    </th>
+                    <th className="text-left py-2 px-3 text-text-secondary font-medium">
+                      {t('subtitle.original')}
+                    </th>
                     {translatedSub && (
-                      <th className="text-left py-2 px-3 text-primary font-medium">{t("subtitle.translation")}</th>
+                      <th className="text-left py-2 px-3 text-primary font-medium">
+                        {t('subtitle.translation')}
+                      </th>
                     )}
                   </tr>
                 </thead>
                 <tbody>
                   {currentEntries.map((entry) => (
-                    <tr key={entry.index} className="border-b border-border/50 hover:bg-bg-secondary/50">
+                    <tr
+                      key={entry.index}
+                      className="border-b border-border/50 hover:bg-bg-secondary/50"
+                    >
                       <td className="py-2 px-3 text-text-secondary">{entry.index}</td>
                       <td className="py-2 px-3 text-text-secondary text-xs font-mono">
                         {entry.startTime}
@@ -321,7 +343,11 @@ function SubtitleViewer() {
                       <td className="py-2 px-3">{entry.originalText}</td>
                       {translatedSub && (
                         <td className="py-2 px-3 text-primary">
-                          {entry.translatedText || <span className="text-text-secondary italic">{t("subtitle.notTranslated")}</span>}
+                          {entry.translatedText || (
+                            <span className="text-text-secondary italic">
+                              {t('subtitle.notTranslated')}
+                            </span>
+                          )}
                         </td>
                       )}
                     </tr>

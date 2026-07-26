@@ -1,6 +1,8 @@
 use axum::{
+    body::Body,
     extract::State as AxumState,
-    http::{header, StatusCode},
+    http::{header, Request, StatusCode},
+    middleware::{self, Next},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -64,9 +66,9 @@ fn sanitize_config(config: &AppConfig) -> serde_json::Value {
     }
     // Mask engine secrets
     if let Some(engines) = v.get_mut("engines") {
-        for field in &["deepl", "deeplx", "baidu"] {
+        for field in &["deepl", "deeplx", "baidu", "caiyun"] {
             if let Some(engine_cfg) = engines.get_mut(field) {
-                for secret_field in &["apiKey", "secret"] {
+                for secret_field in &["apiKey", "secret", "apiToken"] {
                     if let Some(val) = engine_cfg
                         .get(*secret_field)
                         .and_then(|v| v.as_str().map(|s| s.to_string()))
@@ -95,21 +97,114 @@ fn sanitize_config(config: &AppConfig) -> serde_json::Value {
             }
         }
     }
-    // Mask proxy password
-    if let Some(proxy) = v.get_mut("proxy") {
-        if let Some(val) = proxy
-            .get("password")
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-        {
-            if let Some(obj) = proxy.as_object_mut() {
-                obj.insert(
-                    "password".into(),
-                    serde_json::Value::String(mask_secret(&val)),
-                );
+    // Mask proxy / sync passwords
+    for section in &["proxy", "sync"] {
+        if let Some(obj_sec) = v.get_mut(*section) {
+            if let Some(val) = obj_sec
+                .get("password")
+                .and_then(|v| v.as_str().map(|s| s.to_string()))
+            {
+                if let Some(obj) = obj_sec.as_object_mut() {
+                    obj.insert(
+                        "password".into(),
+                        serde_json::Value::String(mask_secret(&val)),
+                    );
+                }
             }
         }
     }
+    // Mask API bridge token
+    if let Some(token) = v
+        .get("apiServerToken")
+        .and_then(|x| x.as_str())
+        .map(|s| s.to_string())
+    {
+        if let Some(obj) = v.as_object_mut() {
+            obj.insert(
+                "apiServerToken".into(),
+                serde_json::Value::String(mask_secret(&token)),
+            );
+        }
+    }
     v
+}
+
+/// Extract bearer / X-Api-Token from request headers.
+fn extract_api_token(req: &Request<Body>) -> Option<String> {
+    if let Some(auth) = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
+        let auth = auth.trim();
+        if let Some(rest) = auth
+            .strip_prefix("Bearer ")
+            .or_else(|| auth.strip_prefix("bearer "))
+        {
+            let t = rest.trim();
+            if !t.is_empty() {
+                return Some(t.to_string());
+            }
+        }
+    }
+    req.headers()
+        .get("x-api-token")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Require valid API token for all routes except GET /health (and CORS preflight).
+async fn require_api_token(
+    AxumState(state): AxumState<ApiState>,
+    req: Request<Body>,
+    next: Next,
+) -> impl IntoResponse {
+    let path = req.uri().path();
+    let method = req.method();
+    if method == axum::http::Method::OPTIONS
+        || (method == axum::http::Method::GET && (path == "/health" || path == "/health/"))
+    {
+        return next.run(req).await;
+    }
+
+    let expected = {
+        let config = state.config.lock().await;
+        config.api_server_token.clone()
+    };
+
+    if expected.is_empty() {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiError {
+                error: "API token not configured; enable bridge in settings".into(),
+            }),
+        )
+            .into_response();
+    }
+
+    let provided = extract_api_token(&req);
+    match provided {
+        Some(t) if constant_time_eq(t.as_bytes(), expected.as_bytes()) => next.run(req).await,
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiError {
+                error: "Unauthorized: provide Authorization: Bearer <token> or X-Api-Token".into(),
+            }),
+        )
+            .into_response(),
+    }
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
 
 #[derive(Clone)]
@@ -120,6 +215,8 @@ pub struct ApiState {
     pub cache: Arc<TranslationCache>,
     pub glossary: Arc<Mutex<Glossary>>,
     pub translation_service: Arc<TranslationService>,
+    /// Optional handle for control routes (show window, emit hotkey events).
+    pub app_handle: Option<tauri::AppHandle>,
 }
 
 impl ApiState {
@@ -131,7 +228,13 @@ impl ApiState {
             cache: state.translation.cache.clone(),
             glossary: state.translation.glossary.clone(),
             translation_service: state.translation.service.clone(),
+            app_handle: None,
         }
+    }
+
+    pub fn with_app_handle(mut self, app: tauri::AppHandle) -> Self {
+        self.app_handle = Some(app);
+        self
     }
 }
 
@@ -179,10 +282,15 @@ async fn translate(
             .into_response();
     }
 
-    // Use TranslationService for the full pipeline (glossary, blacklist, cache, history, metrics)
+    // Façade: full pipeline (glossary, blacklist, cache, history, metrics)
     match state
         .translation_service
-        .translate(&req.text, &req.from, &req.to)
+        .run_full(
+            crate::models::translation::TranslateChannel::Http,
+            &req.text,
+            &req.from,
+            &req.to,
+        )
         .await
     {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
@@ -231,10 +339,15 @@ async fn translate_primary(
         text: String,
     }
 
-    // Use TranslationService for the full pipeline
+    // Façade: primary engine only
     match state
         .translation_service
-        .translate_primary(&req.text, &req.from, &req.to)
+        .run_primary(
+            crate::models::translation::TranslateChannel::Http,
+            &req.text,
+            &req.from,
+            &req.to,
+        )
         .await
     {
         Ok(translated) => (
@@ -471,6 +584,69 @@ async fn clear_cache(AxumState(state): AxumState<ApiState>) -> impl IntoResponse
     StatusCode::OK.into_response()
 }
 
+use tauri::{Emitter, Manager};
+
+fn control_ok() -> impl IntoResponse {
+    (StatusCode::OK, Json(serde_json::json!({ "ok": true })))
+}
+
+fn control_unavailable() -> axum::response::Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(ApiError {
+            error: "App handle not available for control routes".into(),
+        }),
+    )
+        .into_response()
+}
+
+/// POST /control/show — show + focus main window
+async fn control_show(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
+    let Some(app) = state.app_handle.as_ref() else {
+        return control_unavailable();
+    };
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    control_ok().into_response()
+}
+
+/// POST /control/selection_translate — same as tray/hotkey selection translate
+async fn control_selection_translate(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
+    let Some(app) = state.app_handle.as_ref() else {
+        return control_unavailable();
+    };
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.emit("trigger-translate-selection", ());
+    }
+    control_ok().into_response()
+}
+
+/// POST /control/ocr_translate — same as tray OCR
+async fn control_ocr_translate(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
+    let Some(app) = state.app_handle.as_ref() else {
+        return control_unavailable();
+    };
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.emit("trigger-ocr-screenshot", ());
+    }
+    control_ok().into_response()
+}
+
+/// POST /control/open_settings — show main + navigate settings
+async fn control_open_settings(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
+    let Some(app) = state.app_handle.as_ref() else {
+        return control_unavailable();
+    };
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = window.emit("navigate", "settings");
+    }
+    control_ok().into_response()
+}
+
 pub fn create_router(state: ApiState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin, _parts| {
@@ -482,7 +658,12 @@ pub fn create_router(state: ApiState) -> Router {
                 || o.starts_with(b"http://127.0.0.1")
         }))
         .allow_methods(tower_http::cors::Any)
-        .allow_headers([header::CONTENT_TYPE, header::ACCEPT]);
+        .allow_headers([
+            header::CONTENT_TYPE,
+            header::ACCEPT,
+            header::AUTHORIZATION,
+            header::HeaderName::from_static("x-api-token"),
+        ]);
 
     Router::new()
         .route("/health", get(health))
@@ -501,18 +682,44 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/blacklist", get(get_blacklist).post(update_blacklist))
         .route("/cache/stats", get(cache_stats))
         .route("/cache/clear", post(clear_cache))
+        .route("/control/show", post(control_show))
+        .route(
+            "/control/selection_translate",
+            post(control_selection_translate),
+        )
+        .route("/control/ocr_translate", post(control_ocr_translate))
+        .route("/control/open_settings", post(control_open_settings))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_api_token,
+        ))
         .layer(cors)
         .with_state(state)
 }
 
+/// Ensure a non-empty API token exists before listening (persist if generated).
+pub async fn ensure_api_token(state: &ApiState) -> String {
+    let mut config = state.config.lock().await;
+    if config.api_server_token.trim().is_empty() {
+        config.api_server_token = uuid::Uuid::new_v4().to_string();
+        config.save();
+        tracing::info!("[API] Generated new api_server_token (copy from Advanced settings)");
+    }
+    config.api_server_token.clone()
+}
+
 pub async fn start_server(port: u16, state: ApiState) -> Result<(), String> {
+    let _token = ensure_api_token(&state).await;
     let app = create_router(state);
     let addr = format!("127.0.0.1:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .map_err(|e| format!("Failed to bind to {}: {}", addr, e))?;
 
-    tracing::info!("API server listening on http://{}", addr);
+    tracing::info!(
+        "API server listening on http://{} (auth required except GET /health)",
+        addr
+    );
 
     axum::serve(listener, app)
         .await

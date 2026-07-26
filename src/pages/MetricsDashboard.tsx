@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { safeInvoke } from "../services/invoke";
-import { useI18n } from "../i18n";
-import { isTauriRuntime } from "../services/tauriRuntime";
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { safeInvoke } from '../services/invoke';
+import { useI18n } from '../i18n';
+import { isTauriRuntime } from '../services/tauriRuntime';
 import {
   BarChart3,
   RefreshCw,
@@ -13,7 +13,7 @@ import {
   TrendingUp,
   Clock,
   History,
-} from "lucide-react";
+} from 'lucide-react';
 
 interface EngineStats {
   count: number;
@@ -68,27 +68,27 @@ interface HourlyStats {
 }
 
 const ENGINE_COLORS: Record<string, string> = {
-  LLM: "#8b5cf6",
-  primary: "#3b82f6",
-  Google: "#22c55e",
-  Baidu: "#ef4444",
-  Youdao: "#f59e0b",
-  DeepL: "#06b6d4",
-  DeepLX: "#0ea5e9",
-  Microsoft: "#6366f1",
-  Yandex: "#ec4899",
+  LLM: '#8b5cf6',
+  primary: '#3b82f6',
+  Google: '#22c55e',
+  Baidu: '#ef4444',
+  Youdao: '#f59e0b',
+  DeepL: '#06b6d4',
+  DeepLX: '#0ea5e9',
+  Microsoft: '#6366f1',
+  Yandex: '#ec4899',
 };
 
 function getEngineColor(engine: string): string {
   for (const [key, color] of Object.entries(ENGINE_COLORS)) {
     if (engine.includes(key)) return color;
   }
-  return "#6b7280";
+  return '#6b7280';
 }
 
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 export default function MetricsDashboard() {
@@ -107,11 +107,11 @@ export default function MetricsDashboard() {
     }
 
     setLoading(true);
-    const [summaryData] = await safeInvoke<MetricsSummary>("get_metrics_summary");
-    const [timelineData] = await safeInvoke<MetricsTimeline[]>("get_metrics_timeline", {
+    const [summaryData] = await safeInvoke<MetricsSummary>('get_metrics_summary');
+    const [timelineData] = await safeInvoke<MetricsTimeline[]>('get_metrics_timeline', {
       limit: 200,
     });
-    const [hourlyData] = await safeInvoke<HourlyStats[]>("get_metrics_hourly_stats", {
+    const [hourlyData] = await safeInvoke<HourlyStats[]>('get_metrics_hourly_stats', {
       hours,
     });
 
@@ -137,24 +137,24 @@ export default function MetricsDashboard() {
   }, [hourlyStats]);
 
   const handleExportCsv = async () => {
-    const [csv] = await safeInvoke<string>("export_metrics_csv");
+    const [csv] = await safeInvoke<string>('export_metrics_csv');
     if (csv) {
-      downloadFile(csv, "metrics.csv", "text/csv");
+      downloadFile(csv, 'metrics.csv', 'text/csv');
     }
   };
 
   const handleExportJson = async () => {
-    const [data] = await safeInvoke<string>("export_metrics_json");
+    const [data] = await safeInvoke<string>('export_metrics_json');
     if (data) {
       const json = JSON.stringify(data, null, 2);
-      downloadFile(json, "metrics.json", "application/json");
+      downloadFile(json, 'metrics.json', 'application/json');
     }
   };
 
   const handleClear = async () => {
     // eslint-disable-next-line no-alert
-    if (confirm(t("metrics.clearConfirm"))) {
-      await safeInvoke("clear_metrics");
+    if (confirm(t('metrics.clearConfirm'))) {
+      await safeInvoke('clear_metrics');
       loadMetrics();
     }
   };
@@ -174,9 +174,7 @@ export default function MetricsDashboard() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <BarChart3 className="text-primary" size={24} />
-            <h1 className="text-xl font-bold text-text-primary">
-              {t("metrics.title")}
-            </h1>
+            <h1 className="text-xl font-bold text-text-primary">{t('metrics.title')}</h1>
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -184,15 +182,15 @@ export default function MetricsDashboard() {
               onChange={(e) => setHours(Number(e.target.value))}
               className="px-3 py-1.5 bg-bg-secondary border border-border rounded-lg text-sm text-text-primary"
             >
-              <option value={6}>{t("metrics.last6h")}</option>
-              <option value={24}>{t("metrics.last24h")}</option>
-              <option value={72}>{t("metrics.last3d")}</option>
-              <option value={168}>{t("metrics.last7d")}</option>
+              <option value={6}>{t('metrics.last6h')}</option>
+              <option value={24}>{t('metrics.last24h')}</option>
+              <option value={72}>{t('metrics.last3d')}</option>
+              <option value={168}>{t('metrics.last7d')}</option>
             </select>
             <button
               onClick={loadMetrics}
               className="p-2 rounded-lg hover:bg-bg-tertiary text-text-secondary transition-colors"
-              title={t("metrics.refresh")}
+              title={t('metrics.refresh')}
             >
               <RefreshCw size={16} />
             </button>
@@ -213,7 +211,7 @@ export default function MetricsDashboard() {
             <button
               onClick={handleClear}
               className="p-2 rounded-lg hover:bg-error/10 text-error transition-colors"
-              title={t("metrics.clear")}
+              title={t('metrics.clear')}
             >
               <Trash2 size={16} />
             </button>
@@ -225,31 +223,31 @@ export default function MetricsDashboard() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <StatCard
               icon={<TrendingUp size={18} />}
-              label={t("metrics.totalTranslations")}
+              label={t('metrics.totalTranslations')}
               value={summary.total_translations.toLocaleString()}
               color="text-primary"
             />
             <StatCard
               icon={<Clock size={18} />}
-              label={t("metrics.todayTranslations") || "Today"}
+              label={t('metrics.todayTranslations') || 'Today'}
               value={todayCount.toLocaleString()}
               color="text-accent"
             />
             <StatCard
               icon={<AlertTriangle size={18} />}
-              label={t("metrics.errorRate")}
+              label={t('metrics.errorRate')}
               value={`${(summary.error_rate * 100).toFixed(1)}%`}
-              color={summary.error_rate > 0.05 ? "text-error" : "text-success"}
+              color={summary.error_rate > 0.05 ? 'text-error' : 'text-success'}
             />
             <StatCard
               icon={<HardDrive size={18} />}
-              label={t("metrics.cacheHitRate")}
+              label={t('metrics.cacheHitRate')}
               value={`${(summary.cache_stats.hit_rate * 100).toFixed(1)}%`}
               color="text-accent"
             />
             <StatCard
               icon={<Zap size={18} />}
-              label={t("metrics.totalErrors")}
+              label={t('metrics.totalErrors')}
               value={summary.total_errors.toLocaleString()}
               color="text-warning"
             />
@@ -261,13 +259,17 @@ export default function MetricsDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-bg-secondary rounded-xl border border-border p-4">
               <h3 className="text-sm font-medium text-text-secondary mb-3">
-                {t("metrics.cacheDetails")}
+                {t('metrics.cacheDetails')}
               </h3>
               <div className="flex items-center gap-4">
                 <div className="flex-1">
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-success">{t("metrics.hits")}: {summary.cache_stats.hits}</span>
-                    <span className="text-error">{t("metrics.misses")}: {summary.cache_stats.misses}</span>
+                    <span className="text-success">
+                      {t('metrics.hits')}: {summary.cache_stats.hits}
+                    </span>
+                    <span className="text-error">
+                      {t('metrics.misses')}: {summary.cache_stats.misses}
+                    </span>
                   </div>
                   <div className="h-3 bg-bg-tertiary rounded-full overflow-hidden">
                     <div
@@ -288,20 +290,20 @@ export default function MetricsDashboard() {
             {summary.ocr_stats && (
               <div className="bg-bg-secondary rounded-xl border border-border p-4">
                 <h3 className="text-sm font-medium text-text-secondary mb-3">
-                  {t("metrics.ocrStats")}
+                  {t('metrics.ocrStats')}
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="text-2xl font-bold text-text-primary">
                       {summary.ocr_stats.count}
                     </div>
-                    <div className="text-xs text-text-secondary">{t("metrics.ocrCount")}</div>
+                    <div className="text-xs text-text-secondary">{t('metrics.ocrCount')}</div>
                   </div>
                   <div>
                     <div className="text-2xl font-bold text-text-primary">
                       {summary.ocr_stats.avg_ms}ms
                     </div>
-                    <div className="text-xs text-text-secondary">{t("metrics.avgLatency")}</div>
+                    <div className="text-xs text-text-secondary">{t('metrics.avgLatency')}</div>
                   </div>
                 </div>
               </div>
@@ -313,38 +315,32 @@ export default function MetricsDashboard() {
         {summary && Object.keys(summary.engine_stats).length > 0 && (
           <div className="bg-bg-secondary rounded-xl border border-border p-4">
             <h3 className="text-sm font-medium text-text-secondary mb-3">
-              {t("metrics.engineStats")}
+              {t('metrics.engineStats')}
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-2 px-3 text-text-secondary font-medium">
-                      {t("metrics.engine")}
+                      {t('metrics.engine')}
                     </th>
                     <th className="text-right py-2 px-3 text-text-secondary font-medium">
-                      {t("metrics.count")}
+                      {t('metrics.count')}
                     </th>
                     <th className="text-right py-2 px-3 text-text-secondary font-medium">
-                      {t("metrics.avgLatency")}
+                      {t('metrics.avgLatency')}
+                    </th>
+                    <th className="text-right py-2 px-3 text-text-secondary font-medium">P50</th>
+                    <th className="text-right py-2 px-3 text-text-secondary font-medium">P95</th>
+                    <th className="text-right py-2 px-3 text-text-secondary font-medium">P99</th>
+                    <th className="text-right py-2 px-3 text-text-secondary font-medium">
+                      {t('metrics.min')}
                     </th>
                     <th className="text-right py-2 px-3 text-text-secondary font-medium">
-                      P50
+                      {t('metrics.max')}
                     </th>
                     <th className="text-right py-2 px-3 text-text-secondary font-medium">
-                      P95
-                    </th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">
-                      P99
-                    </th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">
-                      {t("metrics.min")}
-                    </th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">
-                      {t("metrics.max")}
-                    </th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">
-                      {t("metrics.failures")}
+                      {t('metrics.failures')}
                     </th>
                   </tr>
                 </thead>
@@ -360,27 +356,13 @@ export default function MetricsDashboard() {
                           <span className="text-text-primary font-medium">{name}</span>
                         </div>
                       </td>
-                      <td className="text-right py-2 px-3 text-text-primary">
-                        {stats.count}
-                      </td>
-                      <td className="text-right py-2 px-3 text-text-primary">
-                        {stats.avg_ms}ms
-                      </td>
-                      <td className="text-right py-2 px-3 text-text-primary">
-                        {stats.p50_ms}ms
-                      </td>
-                      <td className="text-right py-2 px-3 text-text-primary">
-                        {stats.p95_ms}ms
-                      </td>
-                      <td className="text-right py-2 px-3 text-text-primary">
-                        {stats.p99_ms}ms
-                      </td>
-                      <td className="text-right py-2 px-3 text-success">
-                        {stats.min_ms}ms
-                      </td>
-                      <td className="text-right py-2 px-3 text-warning">
-                        {stats.max_ms}ms
-                      </td>
+                      <td className="text-right py-2 px-3 text-text-primary">{stats.count}</td>
+                      <td className="text-right py-2 px-3 text-text-primary">{stats.avg_ms}ms</td>
+                      <td className="text-right py-2 px-3 text-text-primary">{stats.p50_ms}ms</td>
+                      <td className="text-right py-2 px-3 text-text-primary">{stats.p95_ms}ms</td>
+                      <td className="text-right py-2 px-3 text-text-primary">{stats.p99_ms}ms</td>
+                      <td className="text-right py-2 px-3 text-success">{stats.min_ms}ms</td>
+                      <td className="text-right py-2 px-3 text-warning">{stats.max_ms}ms</td>
                       <td className="text-right py-2 px-3">
                         {stats.failures > 0 ? (
                           <span className="text-error">{stats.failures}</span>
@@ -400,7 +382,7 @@ export default function MetricsDashboard() {
         {hourlyStats.length > 0 && (
           <div className="bg-bg-secondary rounded-xl border border-border p-4">
             <h3 className="text-sm font-medium text-text-secondary mb-3">
-              {t("metrics.hourlyLatency")}
+              {t('metrics.hourlyLatency')}
             </h3>
             <HourlyLatencyChart data={hourlyStats} />
           </div>
@@ -410,7 +392,7 @@ export default function MetricsDashboard() {
         {summary && Object.keys(summary.engine_stats).length > 0 && (
           <div className="bg-bg-secondary rounded-xl border border-border p-4">
             <h3 className="text-sm font-medium text-text-secondary mb-3">
-              {t("metrics.engineUsage")}
+              {t('metrics.engineUsage')}
             </h3>
             <EngineUsageChart engineStats={summary.engine_stats} />
           </div>
@@ -422,7 +404,7 @@ export default function MetricsDashboard() {
             <div className="flex items-center gap-2 mb-3">
               <History size={16} className="text-text-secondary" />
               <h3 className="text-sm font-medium text-text-secondary">
-                {t("metrics.recentHistory") || "Recent Translations"}
+                {t('metrics.recentHistory') || 'Recent Translations'}
               </h3>
             </div>
             <TranslationHistoryList data={timeline} />
@@ -433,8 +415,8 @@ export default function MetricsDashboard() {
         {summary && summary.total_translations === 0 && (
           <div className="text-center py-12 text-text-secondary">
             <BarChart3 size={48} className="mx-auto mb-4 opacity-30" />
-            <p className="text-lg">{t("metrics.noData")}</p>
-            <p className="text-sm mt-1">{t("metrics.noDataHint")}</p>
+            <p className="text-lg">{t('metrics.noData')}</p>
+            <p className="text-sm mt-1">{t('metrics.noDataHint')}</p>
           </div>
         )}
       </div>
@@ -495,16 +477,16 @@ function HourlyLatencyChart({ data }: { data: HourlyStats[] }) {
         const date = new Date(ts);
         const label = `${date.getHours()}:00`;
         const errorRate = stats.total > 0 ? (stats.total - stats.success) / stats.total : 0;
-        const color = errorRate > 0.1 ? "bg-error" : errorRate > 0.05 ? "bg-warning" : "bg-primary";
+        const color = errorRate > 0.1 ? 'bg-error' : errorRate > 0.05 ? 'bg-warning' : 'bg-primary';
 
         return (
           <div key={ts} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-            <div className="w-full flex flex-col items-center" style={{ height: "128px" }}>
+            <div className="w-full flex flex-col items-center" style={{ height: '128px' }}>
               <div className="flex-1 w-full flex items-end">
                 <div
                   className={`w-full ${color} rounded-t transition-all opacity-80 hover:opacity-100`}
                   style={{ height: `${Math.max(height, 2)}%` }}
-                  title={`${label}\n${t("metrics.avgLatency")}: ${stats.avgLatency.toFixed(0)}ms\n${t("metrics.count")}: ${stats.total}`}
+                  title={`${label}\n${t('metrics.avgLatency')}: ${stats.avgLatency.toFixed(0)}ms\n${t('metrics.count')}: ${stats.total}`}
                 />
               </div>
             </div>
@@ -518,11 +500,7 @@ function HourlyLatencyChart({ data }: { data: HourlyStats[] }) {
   );
 }
 
-function EngineUsageChart({
-  engineStats,
-}: {
-  engineStats: Record<string, EngineStats>;
-}) {
+function EngineUsageChart({ engineStats }: { engineStats: Record<string, EngineStats> }) {
   const entries = Object.entries(engineStats).sort((a, b) => b[1].count - a[1].count);
   const total = entries.reduce((sum, [, s]) => sum + s.count, 0);
   if (total === 0) return null;
@@ -533,9 +511,7 @@ function EngineUsageChart({
         const pct = (stats.count / total) * 100;
         return (
           <div key={name} className="flex items-center gap-3">
-            <div className="w-24 text-sm text-text-primary font-medium truncate">
-              {name}
-            </div>
+            <div className="w-24 text-sm text-text-primary font-medium truncate">{name}</div>
             <div className="flex-1">
               <div className="h-5 bg-bg-tertiary rounded-full overflow-hidden">
                 <div
@@ -566,7 +542,7 @@ function TranslationHistoryList({ data }: { data: MetricsTimeline[] }) {
     return (
       <div className="text-center py-8 text-text-secondary">
         <History size={32} className="mx-auto mb-2 opacity-30" />
-        <p className="text-sm">{t("metrics.noHistory") || "No translation history"}</p>
+        <p className="text-sm">{t('metrics.noHistory') || 'No translation history'}</p>
       </div>
     );
   }
@@ -577,16 +553,16 @@ function TranslationHistoryList({ data }: { data: MetricsTimeline[] }) {
         <thead className="sticky top-0 bg-bg-secondary">
           <tr className="border-b border-border">
             <th className="text-left py-2 px-3 text-text-secondary font-medium">
-              {t("metrics.time") || "Time"}
+              {t('metrics.time') || 'Time'}
             </th>
             <th className="text-left py-2 px-3 text-text-secondary font-medium">
-              {t("metrics.engine")}
+              {t('metrics.engine')}
             </th>
             <th className="text-right py-2 px-3 text-text-secondary font-medium">
-              {t("metrics.latency") || "Latency"}
+              {t('metrics.latency') || 'Latency'}
             </th>
             <th className="text-center py-2 px-3 text-text-secondary font-medium">
-              {t("metrics.status") || "Status"}
+              {t('metrics.status') || 'Status'}
             </th>
           </tr>
         </thead>
@@ -596,9 +572,7 @@ function TranslationHistoryList({ data }: { data: MetricsTimeline[] }) {
               key={`${entry.timestamp}-${index}`}
               className="border-b border-border/30 hover:bg-bg-tertiary/50 transition-colors"
             >
-              <td className="py-2 px-3 text-text-secondary">
-                {formatTime(entry.timestamp)}
-              </td>
+              <td className="py-2 px-3 text-text-secondary">{formatTime(entry.timestamp)}</td>
               <td className="py-2 px-3">
                 <div className="flex items-center gap-2">
                   <div
@@ -608,9 +582,7 @@ function TranslationHistoryList({ data }: { data: MetricsTimeline[] }) {
                   <span className="text-text-primary">{entry.engine}</span>
                 </div>
               </td>
-              <td className="text-right py-2 px-3 text-text-primary">
-                {entry.latency_ms}ms
-              </td>
+              <td className="text-right py-2 px-3 text-text-primary">{entry.latency_ms}ms</td>
               <td className="text-center py-2 px-3">
                 {entry.success ? (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-success/20 text-success">
@@ -633,7 +605,7 @@ function TranslationHistoryList({ data }: { data: MetricsTimeline[] }) {
 function downloadFile(content: string, filename: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
+  const a = document.createElement('a');
   a.href = url;
   a.download = filename;
   a.click();

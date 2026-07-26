@@ -4,3 +4,8 @@ export { CoreVocabularyList } from './CoreVocabularyList';
 export { CardDetail } from './CardDetail';
 export { ReviewCard } from './ReviewCard';
 export { LearningStatsPanel } from './LearningStatsPanel';
+export { LearningStatsDashboard } from './LearningStatsDashboard';
+export { AIGenerationProgress } from './AIGenerationProgress';
+export { NotificationManager } from './NotificationManager';
+export { WordDetailModal } from './WordDetailModal';
+export { WelcomeGuide } from './WelcomeGuide';

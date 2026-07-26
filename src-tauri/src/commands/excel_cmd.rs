@@ -101,7 +101,13 @@ pub async fn translate_excel(
     let batch_results = state
         .translation
         .service
-        .translate_batch(&text_pairs, &from_lang, &to_lang, 2)
+        .run_batch(
+            crate::models::translation::TranslateChannel::Document,
+            &text_pairs,
+            &from_lang,
+            &to_lang,
+            2,
+        )
         .await;
 
     // Emit write progress
@@ -177,7 +183,13 @@ pub async fn translate_excel_preview(
     let batch_results = state
         .translation
         .service
-        .translate_batch(&text_pairs, &from_lang, &to_lang, 2)
+        .run_batch(
+            crate::models::translation::TranslateChannel::Document,
+            &text_pairs,
+            &from_lang,
+            &to_lang,
+            2,
+        )
         .await;
 
     // Build translation map

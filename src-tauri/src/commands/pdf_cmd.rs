@@ -52,7 +52,13 @@ pub async fn translate_pdf(
     let batch_results = state
         .translation
         .service
-        .translate_batch(&pages_to_translate, &from_lang, &to_lang, 2)
+        .run_batch(
+            crate::models::translation::TranslateChannel::Document,
+            &pages_to_translate,
+            &from_lang,
+            &to_lang,
+            2,
+        )
         .await;
 
     // Build translated pages

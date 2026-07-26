@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use sqlx::{Row, SqlitePool};
 
 /// Event Store - 事件存储
+#[derive(Clone)]
 pub struct EventStore {
     pool: SqlitePool,
 }
@@ -22,6 +23,11 @@ impl EventStore {
     /// 从连接池创建
     pub fn from_pool(pool: SqlitePool) -> Self {
         Self { pool }
+    }
+
+    /// 获取数据库连接池（供其他模块直接查询）
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
     }
 
     /// 初始化数据库 schema
@@ -70,6 +76,7 @@ impl EventStore {
                 current_version INTEGER NOT NULL DEFAULT 1,
                 ai_content TEXT,
                 fsrs_state TEXT,
+                learning_state TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             )

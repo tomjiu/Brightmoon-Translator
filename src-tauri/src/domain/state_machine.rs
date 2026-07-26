@@ -153,7 +153,9 @@ impl StateMachine {
                 }
             },
 
-            CardEvent::UserRated { score, field, .. } => {
+            CardEvent::UserRated {
+                score, field: _, ..
+            } => {
                 // 低分触发优化
                 if *score < 3.0 {
                     new_state.add_trigger(OptimizeTrigger::LowRating { score: *score });
@@ -274,7 +276,7 @@ pub enum NextAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{AiContent, BaseData};
+    use crate::domain::BaseData;
 
     #[test]
     fn test_learning_state_new() {
@@ -331,12 +333,10 @@ mod tests {
         card.fsrs_state.reps = 2;
 
         let event = CardEvent::QuizCompleted {
-            quiz_type: "multiple_choice".to_string(),
             correct: false,
             user_answer: "wrong".to_string(),
             correct_answer: "right".to_string(),
             time_spent: 5000,
-            rating: Rating::Again,
             timestamp: Utc::now().timestamp(),
         };
 

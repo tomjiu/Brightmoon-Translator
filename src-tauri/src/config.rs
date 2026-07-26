@@ -93,6 +93,7 @@ impl AppConfig {
         if let Some(ref key) = self.engines.deeplx.api_key {
             self.engines.deeplx.api_key = Some(encrypt_secret(key));
         }
+        self.engines.caiyun.api_token = encrypt_secret(&self.engines.caiyun.api_token);
         self.proxy.password = encrypt_secret(&self.proxy.password);
         self.sync.password = encrypt_secret(&self.sync.password);
     }
@@ -114,6 +115,7 @@ impl AppConfig {
         if let Some(ref key) = self.engines.deeplx.api_key {
             self.engines.deeplx.api_key = Some(decrypt_secret(key));
         }
+        self.engines.caiyun.api_token = decrypt_secret(&self.engines.caiyun.api_token);
         self.proxy.password = decrypt_secret(&self.proxy.password);
         self.sync.password = decrypt_secret(&self.sync.password);
     }
@@ -137,6 +139,7 @@ impl AppConfig {
         if let Some(ref key) = masked.engines.deeplx.api_key {
             masked.engines.deeplx.api_key = Some(mask(key));
         }
+        masked.engines.caiyun.api_token = mask(&masked.engines.caiyun.api_token);
         masked.proxy.password = mask(&masked.proxy.password);
         masked.sync.password = mask(&masked.sync.password);
         masked

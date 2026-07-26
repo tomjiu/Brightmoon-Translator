@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { invokeOrThrow } from "../services/invoke";
+import { useState, useEffect } from 'react';
+import { invokeOrThrow } from '../services/invoke';
 
 interface RubyTextProps {
   text: string;
@@ -12,7 +12,7 @@ interface RubyTextProps {
  * Uses lindera morphological analysis on the backend to identify kanji readings.
  */
 export function RubyText({ text, enabled = true, className }: RubyTextProps) {
-  const [html, setHtml] = useState<string>("");
+  const [html, setHtml] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -26,7 +26,7 @@ export function RubyText({ text, enabled = true, className }: RubyTextProps) {
     const fetchFurigana = async () => {
       setLoading(true);
       try {
-        const result = await invokeOrThrow<string>("add_furigana_html", { text });
+        const result = await invokeOrThrow<string>('add_furigana_html', { text });
         if (!cancelled) {
           setHtml(result);
         }
@@ -59,7 +59,7 @@ export function RubyText({ text, enabled = true, className }: RubyTextProps) {
       dangerouslySetInnerHTML={{ __html: html }}
       style={{
         opacity: loading ? 0.7 : 1,
-        transition: "opacity 0.15s",
+        transition: 'opacity 0.15s',
       }}
     />
   );
@@ -81,8 +81,8 @@ export function InlineRuby({ base, reading }: { base: string; reading: string })
 
 function escapeHtml(text: string): string {
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

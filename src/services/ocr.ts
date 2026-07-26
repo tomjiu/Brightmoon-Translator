@@ -18,7 +18,8 @@ export interface ScreenshotSnapshotInfo {
 }
 
 export interface ScreenshotSnapshot {
-  image: string;
+  /** Absolute path; use convertFileSrc (pot-desktop). Not a data URL. */
+  imagePath: string;
   info: ScreenshotSnapshotInfo;
 }
 
@@ -51,8 +52,13 @@ export async function captureScreen(
   });
 }
 
-export async function prepareScreenshotSnapshot(): Promise<ScreenshotSnapshotInfo> {
-  return await invokeOrThrow<ScreenshotSnapshotInfo>('prepare_screenshot_snapshot');
+/** @param forceRefresh skip 30s smart cache — always capture a new full-screen snapshot */
+export async function prepareScreenshotSnapshot(
+  forceRefresh = true,
+): Promise<ScreenshotSnapshotInfo> {
+  return await invokeOrThrow<ScreenshotSnapshotInfo>('prepare_screenshot_snapshot', {
+    forceRefresh,
+  });
 }
 
 export async function loadScreenshotSnapshot(): Promise<ScreenshotSnapshot> {
@@ -66,6 +72,27 @@ export async function captureScreenshotRegion(region: ScreenshotRegion): Promise
     width: Math.round(region.width),
     height: Math.round(region.height),
   });
+}
+
+/** Crop the cached full-screen snapshot (image-pixel coords). Prefer this for the
+ *  initial selection so the crop matches exactly what the user saw on the selector. */
+export async function cropScreenshotSnapshot(region: ScreenshotRegion): Promise<string> {
+  return await invokeOrThrow<string>('crop_screenshot_snapshot', {
+    left: Math.max(0, Math.round(region.left)),
+    top: Math.max(0, Math.round(region.top)),
+    width: Math.max(1, Math.round(region.width)),
+    height: Math.max(1, Math.round(region.height)),
+  });
+}
+
+/** Pixel-grid fingerprint (Rust). Falls back to empty on failure — caller uses JS hash. */
+export async function imageDataUrlFingerprint(dataUrl: string): Promise<string> {
+  if (!dataUrl) return '';
+  try {
+    return await invokeOrThrow<string>('image_data_url_fingerprint', { dataUrl });
+  } catch {
+    return '';
+  }
 }
 
 export async function ocrImage(imageDataUrl: string): Promise<string> {
@@ -126,59 +153,35 @@ export async function youdaoOcrDetailed(
   });
 }
 
-/** Prefer WinRT OCR, fall back to Youdao, then tesseract.js.
- *  Runs WinRT and Youdao in parallel, returns as soon as first succeeds. */
+/** Prefer WinRT (accurate boxes), then Youdao, then tesseract — sequential (not parallel).
+ *  Parallel double-billed every refresh/watch tick and inflated latency. */
 export async function ocrImagePreferNativeDetailed(
   imageDataUrl: string,
   lang = 'auto',
 ): Promise<OcrResultDetailed> {
-  // Run Youdao and WinRT in parallel
-  const youdaoPromise = youdaoOcrDetailed(imageDataUrl, lang).catch((err: unknown) => {
-    console.warn('[OCR] Youdao OCR failed:', err);
-    return null;
-  });
-
-  const winrtPromise = ocrImageDetailed(imageDataUrl, lang).catch((err: unknown) => {
+  try {
+    const winrt = await ocrImageDetailed(imageDataUrl, lang);
+    if (winrt.text.trim()) return winrt;
+  } catch (err: unknown) {
     console.warn('[OCR] WinRT detailed failed:', err);
-    return null;
-  });
-
-  // Race: return as soon as the first successful result is available
-  // This avoids waiting for slow/failing OCR engines (e.g. Youdao timeout)
-  const firstSuccess = new Promise<OcrResultDetailed | null>((resolve) => {
-    let resolved = false;
-
-    const check = (result: OcrResultDetailed | null) => {
-      if (!resolved && result?.text.trim()) {
-        resolved = true;
-        resolve(result);
-      }
-    };
-
-    winrtPromise.then(check);
-    youdaoPromise.then(check);
-
-    // If both fail or return empty, resolve with null after both complete
-    Promise.all([winrtPromise, youdaoPromise]).then(([w, y]) => {
-      if (!resolved) {
-        resolved = true;
-        resolve(w || y);
-      }
-    });
-  });
-
-  const result = await firstSuccess;
-
-  if (result?.text.trim()) {
-    return result;
   }
 
-  console.warn('[OCR] Both Youdao and WinRT returned empty or failed');
+  try {
+    const youdao = await youdaoOcrDetailed(imageDataUrl, lang);
+    if (youdao.text.trim()) return youdao;
+  } catch (err: unknown) {
+    console.warn('[OCR] Youdao OCR failed:', err);
+  }
 
-  // 3. Fallback: tesseract.js flat text, no bounding boxes
-  const text = await ocrImage(imageDataUrl);
-  const lines: OcrLineResult[] = text ? [{ text, x: 0, y: 0, width: 0, height: 0, words: [] }] : [];
-  return { text, lines };
+  try {
+    const text = await ocrImage(imageDataUrl);
+    const lines: OcrLineResult[] = text
+      ? [{ text, x: 0, y: 0, width: 0, height: 0, words: [] }]
+      : [];
+    return { text: text || '', lines };
+  } catch {
+    return { text: '', lines: [] };
+  }
 }
 
 /** OCR with configurable engine preference.

@@ -34,7 +34,7 @@ interface HookTranslatedPayload {
 }
 
 const baseConfig: AppConfig = {
-  llm: { provider: 'deepseek', apiKey: '', apiKeys: [], baseUrl: '', model: '' },
+  llm: { provider: 'deepseek', apiKey: '', apiKeys: [], baseUrl: '', model: '', providers: [] },
   engines: {
     google: { enabled: false },
     baidu: { enabled: false, appId: '', secret: '' },
@@ -57,7 +57,14 @@ const baseConfig: AppConfig = {
   translationMask: false,
   apiServerEnabled: false,
   apiServerPort: 60828,
-  hotkeys: { ocrTranslate: '', showWindow: '', translateSelection: '' },
+  apiServerToken: '',
+  hotkeys: {
+    ocrTranslate: '',
+    showWindow: '',
+    translateSelection: '',
+    replaceTranslate: '',
+    toggleOverlayClickThrough: '',
+  },
   proxy: { enabled: false, proxyType: 'http', host: '', port: 7890, username: '', password: '' },
   windowFollowMode: 'none',
   translationBlacklist: [],

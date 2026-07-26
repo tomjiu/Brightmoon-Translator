@@ -63,6 +63,18 @@ export interface AiContent {
   mnemonics: Mnemonic[];
   examples: PersonalizedExample[];
   scenes: Scene[];
+  collocations?: string[];
+  word_family?: WordFamilyItem[];
+  usage_tips?: string[];
+  common_mistakes?: string[];
+  synonyms?: string[];
+  antonyms?: string[];
+}
+
+export interface WordFamilyItem {
+  word: string;
+  pos: string;
+  meaning: string;
 }
 
 export interface Etymology {
@@ -79,7 +91,7 @@ export interface Root {
 }
 
 export interface Mnemonic {
-  mnemonic_type: 'etymology' | 'scene' | 'homophone' | 'visual' | 'chunking';
+  mnemonic_type: 'etymology' | 'scene' | 'homophone' | 'visual' | 'chunking' | 'comparison';
   content: string;
   score?: number;
 }
@@ -250,7 +262,7 @@ export function getRatingColorClass(rating: Rating): string {
     [Rating.Again]: 'text-red-500',
     [Rating.Hard]: 'text-orange-500',
     [Rating.Good]: 'text-green-500',
-    [Rating.Easy]: 'text-blue-500',
+    [Rating.Easy]: 'text-primary',
   };
   return colors[rating];
 }
@@ -261,7 +273,7 @@ export function getRatingColorClass(rating: Rating): string {
 export function getPhaseColorClass(phase: LearningPhase): string {
   const colors: Record<LearningPhase, string> = {
     [LearningPhase.New]: 'bg-gray-100 text-gray-700',
-    [LearningPhase.Learning]: 'bg-blue-100 text-blue-700',
+    [LearningPhase.Learning]: 'bg-bg-tertiary text-primary',
     [LearningPhase.Review]: 'bg-yellow-100 text-yellow-700',
     [LearningPhase.Mastered]: 'bg-green-100 text-green-700',
   };

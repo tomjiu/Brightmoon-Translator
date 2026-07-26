@@ -9,6 +9,10 @@ import {
   Settings as SettingsIcon,
   Puzzle,
   Sparkles,
+  Filter,
+  Gamepad2,
+  Bell,
+  Cloud,
 } from 'lucide-react';
 import BasicSettings from './BasicSettings';
 import EngineSettings from './EngineSettings';
@@ -18,6 +22,10 @@ import AppearanceSettings from './AppearanceSettings';
 import AdvancedSettings from './AdvancedSettings';
 import PluginSettings from './PluginSettings';
 import AiSettings from '../../components/AiSettings';
+import PreProcessSettings from './PreProcessSettings';
+import HookProfileSettings from './HookProfileSettings';
+import SyncSettings from './SyncSettings';
+import { NotificationManager } from '../../components/vocabulary';
 
 export default function SettingsLayout() {
   const [activeSection, setActiveSection] = useState('basic');
@@ -28,7 +36,11 @@ export default function SettingsLayout() {
     { id: 'ai', icon: <Sparkles size={18} />, label: 'AI 增强' },
     { id: 'ocr', icon: <Eye size={18} />, label: 'OCR设置' },
     { id: 'hotkeys', icon: <Keyboard size={18} />, label: '快捷键' },
+    { id: 'preprocess', icon: <Filter size={18} />, label: '预处理规则' },
+    { id: 'hookprofiles', icon: <Gamepad2 size={18} />, label: 'Hook 配置' },
+    { id: 'notifications', icon: <Bell size={18} />, label: '学习提醒' },
     { id: 'appearance', icon: <Palette size={18} />, label: '外观主题' },
+    { id: 'sync', icon: <Cloud size={18} />, label: '云同步' },
     { id: 'plugins', icon: <Puzzle size={18} />, label: '插件管理' },
     { id: 'advanced', icon: <SettingsIcon size={18} />, label: '高级设置' },
   ];
@@ -53,8 +65,16 @@ export default function SettingsLayout() {
         return <OcrSettings />;
       case 'hotkeys':
         return <HotkeySettings />;
+      case 'preprocess':
+        return <PreProcessSettings />;
+      case 'hookprofiles':
+        return <HookProfileSettings />;
+      case 'notifications':
+        return <NotificationManager />;
       case 'appearance':
         return <AppearanceSettings />;
+      case 'sync':
+        return <SyncSettings />;
       case 'plugins':
         return <PluginSettings />;
       case 'advanced':

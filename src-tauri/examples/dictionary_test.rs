@@ -9,13 +9,7 @@ async fn main() -> anyhow::Result<()> {
     let dict = MultiSourceDictionary::new();
 
     // 测试单词列表
-    let test_words = vec![
-        "hello",
-        "brilliant",
-        "computer",
-        "comprehensive",
-        "test",
-    ];
+    let test_words = vec!["hello", "brilliant", "computer", "comprehensive", "test"];
 
     for word in test_words {
         println!("🔍 查询单词: {}", word);
@@ -58,10 +52,10 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
                 println!("\n✅ 查询成功\n");
-            }
+            },
             Err(e) => {
                 println!("❌ 查询失败: {}\n", e);
-            }
+            },
         }
     }
 

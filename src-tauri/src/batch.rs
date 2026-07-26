@@ -227,9 +227,14 @@ impl BatchManager {
                     // Mark as running
                     task.status = BatchTaskStatus::Running;
 
-                    // Translate
+                    // Translate via façade (channel=ui batch queue)
                     match service
-                        .translate(&task.text, &task.from_lang, &task.to_lang)
+                        .run_full(
+                            crate::models::translation::TranslateChannel::Ui,
+                            &task.text,
+                            &task.from_lang,
+                            &task.to_lang,
+                        )
                         .await
                     {
                         Ok(response) => {

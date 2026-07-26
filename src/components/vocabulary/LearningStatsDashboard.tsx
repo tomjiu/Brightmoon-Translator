@@ -1,0 +1,537 @@
+import { useEffect, useState, type FC } from 'react';
+import {
+  Calendar,
+  TrendingUp,
+  Target,
+  AlertCircle,
+  BarChart3,
+  Activity,
+  RefreshCw,
+  Download,
+  TrendingDown,
+  Minus,
+} from 'lucide-react';
+import { WordDetailModal } from './WordDetailModal';
+import {
+  getLearningStatistics,
+  getDailyActivity,
+  getHeatmapData,
+  getWeakWords,
+  type LearningStatistics,
+  type DailyActivity,
+  type HeatmapData,
+  type WeakWord,
+} from '../../services/statistics';
+
+export const LearningStatsDashboard: FC = () => {
+  const [stats, setStats] = useState<LearningStatistics | null>(null);
+  const [dailyActivity, setDailyActivity] = useState<DailyActivity[]>([]);
+  const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([]);
+  const [weakWords, setWeakWords] = useState<WeakWord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedWord, setSelectedWord] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadStatistics();
+  }, []);
+
+  const loadStatistics = async () => {
+    try {
+      setLoading(true);
+      setRefreshing(true);
+      const currentYear = new Date().getFullYear();
+
+      const [statsData, activityData, heatmapData, weakWordsData] = await Promise.all([
+        getLearningStatistics(),
+        getDailyActivity(30),
+        getHeatmapData(currentYear),
+        getWeakWords(10),
+      ]);
+
+      setStats(statsData);
+      setDailyActivity(activityData);
+      setHeatmapData(heatmapData);
+      setWeakWords(weakWordsData);
+    } catch (error) {
+      console.error('加载统计数据失败:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const exportStatistics = () => {
+    if (!stats) return;
+
+    const exportData = {
+      statistics: stats,
+      dailyActivity,
+      weakWords,
+      exportedAt: new Date().toISOString(),
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `学习统计_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCSV = () => {
+    if (!stats || dailyActivity.length === 0) return;
+
+    const csv = [
+      ['日期', '新学', '复习'],
+      ...dailyActivity.map((d) => [d.date, d.newCards, d.reviewedCards]),
+    ]
+      .map((row) => row.join(','))
+      .join('\n');
+
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `学习活动_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <Activity className="w-12 h-12 mx-auto mb-4 animate-spin text-primary" />
+          <p className="text-gray-400">加载统计数据中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+          <p className="text-gray-400">暂无统计数据</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto p-6 space-y-6">
+      {/* Header with Actions */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold flex items-center gap-2">
+          <BarChart3 className="w-7 h-7" />
+          学习统计
+        </h2>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadStatistics}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 rounded-lg transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            刷新
+          </button>
+          <div className="relative group">
+            <button className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover rounded-lg transition-colors">
+              <Download className="w-4 h-4" />
+              导出
+            </button>
+            <div className="absolute right-0 mt-2 w-40 bg-gray-800 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+              <button
+                onClick={exportCSV}
+                className="w-full px-4 py-2 text-left hover:bg-gray-700 rounded-t-lg transition-colors"
+              >
+                导出 CSV
+              </button>
+              <button
+                onClick={exportStatistics}
+                className="w-full px-4 py-2 text-left hover:bg-gray-700 rounded-b-lg transition-colors"
+              >
+                导出 JSON
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          icon={<Target className="w-6 h-6" />}
+          label="总词汇量"
+          value={stats.totalCards}
+          color="blue"
+        />
+        <StatCard
+          icon={<TrendingUp className="w-6 h-6" />}
+          label="待复习"
+          value={stats.dueCards}
+          color="yellow"
+        />
+        <StatCard
+          icon={<Calendar className="w-6 h-6" />}
+          label="今日新学"
+          value={stats.learnedToday}
+          color="green"
+        />
+        <StatCard
+          icon={<Activity className="w-6 h-6" />}
+          label="今日复习"
+          value={stats.reviewedToday}
+          color="purple"
+        />
+      </div>
+
+      {/* Detailed Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <DetailCard label="连续学习天数" value={`${stats.streakDays} 天`} icon="🔥" />
+        <DetailCard label="记忆保持率" value={`${stats.retentionRate.toFixed(1)}%`} icon="📊" />
+        <DetailCard label="总复习次数" value={stats.totalReviews} icon="✅" />
+      </div>
+
+      {/* Heatmap */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Calendar className="w-5 h-5" />
+          学习热力图
+        </h3>
+        <Heatmap data={heatmapData} />
+      </div>
+
+      {/* Daily Activity Chart */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <BarChart3 className="w-5 h-5" />
+          最近30天学习趋势
+        </h3>
+        <DailyActivityChart data={dailyActivity} />
+      </div>
+
+      {/* Weak Words */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <AlertCircle className="w-5 h-5" />
+          薄弱词汇（需加强）
+        </h3>
+        <WeakWordsList words={weakWords} onWordClick={setSelectedWord} />
+      </div>
+
+      {/* Word Detail Modal */}
+      {selectedWord && (
+        <WordDetailModal word={selectedWord} onClose={() => setSelectedWord(null)} />
+      )}
+    </div>
+  );
+};
+
+// ============================================
+// Sub-components
+// ============================================
+
+interface StatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  color: 'blue' | 'yellow' | 'green' | 'purple';
+  trend?: 'up' | 'down' | 'stable';
+  trendValue?: number;
+}
+
+const StatCard: FC<StatCardProps> = ({ icon, label, value, color, trend, trendValue }) => {
+  const colorClasses = {
+    blue: 'bg-white/10 text-primary',
+    yellow: 'bg-yellow-500/20 text-yellow-400',
+    green: 'bg-green-500/20 text-green-400',
+    purple: 'bg-white/10 text-primary',
+  };
+
+  const getTrendIcon = () => {
+    if (!trend) return null;
+    if (trend === 'up') return <TrendingUp className="w-4 h-4 text-green-400" />;
+    if (trend === 'down') return <TrendingDown className="w-4 h-4 text-red-400" />;
+    return <Minus className="w-4 h-4 text-gray-400" />;
+  };
+
+  return (
+    <div className="bg-gray-800 rounded-lg p-6 hover:bg-gray-750 transition-colors">
+      <div className={`inline-flex p-3 rounded-lg mb-4 ${colorClasses[color]}`}>{icon}</div>
+      <div className="text-3xl font-bold mb-1">{value}</div>
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-gray-400">{label}</div>
+        {trend && trendValue !== undefined && (
+          <div className="flex items-center gap-1 text-xs">
+            {getTrendIcon()}
+            <span
+              className={
+                trend === 'up'
+                  ? 'text-green-400'
+                  : trend === 'down'
+                    ? 'text-red-400'
+                    : 'text-gray-400'
+              }
+            >
+              {trendValue > 0 ? '+' : ''}
+              {trendValue}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+interface DetailCardProps {
+  label: string;
+  value: string | number;
+  icon: string;
+}
+
+const DetailCard: FC<DetailCardProps> = ({ label, value, icon }) => {
+  return (
+    <div className="bg-gray-800 rounded-lg p-4 flex items-center gap-4">
+      <div className="text-4xl">{icon}</div>
+      <div>
+        <div className="text-2xl font-bold">{value}</div>
+        <div className="text-sm text-gray-400">{label}</div>
+      </div>
+    </div>
+  );
+};
+
+interface HeatmapProps {
+  data: HeatmapData[];
+}
+
+const Heatmap: FC<HeatmapProps> = ({ data }) => {
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - 364);
+
+  const dataMap = new Map(data.map((d) => [d.date, d.count]));
+
+  const weeks: Date[][] = [];
+  let currentWeek: Date[] = [];
+  const current = new Date(startDate);
+
+  // Fill first week with padding
+  while (current.getDay() !== 0) {
+    currentWeek.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+
+  while (current <= today) {
+    if (current.getDay() === 0 && currentWeek.length > 0) {
+      weeks.push([...currentWeek]);
+      currentWeek = [];
+    }
+    currentWeek.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+  if (currentWeek.length > 0) {
+    weeks.push(currentWeek);
+  }
+
+  const getColor = (count: number) => {
+    if (count === 0) return 'bg-gray-700';
+    if (count <= 2) return 'bg-green-900';
+    if (count <= 5) return 'bg-green-700';
+    if (count <= 10) return 'bg-green-500';
+    return 'bg-green-400';
+  };
+
+  // Month labels
+  const monthLabels: Array<{ month: string; weekIndex: number }> = [];
+  let lastMonth = -1;
+  weeks.forEach((week, idx) => {
+    const firstDay = week[0];
+    if (firstDay) {
+      const month = firstDay.getMonth();
+      if (month !== lastMonth) {
+        monthLabels.push({
+          month: [
+            '1月',
+            '2月',
+            '3月',
+            '4月',
+            '5月',
+            '6月',
+            '7月',
+            '8月',
+            '9月',
+            '10月',
+            '11月',
+            '12月',
+          ][month],
+          weekIndex: idx,
+        });
+        lastMonth = month;
+      }
+    }
+  });
+
+  return (
+    <div className="overflow-x-auto">
+      {/* Month labels */}
+      <div className="flex gap-1 mb-2 text-xs text-gray-400">
+        {monthLabels.map((label, idx) => (
+          <div key={idx} className="absolute" style={{ left: `${label.weekIndex * 16}px` }}>
+            {label.month}
+          </div>
+        ))}
+      </div>
+
+      <div className="inline-flex gap-1 mt-6">
+        {weeks.map((week, weekIdx) => (
+          <div key={weekIdx} className="flex flex-col gap-1">
+            {Array.from({ length: 7 }).map((_, dayIdx) => {
+              const date = week[dayIdx];
+              if (!date) {
+                return <div key={dayIdx} className="w-3 h-3" />;
+              }
+              const dateStr = date.toISOString().split('T')[0];
+              const count = dataMap.get(dateStr) || 0;
+              return (
+                <div
+                  key={dayIdx}
+                  className={`w-3 h-3 rounded-sm ${getColor(count)} hover:ring-2 hover:ring-white/50 transition-all cursor-pointer`}
+                  title={`${dateStr}: ${count} 个词`}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 mt-4 text-xs text-gray-400">
+        <span>少</span>
+        <div className="flex gap-1">
+          <div className="w-3 h-3 rounded-sm bg-gray-700" />
+          <div className="w-3 h-3 rounded-sm bg-green-900" />
+          <div className="w-3 h-3 rounded-sm bg-green-700" />
+          <div className="w-3 h-3 rounded-sm bg-green-500" />
+          <div className="w-3 h-3 rounded-sm bg-green-400" />
+        </div>
+        <span>多</span>
+      </div>
+    </div>
+  );
+};
+
+interface DailyActivityChartProps {
+  data: DailyActivity[];
+}
+
+const DailyActivityChart: FC<DailyActivityChartProps> = ({ data }) => {
+  if (data.length === 0) {
+    return <div className="text-gray-400 text-center py-8">暂无数据</div>;
+  }
+
+  const maxValue = Math.max(...data.map((d) => d.newCards + d.reviewedCards), 1);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-end gap-1 h-48">
+        {data.map((day, idx) => {
+          const total = day.newCards + day.reviewedCards;
+          const heightPercent = (total / maxValue) * 100;
+          const newPercent = total > 0 ? (day.newCards / total) * 100 : 0;
+
+          return (
+            <div key={idx} className="flex-1 flex flex-col justify-end group relative">
+              <div
+                className="w-full rounded-t transition-all duration-200 hover:opacity-80"
+                style={{ height: `${heightPercent}%` }}
+              >
+                <div
+                  className="bg-green-500 rounded-t"
+                  style={{ height: `${newPercent}%` }}
+                  title={`新学: ${day.newCards}`}
+                />
+                <div
+                  className="bg-primary"
+                  style={{ height: `${100 - newPercent}%` }}
+                  title={`复习: ${day.reviewedCards}`}
+                />
+              </div>
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full mt-2 px-2 py-1 bg-gray-900 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                {day.date.slice(5)}
+                <br />
+                新: {day.newCards} | 复: {day.reviewedCards}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded bg-green-500" />
+          <span className="text-gray-400">新学</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded bg-primary" />
+          <span className="text-gray-400">复习</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface WeakWordsListProps {
+  words: WeakWord[];
+  onWordClick?: (word: string) => void;
+}
+
+const WeakWordsList: FC<WeakWordsListProps> = ({ words, onWordClick }) => {
+  if (words.length === 0) {
+    return <div className="text-gray-400 text-center py-8">太棒了！暂无薄弱词汇 🎉</div>;
+  }
+
+  const handleWordClick = (word: string) => {
+    if (onWordClick) {
+      onWordClick(word);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {words.map((word, idx) => {
+        const errorRate = (word.againCount / word.totalReviews) * 100;
+        return (
+          <div
+            key={idx}
+            onClick={() => handleWordClick(word.word)}
+            className="bg-gray-700/50 rounded-lg p-4 hover:bg-gray-700 transition-colors cursor-pointer group"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <span className="text-lg font-semibold group-hover:text-primary transition-colors">
+                  {word.word}
+                </span>
+                <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400">
+                  错误率 {errorRate.toFixed(1)}%
+                </span>
+              </div>
+              <div className="text-sm text-gray-400">
+                {word.againCount} / {word.totalReviews} 次
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-gray-400">
+              <span>难度: {word.difficulty.toFixed(2)}</span>
+              <span>稳定性: {word.stability.toFixed(2)}</span>
+              <span>最后复习: {new Date(word.lastReview * 1000).toLocaleDateString()}</span>
+            </div>
+            <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs text-primary">
+              点击查看详情 →
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};

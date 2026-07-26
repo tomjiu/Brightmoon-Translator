@@ -1,6 +1,6 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 
-export type ToastType = "info" | "success" | "warning" | "error";
+export type ToastType = 'info' | 'success' | 'warning' | 'error';
 
 export interface Toast {
   id: string;
@@ -12,7 +12,7 @@ export interface Toast {
 
 interface ToastState {
   toasts: Toast[];
-  addToast: (toast: Omit<Toast, "id">) => void;
+  addToast: (toast: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
   clearAll: () => void;
 }

@@ -18,6 +18,12 @@ impl PatchApplicator {
                 mnemonics: vec![],
                 examples: vec![],
                 scenes: vec![],
+                collocations: vec![],
+                word_family: vec![],
+                usage_tips: vec![],
+                common_mistakes: vec![],
+                synonyms: vec![],
+                antonyms: vec![],
             });
         }
 
@@ -318,6 +324,12 @@ mod tests {
                 }],
                 examples: vec![],
                 scenes: vec![],
+                collocations: vec![],
+                word_family: vec![],
+                usage_tips: vec![],
+                common_mistakes: vec![],
+                synonyms: vec![],
+                antonyms: vec![],
             }),
             fsrs_state: Default::default(),
             error_records: vec![],

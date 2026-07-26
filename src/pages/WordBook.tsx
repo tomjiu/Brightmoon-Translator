@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react";
-import { invokeOrThrow } from "../services/invoke";
-import { useI18n } from "../i18n";
-import { useTranslateStore } from "../stores/translateStore";
-import { isTauriRuntime } from "../services/tauriRuntime";
-import { Search, Trash2, Copy, Check, X, Download, Plus, Edit2, Save } from "lucide-react";
+import { useState, useEffect, useRef } from 'react';
+import { invokeOrThrow } from '../services/invoke';
+import { useI18n } from '../i18n';
+import { useTranslateStore } from '../stores/translateStore';
+import { isTauriRuntime } from '../services/tauriRuntime';
+import { Search, Trash2, Copy, Check, X, Download, Plus, Edit2, Save } from 'lucide-react';
 
 interface WordBookItem {
   id: string;
@@ -18,25 +18,25 @@ interface WordBookItem {
 const formatTime = (timestamp: number, browserLocale: string) => {
   const date = new Date(timestamp);
   return date.toLocaleString(browserLocale, {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 };
 
 function WordBook() {
   const [items, setItems] = useState<WordBookItem[]>([]);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [noteText, setNoteText] = useState("");
+  const [noteText, setNoteText] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newWord, setNewWord] = useState("");
-  const [newTranslation, setNewTranslation] = useState("");
-  const [newNote, setNewNote] = useState("");
+  const [newWord, setNewWord] = useState('');
+  const [newTranslation, setNewTranslation] = useState('');
+  const [newNote, setNewNote] = useState('');
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>();
   const { t, locale } = useI18n();
   const fromLang = useTranslateStore((s) => s.fromLang);
@@ -44,10 +44,10 @@ function WordBook() {
   const isTauri = isTauriRuntime();
 
   const localeMap: Record<string, string> = {
-    zh: "zh-CN",
-    en: "en-US",
-    ja: "ja-JP",
-    ko: "ko-KR",
+    zh: 'zh-CN',
+    en: 'en-US',
+    ja: 'ja-JP',
+    ko: 'ko-KR',
   };
   const browserLocale = localeMap[locale] || locale;
 
@@ -76,10 +76,10 @@ function WordBook() {
     if (!isTauri) return;
 
     try {
-      const data = await invokeOrThrow<WordBookItem[]>("get_wordbook");
+      const data = await invokeOrThrow<WordBookItem[]>('get_wordbook');
       setItems(data);
     } catch (err) {
-      console.error("Failed to load wordbook:", err);
+      console.error('Failed to load wordbook:', err);
     }
   };
 
@@ -87,10 +87,10 @@ function WordBook() {
     if (!isTauri) return;
 
     try {
-      const data = await invokeOrThrow<WordBookItem[]>("search_wordbook", { query });
+      const data = await invokeOrThrow<WordBookItem[]>('search_wordbook', { query });
       setItems(data);
     } catch (err) {
-      console.error("Failed to search wordbook:", err);
+      console.error('Failed to search wordbook:', err);
     }
   };
 
@@ -107,37 +107,37 @@ function WordBook() {
   const addWord = async () => {
     if (!newWord.trim() || !newTranslation.trim()) return;
     try {
-      await invokeOrThrow("add_wordbook_entry", {
+      await invokeOrThrow('add_wordbook_entry', {
         word: newWord.trim(),
         translation: newTranslation.trim(),
         fromLang,
         toLang,
         note: newNote.trim() || null,
       });
-      setNewWord("");
-      setNewTranslation("");
-      setNewNote("");
+      setNewWord('');
+      setNewTranslation('');
+      setNewNote('');
       setShowAddForm(false);
       loadWordBook();
     } catch (err) {
-      console.error("Failed to add word:", err);
+      console.error('Failed to add word:', err);
     }
   };
 
   const updateNote = async (id: string) => {
     try {
-      await invokeOrThrow("update_wordbook_note", { id, note: noteText });
+      await invokeOrThrow('update_wordbook_note', { id, note: noteText });
       setEditingNoteId(null);
-      setNoteText("");
+      setNoteText('');
       loadWordBook();
     } catch (err) {
-      console.error("Failed to update note:", err);
+      console.error('Failed to update note:', err);
     }
   };
 
   const deleteItem = async (id: string) => {
     try {
-      await invokeOrThrow("delete_wordbook_entry", { id });
+      await invokeOrThrow('delete_wordbook_entry', { id });
       setItems((prev) => prev.filter((item) => item.id !== id));
       setSelectedIds((prev) => {
         const next = new Set(prev);
@@ -145,28 +145,28 @@ function WordBook() {
         return next;
       });
     } catch (err) {
-      console.error("Failed to delete word:", err);
+      console.error('Failed to delete word:', err);
     }
   };
 
   const batchDelete = async () => {
     if (selectedIds.size === 0) return;
     try {
-      await invokeOrThrow("batch_delete_wordbook", { ids: Array.from(selectedIds) });
+      await invokeOrThrow('batch_delete_wordbook', { ids: Array.from(selectedIds) });
       setItems((prev) => prev.filter((item) => !selectedIds.has(item.id)));
       setSelectedIds(new Set());
     } catch (err) {
-      console.error("Failed to batch delete:", err);
+      console.error('Failed to batch delete:', err);
     }
   };
 
   const clearAll = async () => {
     try {
-      await invokeOrThrow("clear_wordbook");
+      await invokeOrThrow('clear_wordbook');
       setItems([]);
       setSelectedIds(new Set());
     } catch (err) {
-      console.error("Failed to clear wordbook:", err);
+      console.error('Failed to clear wordbook:', err);
     }
   };
 
@@ -199,16 +199,16 @@ function WordBook() {
 
   const exportCsv = async () => {
     try {
-      const csv = await invokeOrThrow<string>("export_wordbook_csv");
-      const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
+      const csv = await invokeOrThrow<string>('export_wordbook_csv');
+      const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
+      const a = document.createElement('a');
       a.href = url;
-      a.download = `${t("wordbook.csvFilename")}_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `${t('wordbook.csvFilename')}_${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error("Failed to export csv:", err);
+      console.error('Failed to export csv:', err);
     }
   };
 
@@ -221,7 +221,7 @@ function WordBook() {
     <div className="h-full flex flex-col p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-5">
-        <h1 className="text-2xl font-bold">{t("wordbook.title")}</h1>
+        <h1 className="text-2xl font-bold">{t('wordbook.title')}</h1>
         <div className="flex items-center gap-3">
           <div className="relative">
             <Search
@@ -230,7 +230,7 @@ function WordBook() {
             />
             <input
               type="text"
-              placeholder={t("wordbook.search")}
+              placeholder={t('wordbook.search')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="bg-bg-secondary text-text-primary border border-border rounded-lg pl-9 pr-3 py-2 text-sm w-48 focus:border-primary outline-none"
@@ -242,15 +242,15 @@ function WordBook() {
               onClick={batchDelete}
             >
               <Trash2 size={14} />
-              {t("wordbook.deleteSelected", { count: selectedIds.size })}
+              {t('wordbook.deleteSelected', { count: selectedIds.size })}
             </button>
           )}
           <button
-            className="bg-primary text-white border border-primary rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors flex items-center gap-1.5"
+            className="bg-primary text-primary-fg border border-primary rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors flex items-center gap-1.5"
             onClick={() => setShowAddForm(!showAddForm)}
           >
             <Plus size={14} />
-            {t("wordbook.addWord")}
+            {t('wordbook.addWord')}
           </button>
           <button
             className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-bg-primary hover:border-primary transition-colors flex items-center gap-1.5"
@@ -258,14 +258,14 @@ function WordBook() {
             disabled={items.length === 0}
           >
             <Download size={14} />
-            {t("wordbook.exportCsv")}
+            {t('wordbook.exportCsv')}
           </button>
           <button
             className="bg-bg-tertiary text-error border border-border rounded-lg px-4 py-2 text-sm hover:bg-error hover:text-white hover:border-error transition-colors flex items-center gap-1.5"
             onClick={clearAll}
           >
             <Trash2 size={14} />
-            {t("wordbook.clearAll")}
+            {t('wordbook.clearAll')}
           </button>
         </div>
       </div>
@@ -276,31 +276,31 @@ function WordBook() {
           <div className="flex gap-3">
             <input
               type="text"
-              placeholder={t("wordbook.wordPlaceholder")}
+              placeholder={t('wordbook.wordPlaceholder')}
               value={newWord}
               onChange={(e) => setNewWord(e.target.value)}
               className="flex-1 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
             />
             <input
               type="text"
-              placeholder={t("wordbook.translationPlaceholder")}
+              placeholder={t('wordbook.translationPlaceholder')}
               value={newTranslation}
               onChange={(e) => setNewTranslation(e.target.value)}
               className="flex-1 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
             />
             <input
               type="text"
-              placeholder={t("wordbook.notePlaceholder")}
+              placeholder={t('wordbook.notePlaceholder')}
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
               className="flex-1 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
             />
             <button
-              className="bg-primary text-white rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors"
+              className="bg-primary text-primary-fg rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors"
               onClick={addWord}
               disabled={!newWord.trim() || !newTranslation.trim()}
             >
-              {t("wordbook.add")}
+              {t('wordbook.add')}
             </button>
           </div>
         </div>
@@ -310,7 +310,7 @@ function WordBook() {
       <div className="flex-1 overflow-y-auto space-y-2.5">
         {items.length === 0 ? (
           <div className="flex items-center justify-center h-full text-text-secondary text-sm">
-            {debouncedSearch ? t("wordbook.noResults") : t("wordbook.noWords")}
+            {debouncedSearch ? t('wordbook.noResults') : t('wordbook.noWords')}
           </div>
         ) : (
           <>
@@ -323,10 +323,10 @@ function WordBook() {
                   onChange={toggleSelectAll}
                   className="rounded border-border accent-primary"
                 />
-                {t("wordbook.selectAll")}
+                {t('wordbook.selectAll')}
               </label>
               <span className="text-xs text-text-secondary">
-                {t("wordbook.totalWords", { count: items.length })}
+                {t('wordbook.totalWords', { count: items.length })}
               </span>
             </div>
 
@@ -334,7 +334,7 @@ function WordBook() {
               <div
                 key={item.id}
                 className={`bg-bg-secondary border rounded-xl p-3.5 group relative ${
-                  selectedIds.has(item.id) ? "border-primary" : "border-border"
+                  selectedIds.has(item.id) ? 'border-primary' : 'border-border'
                 }`}
               >
                 {/* Checkbox & Delete button */}
@@ -348,7 +348,7 @@ function WordBook() {
                   <button
                     className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-error/20 text-text-secondary hover:text-error"
                     onClick={() => deleteItem(item.id)}
-                    title={t("wordbook.deleteItem")}
+                    title={t('wordbook.deleteItem')}
                   >
                     <X size={14} />
                   </button>
@@ -360,26 +360,16 @@ function WordBook() {
                     className="bg-bg-tertiary border border-border text-text-secondary rounded-md px-2 py-1 text-xs hover:bg-primary hover:text-bg-primary transition-colors flex items-center gap-1 flex-shrink-0 ml-2"
                     onClick={() => copyText(item.word, `word-${item.id}`)}
                   >
-                    {copiedId === `word-${item.id}` ? (
-                      <Check size={12} />
-                    ) : (
-                      <Copy size={12} />
-                    )}
+                    {copiedId === `word-${item.id}` ? <Check size={12} /> : <Copy size={12} />}
                   </button>
                 </div>
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-primary pr-6">
-                    {item.translation}
-                  </span>
+                  <span className="text-sm text-primary pr-6">{item.translation}</span>
                   <button
                     className="bg-bg-tertiary border border-border text-text-secondary rounded-md px-2 py-1 text-xs hover:bg-primary hover:text-bg-primary transition-colors flex items-center gap-1 flex-shrink-0 ml-2"
                     onClick={() => copyText(item.translation, `trans-${item.id}`)}
                   >
-                    {copiedId === `trans-${item.id}` ? (
-                      <Check size={12} />
-                    ) : (
-                      <Copy size={12} />
-                    )}
+                    {copiedId === `trans-${item.id}` ? <Check size={12} /> : <Copy size={12} />}
                   </button>
                 </div>
 
@@ -421,7 +411,7 @@ function WordBook() {
                     className="text-xs text-text-secondary hover:text-text-primary transition-colors opacity-0 group-hover:opacity-100 mb-2"
                     onClick={() => startEditNote(item)}
                   >
-                    {t("wordbook.addNote")}
+                    {t('wordbook.addNote')}
                   </button>
                 )}
 

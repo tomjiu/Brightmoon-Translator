@@ -95,6 +95,12 @@ function updateUI() {
   document.getElementById("hoverMinLength").value = config.hover?.minTextLength || 2;
   document.getElementById("hoverModifierKey").value = config.hover?.modifierKey || "none";
 
+  // Desktop bridge token (stored separately for bridge auth)
+  chrome.storage.local.get(["desktopApiToken"]).then(({ desktopApiToken }) => {
+    const el = document.getElementById("desktopApiToken");
+    if (el) el.value = desktopApiToken || "";
+  });
+
   // Show/hide settings sections
   toggleLlmSettings();
   toggleDeeplSettings();
@@ -165,10 +171,14 @@ async function checkDesktopStatus() {
 async function syncGlossary() {
   const DESKTOP_URL = "http://127.0.0.1:60828";
   try {
+    const { desktopApiToken } = await chrome.storage.local.get(["desktopApiToken"]);
+    const headers = desktopApiToken
+      ? { Authorization: `Bearer ${desktopApiToken}`, "X-Api-Token": desktopApiToken }
+      : {};
     // Fetch glossary and blacklist from desktop
     const [glossaryResp, blacklistResp] = await Promise.all([
-      fetch(`${DESKTOP_URL}/glossary`),
-      fetch(`${DESKTOP_URL}/blacklist`)
+      fetch(`${DESKTOP_URL}/glossary`, { headers }),
+      fetch(`${DESKTOP_URL}/blacklist`, { headers })
     ]);
 
     if (glossaryResp.ok) {
@@ -349,6 +359,11 @@ function setupEventListeners() {
       minTextLength: parseInt(document.getElementById("hoverMinLength").value, 10) || 2,
       modifierKey: document.getElementById("hoverModifierKey").value
     };
+
+    const tokenEl = document.getElementById("desktopApiToken");
+    if (tokenEl) {
+      await chrome.storage.local.set({ desktopApiToken: tokenEl.value.trim() });
+    }
 
     await saveConfig();
   });

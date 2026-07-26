@@ -10,7 +10,7 @@ pub mod state_machine;
 
 pub use event::{
     AiContent, Annotation, CardEvent, CardPatch, CardState, Etymology, Mnemonic, MnemonicType,
-    PatchOperation, PersonalizedExample, Rating, Root, Scene,
+    PatchOperation, PersonalizedExample, Rating, Root, Scene, WordFamilyItem,
 };
 
 pub use card::{BaseData, ErrorRecord, ErrorType, WordCard};

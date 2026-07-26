@@ -1,16 +1,38 @@
 import { useState } from 'react';
-import Dictionary from './Dictionary';
-import Glossary from './Glossary';
 import VocabularyLearning from './VocabularyLearning';
+import VocabularyReview from './VocabularyReview';
 import DictionarySearch from './DictionarySearch';
-import { useI18n } from '../i18n';
-import { Book, BookOpen, GraduationCap, Search } from 'lucide-react';
+import WordBook from './WordBook';
+import LearningModes from './LearningModes';
+import DataIO from './DataIO';
+import FsrsOptimization from './FsrsOptimization';
+import DictOptimization from './DictOptimization';
+import { LearningStatsDashboard } from '../components/vocabulary';
+import {
+  Search,
+  GraduationCap,
+  Book,
+  RefreshCw,
+  BarChart3,
+  Zap,
+  Database,
+  Brain,
+  HardDrive,
+} from 'lucide-react';
 
-type VocabTab = 'dictionary' | 'wordbook' | 'glossary' | 'learning';
+type VocabTab =
+  | 'dictionary'
+  | 'learning'
+  | 'review'
+  | 'modes'
+  | 'wordbook'
+  | 'statistics'
+  | 'data'
+  | 'fsrs'
+  | 'dictopt';
 
 function Vocabulary() {
   const [activeTab, setActiveTab] = useState<VocabTab>('dictionary');
-  const { t } = useI18n();
 
   return (
     <div className="h-full flex flex-col">
@@ -19,7 +41,7 @@ function Vocabulary() {
         <button
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             activeTab === 'dictionary'
-              ? 'bg-primary text-white'
+              ? 'bg-primary text-primary-fg'
               : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
           }`}
           onClick={() => setActiveTab('dictionary')}
@@ -30,7 +52,7 @@ function Vocabulary() {
         <button
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             activeTab === 'learning'
-              ? 'bg-primary text-white'
+              ? 'bg-primary text-primary-fg'
               : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
           }`}
           onClick={() => setActiveTab('learning')}
@@ -40,25 +62,80 @@ function Vocabulary() {
         </button>
         <button
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            activeTab === 'review'
+              ? 'bg-primary text-primary-fg'
+              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+          }`}
+          onClick={() => setActiveTab('review')}
+        >
+          <RefreshCw size={14} />
+          复习
+        </button>
+        <button
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            activeTab === 'modes'
+              ? 'bg-primary text-primary-fg'
+              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+          }`}
+          onClick={() => setActiveTab('modes')}
+        >
+          <Zap size={14} />
+          练习
+        </button>
+        <button
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             activeTab === 'wordbook'
-              ? 'bg-primary text-white'
+              ? 'bg-primary text-primary-fg'
               : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
           }`}
           onClick={() => setActiveTab('wordbook')}
         >
           <Book size={14} />
-          {t('vocabulary.wordbook')}
+          生词本
         </button>
         <button
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === 'glossary'
-              ? 'bg-primary text-white'
+            activeTab === 'statistics'
+              ? 'bg-primary text-primary-fg'
               : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
           }`}
-          onClick={() => setActiveTab('glossary')}
+          onClick={() => setActiveTab('statistics')}
         >
-          <BookOpen size={14} />
-          {t('vocabulary.glossary')}
+          <BarChart3 size={14} />
+          统计
+        </button>
+        <button
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            activeTab === 'data'
+              ? 'bg-primary text-primary-fg'
+              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+          }`}
+          onClick={() => setActiveTab('data')}
+        >
+          <Database size={14} />
+          数据
+        </button>
+        <button
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            activeTab === 'fsrs'
+              ? 'bg-primary text-primary-fg'
+              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+          }`}
+          onClick={() => setActiveTab('fsrs')}
+        >
+          <Brain size={14} />
+          FSRS
+        </button>
+        <button
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            activeTab === 'dictopt'
+              ? 'bg-primary text-primary-fg'
+              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+          }`}
+          onClick={() => setActiveTab('dictopt')}
+        >
+          <HardDrive size={14} />
+          词典优化
         </button>
       </div>
 
@@ -66,8 +143,13 @@ function Vocabulary() {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'dictionary' && <DictionarySearch />}
         {activeTab === 'learning' && <VocabularyLearning />}
-        {activeTab === 'wordbook' && <Dictionary />}
-        {activeTab === 'glossary' && <Glossary />}
+        {activeTab === 'review' && <VocabularyReview />}
+        {activeTab === 'modes' && <LearningModes />}
+        {activeTab === 'wordbook' && <WordBook />}
+        {activeTab === 'statistics' && <LearningStatsDashboard />}
+        {activeTab === 'data' && <DataIO />}
+        {activeTab === 'fsrs' && <FsrsOptimization />}
+        {activeTab === 'dictopt' && <DictOptimization />}
       </div>
     </div>
   );

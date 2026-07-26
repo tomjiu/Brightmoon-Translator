@@ -14,9 +14,11 @@ import ErrorBoundary from './components/ErrorBoundary';
 import OcrScreenshotSelector from './components/OcrScreenshotSelector';
 import OcrRegionFrame from './components/OcrRegionFrame';
 import OcrScreenshotTranslator from './components/OcrScreenshotTranslator';
+import { AIGenerationProgress } from './components/vocabulary';
 import { useThemeStore } from './stores/themeStore';
 import { useToastStore } from './stores/toastStore';
 import { useConfigStore } from './stores/configStore';
+import { useTranslateStore } from './stores/translateStore';
 import ToastContainer from './components/Toast';
 import { useI18n } from './i18n';
 import {
@@ -61,15 +63,53 @@ function MainApp() {
   const [ocrLaunchNonce, setOcrLaunchNonce] = useState(0);
   const { theme, toggleTheme } = useThemeStore();
   const addToast = useToastStore((s) => s.addToast);
-  const loadDefaults = useConfigStore((s) => s.loadDefaults);
+  const loadConfig = useConfigStore((s) => s.loadConfig);
+  const configLoaded = useConfigStore((s) => s.loaded);
+  const clipboardMonitorPref = useConfigStore((s) => s.config.clipboardMonitor);
+  const updateConfig = useConfigStore((s) => s.updateConfig);
+  const saveConfig = useConfigStore((s) => s.saveConfig);
+  const setClipboardMonitorChangeHandler = useTranslateStore(
+    (s) => s.setClipboardMonitorChangeHandler,
+  );
+  const syncClipboardMonitorFromConfig = useTranslateStore((s) => s.syncClipboardMonitorFromConfig);
   const { t } = useI18n();
   const isTauri = isTauriRuntime();
 
-  // Fetch authoritative defaults from Rust backend on mount
+  // Load saved config from disk (not mere defaults) before any settings save
   useEffect(() => {
     if (!isTauri) return;
-    loadDefaults();
-  }, [isTauri, loadDefaults]);
+    loadConfig();
+  }, [isTauri, loadConfig]);
+
+  // Persist MainTranslator clipboard toggle into config.clipboardMonitor
+  useEffect(() => {
+    if (!isTauri) return;
+    setClipboardMonitorChangeHandler((enabled) => {
+      updateConfig((prev) => ({ ...prev, clipboardMonitor: enabled }));
+      void saveConfig();
+    });
+    return () => setClipboardMonitorChangeHandler(null);
+  }, [isTauri, setClipboardMonitorChangeHandler, updateConfig, saveConfig]);
+
+  // Honor config.clipboardMonitor after load (and when settings toggle changes)
+  useEffect(() => {
+    if (!isTauri || !configLoaded) return;
+    void syncClipboardMonitorFromConfig(!!clipboardMonitorPref);
+  }, [isTauri, configLoaded, clipboardMonitorPref, syncClipboardMonitorFromConfig]);
+
+  // Tray toggles backend config then emits this so FE store + listener stay in sync
+  useEffect(() => {
+    if (!isTauri) return;
+    let unlisten: (() => void) | undefined;
+    void listen<boolean>('clipboard-monitor-toggled', (e) => {
+      const enabled = !!e.payload;
+      updateConfig((prev) => ({ ...prev, clipboardMonitor: enabled }));
+      void syncClipboardMonitorFromConfig(enabled);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => unlisten?.();
+  }, [isTauri, updateConfig, syncClipboardMonitorFromConfig]);
 
   const startOcrScreenshot = useCallback(() => {
     setOcrLaunchNonce((n) => n + 1);
@@ -264,8 +304,8 @@ function MainApp() {
       {/* Sidebar */}
       <nav className="w-14 bg-bg-secondary border-r border-border flex flex-col items-center py-3 overflow-y-auto">
         {/* Logo */}
-        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center mb-4 shrink-0">
-          <span className="text-white font-bold text-sm">M</span>
+        <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center mb-4 shrink-0 border border-border">
+          <span className="text-primary-fg font-bold text-sm">M</span>
         </div>
 
         {/* Nav Groups */}
@@ -283,7 +323,7 @@ function MainApp() {
                   key={item.id}
                   className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
                     isActive
-                      ? 'bg-primary text-white shadow-md shadow-primary/25'
+                      ? 'bg-primary text-primary-fg'
                       : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
                   }`}
                   onClick={() => setPage(item.id)}
@@ -307,7 +347,7 @@ function MainApp() {
           <button
             className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
               pinned
-                ? 'bg-primary text-white shadow-md shadow-primary/25'
+                ? 'bg-primary text-primary-fg shadow-md shadow-primary/25'
                 : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
             }`}
             onClick={togglePin}
@@ -350,6 +390,9 @@ function MainApp() {
 
       {/* Headless OCR controller - handles screenshot selection and region-frame updates */}
       <OcrScreenshotTranslator launchNonce={ocrLaunchNonce} />
+
+      {/* AI Generation Progress Notification */}
+      <AIGenerationProgress />
 
       {/* Toast Notifications */}
       <ToastContainer />

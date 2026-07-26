@@ -157,7 +157,7 @@ export default function ProcessPicker({ isOpen, onClose, onSelect }: ProcessPick
             <button
               onClick={handleSelect}
               disabled={selectedPid === null}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-fg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               确定
             </button>

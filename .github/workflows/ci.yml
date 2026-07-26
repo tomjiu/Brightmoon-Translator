@@ -1,13 +1,11 @@
-# CI Workflow - DISABLED (runner issues)
-# Uncomment and fix runner when needed
+# CI — uses custom Windows runner label; change runs-on if self-hosted offline.
+name: CI
 
-# name: CI
-#
-# on:
-#   push:
-#     branches: [master, develop]
-#   pull_request:
-#     branches: [master, develop]
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [master, develop]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,16 +38,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
+          cache: pnpm
 
       - name: Install frontend dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build frontend dist
-        run: npm run build
+        run: pnpm run build
 
       - name: Cargo check
         working-directory: src-tauri
@@ -66,22 +70,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: TypeScript check
-        run: npm run check
+        run: pnpm run check
 
       - name: Unit tests
-        run: npm run test:unit
+        run: pnpm run test:unit
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
   extension-check:
     name: Extension Check
@@ -108,6 +118,17 @@ jobs:
           if (manifest.manifest_version !== 3) {
             console.error('Chrome manifest_version should be 3');
             process.exit(1);
+          }
+          const hosts = manifest.host_permissions || [];
+          const need = [
+            'https://www2.deepl.com/*',
+            'https://api-edge.cognitive.microsofttranslator.com/*',
+          ];
+          for (const h of need) {
+            if (!hosts.includes(h)) {
+              console.error('Missing host_permission:', h);
+              process.exit(1);
+            }
           }
           console.log('Chrome manifest.json is valid');
           "

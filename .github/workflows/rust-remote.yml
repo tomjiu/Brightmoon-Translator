@@ -65,16 +65,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
+          cache: pnpm
 
       - name: Install frontend dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build frontend dist
-        run: npm run build
+        run: pnpm run build
 
       - name: Cargo check
         if: ${{ github.event_name == 'push' || inputs.run_check }}
@@ -176,4 +182,4 @@ jobs:
 
       - name: Build Tauri app
         if: ${{ inputs.run_tauri_build }}
-        run: npm run tauri -- build
+        run: pnpm run tauri -- build

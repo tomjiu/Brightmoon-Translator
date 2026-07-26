@@ -6,17 +6,43 @@ use crate::lang_detect::{self, DetectionResult};
 use crate::security;
 use crate::AppState;
 use serde::Deserialize;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Mutex;
 use tauri::{Emitter, State};
 
-// Shared clipboard monitoring state
+// Shared clipboard monitoring state (event-driven; not a poll stub)
 static CLIPBOARD_MONITORING: AtomicBool = AtomicBool::new(false);
+/// Message-loop thread id for clean WM_QUIT shutdown (0 = none)
+static CLIPBOARD_LISTENER_TID: AtomicU32 = AtomicU32::new(0);
+/// Last emitted clipboard text for dedupe across restarts of the listener
+static LAST_CLIPBOARD_TEXT: Mutex<String> = Mutex::new(String::new());
 
 #[derive(Deserialize)]
 pub struct TranslateRequest {
     pub text: String,
     pub from: String,
     pub to: String,
+    /// Optional product channel: "ui" | "ocr" | "selection" | … (default ui)
+    #[serde(default)]
+    pub channel: Option<String>,
+}
+
+fn parse_channel(raw: Option<&str>) -> crate::models::translation::TranslateChannel {
+    use crate::models::translation::TranslateChannel;
+    match raw.map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("ocr") => TranslateChannel::Ocr,
+        Some("selection") => TranslateChannel::Selection,
+        Some("replace") => TranslateChannel::Replace,
+        Some("hook") => TranslateChannel::Hook,
+        Some("clipboard") => TranslateChannel::Clipboard,
+        Some("document") => TranslateChannel::Document,
+        Some("subtitle") => TranslateChannel::Subtitle,
+        Some("image") => TranslateChannel::Image,
+        Some("http") => TranslateChannel::Http,
+        Some("browser") => TranslateChannel::Browser,
+        Some("plugin") => TranslateChannel::Plugin,
+        _ => TranslateChannel::Ui,
+    }
 }
 
 #[tauri::command]
@@ -30,11 +56,11 @@ pub async fn translate(
     security::validate_language_code(&request.from)?;
     security::validate_language_code(&request.to)?;
 
-    // Use TranslationService for the full pipeline
+    let channel = parse_channel(request.channel.as_deref());
     let response = state
         .translation
         .service
-        .translate(&request.text, &request.from, &request.to)
+        .run_full(channel, &request.text, &request.from, &request.to)
         .await?;
 
     // Auto-copy result if enabled
@@ -105,40 +131,34 @@ pub async fn translate_stream(
     result.map_err(AppError::from)
 }
 
+/// Start main-window clipboard monitor (event-driven on Windows).
+/// Emits `clipboard-changed` with the new text; FE hydrates MainTranslator + translates.
 #[tauri::command]
 pub async fn start_clipboard_monitor(
     app: tauri::AppHandle,
     _state: State<'_, AppState>,
 ) -> Result<(), String> {
-    use std::thread;
-    use std::time::Duration;
-
-    // Atomic check-and-set to prevent duplicate monitoring threads
     match CLIPBOARD_MONITORING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst) {
-        Ok(false) => {
-            // Successfully set from false to true, proceed to spawn thread
-        },
-        _ => {
-            // Already monitoring
-            return Ok(());
-        },
+        Ok(false) => {},
+        _ => return Ok(()),
     }
 
     let app_handle = app.clone();
 
-    thread::spawn(move || {
-        loop {
-            if !CLIPBOARD_MONITORING.load(Ordering::Relaxed) {
-                break;
-            }
+    #[cfg(target_os = "windows")]
+    {
+        std::thread::spawn(move || {
+            main_clipboard_listener_thread(app_handle);
+        });
+    }
 
-            // Read clipboard using arboard crate or Windows API
-            // For now, emit event to frontend to read clipboard
-            let _ = app_handle.emit("read-clipboard", ());
-
-            thread::sleep(Duration::from_millis(500));
-        }
-    });
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Non-Windows: no native format listener; keep flag true so stop is honest,
+        // but do not claim support via a fake poll loop.
+        CLIPBOARD_MONITORING.store(false, Ordering::Relaxed);
+        return Err("Clipboard monitor is only supported on Windows".to_string());
+    }
 
     Ok(())
 }
@@ -146,7 +166,151 @@ pub async fn start_clipboard_monitor(
 #[tauri::command]
 pub async fn stop_clipboard_monitor() -> Result<(), String> {
     CLIPBOARD_MONITORING.store(false, Ordering::Relaxed);
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{PostThreadMessageW, WM_QUIT};
+
+        let tid = CLIPBOARD_LISTENER_TID.swap(0, Ordering::SeqCst);
+        if tid != 0 {
+            // SAFETY: tid was registered by the listener thread; WM_QUIT ends GetMessageW.
+            unsafe {
+                let _ = PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0));
+            }
+        }
+    }
+
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn main_clipboard_listener_thread(app: tauri::AppHandle) {
+    use std::time::Duration;
+    use windows::Win32::System::DataExchange::{
+        AddClipboardFormatListener, RemoveClipboardFormatListener,
+    };
+    use windows::Win32::System::Threading::GetCurrentThreadId;
+    use windows::Win32::UI::WindowsAndMessaging::*;
+
+    // SAFETY: dedicated thread + message-only window for WM_CLIPBOARDUPDATE.
+    unsafe {
+        let tid = GetCurrentThreadId();
+        CLIPBOARD_LISTENER_TID.store(tid, Ordering::SeqCst);
+
+        let hwnd = match CreateWindowExW(
+            WINDOW_EX_STYLE::default(),
+            windows::core::w!("STATIC"),
+            windows::core::w!("MoonMainClipListener"),
+            WINDOW_STYLE::default(),
+            0,
+            0,
+            0,
+            0,
+            None,
+            None,
+            None,
+            None,
+        ) {
+            Ok(h) => h,
+            Err(e) => {
+                tracing::error!("[clipboard-monitor] CreateWindowExW failed: {}", e);
+                CLIPBOARD_MONITORING.store(false, Ordering::Relaxed);
+                CLIPBOARD_LISTENER_TID.store(0, Ordering::SeqCst);
+                return;
+            },
+        };
+
+        if AddClipboardFormatListener(hwnd).is_err() {
+            tracing::error!("[clipboard-monitor] AddClipboardFormatListener failed");
+            let _ = DestroyWindow(hwnd);
+            CLIPBOARD_MONITORING.store(false, Ordering::Relaxed);
+            CLIPBOARD_LISTENER_TID.store(0, Ordering::SeqCst);
+            return;
+        }
+
+        tracing::info!("[clipboard-monitor] event-driven listener started");
+
+        let mut msg = MSG::default();
+        loop {
+            if !CLIPBOARD_MONITORING.load(Ordering::Relaxed) {
+                break;
+            }
+
+            let result = GetMessageW(&mut msg, None, 0, 0);
+            if !result.as_bool() {
+                break;
+            }
+
+            if msg.message == WM_CLIPBOARDUPDATE {
+                // Short settle so writers finish OpenClipboard (STranslate-style)
+                std::thread::sleep(Duration::from_millis(50));
+                if let Some(text) = read_clipboard_unicode_text() {
+                    let trimmed = text.trim().to_string();
+                    if trimmed.len() >= 2 && crate::clipboard_dedupe::claim_clipboard_text(&trimmed)
+                    {
+                        let mut last = LAST_CLIPBOARD_TEXT
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        *last = trimmed.clone();
+                        drop(last);
+                        let _ = app.emit("clipboard-changed", &trimmed);
+                    }
+                }
+            }
+
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+
+        let _ = RemoveClipboardFormatListener(hwnd);
+        let _ = DestroyWindow(hwnd);
+        CLIPBOARD_LISTENER_TID.store(0, Ordering::SeqCst);
+        CLIPBOARD_MONITORING.store(false, Ordering::Relaxed);
+        tracing::info!("[clipboard-monitor] listener stopped");
+    }
+}
+
+/// Read CF_UNICODETEXT from the system clipboard.
+#[cfg(target_os = "windows")]
+fn read_clipboard_unicode_text() -> Option<String> {
+    unsafe {
+        use windows::Win32::Foundation::HGLOBAL;
+        use windows::Win32::System::DataExchange::{
+            CloseClipboard, GetClipboardData, OpenClipboard,
+        };
+        use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+
+        const CF_UNICODETEXT: u32 = 13;
+
+        // Brief retry if another app still holds the clipboard
+        for _ in 0..5 {
+            if OpenClipboard(None).is_ok() {
+                let result = (|| -> Option<String> {
+                    let handle = GetClipboardData(CF_UNICODETEXT).ok()?;
+                    let h_global = HGLOBAL(handle.0);
+                    let p_data = GlobalLock(h_global);
+                    if p_data.is_null() {
+                        return None;
+                    }
+                    let size = GlobalSize(h_global);
+                    if size <= 2 {
+                        let _ = GlobalUnlock(h_global);
+                        return None;
+                    }
+                    let slice = std::slice::from_raw_parts(p_data as *const u16, size / 2);
+                    let text = String::from_utf16_lossy(slice);
+                    let text = text.trim_end_matches('\0').to_string();
+                    let _ = GlobalUnlock(h_global);
+                    Some(text)
+                })();
+                let _ = CloseClipboard();
+                return result;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        None
+    }
 }
 
 #[tauri::command]
@@ -165,11 +329,15 @@ pub async fn translate_selection_with_text(
     let to = config.default_to.clone();
     drop(config);
 
-    // Translate using service
     let response = state
         .translation
         .service
-        .translate(&text, &from, &to)
+        .run_full(
+            crate::models::translation::TranslateChannel::Selection,
+            &text,
+            &from,
+            &to,
+        )
         .await?;
 
     if let Some(first) = response.results.first() {
@@ -241,7 +409,12 @@ pub async fn back_translate(
     let result = state
         .translation
         .service
-        .translate_primary(&text, &to, &from)
+        .run_primary(
+            crate::models::translation::TranslateChannel::Ui,
+            &text,
+            &to,
+            &from,
+        )
         .await?;
     Ok(result)
 }
@@ -260,6 +433,8 @@ pub async fn translate_embedded(
     text: String,
     from: String,
     to: String,
+    // Optional channel: "ocr" | "ui" | … (default ui for main embedded translator)
+    channel: Option<String>,
 ) -> Result<Vec<EmbeddedLine>, AppError> {
     security::validate_text_length(&text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
     security::validate_language_code(&from)?;
@@ -269,21 +444,27 @@ pub async fn translate_embedded(
         return Ok(vec![]);
     }
 
-    // Use batch translation with concurrency of 3
+    let lines: Vec<(usize, &str)> = text
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| !l.trim().is_empty())
+        .map(|(i, l)| (i, l.trim()))
+        .collect();
+    let ch = match channel
+        .as_deref()
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("ocr") => crate::models::translation::TranslateChannel::Ocr,
+        Some("selection") => crate::models::translation::TranslateChannel::Selection,
+        Some("document") => crate::models::translation::TranslateChannel::Document,
+        Some("subtitle") => crate::models::translation::TranslateChannel::Subtitle,
+        _ => crate::models::translation::TranslateChannel::Ui,
+    };
     let batch_results = state
         .translation
         .service
-        .translate_batch(
-            &text
-                .lines()
-                .enumerate()
-                .filter(|(_, l)| !l.trim().is_empty())
-                .map(|(i, l)| (i, l.trim()))
-                .collect::<Vec<_>>(),
-            &from,
-            &to,
-            3, // concurrency
-        )
+        .run_batch(ch, &lines, &from, &to, 3)
         .await;
 
     // Convert to EmbeddedLine format
@@ -362,6 +543,9 @@ impl Clone for AppState {
             batch: self.batch.clone(),
             // Speech recognition state
             speech_state: self.speech_state.clone(),
+            // Database
+            ecdict_pool: self.ecdict_pool.clone(),
+            event_store: self.event_store.clone(),
         }
     }
 }
@@ -418,11 +602,15 @@ pub async fn polish_translation(
         translated_text
     );
 
-    // Use service to polish
     let result = state
         .translation
         .service
-        .translate_primary(&prompt, &from_lang, &to_lang)
+        .run_primary(
+            crate::models::translation::TranslateChannel::Ui,
+            &prompt,
+            &from_lang,
+            &to_lang,
+        )
         .await?;
     Ok(result)
 }
@@ -453,9 +641,19 @@ pub async fn compare_translate(
     security::validate_language_code(&request.from)?;
     security::validate_language_code(&request.to)?;
 
-    let router = state.translation.engine_router.read().await;
-    let response = router
-        .translate_parallel_compare(&request.text, &request.from, &request.to)
-        .await;
-    Ok(response)
+    let outcome = state
+        .translation
+        .service
+        .run(crate::models::translation::TranslateRequest {
+            channel: crate::models::translation::TranslateChannel::Ui,
+            mode: crate::models::translation::TranslationMode::Compare,
+            text: request.text,
+            from: request.from,
+            to: request.to,
+            ..Default::default()
+        })
+        .await?;
+    outcome
+        .into_full()
+        .ok_or_else(|| AppError::Internal("compare produced non-full outcome".into()))
 }

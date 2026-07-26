@@ -8,6 +8,7 @@ pub async fn text_to_speech(
     state: State<'_, AppState>,
     text: String,
     lang: String,
+    voice: Option<String>,
 ) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("Text is empty".to_string());
@@ -15,10 +16,22 @@ pub async fn text_to_speech(
 
     let config = state.system.config.lock().await;
     let token = config.edge_tts_token.clone();
+    let preferred = config.tts_voice.clone();
     drop(config);
 
-    let voice = tts::get_voice_for_lang(&lang);
-    let audio_data = tts::synthesize_with_token(&text, voice, &token)
+    // Priority: explicit voice arg > config.ttsVoice > language default
+    let resolved = voice
+        .filter(|v| !v.trim().is_empty())
+        .or_else(|| {
+            if preferred.trim().is_empty() {
+                None
+            } else {
+                Some(preferred)
+            }
+        })
+        .unwrap_or_else(|| tts::get_voice_for_lang(&lang).to_string());
+
+    let audio_data = tts::synthesize_with_token(&text, &resolved, &token)
         .await
         .map_err(|e| format!("TTS failed: {}", e))?;
 

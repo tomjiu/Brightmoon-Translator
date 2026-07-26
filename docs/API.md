@@ -247,11 +247,13 @@ interface DictionaryResult {
 
 #### `start_clipboard_monitor` / `stop_clipboard_monitor`
 
-启动/停止剪贴板监听。
+启动/停止主窗口剪贴板监听（Windows：`AddClipboardFormatListener` 事件驱动 + 短 settle + 去重；非 Windows 返回错误）。
 
 **参数**: 无
 
 **返回**: `void`
+
+**事件**: 后端在文本变化时发出 `clipboard-changed`（payload: `string` 剪贴板文本）。不再使用轮询 `read-clipboard` stub。
 
 ---
 
@@ -1389,31 +1391,25 @@ interface TmMatch {
 
 #### `open_docx` / `translate_docx` / `translate_docx_preview`
 
-DOCX 文件操作。
+DOCX（已注册 IPC + Documents「Word」页）。
 
-**参数**: `path: string`
-
-**返回**: 文档数据
+| 命令 | 参数 | 返回 |
+|------|------|------|
+| `open_docx` | `filePath` | `DocxDocument` |
+| `translate_docx_preview` | `inputPath`, `fromLang`, `toLang` | `TranslatedDocx`（内存预览） |
+| `translate_docx` | `inputPath`, `outputPath`, `fromLang`, `toLang` | 写出结果 + `docx-progress` 事件 |
 
 ---
 
 #### `open_excel` / `translate_excel` / `translate_excel_preview`
 
-Excel 文件操作。
-
-**参数**: `path: string`
-
-**返回**: 表格数据
+Excel（已注册 + Documents「Excel」页）。参数同 DOCX 风格：`filePath` / `inputPath`+`outputPath`。
 
 ---
 
 #### `open_pptx` / `translate_pptx` / `translate_pptx_preview`
 
-PPTX 文件操作。
-
-**参数**: `path: string`
-
-**返回**: 幻灯片数据
+PPTX（已注册 + Documents「PPT」页）。参数同 DOCX 风格。
 
 ---
 
@@ -1431,48 +1427,28 @@ EPUB 文件操作。
 
 字幕文件操作。
 
-**参数**: `path: string` 或 `text: string`
+| 命令 | 参数 | 返回 |
+|------|------|------|
+| `open_subtitle` | `filePath` | `SubtitleDocument` |
+| `translate_subtitle` | `filePath`, `fromLang`, `toLang` | `TranslatedSubtitle`（含译文） |
+| `export_subtitle_file` | **`entries`**（内存条目，须含 `translatedText`）, `format`, `outputPath`, `bilingual` | 写出路径 |
+| `translate_subtitle_text` | `text`, `fromLang`, `toLang` | `string` |
 
-**返回**: 字幕数据
+**注意:** 导出必须传翻译后的 `entries`，不要再传源文件路径重读（会丢掉译文）。
 
 ---
 
 ### 图片翻译
 
-#### `translate_image`
+#### `translate_image` / `preview_image_translation` / `translate_image_base64`
 
-翻译图片中的文字。
+图片文件翻译（已注册 IPC + Documents「图片」页）。
 
-**参数**: `path: string`
-
-**返回**:
-```typescript
-interface ImageTranslationResult {
-  original: string;
-  translated: string;
-  overlayImage: string;  // Base64
-}
-```
-
----
-
-#### `preview_image_translation`
-
-预览图片翻译。
-
-**参数**: `path: string`
-
-**返回**: `string` - Base64 图片
-
----
-
-#### `translate_image_base64`
-
-翻译 Base64 图片。
-
-**参数**: `image: string`
-
-**返回**: `ImageTranslationResult`
+| 命令 | 参数 | 返回 |
+|------|------|------|
+| `translate_image` | `inputPath`, `outputPath`, `fromLang`, `toLang`, 可选 OCR | `ImageTranslationResult`（含 `outputPath`） |
+| `preview_image_translation` | `inputPath`, `lang`, 可选 OCR | `ImagePreview`（行+框） |
+| `translate_image_base64` | `base64Data`, `fromLang`, `toLang` | base64 PNG + 统计 |
 
 ---
 
@@ -1530,15 +1506,45 @@ interface EngineComparison {
 
 ## HTTP API
 
-当配置 `api_server_enabled: true` 时，应用会启动 HTTP API 服务器。
+当配置 `apiServerEnabled: true` 时，应用会启动 HTTP API 服务器（仅 `127.0.0.1`）。
 
 **默认地址**: `http://127.0.0.1:60828`
+
+### 鉴权（S1）
+
+| 路径 | 鉴权 |
+|------|------|
+| `GET /health` | **否**（探活） |
+| 其余全部 | **是** |
+
+请求头二选一：
+
+```http
+Authorization: Bearer <apiServerToken>
+X-Api-Token: <apiServerToken>
+```
+
+- 配置字段：`apiServerToken`（高级设置可查看/复制/重新生成）。
+- 首次启动 API 且令牌为空时，服务端会 **自动生成 UUID** 并写入配置。
+- 浏览器扩展：popup 中填写同一令牌 → `chrome.storage.local.desktopApiToken`。
+- 错误：`401 Unauthorized`；令牌未配置：`503`。
+
+### 控制路由（需鉴权，触发桌面 UI / 热键等价动作）
+
+| 方法 | 路径 | 作用 |
+|------|------|------|
+| POST | `/control/show` | 显示并聚焦主窗口 |
+| POST | `/control/selection_translate` | 划词翻译（`trigger-translate-selection`） |
+| POST | `/control/ocr_translate` | OCR 截图翻译（`trigger-ocr-screenshot`） |
+| POST | `/control/open_settings` | 打开设置页 |
+
+响应：`{ "ok": true }`
 
 ### 端点列表
 
 #### `GET /health`
 
-健康检查。
+健康检查（**无需令牌**）。
 
 **响应**:
 ```json
@@ -1552,7 +1558,7 @@ interface EngineComparison {
 
 #### `POST /translate`
 
-翻译文本。
+翻译文本（需鉴权）。
 
 **请求**:
 ```json
@@ -1787,7 +1793,7 @@ unlisten();
 | `selection-translated` | 后端→前端 | `{ source, translated, engine }` | 划词翻译结果 |
 | `auto-copy` | 后端→前端 | `string` | 自动复制文本 |
 | `navigate` | 后端→前端 | `string` | 页面导航 |
-| `read-clipboard` | 后端→前端 | `()` | 请求读取剪贴板 |
+| `clipboard-changed` | 后端→前端 | `string` | 主剪贴板监听：新文本（事件驱动） |
 | `trigger-translate-selection` | 后端→前端 | `()` | 触发划词翻译 |
 | `trigger-replace-translate` | 后端→前端 | `()` | 触发替换翻译 |
 

@@ -24,14 +24,14 @@ export default function AppearanceSettings() {
       id: 'nord',
       name: 'Nord 极光',
       description: '冷色调的北欧风格',
-      preview: 'bg-gradient-to-br from-blue-900 to-teal-800',
+      preview: 'bg-gradient-to-br from-neutral-900 to-neutral-800',
       available: false,
     },
     {
       id: 'dracula',
       name: 'Dracula 吸血鬼',
       description: '高对比度的紫色主题',
-      preview: 'bg-gradient-to-br from-purple-900 to-pink-800',
+      preview: 'bg-gradient-to-br from-neutral-900 to-neutral-800',
       available: false,
     },
     {
@@ -45,7 +45,7 @@ export default function AppearanceSettings() {
       id: 'github',
       name: 'GitHub 风格',
       description: '清爽的开发者主题',
-      preview: 'bg-gradient-to-br from-gray-50 to-blue-50 border-2 border-blue-200',
+      preview: 'bg-gradient-to-br from-gray-50 to-neutral-50 border-2 border-border',
       available: false,
     },
   ];

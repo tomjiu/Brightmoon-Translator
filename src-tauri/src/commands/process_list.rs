@@ -32,7 +32,7 @@ pub async fn get_process_list() -> Result<Vec<ProcessInfo>, String> {
 
 #[cfg(target_os = "windows")]
 fn get_windows_process_list() -> Result<Vec<ProcessInfo>, String> {
-    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::Foundation::CloseHandle;
 
     let mut processes = Vec::new();
     let mut pids = vec![0u32; 4096];

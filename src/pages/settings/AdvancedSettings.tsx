@@ -63,15 +63,65 @@ export default function AdvancedSettings() {
                   </p>
                 </div>
 
-                {/* Connection Status */}
+                <div>
+                  <label className="block text-sm font-medium text-text-primary mb-2">
+                    API 令牌（Bearer）
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={config.apiServerToken || ''}
+                      onChange={(e) => {
+                        updateConfig((prev) => ({
+                          ...prev,
+                          apiServerToken: e.target.value.trim(),
+                        }));
+                      }}
+                      onBlur={() => void saveConfig()}
+                      placeholder="启用后若为空会自动生成"
+                      className="flex-1 px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary outline-none font-mono text-xs"
+                    />
+                    <button
+                      type="button"
+                      className="px-3 py-2 text-sm rounded-lg border border-border bg-bg-secondary hover:bg-bg-tertiary"
+                      onClick={() => {
+                        const token =
+                          typeof crypto !== 'undefined' && crypto.randomUUID
+                            ? crypto.randomUUID()
+                            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                        updateConfig((prev) => ({ ...prev, apiServerToken: token }));
+                        void saveConfig();
+                      }}
+                    >
+                      重新生成
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-2 text-sm rounded-lg border border-border bg-bg-secondary hover:bg-bg-tertiary"
+                      onClick={() => {
+                        const t = config.apiServerToken || '';
+                        if (t) void navigator.clipboard.writeText(t);
+                      }}
+                    >
+                      复制
+                    </button>
+                  </div>
+                  <p className="text-xs text-text-secondary mt-1">
+                    请求头：Authorization: Bearer &lt;令牌&gt; 或 X-Api-Token。扩展需在存储中配置
+                    desktopApiToken。
+                  </p>
+                </div>
+
                 <div className="p-3 bg-bg-secondary rounded-lg border border-border">
                   <div className="flex items-center gap-2 mb-2">
                     <CheckCircle size={16} className="text-success" />
-                    <span className="text-sm font-medium text-text-primary">桥接服务运行中</span>
-                    <Badge variant="success">在线</Badge>
+                    <span className="text-sm font-medium text-text-primary">
+                      桥接已启用（需重启应用后监听生效）
+                    </span>
+                    <Badge variant="success">鉴权</Badge>
                   </div>
                   <p className="text-xs text-text-secondary">
-                    桌面应用正在监听端口 {config.apiServerPort || 60828}，浏览器扩展可以连接
+                    除 GET /health 外均需令牌。端口 {config.apiServerPort || 60828}
                   </p>
                 </div>
               </>
@@ -120,7 +170,7 @@ export default function AdvancedSettings() {
                   className="flex items-center justify-between p-3 bg-bg-secondary hover:bg-bg-tertiary rounded-lg border border-border transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded bg-gradient-to-br from-orange-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs">
+                    <div className="w-8 h-8 rounded bg-gradient-to-br from-neutral-500 to-neutral-600 flex items-center justify-center text-white font-bold text-xs">
                       Fx
                     </div>
                     <div>

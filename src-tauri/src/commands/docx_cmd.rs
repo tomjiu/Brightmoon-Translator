@@ -67,7 +67,13 @@ pub async fn translate_docx(
     let batch_results = state
         .translation
         .service
-        .translate_batch(&paragraphs_to_translate, &from_lang, &to_lang, 2)
+        .run_batch(
+            crate::models::translation::TranslateChannel::Document,
+            &paragraphs_to_translate,
+            &from_lang,
+            &to_lang,
+            2,
+        )
         .await;
 
     // Emit write progress
@@ -123,7 +129,13 @@ pub async fn translate_docx_preview(
     let batch_results = state
         .translation
         .service
-        .translate_batch(&paragraphs_to_translate, &from_lang, &to_lang, 2)
+        .run_batch(
+            crate::models::translation::TranslateChannel::Document,
+            &paragraphs_to_translate,
+            &from_lang,
+            &to_lang,
+            2,
+        )
         .await;
 
     // Build translated paragraphs

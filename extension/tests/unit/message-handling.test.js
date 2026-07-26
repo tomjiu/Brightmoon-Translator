@@ -16,7 +16,7 @@ function createMockConfig() {
       },
       youdao: { enabled: true },
       deepl: { enabled: false, apiKey: "", pro: false },
-      deeplx: { enabled: false, endpoint: "http://localhost:1188" },
+      deeplx: { enabled: false, apiKey: "", pro: false },
       microsoft: { enabled: false },
     },
     targetLang: "zh",

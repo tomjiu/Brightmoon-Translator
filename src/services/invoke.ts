@@ -1,5 +1,5 @@
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { useToastStore } from "../stores/toastStore";
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { useToastStore } from '../stores/toastStore';
 
 interface InvokeError {
   code: string;
@@ -14,7 +14,7 @@ interface InvokeError {
 export async function safeInvoke<T>(
   command: string,
   args?: Record<string, unknown>,
-  options?: { silent?: boolean }
+  options?: { silent?: boolean },
 ): Promise<[T | null, InvokeError | null]> {
   try {
     const data = await tauriInvoke<T>(command, args);
@@ -32,27 +32,27 @@ export async function safeInvoke<T>(
  * Parse various error formats into a consistent structure.
  */
 function parseError(err: unknown): InvokeError {
-  if (typeof err === "string") {
-    return { code: "UNKNOWN", message: err };
+  if (typeof err === 'string') {
+    return { code: 'UNKNOWN', message: err };
   }
 
-  if (err && typeof err === "object") {
+  if (err && typeof err === 'object') {
     // Tauri error object
-    if ("message" in err && typeof err.message === "string") {
+    if ('message' in err && typeof err.message === 'string') {
       return {
-        code: "code" in err && typeof err.code === "string" ? err.code : "UNKNOWN",
+        code: 'code' in err && typeof err.code === 'string' ? err.code : 'UNKNOWN',
         message: err.message,
-        detail: "detail" in err && typeof err.detail === "string" ? err.detail : undefined,
+        detail: 'detail' in err && typeof err.detail === 'string' ? err.detail : undefined,
       };
     }
 
     // Error instance
     if (err instanceof Error) {
-      return { code: "UNKNOWN", message: err.message };
+      return { code: 'UNKNOWN', message: err.message };
     }
   }
 
-  return { code: "UNKNOWN", message: String(err) };
+  return { code: 'UNKNOWN', message: String(err) };
 }
 
 /**
@@ -62,12 +62,12 @@ function parseError(err: unknown): InvokeError {
  */
 export async function invokeOrThrow<T>(
   command: string,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
 ): Promise<T> {
   const [data, error] = await safeInvoke<T>(command, args);
   if (error) {
     useToastStore.getState().addToast({
-      type: "error",
+      type: 'error',
       message: error.message,
       duration: 4000,
     });
@@ -82,7 +82,7 @@ export async function invokeOrThrow<T>(
 export async function invokeOrDefault<T>(
   command: string,
   args: Record<string, unknown> | undefined,
-  defaultValue: T
+  defaultValue: T,
 ): Promise<T> {
   const [data] = await safeInvoke<T>(command, args, { silent: true });
   return data ?? defaultValue;

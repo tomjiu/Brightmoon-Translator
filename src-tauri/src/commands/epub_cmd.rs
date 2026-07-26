@@ -34,7 +34,13 @@ pub async fn translate_epub(
     let batch_results = state
         .translation
         .service
-        .translate_batch(&chapters_to_translate, &from_lang, &to_lang, 2)
+        .run_batch(
+            crate::models::translation::TranslateChannel::Document,
+            &chapters_to_translate,
+            &from_lang,
+            &to_lang,
+            2,
+        )
         .await;
 
     // Build translated chapters

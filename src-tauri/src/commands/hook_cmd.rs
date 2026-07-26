@@ -22,7 +22,9 @@ pub async fn get_foreground_window_rect() -> Result<[i32; 4], String> {
     .map_err(|e| e.to_string())?
 }
 
-/// Start hook monitor for foreground window text
+/// Start hook monitor for foreground window text.
+/// Applies the active hook profile (or auto-matched by foreground process/title)
+/// when one is configured; otherwise uses global hook config.
 #[tauri::command]
 pub async fn start_hook_monitor(
     state: State<'_, AppState>,
@@ -35,12 +37,46 @@ pub async fn start_hook_monitor(
     }
 
     let config = state.system.config.lock().await;
-    let target_lang = config.default_to.clone();
-    let source_lang = config.default_from.clone();
-    let enabled_sources = config.hook.enabled_sources.clone();
-    let uia_interval = config.hook.uia_interval_ms;
-    let ocr_interval = config.hook.ocr_interval_ms;
+    let mut target_lang = config.default_to.clone();
+    let mut source_lang = config.default_from.clone();
+    let mut enabled_sources = config.hook.enabled_sources.clone();
+    let mut uia_interval = config.hook.uia_interval_ms;
+    let mut ocr_interval = config.hook.ocr_interval_ms;
     drop(config);
+
+    // Resolve profile: auto-match foreground app first, else active profile.
+    let foreground = crate::capabilities::platform::windows::detect_foreground_app();
+    let matched = foreground.as_ref().and_then(|fg| {
+        state
+            .hook
+            .profiles
+            .auto_match(&fg.app_name, &fg.window_title)
+    });
+    let profile = matched.or_else(|| state.hook.profiles.get_active());
+
+    if let Some(profile) = profile {
+        tracing::info!(
+            "[Hook] Applying profile '{}' (id={})",
+            profile.name,
+            profile.id
+        );
+        // Mark as last-used when applied at start
+        state.hook.profiles.activate(Some(&profile.id));
+
+        enabled_sources = profile.hook_config.enabled_sources.clone();
+        uia_interval = profile.hook_config.uia_interval_ms;
+        ocr_interval = profile.hook_config.ocr_interval_ms;
+        if let Some(ref s) = profile.source_lang {
+            if !s.is_empty() {
+                source_lang = s.clone();
+            }
+        }
+        if let Some(ref t) = profile.target_lang {
+            if !t.is_empty() {
+                target_lang = t.clone();
+            }
+        }
+    }
 
     monitor
         .start_with_translation(

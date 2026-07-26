@@ -57,6 +57,10 @@ vi.mock('./components/OcrScreenshotTranslator', () => ({
   default: () => null,
 }));
 
+vi.mock('./components/vocabulary', () => ({
+  AIGenerationProgress: () => null,
+}));
+
 describe('App browser runtime', () => {
   beforeEach(() => {
     vi.mocked(invoke).mockReset();

@@ -12,7 +12,7 @@ name = "moontranslator"
 path = "src/main.rs"
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "webview-data-url"] }
+tauri = { version = "2", features = ["tray-icon", "webview-data-url", "protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2"
@@ -47,6 +47,7 @@ lindera-tokenizer = { version = "0.28", features = ["ipadic"] }
 lindera-dictionary = { version = "0.28", features = ["ipadic"] }
 lindera-core = "0.28"
 rand = "0.8"
+flate2 = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
 zeroize = { version = "1", features = ["derive"] }
@@ -75,6 +76,7 @@ features = [
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
     "Win32_UI_Accessibility",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
     "Globalization",
     "Graphics_Imaging",

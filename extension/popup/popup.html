@@ -158,6 +158,15 @@
         </label>
       </div>
 
+      <div class="setting-group">
+        <label class="setting-label">桌面桥接令牌</label>
+        <p class="hint">与桌面「高级设置 → API 令牌」一致；除 /health 外均需鉴权</p>
+        <div class="input-field">
+          <label>API Token</label>
+          <input type="password" id="desktopApiToken" placeholder="粘贴桌面 apiServerToken" autocomplete="off">
+        </div>
+      </div>
+
       <button id="syncGlossary" class="btn-secondary" style="display:none">同步桌面版术语库和黑名单</button>
       <button id="saveSettings" class="btn-primary">保存设置</button>
     </div>

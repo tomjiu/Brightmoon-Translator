@@ -53,7 +53,7 @@ moontranslator/
 │   ├── stores/                   # Zustand 状态
 │   │   ├── translateStore.ts     # 翻译状态
 │   │   ├── configStore.ts        # 配置状态
-│   │   ├── clipboardStore.ts     # 剪贴板状态
+│   │   ├── translateStore.ts     # 翻译 + 剪贴板（clipboardStore 已删）
 │   │   └── ...
 │   ├── services/                 # 服务层
 │   │   ├── invoke.ts             # Tauri invoke 封装
@@ -158,7 +158,7 @@ moontranslator/
 **前端 (Zustand)**:
 - `translateStore` - 翻译源文本、目标文本、加载状态
 - `configStore` - 应用配置
-- `clipboardStore` - 剪贴板状态
+- `translateStore` - 翻译与剪贴板（原 clipboardStore 已移除）
 - `themeStore` - 主题切换
 - `toastStore` - 通知提示
 
@@ -201,7 +201,7 @@ Tauri 事件用于前后端通信：
 | `selection-translated` | 后端→前端 | 划词翻译结果 |
 | `auto-copy` | 后端→前端 | 自动复制 |
 | `navigate` | 后端→前端 | 页面导航 |
-| `read-clipboard` | 后端→前端 | 读取剪贴板 |
+| `clipboard-changed` | 后端→前端 | 主剪贴板监听新文本（事件驱动） |
 
 ---
 

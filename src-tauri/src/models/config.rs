@@ -19,6 +19,39 @@ pub struct LlmConfig {
     pub api_keys: Vec<String>,
     pub base_url: String,
     pub model: String,
+    /// 多提供商配置（用于回退机制）
+    #[serde(default)]
+    pub providers: Vec<LlmProviderEntry>,
+}
+
+/// 单个 LLM 提供商配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmProviderEntry {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+    #[serde(default = "default_priority")]
+    pub priority: i32,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub models: Vec<String>, // 缓存的可用模型列表
+}
+
+/// Resolved LLM endpoint for Router / LlmEngine (key + URL + model).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LlmEndpoint {
+    pub label: String,
+    pub api_key: String,
+    pub base_url: String,
+    pub model: String,
+}
+
+fn default_priority() -> i32 {
+    0
 }
 
 impl LlmConfig {
@@ -34,6 +67,58 @@ impl LlmConfig {
             }
         }
         keys
+    }
+
+    /// Enabled providers with non-empty api_key, sorted by priority ascending
+    /// (lower number = tried first). If none, fall back to top-level api_key/api_keys + base_url + model.
+    pub fn resolve_endpoints(&self) -> Vec<LlmEndpoint> {
+        let mut from_providers: Vec<&LlmProviderEntry> = self
+            .providers
+            .iter()
+            .filter(|p| p.enabled && !p.api_key.trim().is_empty())
+            .collect();
+        from_providers.sort_by_key(|p| p.priority);
+
+        if !from_providers.is_empty() {
+            return from_providers
+                .into_iter()
+                .map(|p| LlmEndpoint {
+                    label: if p.name.is_empty() {
+                        p.id.clone()
+                    } else {
+                        p.name.clone()
+                    },
+                    api_key: p.api_key.trim().to_string(),
+                    base_url: if p.base_url.trim().is_empty() {
+                        self.base_url.clone()
+                    } else {
+                        p.base_url.trim().to_string()
+                    },
+                    model: if p.model.trim().is_empty() {
+                        self.model.clone()
+                    } else {
+                        p.model.trim().to_string()
+                    },
+                })
+                .collect();
+        }
+
+        // Legacy top-level keys (same base_url/model for each key)
+        self.all_keys()
+            .into_iter()
+            .enumerate()
+            .map(|(i, api_key)| LlmEndpoint {
+                label: if i == 0 {
+                    self.provider.clone()
+                } else {
+                    format!("{}#{}", self.provider, i + 1)
+                },
+                api_key,
+                base_url: self.base_url.clone(),
+                model: self.model.clone(),
+            })
+            .filter(|e| !e.api_key.is_empty())
+            .collect()
     }
 }
 
@@ -279,12 +364,9 @@ fn default_ocr_interval() -> u32 {
 }
 
 fn default_hook_enabled_sources() -> Vec<String> {
-    vec![
-        "uia".into(),
-        "clipboard".into(),
-        "ocr".into(),
-        "hook".into(),
-    ]
+    // UIA + clipboard only. Hook-internal OCR races the screenshot OCR path;
+    // raw winevent hook is noisy — both are opt-in in the UI.
+    vec!["uia".into(), "clipboard".into()]
 }
 
 fn default_uia_interval_ms() -> u64 {
@@ -455,6 +537,10 @@ pub struct AppConfig {
     pub api_server_enabled: bool,
     #[serde(default = "default_api_port")]
     pub api_server_port: u16,
+    /// Shared secret for local HTTP API (`Authorization: Bearer …` or `X-Api-Token`).
+    /// Empty while API is off; auto-filled when the server starts if still empty.
+    #[serde(default)]
+    pub api_server_token: String,
     #[serde(default)]
     pub hotkeys: HotkeyConfig,
     #[serde(default)]
@@ -565,6 +651,7 @@ mod tests {
         assert!(!config.translation_mask);
         assert!(!config.api_server_enabled);
         assert_eq!(config.api_server_port, 60828);
+        assert!(config.api_server_token.is_empty());
         assert!(config.translation_blacklist.is_empty());
         assert!(config.routing_strategy.is_none());
         assert_eq!(config.overlay_level, 2);
@@ -643,10 +730,12 @@ mod tests {
     #[test]
     fn test_hook_config_defaults() {
         let config = HookConfig::default();
-        assert!(config.enabled_sources.contains(&"uia".to_string()));
-        assert!(config.enabled_sources.contains(&"clipboard".to_string()));
-        assert!(config.enabled_sources.contains(&"ocr".to_string()));
-        assert!(config.enabled_sources.contains(&"hook".to_string()));
+        assert_eq!(
+            config.enabled_sources,
+            vec!["uia".to_string(), "clipboard".to_string()]
+        );
+        assert!(!config.enabled_sources.contains(&"ocr".to_string()));
+        assert!(!config.enabled_sources.contains(&"hook".to_string()));
         assert!(config.show_overlay);
         assert!(!config.auto_copy);
         assert!(config.enabled);
@@ -679,39 +768,56 @@ mod tests {
         assert!(!config.pro);
     }
 
-    #[test]
-    fn test_llm_config_all_keys_empty() {
-        let llm = LlmConfig {
+    fn sample_llm() -> LlmConfig {
+        LlmConfig {
             provider: "test".to_string(),
             api_key: String::new(),
             api_keys: Vec::new(),
-            base_url: String::new(),
-            model: String::new(),
-        };
+            base_url: "https://api.example.com/v1".to_string(),
+            model: "default-model".to_string(),
+            providers: Vec::new(),
+        }
+    }
+
+    fn sample_provider(
+        id: &str,
+        name: &str,
+        priority: i32,
+        enabled: bool,
+        api_key: &str,
+        base_url: &str,
+        model: &str,
+    ) -> LlmProviderEntry {
+        LlmProviderEntry {
+            id: id.to_string(),
+            name: name.to_string(),
+            base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            model: model.to_string(),
+            priority,
+            enabled,
+            models: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn test_llm_config_all_keys_empty() {
+        let llm = sample_llm();
         assert!(llm.all_keys().is_empty());
     }
 
     #[test]
     fn test_llm_config_all_keys_single() {
-        let llm = LlmConfig {
-            provider: "test".to_string(),
-            api_key: "key1".to_string(),
-            api_keys: Vec::new(),
-            base_url: String::new(),
-            model: String::new(),
-        };
+        let mut llm = sample_llm();
+        llm.api_key = "key1".to_string();
         assert_eq!(llm.all_keys(), vec!["key1"]);
     }
 
     #[test]
     fn test_llm_config_all_keys_multiple() {
-        let llm = LlmConfig {
-            provider: "test".to_string(),
-            api_key: "key1".to_string(),
-            api_keys: vec!["key2".to_string(), "key3".to_string()],
-            base_url: String::new(),
-            model: String::new(),
-        };
+        let mut llm = sample_llm();
+        llm.api_key = "key1".to_string();
+        llm.api_keys = vec!["key2".to_string(), "key3".to_string()];
         let keys = llm.all_keys();
         assert_eq!(keys.len(), 3);
         assert_eq!(keys[0], "key1");
@@ -721,13 +827,9 @@ mod tests {
 
     #[test]
     fn test_llm_config_all_keys_dedup() {
-        let llm = LlmConfig {
-            provider: "test".to_string(),
-            api_key: "key1".to_string(),
-            api_keys: vec!["key1".to_string(), "key2".to_string()],
-            base_url: String::new(),
-            model: String::new(),
-        };
+        let mut llm = sample_llm();
+        llm.api_key = "key1".to_string();
+        llm.api_keys = vec!["key1".to_string(), "key2".to_string()];
         let keys = llm.all_keys();
         assert_eq!(keys.len(), 2);
         assert_eq!(keys[0], "key1");
@@ -736,15 +838,93 @@ mod tests {
 
     #[test]
     fn test_llm_config_all_keys_skip_empty() {
-        let llm = LlmConfig {
-            provider: "test".to_string(),
-            api_key: String::new(),
-            api_keys: vec!["".to_string(), "key2".to_string(), "".to_string()],
-            base_url: String::new(),
-            model: String::new(),
-        };
+        let mut llm = sample_llm();
+        llm.api_keys = vec!["".to_string(), "key2".to_string(), "".to_string()];
         let keys = llm.all_keys();
         assert_eq!(keys, vec!["key2"]);
+    }
+
+    #[test]
+    fn test_resolve_endpoints_empty_providers_fallback() {
+        let mut llm = sample_llm();
+        llm.provider = "deepseek".to_string();
+        llm.api_key = "top-key".to_string();
+        llm.base_url = "https://api.deepseek.com/v1".to_string();
+        llm.model = "deepseek-chat".to_string();
+
+        let endpoints = llm.resolve_endpoints();
+        assert_eq!(endpoints.len(), 1);
+        assert_eq!(
+            endpoints[0],
+            LlmEndpoint {
+                label: "deepseek".to_string(),
+                api_key: "top-key".to_string(),
+                base_url: "https://api.deepseek.com/v1".to_string(),
+                model: "deepseek-chat".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_resolve_endpoints_priority_sort() {
+        let mut llm = sample_llm();
+        llm.providers = vec![
+            sample_provider(
+                "b",
+                "Second",
+                20,
+                true,
+                "key-b",
+                "https://b.example",
+                "model-b",
+            ),
+            sample_provider(
+                "a",
+                "First",
+                10,
+                true,
+                "key-a",
+                "https://a.example",
+                "model-a",
+            ),
+        ];
+
+        let endpoints = llm.resolve_endpoints();
+        assert_eq!(endpoints.len(), 2);
+        assert_eq!(endpoints[0].label, "First");
+        assert_eq!(endpoints[0].api_key, "key-a");
+        assert_eq!(endpoints[1].label, "Second");
+        assert_eq!(endpoints[1].api_key, "key-b");
+    }
+
+    #[test]
+    fn test_resolve_endpoints_skip_disabled_and_empty_key() {
+        let mut llm = sample_llm();
+        llm.api_key = "legacy".to_string();
+        llm.providers = vec![
+            sample_provider("off", "Disabled", 1, false, "key-off", "https://off", "m"),
+            sample_provider("empty", "EmptyKey", 2, true, "", "https://empty", "m"),
+            sample_provider("ok", "Ok", 3, true, "key-ok", "https://ok", "m-ok"),
+        ];
+
+        let endpoints = llm.resolve_endpoints();
+        assert_eq!(endpoints.len(), 1);
+        assert_eq!(endpoints[0].label, "Ok");
+        assert_eq!(endpoints[0].api_key, "key-ok");
+    }
+
+    #[test]
+    fn test_resolve_endpoints_empty_base_url_fallback() {
+        let mut llm = sample_llm();
+        llm.base_url = "https://fallback.example/v1".to_string();
+        llm.model = "fallback-model".to_string();
+        llm.providers = vec![sample_provider("p1", "Provider1", 1, true, "key-1", "", "")];
+
+        let endpoints = llm.resolve_endpoints();
+        assert_eq!(endpoints.len(), 1);
+        assert_eq!(endpoints[0].base_url, "https://fallback.example/v1");
+        assert_eq!(endpoints[0].model, "fallback-model");
+        assert_eq!(endpoints[0].api_key, "key-1");
     }
 
     #[test]
@@ -841,6 +1021,7 @@ impl Default for AppConfig {
                 api_keys: Vec::new(),
                 base_url: "https://api.deepseek.com/v1".into(),
                 model: "deepseek-chat".into(),
+                providers: Vec::new(),
             },
             engines: EnginesConfig {
                 google: GoogleConfig { enabled: true },
@@ -872,6 +1053,7 @@ impl Default for AppConfig {
             translation_mask: false,
             api_server_enabled: false,
             api_server_port: 60828,
+            api_server_token: String::new(),
             hotkeys: HotkeyConfig::default(),
             proxy: ProxyConfig::default(),
             window_x: None,

@@ -1001,6 +1001,7 @@ mod tests {
     }
 }
 
+#[cfg(test)]
 fn manifest_install_path(dest: &std::path::Path, manifest_name: &str) -> PathBuf {
     let manifest_path = std::path::Path::new(manifest_name);
     let prefix = manifest_path

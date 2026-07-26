@@ -3,15 +3,21 @@
 import { useState } from 'react';
 import { useCard, useSubmitReview } from '../../hooks/useVocabulary';
 import { useVocabularyStore } from '../../stores/vocabularyStore';
-import { Rating, getRatingDisplayText, getRatingColorClass } from '../../services/vocabulary';
+import { Rating } from '../../services/vocabulary';
 
 interface ReviewCardProps {
   cardId: string;
   onComplete?: () => void;
-  className?: string;
 }
 
-export function ReviewCard({ cardId, onComplete, className = '' }: ReviewCardProps) {
+const RATING_CONFIG = {
+  [Rating.Again]: { label: '重来', color: 'bg-red-500 hover:bg-red-600', hint: '< 1分钟' },
+  [Rating.Hard]: { label: '困难', color: 'bg-orange-500 hover:bg-orange-600', hint: '< 10分钟' },
+  [Rating.Good]: { label: '良好', color: 'bg-green-500 hover:bg-green-600', hint: '1天' },
+  [Rating.Easy]: { label: '简单', color: 'bg-primary hover:bg-primary-hover', hint: '4天' },
+};
+
+export function ReviewCard({ cardId, onComplete }: ReviewCardProps) {
   const [showAnswer, setShowAnswer] = useState(false);
   const { data: card, isLoading } = useCard(cardId);
   const { mutate: submitReview, isPending } = useSubmitReview();
@@ -20,16 +26,14 @@ export function ReviewCard({ cardId, onComplete, className = '' }: ReviewCardPro
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-gray-500">加载中...</div>
+        <div className="text-text-secondary">加载中...</div>
       </div>
     );
   }
 
   if (!card) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-500">
-        卡牌不存在
-      </div>
+      <div className="flex items-center justify-center h-full text-text-tertiary">卡牌不存在</div>
     );
   }
 
@@ -47,20 +51,20 @@ export function ReviewCard({ cardId, onComplete, className = '' }: ReviewCardPro
   };
 
   return (
-    <div className={`flex flex-col h-full ${className}`}>
+    <div className="flex flex-col h-full">
       {/* 卡牌内容 */}
       <div className="flex-1 flex flex-col items-center justify-center p-8">
-        {/* 问题面 */}
         <div className="w-full max-w-2xl">
+          {/* 问题面 */}
           <div className="text-center mb-8">
-            <h1 className="text-5xl font-bold mb-4">{card.word}</h1>
+            <h1 className="text-5xl font-bold text-text-primary mb-3">{card.word}</h1>
             {card.base_data.phonetic && (
-              <p className="text-xl text-gray-600 mb-2">/{card.base_data.phonetic}/</p>
+              <p className="text-lg text-text-secondary mb-4">/{card.base_data.phonetic}/</p>
             )}
             {!showAnswer && (
               <button
                 onClick={() => setShowAnswer(true)}
-                className="mt-6 px-8 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-lg"
+                className="mt-6 px-8 py-3 bg-primary text-primary-fg rounded-lg hover:bg-primary/90 text-lg transition-colors"
               >
                 显示答案
               </button>
@@ -69,14 +73,20 @@ export function ReviewCard({ cardId, onComplete, className = '' }: ReviewCardPro
 
           {/* 答案面 */}
           {showAnswer && (
-            <div className="space-y-6 animate-fadeIn">
-              {/* 释义 */}
+            <div className="space-y-4 animate-fadeIn">
+              {card.base_data.translation && (
+                <div className="p-4 bg-bg-secondary border border-border rounded-lg">
+                  <h3 className="text-xs font-semibold text-primary mb-1.5">中文释义</h3>
+                  <p className="text-text-primary">{card.base_data.translation}</p>
+                </div>
+              )}
+
               {card.base_data.definitions.length > 0 && (
-                <div className="bg-white p-6 rounded-lg shadow-sm border">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">释义</h3>
-                  <ul className="space-y-1">
+                <div className="p-4 bg-bg-secondary border border-border rounded-lg">
+                  <h3 className="text-xs font-semibold text-primary mb-1.5">英文释义</h3>
+                  <ul className="space-y-0.5">
                     {card.base_data.definitions.map((def, i) => (
-                      <li key={i} className="text-gray-700">
+                      <li key={i} className="text-sm text-text-primary">
                         • {def}
                       </li>
                     ))}
@@ -84,27 +94,25 @@ export function ReviewCard({ cardId, onComplete, className = '' }: ReviewCardPro
                 </div>
               )}
 
-              {/* 翻译 */}
-              {card.base_data.translation && (
-                <div className="bg-white p-6 rounded-lg shadow-sm border">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">中文</h3>
-                  <p className="text-gray-700">{card.base_data.translation}</p>
-                </div>
-              )}
-
-              {/* 助记法 */}
               {card.ai_content?.mnemonics && card.ai_content.mnemonics.length > 0 && (
-                <div className="bg-yellow-50 p-6 rounded-lg border border-yellow-200">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">助记法</h3>
-                  <p className="text-gray-700">{card.ai_content.mnemonics[0].content}</p>
+                <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <h3 className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1.5">
+                    💡 助记法
+                  </h3>
+                  <p className="text-sm text-text-primary">
+                    {card.ai_content.mnemonics[0].content}
+                  </p>
                 </div>
               )}
 
-              {/* 例句 */}
               {card.ai_content?.examples && card.ai_content.examples.length > 0 && (
-                <div className="bg-green-50 p-6 rounded-lg border border-green-200">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">例句</h3>
-                  <p className="text-gray-700 italic">{card.ai_content.examples[0].text}</p>
+                <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <h3 className="text-xs font-semibold text-green-700 dark:text-green-400 mb-1.5">
+                    📝 例句
+                  </h3>
+                  <p className="text-sm text-text-primary italic">
+                    {card.ai_content.examples[0].text}
+                  </p>
                 </div>
               )}
             </div>
@@ -114,43 +122,33 @@ export function ReviewCard({ cardId, onComplete, className = '' }: ReviewCardPro
 
       {/* 评分按钮 */}
       {showAnswer && (
-        <div className="border-t bg-white p-6">
+        <div className="border-t border-border bg-bg-secondary p-6">
           <div className="max-w-2xl mx-auto">
-            <p className="text-center text-sm text-gray-600 mb-4">你记住这个单词了吗？</p>
-            <div className="grid grid-cols-4 gap-4">
-              {[Rating.Again, Rating.Hard, Rating.Good, Rating.Easy].map((rating) => (
-                <button
-                  key={rating}
-                  onClick={() => handleRate(rating)}
-                  disabled={isPending}
-                  className={`py-4 rounded-lg font-medium transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed ${getRatingColorClass(rating)} ${getRatingButtonClass(rating)}`}
-                >
-                  {getRatingDisplayText(rating)}
-                </button>
-              ))}
+            <p className="text-center text-sm text-text-secondary mb-3">你记住这个单词了吗？</p>
+            <div className="grid grid-cols-4 gap-3">
+              {([Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as const).map((rating) => {
+                const cfg = RATING_CONFIG[rating];
+                return (
+                  <button
+                    key={rating}
+                    onClick={() => handleRate(rating)}
+                    disabled={isPending}
+                    className={`py-3 rounded-lg text-white font-medium transition-all hover:scale-[1.02] disabled:opacity-50 ${cfg.color}`}
+                  >
+                    {cfg.label}
+                  </button>
+                );
+              })}
             </div>
-            <div className="mt-4 grid grid-cols-4 gap-4 text-xs text-center text-gray-500">
-              <div>&lt; 1分钟</div>
-              <div>&lt; 10分钟</div>
-              <div>{Math.round(card.fsrs_state.stability)}天</div>
-              <div>{Math.round(card.fsrs_state.stability * 1.5)}天</div>
+            <div className="mt-2 grid grid-cols-4 gap-3 text-xs text-center text-text-tertiary">
+              <div>{RATING_CONFIG[Rating.Again].hint}</div>
+              <div>{RATING_CONFIG[Rating.Hard].hint}</div>
+              <div>{RATING_CONFIG[Rating.Good].hint}</div>
+              <div>{RATING_CONFIG[Rating.Easy].hint}</div>
             </div>
           </div>
         </div>
       )}
     </div>
   );
-}
-
-function getRatingButtonClass(rating: Rating): string {
-  switch (rating) {
-    case Rating.Again:
-      return 'bg-red-100 hover:bg-red-200 border-2 border-red-300';
-    case Rating.Hard:
-      return 'bg-orange-100 hover:bg-orange-200 border-2 border-orange-300';
-    case Rating.Good:
-      return 'bg-green-100 hover:bg-green-200 border-2 border-green-300';
-    case Rating.Easy:
-      return 'bg-blue-100 hover:bg-blue-200 border-2 border-blue-300';
-  }
 }

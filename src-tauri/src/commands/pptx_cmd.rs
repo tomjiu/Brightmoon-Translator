@@ -73,7 +73,13 @@ pub async fn translate_pptx(
     let batch_results = state
         .translation
         .service
-        .translate_batch(&blocks_to_translate, &from_lang, &to_lang, 2)
+        .run_batch(
+            crate::models::translation::TranslateChannel::Document,
+            &blocks_to_translate,
+            &from_lang,
+            &to_lang,
+            2,
+        )
         .await;
 
     // Emit write progress
@@ -147,7 +153,13 @@ pub async fn translate_pptx_preview(
     let batch_results = state
         .translation
         .service
-        .translate_batch(&blocks_to_translate, &from_lang, &to_lang, 2)
+        .run_batch(
+            crate::models::translation::TranslateChannel::Document,
+            &blocks_to_translate,
+            &from_lang,
+            &to_lang,
+            2,
+        )
         .await;
 
     // Build translated slides

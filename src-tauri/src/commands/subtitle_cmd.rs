@@ -33,32 +33,26 @@ pub async fn translate_subtitle(
 
     let total = doc.entries.len();
 
-    // Use batch translation with progress
-    let window_clone = window.clone();
+    // Batch via façade; progress emitted after each wave of results
     let batch_results = state
         .translation
         .service
-        .translate_embedded_batch(
-            &entries_to_translate
-                .iter()
-                .map(|(_, text)| *text)
-                .collect::<Vec<_>>()
-                .join("\n"),
+        .run_batch(
+            crate::models::translation::TranslateChannel::Subtitle,
+            &entries_to_translate,
             &from_lang,
             &to_lang,
-            3, // concurrency
-            |completed, _total| {
-                let _ = window_clone.emit(
-                    "subtitle-progress",
-                    serde_json::json!({
-                        "current": completed,
-                        "total": total,
-                        "text": format!("Translating... {}/{}", completed, total),
-                    }),
-                );
-            },
+            3,
         )
         .await;
+    let _ = window.emit(
+        "subtitle-progress",
+        serde_json::json!({
+            "current": batch_results.len().min(total),
+            "total": total,
+            "text": format!("Translating... {}/{}", batch_results.len().min(total), total),
+        }),
+    );
 
     // Apply results back to entries
     for result in batch_results {
@@ -86,14 +80,28 @@ pub async fn translate_subtitle(
 
 #[tauri::command]
 pub async fn export_subtitle_file(
-    file_path: String,
+    entries: Vec<subtitle::SubtitleEntry>,
+    format: String,
     output_path: String,
     bilingual: bool,
 ) -> Result<String, String> {
-    security::validate_file_path(&file_path)?;
     security::validate_output_path(&output_path)?;
 
-    let doc = subtitle::extract_text_from_subtitle(&file_path)?;
+    if entries.is_empty() {
+        return Err("No subtitle entries to export".into());
+    }
+
+    let format = match format.to_lowercase().as_str() {
+        "srt" | "vtt" | "lrc" | "ass" | "ssa" => format.to_lowercase(),
+        other if other.is_empty() => "srt".into(),
+        _ => "srt".into(),
+    };
+
+    let doc = SubtitleDocument {
+        total_entries: entries.len(),
+        entries,
+        format,
+    };
     let content = subtitle::export_subtitle(&doc, bilingual);
 
     std::fs::write(&output_path, content)
@@ -112,7 +120,12 @@ pub async fn translate_subtitle_text(
     state
         .translation
         .service
-        .translate_primary(&text, &from_lang, &to_lang)
+        .run_primary(
+            crate::models::translation::TranslateChannel::Subtitle,
+            &text,
+            &from_lang,
+            &to_lang,
+        )
         .await
         .map_err(|e| e.to_string())
 }

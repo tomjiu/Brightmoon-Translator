@@ -2,5 +2,5 @@ export function normalizeTranslatorInput(text: string, deleteNewlines: boolean):
   if (!deleteNewlines) {
     return text;
   }
-  return text.replace(/\s*[\r\n]+\s*/g, " ");
+  return text.replace(/\s*[\r\n]+\s*/g, ' ');
 }

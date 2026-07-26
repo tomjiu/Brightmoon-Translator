@@ -23,12 +23,24 @@ export interface HistoryItem {
 }
 
 // Config types
+interface LlmProviderEntry {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  priority: number;
+  enabled: boolean;
+  models: string[];
+}
+
 interface LlmConfig {
-  provider: 'openai' | 'deepseek' | 'custom';
+  provider: string;
   apiKey: string;
   apiKeys: string[];
   baseUrl: string;
   model: string;
+  providers: LlmProviderEntry[];
 }
 
 interface EnginesConfig {
@@ -57,7 +69,8 @@ interface HotkeyConfig {
   ocrTranslate: string;
   showWindow: string;
   translateSelection: string;
-  replaceTranslate?: string;
+  replaceTranslate: string;
+  toggleOverlayClickThrough: string;
 }
 
 interface ProxyConfig {
@@ -122,6 +135,8 @@ export interface AppConfig {
   translationMask: boolean;
   apiServerEnabled: boolean;
   apiServerPort: number;
+  /** Local HTTP bridge token (Bearer). Required when API is enabled. */
+  apiServerToken: string;
   hotkeys: HotkeyConfig;
   proxy: ProxyConfig;
   windowX?: number;
@@ -139,18 +154,13 @@ export interface AppConfig {
   ocrInterval?: number;
   ocrClickThrough?: boolean;
   ocrAutoBindWindow?: boolean;
-  hookShowOverlay?: boolean;
-  hookAutoCopy?: boolean;
+  /** Nested hook monitor config (authoritative). Do not use ghost top-level flags. */
   hook?: HookConfig;
   tmEnabled?: boolean;
   tmThreshold?: number;
   furiganaEnabled?: boolean;
   ttsAutoPlay?: boolean;
   ttsVoice?: string;
-  autoPlayTts?: boolean;
-  speechLanguage?: string;
-  realtimeTranslate?: boolean;
-  realtimeDelayMs?: number;
   httpTimeoutSecs?: number;
   ocrTimeoutSecs?: number;
   llmTimeoutSecs?: number;

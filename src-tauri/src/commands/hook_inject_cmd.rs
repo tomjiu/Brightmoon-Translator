@@ -73,6 +73,20 @@ pub async fn hook_status(state: State<'_, HookState>) -> Result<HookStatus, AppE
     Ok(manager.status())
 }
 
+/// Preflight: is moon_hook.dll present on disk?
+#[tauri::command]
+pub async fn hook_dll_available(state: State<'_, HookState>) -> Result<bool, AppError> {
+    let manager = state.manager.lock()?;
+    Ok(manager.dll_available())
+}
+
+/// Preflight: resolved DLL path if any (for diagnostics).
+#[tauri::command]
+pub async fn hook_dll_path(state: State<'_, HookState>) -> Result<Option<String>, AppError> {
+    let manager = state.manager.lock()?;
+    Ok(manager.dll_path())
+}
+
 /// Read new text messages from the hooked process.
 #[tauri::command]
 pub async fn hook_read_messages(

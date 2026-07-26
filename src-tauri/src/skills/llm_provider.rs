@@ -119,11 +119,17 @@ pub struct OpenAiCompatibleProvider {
 
 impl OpenAiCompatibleProvider {
     pub fn new(api_key: String, base_url: String, model: String) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_default();
+
         Self {
             api_key,
             base_url,
             model,
-            client: reqwest::Client::new(),
+            client,
         }
     }
 
@@ -155,22 +161,12 @@ impl LlmProvider for OpenAiCompatibleProvider {
             messages: Vec<LlmMessage>,
             temperature: f32,
             max_tokens: u32,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            response_format: Option<ResponseFormat>,
-        }
-
-        #[derive(Serialize)]
-        struct ResponseFormat {
-            #[serde(rename = "type")]
-            type_: String,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            json_schema: Option<Value>,
         }
 
         #[derive(Deserialize)]
         struct ApiResponse {
             choices: Vec<ApiChoice>,
-            usage: ApiUsage,
+            usage: Option<ApiUsage>,
             model: String,
         }
 
@@ -186,21 +182,28 @@ impl LlmProvider for OpenAiCompatibleProvider {
             total_tokens: u32,
         }
 
-        let response_format = if request.json_schema.is_some() {
-            Some(ResponseFormat {
-                type_: "json_schema".to_string(),
-                json_schema: request.json_schema.clone(),
-            })
-        } else {
-            None
-        };
+        // 将 json_schema 要求嵌入 system prompt（兼容所有 API 后端）
+        let mut messages = request.messages;
+        if let Some(schema) = &request.json_schema {
+            let schema_str = serde_json::to_string_pretty(schema).unwrap_or_default();
+            let instruction = format!(
+                "\n\n请严格按照以下 JSON Schema 返回结果，不要包含任何其他文字，只返回合法的 JSON：\n```json\n{}\n```",
+                schema_str
+            );
+            if let Some(last) = messages.last_mut() {
+                if last.role == "user" {
+                    last.content.push_str(&instruction);
+                } else {
+                    messages.push(LlmMessage::user(&instruction));
+                }
+            }
+        }
 
         let api_request = ApiRequest {
             model: self.model.clone(),
-            messages: request.messages,
+            messages,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
-            response_format,
         };
 
         let response = self
@@ -220,13 +223,19 @@ impl LlmProvider for OpenAiCompatibleProvider {
 
         let api_response: ApiResponse = response.json().await?;
 
+        let usage = api_response.usage.unwrap_or(ApiUsage {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+        });
+
         Ok(LlmResponse {
             content: api_response.choices[0].message.content.clone(),
             model: api_response.model,
             usage: LlmUsage {
-                prompt_tokens: api_response.usage.prompt_tokens,
-                completion_tokens: api_response.usage.completion_tokens,
-                total_tokens: api_response.usage.total_tokens,
+                prompt_tokens: usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens,
+                total_tokens: usage.total_tokens,
             },
         })
     }

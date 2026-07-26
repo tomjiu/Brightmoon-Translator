@@ -112,6 +112,7 @@ describe('Type definitions', () => {
         translationMask: false,
         apiServerEnabled: false,
         apiServerPort: 60828,
+        apiServerToken: '',
         hotkeys: {
           ocrTranslate: 'Alt+Q',
           showWindow: 'Alt+W',

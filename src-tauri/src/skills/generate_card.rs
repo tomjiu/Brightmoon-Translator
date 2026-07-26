@@ -15,6 +15,9 @@ pub struct CardContext {
     pub definition: Option<String>,
     pub translation: Option<String>,
     pub morphology: Option<String>,
+    pub pos: Option<String>,      // 词性
+    pub phonetic: Option<String>, // 音标
+    pub frequency: Option<i32>,   // 词频
 }
 
 /// AI 生成的原始输出（匹配 JSON Schema）
@@ -23,6 +26,12 @@ struct AiGeneratedContent {
     etymology: Option<EtymologySchema>,
     mnemonics: Vec<MnemonicSchema>,
     examples: Vec<ExampleSchema>,
+    collocations: Vec<String>,                       // 常见搭配
+    word_family: Vec<crate::domain::WordFamilyItem>, // 词族
+    usage_tips: Vec<String>,                         // 用法提示
+    common_mistakes: Vec<String>,                    // 常见错误
+    synonyms: Vec<String>,                           // 近义词
+    antonyms: Vec<String>,                           // 反义词
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,38 +73,103 @@ impl GenerateCardSkill {
 
     /// 构建系统提示
     fn build_system_prompt(&self) -> String {
-        r#"你是一个专业的英语学习内容生成助手。你的任务是为英语单词生成高质量的学习内容。
+        r#"你是一个专业的英语学习内容生成助手，拥有语言学博士学位和十年教学经验。你的任务是为英语单词生成高质量、精细化的学习内容。
 
-要求：
-1. 词源分析要准确，基于真实的语言学知识
-2. 助记法要实用、有创意，帮助学习者记忆
-3. 例句要地道、实用，符合现代英语用法
-4. 内容要简洁、清晰，避免过于学术化
+## 核心原则
 
-输出格式：严格按照 JSON Schema 输出。"#
+1. **准确性第一**：词源分析必须基于真实语言学知识，不可编造
+2. **实用性优先**：助记法要真正帮助记忆，不要牵强附会
+3. **场景化例句**：例句要地道、现代、贴近真实生活场景
+4. **层次分明**：从基础到进阶，满足不同水平学习者需求
+5. **文化融入**：适当融入英语文化背景，加深理解
+
+## 内容要求
+
+### 词源分析
+- 提供准确的词源（拉丁语/希腊语/法语/古英语等）
+- 拆解词根、前缀、后缀，说明含义
+- 列举同根词（至少3个），帮助举一反三
+
+### 助记法（3-4种不同类型）
+- **词根词缀法**：基于词源的记忆方法
+- **场景联想法**：创造生动的画面或故事
+- **谐音法**：利用中文谐音（如果合适）
+- **词族法**：通过相关词群记忆
+- **对比法**：与易混词对比区分
+
+### 例句（3个，不同难度）
+- **基础**：简单句，日常生活场景
+- **中级**：复合句，工作/学习场景
+- **高级**：复杂句，学术/专业场景
+每个例句都要自然流畅，不要为了用词而造句
+
+### 搭配与用法
+- 列出最常见的3-5个搭配（形容词+名词、动词+介词等）
+- 说明常见的语法结构
+- 标注正式/非正式用法
+
+### 词族扩展
+- 列出同根的不同词性形式
+- 简要说明每个形式的含义和用法
+
+### 常见错误
+- 中国学生容易犯的错误
+- 与易混词的区别
+- 常见的搭配错误
+
+输出格式：严格按照 JSON Schema 输出，确保 JSON 格式正确。"#
             .to_string()
     }
 
     /// 构建用户提示
     fn build_user_prompt(&self, context: &CardContext) -> String {
-        let mut prompt = format!("请为单词 '{}' 生成学习内容。\n\n", context.word);
+        let mut prompt = format!("## 目标单词\n\n**{}**\n\n", context.word);
+
+        if let Some(phonetic) = &context.phonetic {
+            prompt.push_str(&format!("**音标**: {}\n", phonetic));
+        }
+
+        if let Some(pos) = &context.pos {
+            prompt.push_str(&format!("**词性**: {}\n", pos));
+        }
+
+        if let Some(freq) = &context.frequency {
+            let level = if *freq <= 1000 {
+                "核心高频词"
+            } else if *freq <= 3000 {
+                "常用词"
+            } else if *freq <= 5000 {
+                "中级词汇"
+            } else {
+                "进阶词汇"
+            };
+            prompt.push_str(&format!("**词频**: {}（{}）\n", freq, level));
+        }
+
+        prompt.push('\n');
 
         if let Some(def) = &context.definition {
-            prompt.push_str(&format!("定义: {}\n", def));
+            prompt.push_str(&format!("**英文定义**: {}\n", def));
         }
 
         if let Some(trans) = &context.translation {
-            prompt.push_str(&format!("翻译: {}\n", trans));
+            prompt.push_str(&format!("**中文释义**: {}\n", trans));
         }
 
         if let Some(morph) = &context.morphology {
-            prompt.push_str(&format!("词根拆解: {}\n", morph));
+            prompt.push_str(&format!("**词根拆解**: {}\n", morph));
         }
 
-        prompt.push_str("\n请生成：\n");
-        prompt.push_str("1. 词源信息（如果有）\n");
-        prompt.push_str("2. 2-3个助记法（不同类型）\n");
-        prompt.push_str("3. 3个例句（不同难度和场景）\n");
+        prompt.push_str("\n## 请生成以下内容\n\n");
+        prompt.push_str("1. **词源分析**（如果有明确词源）\n");
+        prompt.push_str("2. **助记法**（3-4种不同类型，确保实用）\n");
+        prompt.push_str("3. **例句**（3个不同难度：基础/中级/高级）\n");
+        prompt.push_str("4. **常见搭配**（3-5个高频搭配）\n");
+        prompt.push_str("5. **词族**（同根的不同词性形式）\n");
+        prompt.push_str("6. **用法提示**（2-3条实用建议）\n");
+        prompt.push_str("7. **常见错误**（1-2个易犯错误）\n");
+        prompt.push_str("8. **近义词/反义词**（各2-3个）\n\n");
+        prompt.push_str("请确保内容准确、实用、有深度。");
 
         prompt
     }
@@ -108,17 +182,21 @@ impl GenerateCardSkill {
                 "etymology": {
                     "type": "object",
                     "properties": {
-                        "origin": { "type": "string" },
+                        "origin": {
+                            "type": "string",
+                            "description": "词源说明（如：来自拉丁语 xxx）"
+                        },
                         "roots": {
                             "type": "array",
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "part": { "type": "string" },
-                                    "meaning": { "type": "string" },
+                                    "part": { "type": "string", "description": "词根/前缀/后缀" },
+                                    "meaning": { "type": "string", "description": "含义" },
                                     "examples": {
                                         "type": "array",
-                                        "items": { "type": "string" }
+                                        "items": { "type": "string" },
+                                        "description": "同根词示例（至少3个）"
                                     }
                                 },
                                 "required": ["part", "meaning", "examples"]
@@ -134,27 +212,76 @@ impl GenerateCardSkill {
                         "properties": {
                             "type": {
                                 "type": "string",
-                                "enum": ["etymology", "scene", "homophone", "visual", "chunking"]
+                                "enum": ["etymology", "scene", "homophone", "visual", "chunking", "comparison"],
+                                "description": "助记法类型"
                             },
-                            "content": { "type": "string" }
+                            "content": {
+                                "type": "string",
+                                "description": "助记法内容（要生动、实用）"
+                            }
                         },
                         "required": ["type", "content"]
-                    }
+                    },
+                    "minItems": 3,
+                    "maxItems": 4
                 },
                 "examples": {
                     "type": "array",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "text": { "type": "string" },
-                            "context": { "type": "string" },
-                            "difficulty": { "type": "string" }
+                            "text": { "type": "string", "description": "英文例句" },
+                            "context": { "type": "string", "description": "使用场景说明（中文）" },
+                            "difficulty": {
+                                "type": "string",
+                                "enum": ["basic", "intermediate", "advanced"],
+                                "description": "难度级别"
+                            }
                         },
                         "required": ["text", "context", "difficulty"]
-                    }
+                    },
+                    "minItems": 3
+                },
+                "collocations": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "常见搭配（3-5个），如：make a decision, heavy rain"
+                },
+                "word_family": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "word": { "type": "string" },
+                            "pos": { "type": "string", "description": "词性（n./v./adj./adv.）" },
+                            "meaning": { "type": "string", "description": "简要中文释义" }
+                        },
+                        "required": ["word", "pos", "meaning"]
+                    },
+                    "description": "词族（同根的不同词性形式）"
+                },
+                "usage_tips": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "用法提示（2-3条实用建议）"
+                },
+                "common_mistakes": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "常见错误（1-2个易犯错误及纠正）"
+                },
+                "synonyms": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "近义词（2-3个，简要说明区别）"
+                },
+                "antonyms": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "反义词（2-3个）"
                 }
             },
-            "required": ["mnemonics", "examples"]
+            "required": ["mnemonics", "examples", "collocations", "word_family", "usage_tips"]
         })
     }
 
@@ -185,6 +312,7 @@ impl GenerateCardSkill {
                     "homophone" => MnemonicType::Homophone,
                     "visual" => MnemonicType::Visual,
                     "chunking" => MnemonicType::Chunking,
+                    "comparison" => MnemonicType::Comparison,
                     _ => MnemonicType::Etymology,
                 };
 
@@ -208,11 +336,19 @@ impl GenerateCardSkill {
             })
             .collect();
 
+        let word_family = generated.word_family;
+
         AiContent {
             etymology,
             mnemonics,
             examples,
             scenes: vec![],
+            collocations: generated.collocations,
+            word_family,
+            usage_tips: generated.usage_tips,
+            common_mistakes: generated.common_mistakes,
+            synonyms: generated.synonyms,
+            antonyms: generated.antonyms,
         }
     }
 }
@@ -237,6 +373,9 @@ impl Skill for GenerateCardSkill {
                 definition: None,
                 translation: None,
                 morphology: None,
+                pos: None,
+                phonetic: None,
+                frequency: None,
             }
         };
 
@@ -250,14 +389,60 @@ impl Skill for GenerateCardSkill {
             LlmMessage::user(user_prompt),
         ])
         .with_temperature(0.7)
-        .with_max_tokens(2000)
+        .with_max_tokens(4000)  // 增加到 4000 tokens 以支持更详细的内容
         .with_json_schema(json_schema);
 
         // 调用 LLM
-        let response = self.provider.complete(request).await?;
+        tracing::info!(
+            "🤖 AI生成开始: word='{}', model='{}'",
+            context.word,
+            "current"
+        );
+        let response = self.provider.complete(request).await;
+        let response = match response {
+            Ok(r) => {
+                tracing::info!(
+                    "✅ AI生成完成: word='{}', tokens={}, content_len={}",
+                    context.word,
+                    r.usage.total_tokens,
+                    r.content.len()
+                );
+                r
+            },
+            Err(e) => {
+                tracing::error!("❌ AI生成失败: word='{}', error={}", context.word, e);
+                return Err(e);
+            },
+        };
 
-        // 解析响应
-        let generated: AiGeneratedContent = serde_json::from_str(&response.content)?;
+        // 解析响应（处理 markdown 代码块包裹的 JSON）
+        let json_str = extract_json(&response.content);
+        tracing::debug!(
+            "AI JSON 解析: word='{}', json_len={}",
+            context.word,
+            json_str.len()
+        );
+        let generated: AiGeneratedContent = serde_json::from_str(&json_str).map_err(|e| {
+            tracing::error!(
+                "❌ AI JSON解析失败: word='{}', error={}, raw_content={}",
+                context.word,
+                e,
+                &response.content[..500.min(response.content.len())]
+            );
+            anyhow::anyhow!(
+                "AI 返回 JSON 解析失败: {} | 原始内容: {}",
+                e,
+                &response.content[..200.min(response.content.len())]
+            )
+        })?;
+
+        tracing::info!(
+            "✅ AI内容解析成功: word='{}', mnemonics={}, examples={}, collocations={}",
+            context.word,
+            generated.mnemonics.len(),
+            generated.examples.len(),
+            generated.collocations.len()
+        );
 
         // 转换为 AiContent
         let ai_content = self.convert_to_ai_content(generated);
@@ -281,6 +466,50 @@ impl Skill for GenerateCardSkill {
     }
 }
 
+/// 从 LLM 响应中提取 JSON（处理 markdown 代码块等包裹）
+fn extract_json(content: &str) -> &str {
+    let trimmed = content.trim();
+
+    // 1. 如果整个内容就是 JSON
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return trimmed;
+    }
+
+    // 2. 提取 ```json ... ``` 代码块
+    if let Some(start) = trimmed.find("```json") {
+        let json_start = start + 7;
+        if let Some(end) = trimmed[json_start..].find("```") {
+            return trimmed[json_start..json_start + end].trim();
+        }
+    }
+
+    // 3. 提取 ``` ... ``` 代码块
+    if let Some(start) = trimmed.find("```") {
+        let json_start = start + 3;
+        // 跳过语言标识符行
+        let after_marker = &trimmed[json_start..];
+        let json_start = if let Some(newline) = after_marker.find('\n') {
+            json_start + newline + 1
+        } else {
+            json_start
+        };
+        if let Some(end) = trimmed[json_start..].find("```") {
+            return trimmed[json_start..json_start + end].trim();
+        }
+    }
+
+    // 4. 找第一个 { 到最后一个 }
+    if let Some(start) = trimmed.find('{') {
+        if let Some(end) = trimmed.rfind('}') {
+            if end > start {
+                return &trimmed[start..=end];
+            }
+        }
+    }
+
+    trimmed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,6 +529,9 @@ mod tests {
             definition: Some("very bright".to_string()),
             translation: Some("出色的".to_string()),
             morphology: Some("brill.i.ant".to_string()),
+            pos: Some("adj.".to_string()),
+            phonetic: Some("/ˈbrɪl.li.ənt/".to_string()),
+            frequency: Some(1500),
         };
 
         let system = skill.build_system_prompt();
@@ -308,5 +540,6 @@ mod tests {
         let user = skill.build_user_prompt(&context);
         assert!(user.contains("brilliant"));
         assert!(user.contains("very bright"));
+        assert!(user.contains("adj."));
     }
 }

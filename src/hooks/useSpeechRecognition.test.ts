@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
-import { useSpeechRecognition } from "./useSpeechRecognition";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useSpeechRecognition } from './useSpeechRecognition';
 
 interface MockSpeechRecognitionInstance {
   continuous: boolean;
@@ -16,7 +16,7 @@ interface MockSpeechRecognitionInstance {
   abort: ReturnType<typeof vi.fn>;
 }
 
-describe("useSpeechRecognition", () => {
+describe('useSpeechRecognition', () => {
   let mockRecognition: MockSpeechRecognitionInstance;
 
   beforeEach(() => {
@@ -26,7 +26,7 @@ describe("useSpeechRecognition", () => {
     mockRecognition = {
       continuous: false,
       interimResults: false,
-      lang: "",
+      lang: '',
       maxAlternatives: 1,
       onresult: null,
       onerror: null,
@@ -41,23 +41,23 @@ describe("useSpeechRecognition", () => {
     (window as unknown as Record<string, unknown>).SpeechRecognition = vi.fn(() => mockRecognition);
   });
 
-  describe("initial state", () => {
-    it("should have correct initial state", () => {
+  describe('initial state', () => {
+    it('should have correct initial state', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       expect(result.current.isListening).toBe(false);
-      expect(result.current.interimTranscript).toBe("");
+      expect(result.current.interimTranscript).toBe('');
       expect(result.current.error).toBeNull();
       expect(result.current.isSupported).toBe(true);
     });
   });
 
-  describe("startListening", () => {
-    it("should start speech recognition", () => {
+  describe('startListening', () => {
+    it('should start speech recognition', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       expect(mockRecognition.start).toHaveBeenCalled();
@@ -65,73 +65,73 @@ describe("useSpeechRecognition", () => {
       expect(mockRecognition.interimResults).toBe(true);
     });
 
-    it("should set language from parameter", () => {
+    it('should set language from parameter', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("zh");
+        result.current.startListening('zh');
       });
 
-      expect(mockRecognition.lang).toBe("zh-CN");
+      expect(mockRecognition.lang).toBe('zh-CN');
     });
 
-    it("should default to en-US for auto", () => {
+    it('should default to en-US for auto', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("auto");
+        result.current.startListening('auto');
       });
 
-      expect(mockRecognition.lang).toBe("en-US");
+      expect(mockRecognition.lang).toBe('en-US');
     });
 
-    it("should abort existing recognition before starting new", () => {
+    it('should abort existing recognition before starting new', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       // Start first recognition
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       const firstRecognition = mockRecognition;
 
       // Start second recognition
       act(() => {
-        result.current.startListening("zh");
+        result.current.startListening('zh');
       });
 
       expect(firstRecognition.abort).toHaveBeenCalled();
     });
 
-    it("should clear previous error on start", () => {
+    it('should clear previous error on start', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       // Simulate error
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       act(() => {
-        mockRecognition.onerror?.({ error: "not-allowed" });
+        mockRecognition.onerror?.({ error: 'not-allowed' });
       });
 
       expect(result.current.error).toBeTruthy();
 
       // Start again
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       expect(result.current.error).toBeNull();
     });
   });
 
-  describe("stopListening", () => {
-    it("should stop speech recognition", () => {
+  describe('stopListening', () => {
+    it('should stop speech recognition', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       act(() => {
@@ -142,11 +142,11 @@ describe("useSpeechRecognition", () => {
       expect(result.current.isListening).toBe(false);
     });
 
-    it("should clear interim transcript on stop", () => {
+    it('should clear interim transcript on stop', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       // Simulate interim result
@@ -157,29 +157,29 @@ describe("useSpeechRecognition", () => {
             {
               isFinal: false,
               length: 1,
-              item: () => ({ transcript: "hello", confidence: 0.9 }),
-              0: { transcript: "hello", confidence: 0.9 },
+              item: () => ({ transcript: 'hello', confidence: 0.9 }),
+              0: { transcript: 'hello', confidence: 0.9 },
             },
           ],
         });
       });
 
-      expect(result.current.interimTranscript).toBe("hello");
+      expect(result.current.interimTranscript).toBe('hello');
 
       act(() => {
         result.current.stopListening();
       });
 
-      expect(result.current.interimTranscript).toBe("");
+      expect(result.current.interimTranscript).toBe('');
     });
   });
 
-  describe("onresult handler", () => {
-    it("should accumulate final results", () => {
+  describe('onresult handler', () => {
+    it('should accumulate final results', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       // Simulate final result
@@ -190,8 +190,8 @@ describe("useSpeechRecognition", () => {
             {
               isFinal: true,
               length: 1,
-              item: () => ({ transcript: "Hello ", confidence: 0.95 }),
-              0: { transcript: "Hello ", confidence: 0.95 },
+              item: () => ({ transcript: 'Hello ', confidence: 0.95 }),
+              0: { transcript: 'Hello ', confidence: 0.95 },
             },
           ],
         });
@@ -199,14 +199,14 @@ describe("useSpeechRecognition", () => {
 
       // Consume transcript
       const transcript = result.current.consumeTranscript();
-      expect(transcript).toBe("Hello ");
+      expect(transcript).toBe('Hello ');
     });
 
-    it("should update interim transcript", () => {
+    it('should update interim transcript', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       act(() => {
@@ -216,95 +216,95 @@ describe("useSpeechRecognition", () => {
             {
               isFinal: false,
               length: 1,
-              item: () => ({ transcript: "world", confidence: 0.8 }),
-              0: { transcript: "world", confidence: 0.8 },
+              item: () => ({ transcript: 'world', confidence: 0.8 }),
+              0: { transcript: 'world', confidence: 0.8 },
             },
           ],
         });
       });
 
-      expect(result.current.interimTranscript).toBe("world");
+      expect(result.current.interimTranscript).toBe('world');
     });
   });
 
-  describe("onerror handler", () => {
-    it("should handle not-allowed error", () => {
+  describe('onerror handler', () => {
+    it('should handle not-allowed error', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       act(() => {
-        mockRecognition.onerror?.({ error: "not-allowed" });
+        mockRecognition.onerror?.({ error: 'not-allowed' });
       });
 
-      expect(result.current.error).toBe("麦克风访问被拒绝，请允许麦克风权限");
+      expect(result.current.error).toBe('麦克风访问被拒绝，请允许麦克风权限');
     });
 
-    it("should ignore no-speech error", () => {
+    it('should ignore no-speech error', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       act(() => {
-        mockRecognition.onerror?.({ error: "no-speech" });
+        mockRecognition.onerror?.({ error: 'no-speech' });
       });
 
       expect(result.current.error).toBeNull();
     });
 
-    it("should handle network error", () => {
+    it('should handle network error', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       act(() => {
-        mockRecognition.onerror?.({ error: "network" });
+        mockRecognition.onerror?.({ error: 'network' });
       });
 
-      expect(result.current.error).toBe("网络错误，请检查网络连接");
+      expect(result.current.error).toBe('网络错误，请检查网络连接');
     });
 
-    it("should ignore aborted error", () => {
+    it('should ignore aborted error', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       act(() => {
-        mockRecognition.onerror?.({ error: "aborted" });
+        mockRecognition.onerror?.({ error: 'aborted' });
       });
 
       expect(result.current.error).toBeNull();
     });
 
-    it("should handle other errors", () => {
+    it('should handle other errors', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       act(() => {
-        mockRecognition.onerror?.({ error: "unknown-error" });
+        mockRecognition.onerror?.({ error: 'unknown-error' });
       });
 
-      expect(result.current.error).toBe("语音识别错误: unknown-error");
+      expect(result.current.error).toBe('语音识别错误: unknown-error');
     });
   });
 
-  describe("onend handler", () => {
-    it("should auto-restart if still listening", () => {
+  describe('onend handler', () => {
+    it('should auto-restart if still listening', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       // Simulate recognition end
@@ -316,11 +316,11 @@ describe("useSpeechRecognition", () => {
       expect(window.SpeechRecognition).toHaveBeenCalledTimes(2);
     });
 
-    it("should set isListening to false when stopped", () => {
+    it('should set isListening to false when stopped', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       act(() => {
@@ -336,12 +336,12 @@ describe("useSpeechRecognition", () => {
     });
   });
 
-  describe("consumeTranscript", () => {
-    it("should return accumulated transcript from single event", () => {
+  describe('consumeTranscript', () => {
+    it('should return accumulated transcript from single event', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       // Simulate a single result event with final result
@@ -352,26 +352,26 @@ describe("useSpeechRecognition", () => {
             {
               isFinal: true,
               length: 1,
-              item: () => ({ transcript: "Hello World", confidence: 0.95 }),
-              0: { transcript: "Hello World", confidence: 0.95 },
+              item: () => ({ transcript: 'Hello World', confidence: 0.95 }),
+              0: { transcript: 'Hello World', confidence: 0.95 },
             },
           ],
         });
       });
 
       const transcript = result.current.consumeTranscript();
-      expect(transcript).toBe("Hello World");
+      expect(transcript).toBe('Hello World');
 
       // Should be cleared after consume
       const emptyTranscript = result.current.consumeTranscript();
-      expect(emptyTranscript).toBe("");
+      expect(emptyTranscript).toBe('');
     });
 
-    it("should accumulate multiple final results in same event", () => {
+    it('should accumulate multiple final results in same event', () => {
       const { result } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       // Simulate result event with multiple final results
@@ -382,30 +382,30 @@ describe("useSpeechRecognition", () => {
             {
               isFinal: true,
               length: 1,
-              item: () => ({ transcript: "Hello ", confidence: 0.95 }),
-              0: { transcript: "Hello ", confidence: 0.95 },
+              item: () => ({ transcript: 'Hello ', confidence: 0.95 }),
+              0: { transcript: 'Hello ', confidence: 0.95 },
             },
             {
               isFinal: true,
               length: 1,
-              item: () => ({ transcript: "World", confidence: 0.9 }),
-              0: { transcript: "World", confidence: 0.9 },
+              item: () => ({ transcript: 'World', confidence: 0.9 }),
+              0: { transcript: 'World', confidence: 0.9 },
             },
           ],
         });
       });
 
       const transcript = result.current.consumeTranscript();
-      expect(transcript).toBe("Hello World");
+      expect(transcript).toBe('Hello World');
     });
   });
 
-  describe("cleanup", () => {
-    it("should abort recognition on unmount", () => {
+  describe('cleanup', () => {
+    it('should abort recognition on unmount', () => {
       const { result, unmount } = renderHook(() => useSpeechRecognition());
 
       act(() => {
-        result.current.startListening("en");
+        result.current.startListening('en');
       });
 
       unmount();
