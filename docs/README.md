@@ -28,13 +28,19 @@ Stale status dumps (`IMPLEMENTATION_STATUS`, `project-triage`, old MODULE_CHECKL
 | Hook / inject | (code + FEATURES; smoke before trust) | LunaTranslator |
 | Extension | [browser-vs-desktop.md](./browser-vs-desktop.md), [extension-hover-translation.md](./extension-hover-translation.md) | immersive-translate, read-frog |
 | Integration matrix | [integration-plan.md](./integration-plan.md) | five-source summary |
-| Local clones | `tmp/reference/` (gitignored) | see `tmp/reference/README.md` |
-| Reference deep study | [REFERENCE_STUDY.md](./REFERENCE_STUDY.md) | pot / STranslate / read-frog steal map (2026-07-26) |
+| Local clones | `tmp/reference/` (gitignored) | see `tmp/reference/README.md` (incl. AiNiee zip/extract) |
+| Reference deep study | [REFERENCE_STUDY.md](./REFERENCE_STUDY.md) | pot / STranslate / read-frog / **AiNiee** steal map |
+| Collection (生词本外送) | [COLLECTION.md](./COLLECTION.md) | Eudic / AnkiConnect / Shanbay |
+| LLM providers | [LLM_PROVIDERS.md](./LLM_PROVIDERS.md) | multi-endpoint router |
+| Unofficial engines | [ENGINES_UNOFFICIAL.md](./ENGINES_UNOFFICIAL.md) | web/scrape engines policy |
+| Offline OCR | [OCR_OFFLINE.md](./OCR_OFFLINE.md) | offline pack notes |
+| ECDICT | [ECDICT.md](./ECDICT.md) | local dict data |
 
 ## Other active docs
 
 - Plugins: [PLUGIN_API.md](./PLUGIN_API.md), [PLUGIN_DEV.md](./PLUGIN_DEV.md)
-- Dictionary / learning: [MULTI_SOURCE_DICTIONARY.md](./MULTI_SOURCE_DICTIONARY.md), [VOCABULARY_SYSTEM.md](./VOCABULARY_SYSTEM.md), [LEARNING_SYSTEM_ARCHITECTURE.md](./LEARNING_SYSTEM_ARCHITECTURE.md)
+- Dictionary / learning: [MULTI_SOURCE_DICTIONARY.md](./MULTI_SOURCE_DICTIONARY.md), [VOCABULARY_SYSTEM.md](./VOCABULARY_SYSTEM.md), [LEARNING_SYSTEM_ARCHITECTURE.md](./LEARNING_SYSTEM_ARCHITECTURE.md), [ECDICT.md](./ECDICT.md)
+- Engines: [ENGINE_SETTINGS.md](./ENGINE_SETTINGS.md), [ENGINE_FACADE_INVENTORY.md](./ENGINE_FACADE_INVENTORY.md), [LLM_PROVIDERS.md](./LLM_PROVIDERS.md), [ENGINES_UNOFFICIAL.md](./ENGINES_UNOFFICIAL.md)
 - Ops: [TROUBLESHOOTING.md](./TROUBLESHOOTING.md), [PERFORMANCE.md](./PERFORMANCE.md), [CONTRIBUTING.md](./CONTRIBUTING.md), [unsafe-guidelines.md](./unsafe-guidelines.md)
 - Cloud / multi-end (planned): [API_SPEC.md](./API_SPEC.md), [DATABASE.md](./DATABASE.md), [CROSS_PLATFORM.md](./CROSS_PLATFORM.md)
 

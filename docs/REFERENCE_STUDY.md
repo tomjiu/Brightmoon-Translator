@@ -15,6 +15,7 @@ Follow-up to [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md) §6 — previously
 | LunaTranslator | Product gaps only | Unchanged (inject deep-dive still frozen) |
 | immersive-translate | FEATURES gaps | Unchanged (dist-only clone) |
 | read-frog | Plan ideas | + host/translate batch, prompts, providers, content entry |
+| **AiNiee** | Missing | **2026-07-27** zip extract + A1–A3 ports (symbol repair, response check, numbered parse) — §6 |
 | youdao-dict | Policy only | Unchanged |
 
 ---
@@ -25,9 +26,9 @@ Follow-up to [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md) §6 — previously
 
 | # | Steal | Moon target |
 |---|--------|-------------|
-| **S1** | Event-driven clipboard (`AddClipboardFormatListener` + short settle + dedupe) | Kill poll stub in `commands/translate.rs`; reuse `hook_monitor` clipboard task; fix settings flag |
-| **S2** | Selection fetch: key-up → Ctrl+C → clipboard sequence wait | `selection/clipboard.rs`, replace path |
-| **S3** | Replace: cancel-if-running; optional type-vs-paste | `input_replacement_impl.rs`, `platform/windows.rs` |
+| **S1** | Event-driven clipboard (`AddClipboardFormatListener` + short settle + dedupe) | **Done** (main + hook + `clipboard_dedupe`; synthetic suppress 2026-07-26) |
+| **S2** | Selection fetch: key-up → Ctrl+C → clipboard sequence wait | **Done** (hotkey Released; modifier KeyUp; `GetClipboardSequenceNumber`; restore + mark) |
+| **S3** | Replace: cancel-if-running; optional type-vs-paste | **Done** (`in_flight` cancel-only; `useClipboardOutput` + type SendInput) |
 | **S4** | Capture returns **bitmap + PhysicalBounds** atomic | Already partially done; keep region in result, no cursor reverse-engineer |
 | **S5** | Hide **set** of result windows before snip | `OcrScreenshotTranslator` hide main + stale frames together |
 
@@ -97,7 +98,21 @@ Follow-up to [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md) §6 — previously
 
 ---
 
-## 6. Still not studied (honest)
+## 6. AiNiee (2026-07-27) — studied + ported slices
+
+Source: `tmp/reference/oss/AiNiee-extract/AiNiee-main/` (main.zip via ghfast; direct git clone flaky).
+
+| # | Steal | Moon target | Status |
+|---|--------|-------------|--------|
+| **A1** | `TextSymbolRepair` dialogue quotes / CJK punct | `post_process.rs` `repair_text_symbols` + `symbol_repair` config; `process_with_source` in translation finalize | Done |
+| **A2** | `ResponseChecker` line/empty/identical/newline | `response_check.rs`; warn after `translate_batch_core` | Done |
+| **A3** | Numbered `1.` batch parse | `parse_numbered_response` in `response_check.rs` | Done (API ready) |
+| **A4** | Game extractors (Mtool/T++/Renpy…) | Not needed for desktop OCR/clipboard product | Skip |
+| **A5** | PyQt UI / full file writers matrix | Already have docx/pdf/epub/subtitle paths | Skip |
+
+Do not copy: Qt UI, full plugin marketplace, game-only IO plugins.
+
+## 7. Still not studied (honest)
 
 | Target | Reason |
 |--------|--------|
@@ -106,10 +121,11 @@ Follow-up to [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md) §6 — previously
 | pot Anki/collection, full recognize engines list | Lower priority |
 | youdao resultui/skins | UX glance only if toolbar density needed |
 | STranslate full plugin marketplace packages | Marketplace frozen |
+| AiNiee NameExtractor / PromptBuilder depth | Optional later if LLM batch product expands |
 
 ---
 
-## 7. File index (absolute)
+## 8. File index (absolute)
 
 ### STranslate
 - `tmp/reference/oss/STranslate/src/STranslate/Core/OcrLayoutAnalyzer.cs`
@@ -127,3 +143,9 @@ Follow-up to [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md) §6 — previously
 - `.../utils/prompts/`, `utils/providers/`, `utils/request/batch-queue.ts`
 - `.../entrypoints/background/translation-queues.ts`
 - `.../entrypoints/host.content/`, `selection.content/`
+
+### AiNiee
+- `tmp/reference/oss/AiNiee-extract/AiNiee-main/ModuleFolders/Domain/TextSymbolRepair/TextSymbolRepair.py`
+- `.../Domain/ResponseChecker/{ResponseChecker,BaseChecks,AdvancedChecks}.py`
+- Moon ports: `src-tauri/src/post_process.rs`, `src-tauri/src/response_check.rs`
+- FE typography/icons: `src/index.css` (`.ui-*`), `src/components/{Icon,PageHeader}.tsx`
