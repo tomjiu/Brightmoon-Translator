@@ -67,11 +67,15 @@ Files: `ocrQuality.ts`, `OcrScreenshotTranslator.tsx`
 
 ## Manual smoke (must pass before claiming OCR fixed)
 
-1. Select region once → exactly one OCR cycle; no auto-flash.
-2. Narrow region (~100px tall text) → toolbar icons still usable (scroll or min width).
-3. Empty / garbage region → frame stays, error + retry, not closed.
-4. Enable follow → move target window; frame lag feels < ~100ms.
-5. Drag/resize frame → lines stay aligned; capture still matches content area.
+Full 11-step list: [OCR_SMOKE.md](./OCR_SMOKE.md). **Recommended order: 3 → 4 → 1 → 2 → 5–11.**
+
+Condensed gate (same intent):
+
+1. Narrow region → toolbar usable (smoke **#3**).
+2. Empty / garbage → frame stays, error + retry (smoke **#4**).
+3. Select once → one OCR cycle; no auto-flash (smoke **#1**).
+4. Overlay lines aligned (smoke **#2**).
+5. Follow + drag/resize (smoke **#8–9**, **#5–6**).
 
 ## Deferred: pinned region watch
 

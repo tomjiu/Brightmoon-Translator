@@ -18,6 +18,9 @@ Run: `pnpm run tauri dev`. Region-watch product expansion stays frozen until thi
 
 ## Manual steps
 
+编号不变（与代码对照表一致）。**推荐实操顺序：3 → 4 → 1 → 2 → 5–11**  
+（先验证窄框/空结果不崩，再一轮识别与叠字，最后拖缩、Follow、监视。）
+
 | # | Steps | Expect |
 |---|--------|--------|
 | 1 | 截图 → 框选一次 | 一轮识别+翻译；无明显双闪 |
@@ -32,4 +35,4 @@ Run: `pnpm run tauri dev`. Region-watch product expansion stays frozen until thi
 | 10 | ▶ 内容不动 | 少 OCR（可看 skip 日志） |
 | 11 | 滚动变字 | 更新译文 |
 
-失败时：**步骤号 + 现象**。
+失败时：**步骤号 + 现象**（仍用上表编号，不要用推荐顺序里的位次）。
