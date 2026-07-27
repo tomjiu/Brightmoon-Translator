@@ -125,13 +125,13 @@ pub fn register_all(app: &tauri::App, config: &HotkeyConfig) {
             });
     }
 
-    // Translate selection hotkey
+    // Translate selection: fire on key-up so modifiers are released before Ctrl+C (S2).
     if let Some(shortcut) = parse_hotkey(&config.translate_selection) {
         let app_handle = app.handle().clone();
         let _ = app
             .global_shortcut()
             .on_shortcut(shortcut, move |_app, _shortcut, event| {
-                if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                if event.state == tauri_plugin_global_shortcut::ShortcutState::Released {
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.emit("trigger-translate-selection", ());
                     }
@@ -139,13 +139,13 @@ pub fn register_all(app: &tauri::App, config: &HotkeyConfig) {
             });
     }
 
-    // Replace translate hotkey
+    // Replace translate: key-up so delivery SendInput is not blocked by held chord.
     if let Some(shortcut) = parse_hotkey(&config.replace_translate) {
         let app_handle = app.handle().clone();
         let _ = app
             .global_shortcut()
             .on_shortcut(shortcut, move |_app, _shortcut, event| {
-                if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                if event.state == tauri_plugin_global_shortcut::ShortcutState::Released {
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.emit("trigger-replace-translate", ());
                     }

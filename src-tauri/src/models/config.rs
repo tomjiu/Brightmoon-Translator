@@ -39,19 +39,35 @@ pub struct LlmProviderEntry {
     pub enabled: bool,
     #[serde(default)]
     pub models: Vec<String>, // 缓存的可用模型列表
+    /// Request wire format: "openai" | "anthropic" | "gemini"
+    #[serde(default = "default_api_format")]
+    pub api_format: String,
 }
 
-/// Resolved LLM endpoint for Router / LlmEngine (key + URL + model).
+/// Resolved LLM endpoint for Router / LlmEngine (key + URL + model + format).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LlmEndpoint {
     pub label: String,
     pub api_key: String,
     pub base_url: String,
     pub model: String,
+    pub api_format: String,
 }
 
 fn default_priority() -> i32 {
     0
+}
+
+fn default_api_format() -> String {
+    "openai".into()
+}
+
+pub fn normalize_api_format(s: &str) -> String {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "anthropic" | "claude" => "anthropic".into(),
+        "gemini" | "google" => "gemini".into(),
+        _ => "openai".into(),
+    }
 }
 
 impl LlmConfig {
@@ -99,6 +115,7 @@ impl LlmConfig {
                     } else {
                         p.model.trim().to_string()
                     },
+                    api_format: normalize_api_format(&p.api_format),
                 })
                 .collect();
         }
@@ -116,6 +133,7 @@ impl LlmConfig {
                 api_key,
                 base_url: self.base_url.clone(),
                 model: self.model.clone(),
+                api_format: "openai".into(),
             })
             .filter(|e| !e.api_key.is_empty())
             .collect()
@@ -139,6 +157,37 @@ pub struct EnginesConfig {
     pub offline: OfflineConfig,
     #[serde(default)]
     pub caiyun: CaiyunConfig,
+    /// Tatoeba example sentences (not MT).
+    #[serde(default)]
+    pub tatoeba: SimpleToggleEngine,
+    /// Baidu free web (unofficial).
+    #[serde(default, rename = "baiduWeb")]
+    pub baidu_web: SimpleToggleEngine,
+    /// Caiyun free web JWT path (unofficial).
+    #[serde(default, rename = "caiyunWeb")]
+    pub caiyun_web: SimpleToggleEngine,
+    /// Volcengine CRX free path (unofficial).
+    #[serde(default, rename = "volcengineWeb")]
+    pub volcengine_web: SimpleToggleEngine,
+    /// Tencent TranSmart free API.
+    #[serde(default)]
+    pub transmart: SimpleToggleEngine,
+    /// Naver Papago free web.
+    #[serde(default)]
+    pub papago: SimpleToggleEngine,
+}
+
+/// Enabled-only engine config (no credentials).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimpleToggleEngine {
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+impl Default for SimpleToggleEngine {
+    fn default() -> Self {
+        Self { enabled: false }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -393,6 +442,31 @@ fn default_ocr_engine() -> String {
     "winrt".to_string() // Changed from "auto" - WinRT is fast and reliable on Windows
 }
 
+/// Offline OCR sidecar (Rapid / Paddle) — models external.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfflineOcrConfig {
+    /// "rapid" | "paddle"
+    #[serde(default = "default_offline_ocr_backend")]
+    pub backend: String,
+    /// Directory with RapidOcrOnnx / PaddleOCR-json + models.
+    #[serde(default)]
+    pub plugin_dir: String,
+}
+
+fn default_offline_ocr_backend() -> String {
+    "rapid".into()
+}
+
+impl Default for OfflineOcrConfig {
+    fn default() -> Self {
+        Self {
+            backend: default_offline_ocr_backend(),
+            plugin_dir: String::new(),
+        }
+    }
+}
+
 fn default_llm_timeout_secs() -> u64 {
     120
 }
@@ -407,6 +481,50 @@ fn default_llm_max_tokens() -> u32 {
 
 fn default_translation_timeout_secs() -> u64 {
     30
+}
+
+fn default_tts_provider() -> String {
+    "edge".into()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenAiTtsConfig {
+    #[serde(default)]
+    pub api_key: String,
+    #[serde(default = "default_openai_tts_base")]
+    pub base_url: String,
+    #[serde(default = "default_openai_tts_model")]
+    pub model: String,
+    #[serde(default = "default_openai_tts_voice")]
+    pub voice: String,
+    #[serde(default = "default_openai_tts_speed")]
+    pub speed: f32,
+}
+
+fn default_openai_tts_base() -> String {
+    "https://api.openai.com/v1".into()
+}
+fn default_openai_tts_model() -> String {
+    "tts-1".into()
+}
+fn default_openai_tts_voice() -> String {
+    "alloy".into()
+}
+fn default_openai_tts_speed() -> f32 {
+    1.0
+}
+
+impl Default for OpenAiTtsConfig {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            base_url: default_openai_tts_base(),
+            model: default_openai_tts_model(),
+            voice: default_openai_tts_voice(),
+            speed: default_openai_tts_speed(),
+        }
+    }
 }
 
 fn default_edge_tts_token() -> String {
@@ -527,6 +645,9 @@ pub struct AppConfig {
     pub prompt_templates: Vec<PromptTemplate>,
     #[serde(default)]
     pub clipboard_monitor: bool,
+    /// Replace delivery: true = clipboard+Ctrl+V (default); false = Unicode type (STranslate-style).
+    #[serde(default = "default_true")]
+    pub use_clipboard_output: bool,
     #[serde(default)]
     pub auto_copy_result: bool,
     #[serde(default = "default_auto_copy_mode")]
@@ -562,9 +683,12 @@ pub struct AppConfig {
     /// Engine execution order for fallback routing (e.g., ["llm", "youdao", "google"])
     #[serde(default)]
     pub engine_order: Vec<String>,
-    /// OCR engine preference: "auto", "winrt", "youdao", "tesseract"
+    /// OCR engine preference: "auto", "winrt", "youdao", "tesseract", "rapid", "paddle"
     #[serde(default = "default_ocr_engine")]
     pub ocr_engine: String,
+    /// Offline OCR sidecar paths (when ocr_engine is rapid/paddle).
+    #[serde(default)]
+    pub offline_ocr: OfflineOcrConfig,
     #[serde(default = "default_overlay_level")]
     pub overlay_level: u8,
     #[serde(default = "default_overlay_auto_dismiss_ms")]
@@ -600,6 +724,12 @@ pub struct AppConfig {
     /// TTS: preferred voice name (empty = auto from language)
     #[serde(default)]
     pub tts_voice: String,
+    /// TTS provider: "edge" | "openai" | "youdao"
+    #[serde(default = "default_tts_provider")]
+    pub tts_provider: String,
+    /// OpenAI-compatible TTS settings
+    #[serde(default)]
+    pub openai_tts: OpenAiTtsConfig,
     /// HTTP request timeout in seconds (default: 30)
     #[serde(default = "default_http_timeout_secs")]
     pub http_timeout_secs: u64,
@@ -624,6 +754,177 @@ pub struct AppConfig {
     /// Cloud sync configuration (WebDAV)
     #[serde(default)]
     pub sync: SyncConfig,
+    /// External vocabulary collection (Eudic / Anki / Shanbay / Youdao / Maimemo). Not FSRS learning.
+    #[serde(default)]
+    pub collection: CollectionConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionConfig {
+    #[serde(default)]
+    pub eudic: EudicCollectionConfig,
+    #[serde(default)]
+    pub anki: AnkiCollectionConfig,
+    #[serde(default)]
+    pub shanbay: ShanbayCollectionConfig,
+    #[serde(default)]
+    pub youdao: YoudaoCollectionConfig,
+    #[serde(default)]
+    pub maimemo: MaimemoCollectionConfig,
+    /// After local wordbook add, also push to enabled remote targets.
+    #[serde(default = "default_true")]
+    pub auto_push_on_save: bool,
+}
+
+impl Default for CollectionConfig {
+    fn default() -> Self {
+        Self {
+            eudic: EudicCollectionConfig::default(),
+            anki: AnkiCollectionConfig::default(),
+            shanbay: ShanbayCollectionConfig::default(),
+            youdao: YoudaoCollectionConfig::default(),
+            maimemo: MaimemoCollectionConfig::default(),
+            auto_push_on_save: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EudicCollectionConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default = "default_eudic_book")]
+    pub book_name: String,
+}
+
+fn default_eudic_book() -> String {
+    "Moon".into()
+}
+
+impl Default for EudicCollectionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            token: String::new(),
+            book_name: default_eudic_book(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnkiCollectionConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_anki_port")]
+    pub port: u16,
+    #[serde(default = "default_anki_deck")]
+    pub deck: String,
+    #[serde(default = "default_anki_model")]
+    pub model: String,
+}
+
+fn default_anki_port() -> u16 {
+    8765
+}
+fn default_anki_deck() -> String {
+    "Moon".into()
+}
+fn default_anki_model() -> String {
+    "Moon Card".into()
+}
+
+impl Default for AnkiCollectionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: default_anki_port(),
+            deck: default_anki_deck(),
+            model: default_anki_model(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShanbayCollectionConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Cookie auth_token from Shanbay web login (see pot-app-collection-plugin-shanbay).
+    #[serde(default)]
+    pub credential: String,
+    #[serde(default)]
+    pub wordbook_id: String,
+}
+
+impl Default for ShanbayCollectionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            credential: String::new(),
+            wordbook_id: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YoudaoCollectionConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Full Cookie header from dict.youdao.com after login (pot-app-collection-plugin-youdao).
+    #[serde(default)]
+    pub cookie: String,
+    #[serde(default = "default_youdao_lan")]
+    pub lan: String,
+}
+
+fn default_youdao_lan() -> String {
+    "en".into()
+}
+
+impl Default for YoudaoCollectionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cookie: String::new(),
+            lan: default_youdao_lan(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MaimemoCollectionConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Open API token from 墨墨 App 实验功能.
+    #[serde(default)]
+    pub token: String,
+    /// Cloud notepad id; empty → create on first push.
+    #[serde(default)]
+    pub notepad_id: String,
+    #[serde(default = "default_maimemo_title")]
+    pub notepad_title: String,
+}
+
+fn default_maimemo_title() -> String {
+    "Moon".into()
+}
+
+impl Default for MaimemoCollectionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            token: String::new(),
+            notepad_id: String::new(),
+            notepad_title: default_maimemo_title(),
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -646,6 +947,7 @@ mod tests {
         assert_eq!(config.default_to, "zh");
         assert!(config.custom_prompt.is_empty());
         assert!(!config.clipboard_monitor);
+        assert!(config.use_clipboard_output);
         assert!(!config.auto_copy_result);
         assert_eq!(config.auto_copy_mode, "translated");
         assert!(!config.translation_mask);
@@ -797,6 +1099,7 @@ mod tests {
             priority,
             enabled,
             models: Vec::new(),
+            api_format: default_api_format(),
         }
     }
 
@@ -861,6 +1164,7 @@ mod tests {
                 api_key: "top-key".to_string(),
                 base_url: "https://api.deepseek.com/v1".to_string(),
                 model: "deepseek-chat".to_string(),
+                api_format: "openai".to_string(),
             }
         );
     }
@@ -1042,12 +1346,19 @@ impl Default for AppConfig {
                 yandex: YandexConfig::default(),
                 offline: OfflineConfig::default(),
                 caiyun: CaiyunConfig::default(),
+                tatoeba: SimpleToggleEngine::default(),
+                baidu_web: SimpleToggleEngine::default(),
+                caiyun_web: SimpleToggleEngine::default(),
+                volcengine_web: SimpleToggleEngine::default(),
+                transmart: SimpleToggleEngine::default(),
+                papago: SimpleToggleEngine::default(),
             },
             default_from: "auto".into(),
             default_to: "zh".into(),
             custom_prompt: String::new(),
             prompt_templates: Vec::new(),
             clipboard_monitor: false,
+            use_clipboard_output: true,
             auto_copy_result: false,
             auto_copy_mode: "translated".to_string(),
             translation_mask: false,
@@ -1065,6 +1376,7 @@ impl Default for AppConfig {
             routing_strategy: None,
             engine_order: Vec::new(),
             ocr_engine: default_ocr_engine(),
+            offline_ocr: OfflineOcrConfig::default(),
             overlay_level: 2,
             overlay_auto_dismiss_ms: 3000,
             overlay_follow_mode: "none".to_string(),
@@ -1077,6 +1389,8 @@ impl Default for AppConfig {
             furigana_enabled: false,
             tts_auto_play: false,
             tts_voice: String::new(),
+            tts_provider: default_tts_provider(),
+            openai_tts: OpenAiTtsConfig::default(),
             http_timeout_secs: default_http_timeout_secs(),
             ocr_timeout_secs: default_ocr_timeout_secs(),
             llm_timeout_secs: default_llm_timeout_secs(),
@@ -1085,6 +1399,7 @@ impl Default for AppConfig {
             translation_timeout_secs: default_translation_timeout_secs(),
             edge_tts_token: default_edge_tts_token(),
             sync: SyncConfig::default(),
+            collection: CollectionConfig::default(),
         }
     }
 }

@@ -96,6 +96,11 @@ impl AppConfig {
         self.engines.caiyun.api_token = encrypt_secret(&self.engines.caiyun.api_token);
         self.proxy.password = encrypt_secret(&self.proxy.password);
         self.sync.password = encrypt_secret(&self.sync.password);
+        self.collection.eudic.token = encrypt_secret(&self.collection.eudic.token);
+        self.collection.shanbay.credential = encrypt_secret(&self.collection.shanbay.credential);
+        self.collection.youdao.cookie = encrypt_secret(&self.collection.youdao.cookie);
+        self.collection.maimemo.token = encrypt_secret(&self.collection.maimemo.token);
+        self.openai_tts.api_key = encrypt_secret(&self.openai_tts.api_key);
     }
 
     /// Decrypt all sensitive fields in place after loading from disk.
@@ -118,6 +123,11 @@ impl AppConfig {
         self.engines.caiyun.api_token = decrypt_secret(&self.engines.caiyun.api_token);
         self.proxy.password = decrypt_secret(&self.proxy.password);
         self.sync.password = decrypt_secret(&self.sync.password);
+        self.collection.eudic.token = decrypt_secret(&self.collection.eudic.token);
+        self.collection.shanbay.credential = decrypt_secret(&self.collection.shanbay.credential);
+        self.collection.youdao.cookie = decrypt_secret(&self.collection.youdao.cookie);
+        self.collection.maimemo.token = decrypt_secret(&self.collection.maimemo.token);
+        self.openai_tts.api_key = decrypt_secret(&self.openai_tts.api_key);
     }
 
     /// Create a copy with all API keys masked for safe display/export.
@@ -142,6 +152,11 @@ impl AppConfig {
         masked.engines.caiyun.api_token = mask(&masked.engines.caiyun.api_token);
         masked.proxy.password = mask(&masked.proxy.password);
         masked.sync.password = mask(&masked.sync.password);
+        masked.collection.eudic.token = mask(&masked.collection.eudic.token);
+        masked.collection.shanbay.credential = mask(&masked.collection.shanbay.credential);
+        masked.collection.youdao.cookie = mask(&masked.collection.youdao.cookie);
+        masked.collection.maimemo.token = mask(&masked.collection.maimemo.token);
+        masked.openai_tts.api_key = mask(&masked.openai_tts.api_key);
         masked
     }
 }

@@ -107,6 +107,7 @@ describe('Type definitions', () => {
         customPrompt: '',
         promptTemplates: [],
         clipboardMonitor: false,
+        useClipboardOutput: true,
         autoCopyResult: false,
         autoCopyMode: 'translated',
         translationMask: false,

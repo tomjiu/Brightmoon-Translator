@@ -1,11 +1,17 @@
 pub mod baidu;
+pub mod baidu_web;
 pub mod caiyun;
+pub mod caiyun_web;
 pub mod deepl;
 pub mod deeplx;
 pub mod google;
 pub mod llm;
 pub mod microsoft;
 pub mod offline;
+pub mod papago;
+pub mod tatoeba;
+pub mod transmart;
+pub mod volcengine_web;
 pub mod yandex;
 pub mod youdao;
 
@@ -140,6 +146,7 @@ impl Router {
                     api_key: e.api_key,
                     base_url: e.base_url,
                     model: e.model,
+                    api_format: e.api_format,
                 })
                 .collect();
             let mut engine = llm::LlmEngine::with_endpoints(endpoint_cfgs)
@@ -245,6 +252,46 @@ impl Router {
             available.push(EngineEntry {
                 id: "google".to_string(),
                 engine: Arc::new(google::GoogleEngine::new().with_client(client.clone())),
+            });
+        }
+
+        // Unofficial / free-config engines (may break; default off)
+        if config.engines.tatoeba.enabled {
+            available.push(EngineEntry {
+                id: "tatoeba".to_string(),
+                engine: Arc::new(tatoeba::TatoebaEngine::new().with_client(client.clone())),
+            });
+        }
+        if config.engines.baidu_web.enabled {
+            available.push(EngineEntry {
+                id: "baidu_web".to_string(),
+                engine: Arc::new(baidu_web::BaiduWebEngine::new().with_client(client.clone())),
+            });
+        }
+        if config.engines.caiyun_web.enabled {
+            available.push(EngineEntry {
+                id: "caiyun_web".to_string(),
+                engine: Arc::new(caiyun_web::CaiyunWebEngine::new().with_client(client.clone())),
+            });
+        }
+        if config.engines.volcengine_web.enabled {
+            available.push(EngineEntry {
+                id: "volcengine_web".to_string(),
+                engine: Arc::new(
+                    volcengine_web::VolcengineWebEngine::new().with_client(client.clone()),
+                ),
+            });
+        }
+        if config.engines.transmart.enabled {
+            available.push(EngineEntry {
+                id: "transmart".to_string(),
+                engine: Arc::new(transmart::TransmartEngine::new().with_client(client.clone())),
+            });
+        }
+        if config.engines.papago.enabled {
+            available.push(EngineEntry {
+                id: "papago".to_string(),
+                engine: Arc::new(papago::PapagoEngine::new().with_client(client.clone())),
             });
         }
 

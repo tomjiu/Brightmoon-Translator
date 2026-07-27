@@ -119,6 +119,78 @@ pub async fn synthesize(text: &str, voice: &str) -> anyhow::Result<Vec<u8>> {
     synthesize_with_token(text, voice, "").await
 }
 
+/// OpenAI-compatible TTS: POST {base}/audio/speech
+pub async fn synthesize_openai(
+    text: &str,
+    api_key: &str,
+    base_url: &str,
+    model: &str,
+    voice: &str,
+    speed: f32,
+) -> anyhow::Result<Vec<u8>> {
+    if api_key.trim().is_empty() {
+        anyhow::bail!("OpenAI TTS api_key is empty");
+    }
+    let mut base = base_url.trim().trim_end_matches('/').to_string();
+    if base.is_empty() {
+        base = "https://api.openai.com/v1".into();
+    }
+    if !base.starts_with("http") {
+        base = format!("https://{base}");
+    }
+    let url = if base.ends_with("/audio/speech") {
+        base
+    } else {
+        format!("{base}/audio/speech")
+    };
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({
+        "model": if model.is_empty() { "tts-1" } else { model },
+        "voice": if voice.is_empty() { "alloy" } else { voice },
+        "speed": if speed <= 0.0 { 1.0 } else { speed },
+        "input": text,
+    });
+    let resp = client
+        .post(&url)
+        .bearer_auth(api_key.trim())
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+    let status = resp.status();
+    if !status.is_success() {
+        let err_body = resp.text().await.unwrap_or_default();
+        anyhow::bail!(
+            "OpenAI TTS HTTP {}: {}",
+            status,
+            err_body.chars().take(200).collect::<String>()
+        );
+    }
+    Ok(resp.bytes().await?.to_vec())
+}
+
+/// Youdao dictvoice (good for words; weak for long text).
+pub async fn synthesize_youdao_dictvoice(text: &str, lang: &str) -> anyhow::Result<Vec<u8>> {
+    // type=1 UK, type=2 US; default US for en, type=2 otherwise
+    let voice_type = if lang.starts_with("en") { "2" } else { "2" };
+    let url = format!(
+        "https://dict.youdao.com/dictvoice?audio={}&type={}",
+        urlencoding::encode(text),
+        voice_type
+    );
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "Mozilla/5.0")
+        .send()
+        .await?;
+    let status = resp.status();
+    if !status.is_success() {
+        anyhow::bail!("Youdao dictvoice HTTP {status}");
+    }
+    Ok(resp.bytes().await?.to_vec())
+}
+
 pub async fn synthesize_with_token(
     text: &str,
     voice: &str,

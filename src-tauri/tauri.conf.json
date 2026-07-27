@@ -4,22 +4,23 @@
   "identifier": "com.moon.translator",
   "build": {
     "beforeDevCommand": "pnpm run dev",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://127.0.0.1:5173",
     "beforeBuildCommand": "pnpm run build",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
-        "title": "Moon Translator",
+        "title": "",
         "width": 900,
         "height": 600,
         "minWidth": 700,
         "minHeight": 500,
         "center": true,
         "resizable": true,
+        "decorations": false,
         "visible": true,
-        "backgroundColor": "#0f1115"
+        "backgroundColor": "#000000"
       }
     ],
     "security": {

@@ -16,13 +16,15 @@ fn sanitize_llm_error(status: reqwest::StatusCode, body: &str) -> String {
     format!("LLM API error {}: {}", status, sanitized)
 }
 
-/// Single LLM endpoint (key + URL + model) for ordered failover.
+/// Single LLM endpoint (key + URL + model + wire format) for ordered failover.
 #[derive(Debug, Clone)]
 pub struct LlmEndpointConfig {
     pub label: String,
     pub api_key: String,
     pub base_url: String,
     pub model: String,
+    /// "openai" | "anthropic" | "gemini"
+    pub api_format: String,
 }
 
 pub struct LlmEngine {
@@ -87,6 +89,7 @@ impl LlmEngine {
                 api_key: api_key.to_string(),
                 base_url: base_url.trim_end_matches('/').to_string(),
                 model: model.to_string(),
+                api_format: "openai".to_string(),
             });
         }
         Self {
@@ -115,6 +118,7 @@ impl LlmEngine {
                 api_key,
                 base_url: base_url.clone(),
                 model: model.clone(),
+                api_format: "openai".to_string(),
             })
             .collect();
         Self {
@@ -250,66 +254,39 @@ impl LlmEngine {
 
     /// Shared non-streaming LLM call with ordered endpoint failover.
     async fn call_llm_with_messages(&self, messages: Vec<Message>) -> anyhow::Result<String> {
+        self.call_llm_with_messages_temp(messages, self.temperature)
+            .await
+    }
+
+    async fn call_llm_with_messages_temp(
+        &self,
+        messages: Vec<Message>,
+        temperature: f32,
+    ) -> anyhow::Result<String> {
         let total = self.endpoints.len();
         let mut last_error = String::new();
 
         for (attempt, ep) in self.endpoints.iter().enumerate() {
-            let request = ChatRequest {
-                model: ep.model.clone(),
-                messages: messages.clone(),
-                temperature: self.temperature,
-                max_tokens: self.max_tokens,
-                stream: false,
-            };
-            let url = format!("{}/chat/completions", ep.base_url);
-
-            let mut req = self.client.post(&url).json(&request);
-            if !ep.api_key.is_empty() {
-                req = req.bearer_auth(&ep.api_key);
-            }
-
             let label = crate::security::sanitize_log_message(&ep.label);
-            match req.send().await {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        tracing::warn!(
-                            "Endpoint '{}' attempt {} failed: LLM API error {}: {}",
-                            label,
-                            attempt + 1,
-                            status,
-                            crate::security::sanitize_log_message(&body)
-                        );
-                        last_error = sanitize_llm_error(status, &body);
-                        continue;
-                    }
-
-                    let chat_resp: ChatResponse = resp.json().await?;
-                    let content = chat_resp
-                        .choices
-                        .first()
-                        .map(|c| c.message.content.trim().to_string())
-                        .ok_or_else(|| {
-                            anyhow::anyhow!("LLM API returned no choices in response")
-                        })?;
-
-                    return Ok(content);
-                },
+            let format = crate::models::config::normalize_api_format(&ep.api_format);
+            match self
+                .call_one_endpoint(ep, &format, &messages, temperature)
+                .await
+            {
+                Ok(content) => return Ok(content),
                 Err(e) => {
-                    last_error = format!("Request failed: {}", e);
+                    last_error = e;
                     tracing::warn!(
                         "Endpoint '{}' attempt {} failed: {}",
                         label,
                         attempt + 1,
-                        last_error
+                        crate::security::sanitize_log_message(&last_error)
                     );
                     continue;
                 },
             }
         }
 
-        // No endpoints: still attempt once with empty key / empty URL shape for consistent errors
         if total == 0 {
             last_error = "No LLM endpoints configured".to_string();
         }
@@ -319,6 +296,223 @@ impl LlmEngine {
             total,
             last_error
         ))
+    }
+
+    async fn call_one_endpoint(
+        &self,
+        ep: &LlmEndpointConfig,
+        format: &str,
+        messages: &[Message],
+        temperature: f32,
+    ) -> Result<String, String> {
+        match format {
+            "anthropic" => self.call_anthropic(ep, messages, temperature).await,
+            "gemini" => self.call_gemini(ep, messages, temperature).await,
+            _ => self.call_openai_compat(ep, messages, temperature).await,
+        }
+    }
+
+    async fn call_openai_compat(
+        &self,
+        ep: &LlmEndpointConfig,
+        messages: &[Message],
+        temperature: f32,
+    ) -> Result<String, String> {
+        let request = ChatRequest {
+            model: ep.model.clone(),
+            messages: messages.to_vec(),
+            temperature,
+            max_tokens: self.max_tokens,
+            stream: false,
+        };
+        let url = format!("{}/chat/completions", ep.base_url);
+        let mut req = self.client.post(&url).json(&request);
+        if !ep.api_key.is_empty() {
+            req = req.bearer_auth(&ep.api_key);
+        }
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {e}"))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(sanitize_llm_error(status, &body));
+        }
+        let chat_resp: ChatResponse = resp
+            .json()
+            .await
+            .map_err(|e| format!("Parse OpenAI response: {e}"))?;
+        chat_resp
+            .choices
+            .first()
+            .map(|c| c.message.content.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "LLM API returned no choices in response".into())
+    }
+
+    async fn call_anthropic(
+        &self,
+        ep: &LlmEndpointConfig,
+        messages: &[Message],
+        _temperature: f32,
+    ) -> Result<String, String> {
+        let mut system = String::new();
+        let mut anth_messages = Vec::new();
+        for m in messages {
+            if m.role == "system" {
+                if !system.is_empty() {
+                    system.push('\n');
+                }
+                system.push_str(&m.content);
+            } else {
+                let role = if m.role == "assistant" {
+                    "assistant"
+                } else {
+                    "user"
+                };
+                anth_messages.push(serde_json::json!({
+                    "role": role,
+                    "content": m.content,
+                }));
+            }
+        }
+        if anth_messages.is_empty() {
+            return Err("Anthropic: no user messages".into());
+        }
+
+        let mut body = serde_json::json!({
+            "model": ep.model,
+            "max_tokens": self.max_tokens,
+            "messages": anth_messages,
+        });
+        if !system.is_empty() {
+            body["system"] = serde_json::json!(system);
+        }
+
+        let url = format!("{}/messages", ep.base_url.trim_end_matches('/'));
+        let mut req = self
+            .client
+            .post(&url)
+            .header("anthropic-version", "2023-06-01")
+            .header("Content-Type", "application/json")
+            .json(&body);
+        if !ep.api_key.is_empty() {
+            req = req.header("x-api-key", &ep.api_key);
+        }
+
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| format!("Anthropic request failed: {e}"))?;
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(sanitize_llm_error(status, &text));
+        }
+        let v: serde_json::Value =
+            serde_json::from_str(&text).map_err(|e| format!("Anthropic JSON: {e}"))?;
+        let mut out = String::new();
+        if let Some(arr) = v.get("content").and_then(|c| c.as_array()) {
+            for part in arr {
+                if part.get("type").and_then(|t| t.as_str()) == Some("text") {
+                    if let Some(t) = part.get("text").and_then(|t| t.as_str()) {
+                        out.push_str(t);
+                    }
+                }
+            }
+        }
+        let out = out.trim().to_string();
+        if out.is_empty() {
+            Err("Anthropic: empty content".into())
+        } else {
+            Ok(out)
+        }
+    }
+
+    async fn call_gemini(
+        &self,
+        ep: &LlmEndpointConfig,
+        messages: &[Message],
+        temperature: f32,
+    ) -> Result<String, String> {
+        let mut system_bits = Vec::new();
+        let mut contents = Vec::new();
+        for m in messages {
+            if m.role == "system" {
+                system_bits.push(m.content.clone());
+                continue;
+            }
+            let role = if m.role == "assistant" {
+                "model"
+            } else {
+                "user"
+            };
+            contents.push(serde_json::json!({
+                "role": role,
+                "parts": [{ "text": m.content }]
+            }));
+        }
+        if contents.is_empty() {
+            return Err("Gemini: no user messages".into());
+        }
+
+        let mut body = serde_json::json!({
+            "contents": contents,
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": self.max_tokens,
+            }
+        });
+        if !system_bits.is_empty() {
+            body["systemInstruction"] = serde_json::json!({
+                "parts": [{ "text": system_bits.join("\n") }]
+            });
+        }
+
+        let base = ep.base_url.trim_end_matches('/');
+        let model = ep.model.trim().trim_start_matches("models/");
+        let mut url = format!("{base}/models/{model}:generateContent");
+        if !ep.api_key.is_empty() {
+            url.push_str(&format!("?key={}", urlencoding::encode(&ep.api_key)));
+        }
+
+        let resp = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Gemini request failed: {e}"))?;
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(sanitize_llm_error(status, &text));
+        }
+        let v: serde_json::Value =
+            serde_json::from_str(&text).map_err(|e| format!("Gemini JSON: {e}"))?;
+        let mut out = String::new();
+        if let Some(cands) = v.get("candidates").and_then(|c| c.as_array()) {
+            if let Some(parts) = cands
+                .first()
+                .and_then(|c| c.pointer("/content/parts"))
+                .and_then(|p| p.as_array())
+            {
+                for p in parts {
+                    if let Some(t) = p.get("text").and_then(|t| t.as_str()) {
+                        out.push_str(t);
+                    }
+                }
+            }
+        }
+        let out = out.trim().to_string();
+        if out.is_empty() {
+            Err("Gemini: empty candidates".into())
+        } else {
+            Ok(out)
+        }
     }
 
     /// Non-streaming LLM call with system_prompt and user_text convenience wrapper
@@ -346,77 +540,11 @@ impl LlmEngine {
                 content: user_text.to_string(),
             },
         ];
-        let total = self.endpoints.len();
-        let mut last_error = String::new();
-
-        for (attempt, ep) in self.endpoints.iter().enumerate() {
-            let request = ChatRequest {
-                model: ep.model.clone(),
-                messages: messages.clone(),
-                temperature,
-                max_tokens: self.max_tokens,
-                stream: false,
-            };
-            let url = format!("{}/chat/completions", ep.base_url);
-
-            let mut req = self.client.post(&url).json(&request);
-            if !ep.api_key.is_empty() {
-                req = req.bearer_auth(&ep.api_key);
-            }
-
-            let label = crate::security::sanitize_log_message(&ep.label);
-            match req.send().await {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if !status.is_success() {
-                        let body = resp.text().await.unwrap_or_default();
-                        tracing::warn!(
-                            "Endpoint '{}' attempt {} failed: LLM API error {}: {}",
-                            label,
-                            attempt + 1,
-                            status,
-                            crate::security::sanitize_log_message(&body)
-                        );
-                        last_error = sanitize_llm_error(status, &body);
-                        continue;
-                    }
-
-                    let chat_resp: ChatResponse = resp.json().await?;
-                    let content = chat_resp
-                        .choices
-                        .first()
-                        .map(|c| c.message.content.trim().to_string())
-                        .ok_or_else(|| {
-                            anyhow::anyhow!("LLM API returned no choices in response")
-                        })?;
-
-                    return Ok(content);
-                },
-                Err(e) => {
-                    last_error = format!("Request failed: {}", e);
-                    tracing::warn!(
-                        "Endpoint '{}' attempt {} failed: {}",
-                        label,
-                        attempt + 1,
-                        last_error
-                    );
-                    continue;
-                },
-            }
-        }
-
-        if total == 0 {
-            last_error = "No LLM endpoints configured".to_string();
-        }
-
-        Err(anyhow::anyhow!(
-            "All {} endpoints failed. Last error: {}",
-            total,
-            last_error
-        ))
+        self.call_llm_with_messages_temp(messages, temperature)
+            .await
     }
 
-    /// Streaming uses the first endpoint only (multi-endpoint stream failover is YAGNI).
+    /// Streaming uses the first endpoint only; non-openai formats fall back to non-stream.
     async fn stream_llm(
         &self,
         messages: Vec<Message>,
@@ -426,6 +554,16 @@ impl LlmEngine {
             .endpoints
             .first()
             .ok_or_else(|| anyhow::anyhow!("No LLM endpoints configured"))?;
+
+        let format = crate::models::config::normalize_api_format(&ep.api_format);
+        if format != "openai" {
+            let content = self
+                .call_one_endpoint(ep, &format, &messages, self.temperature)
+                .await
+                .map_err(|e| anyhow::anyhow!(e))?;
+            let _ = tx.send(content.clone()).await;
+            return Ok(content);
+        }
 
         let request = ChatRequest {
             model: ep.model.clone(),

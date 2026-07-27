@@ -28,15 +28,21 @@ pub trait InputReplacement: Send + Sync {
     /// Get the currently selected text in the target application
     async fn get_selected_text(&self) -> Result<String, TranslationError>;
 
-    /// Translate the selected text and replace it in-place
+    /// Translate the selected text and replace it in-place.
+    /// `use_clipboard_output`: true = Ctrl+V paste; false = Unicode type.
     async fn replace_translate(
         &self,
         from: &str,
         to: &str,
+        use_clipboard_output: bool,
     ) -> Result<ReplacementResult, TranslationError>;
 
     /// Replace specific text in the target application
-    async fn replace_text(&self, text: &str) -> Result<bool, TranslationError>;
+    async fn replace_text(
+        &self,
+        text: &str,
+        use_clipboard_output: bool,
+    ) -> Result<bool, TranslationError>;
 
     /// Translate and replace specific text
     async fn translate_and_replace(
@@ -44,5 +50,6 @@ pub trait InputReplacement: Send + Sync {
         text: &str,
         from: &str,
         to: &str,
+        use_clipboard_output: bool,
     ) -> Result<ReplacementResult, TranslationError>;
 }

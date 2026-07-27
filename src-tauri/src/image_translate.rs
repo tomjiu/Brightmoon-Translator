@@ -575,6 +575,40 @@ async fn run_image_ocr(
             )
             .await
         },
+        "rapid" | "paddle" => {
+            let cfg = crate::config::AppConfig::load();
+            let backend = engine_type.to_string();
+            let plugin_dir = if cfg.offline_ocr.plugin_dir.trim().is_empty() {
+                // allow ocrEngine=rapid/paddle with path only in offlineOcr
+                cfg.offline_ocr.plugin_dir.clone()
+            } else {
+                cfg.offline_ocr.plugin_dir.clone()
+            };
+            let png = png_bytes.clone();
+            let lang_for_ocr = lang_owned.clone();
+            let text = tokio::task::spawn_blocking(move || {
+                crate::ocr_offline::run_offline_ocr(
+                    &png,
+                    &backend,
+                    &plugin_dir,
+                    lang_for_ocr.as_deref(),
+                )
+            })
+            .await
+            .map_err(|e| format!("Offline OCR join: {e}"))??;
+            // Sidecar returns plain text; synthesize one full-image line box.
+            Ok(crate::commands::capture::OcrResultDetailed {
+                lines: vec![crate::commands::capture::OcrLineResult {
+                    text: text.clone(),
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                    words: vec![],
+                }],
+                text,
+            })
+        },
         _ => {
             // Default to WinRT OCR
             crate::commands::capture::run_winrt_ocr_detailed_from_bytes(

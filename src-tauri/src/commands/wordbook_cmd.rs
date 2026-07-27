@@ -1,3 +1,4 @@
+use crate::collection::CollectionPushReport;
 use crate::memory::WordBookItem;
 use crate::AppState;
 use tauri::State;
@@ -16,15 +17,44 @@ pub async fn add_wordbook_entry(
     from_lang: String,
     to_lang: String,
     note: Option<String>,
-) -> Result<(), String> {
-    let wordbook = state.document.wordbook.lock().await;
-    wordbook.add(
-        &word,
-        &translation,
-        &from_lang,
-        &to_lang,
-        note.as_deref().unwrap_or(""),
-    )
+) -> Result<CollectionPushReport, String> {
+    let note_str = note.unwrap_or_default();
+    {
+        let wordbook = state.document.wordbook.lock().await;
+        wordbook.add(&word, &translation, &from_lang, &to_lang, &note_str)?;
+    }
+
+    // Optional remote collection (Eudic/Anki/Shanbay). Failures must not undo local save.
+    let (auto_push, collection) = {
+        let cfg = state.system.config.lock().await;
+        (cfg.collection.auto_push_on_save, cfg.collection.clone())
+    };
+    if !auto_push {
+        return Ok(CollectionPushReport {
+            results: Vec::new(),
+        });
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+    let item = crate::collection::CollectionItem {
+        word,
+        translation,
+        note: note_str,
+        from_lang,
+        to_lang,
+    };
+    let report = crate::collection::push_enabled(&client, &collection, &item).await;
+    for r in &report.results {
+        if r.ok {
+            tracing::info!("collection {}: {}", r.target, r.message);
+        } else {
+            tracing::warn!("collection {} failed: {}", r.target, r.message);
+        }
+    }
+    Ok(report)
 }
 
 #[tauri::command]

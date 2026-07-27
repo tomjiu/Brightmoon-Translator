@@ -356,13 +356,14 @@ pub async fn translate_selection_with_text(
 }
 
 /// Get selected text via SelectionProviderManager, translate, and replace in foreground app.
-/// Uses the InputReplacement capability: selection → translate → clipboard paste.
+/// Uses the InputReplacement capability: selection → translate → clipboard paste or type.
 /// No frontend clipboard read needed — the capability handles everything.
 #[tauri::command]
 pub async fn replace_translate(state: State<'_, AppState>) -> Result<ReplacementResult, AppError> {
     let config = state.system.config.lock().await;
     let from = config.default_from.clone();
     let to = config.default_to.clone();
+    let use_clipboard_output = config.use_clipboard_output;
     drop(config);
 
     let cap = state.input_replacement.get().ok_or_else(|| {
@@ -370,7 +371,7 @@ pub async fn replace_translate(state: State<'_, AppState>) -> Result<Replacement
     })?;
 
     let result = cap
-        .replace_translate(&from, &to)
+        .replace_translate(&from, &to, use_clipboard_output)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -380,11 +381,16 @@ pub async fn replace_translate(state: State<'_, AppState>) -> Result<Replacement
 /// Replace text in the foreground application via the InputReplacement capability.
 #[tauri::command]
 pub async fn replace_text_in_app(state: State<'_, AppState>, text: String) -> Result<(), AppError> {
+    let use_clipboard_output = {
+        let config = state.system.config.lock().await;
+        config.use_clipboard_output
+    };
+
     let cap = state.input_replacement.get().ok_or_else(|| {
         AppError::Internal("InputReplacement capability not initialized".to_string())
     })?;
 
-    cap.replace_text(&text)
+    cap.replace_text(&text, use_clipboard_output)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(())

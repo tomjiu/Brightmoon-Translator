@@ -50,7 +50,8 @@ fn get_clipboard_selection() -> Option<(String, String)> {
         use std::mem::size_of;
         use windows::Win32::UI::Input::KeyboardAndMouse::{
             SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
-            KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_C, VK_CONTROL,
+            KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_C, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT,
+            VK_LWIN, VK_MENU, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
         };
 
         extern "system" {
@@ -60,6 +61,7 @@ fn get_clipboard_selection() -> Option<(String, String)> {
             fn SetClipboardData(uFormat: u32, hMem: *mut std::ffi::c_void)
                 -> *mut std::ffi::c_void;
             fn GetClipboardData(uFormat: u32) -> *mut std::ffi::c_void;
+            fn GetClipboardSequenceNumber() -> u32;
             fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut std::ffi::c_void;
             fn GlobalLock(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
             fn GlobalUnlock(hMem: *mut std::ffi::c_void) -> i32;
@@ -70,7 +72,6 @@ fn get_clipboard_selection() -> Option<(String, String)> {
         const CF_UNICODETEXT: u32 = 13;
         const GMEM_MOVEABLE: u32 = 0x0002;
 
-        // Use windows crate INPUT (40 bytes on x64) — manual type+ [u8;24] was 28 and broke SendInput.
         fn make_input(vk: VIRTUAL_KEY, flags: KEYBD_EVENT_FLAGS) -> INPUT {
             INPUT {
                 r#type: INPUT_KEYBOARD,
@@ -86,19 +87,74 @@ fn get_clipboard_selection() -> Option<(String, String)> {
             }
         }
 
+        /// Release stuck modifiers so hotkey chords do not break Ctrl+C (STranslate SendCtrlCV).
+        unsafe fn release_modifiers() {
+            let mods = [
+                VK_CONTROL,
+                VK_LCONTROL,
+                VK_RCONTROL,
+                VK_SHIFT,
+                VK_LSHIFT,
+                VK_RSHIFT,
+                VK_MENU,
+                VK_LMENU,
+                VK_RMENU,
+                VK_LWIN,
+                VK_RWIN,
+            ];
+            let inputs: Vec<INPUT> = mods
+                .iter()
+                .map(|vk| make_input(*vk, KEYEVENTF_KEYUP))
+                .collect();
+            let _ = SendInput(&inputs, size_of::<INPUT>() as i32);
+        }
+
+        unsafe fn read_unicode_text() -> Option<String> {
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                return None;
+            }
+            let h_data = GetClipboardData(CF_UNICODETEXT);
+            let text = if !h_data.is_null() {
+                let p_data = GlobalLock(h_data);
+                if !p_data.is_null() {
+                    let size = GlobalSize(h_data);
+                    let out = if size > 2 {
+                        let slice = std::slice::from_raw_parts(p_data as *const u16, size / 2);
+                        let text = String::from_utf16_lossy(slice);
+                        Some(text.trim_end_matches('\0').to_string())
+                    } else {
+                        None
+                    };
+                    GlobalUnlock(h_data);
+                    out
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            CloseClipboard();
+            text
+        }
+
+        struct SyntheticGuard;
+        impl Drop for SyntheticGuard {
+            fn drop(&mut self) {
+                crate::clipboard_dedupe::end_synthetic_clipboard();
+            }
+        }
+
         // SAFETY: Win32 clipboard and input simulation APIs.
-        // Clipboard is saved/restored properly. SendInput simulates Ctrl+C.
         unsafe {
-            // Get foreground window title
+            crate::clipboard_dedupe::begin_synthetic_clipboard();
+            let _synthetic = SyntheticGuard;
+
             let hwnd = GetForegroundWindow();
             let window_title = get_window_title(hwnd);
 
-            // Save current clipboard content
-            let mut clipboard_was_opened = false;
+            let seq_before = GetClipboardSequenceNumber();
             let mut saved_text: Option<Vec<u8>> = None;
-
             if OpenClipboard(std::ptr::null_mut()) != 0 {
-                clipboard_was_opened = true;
                 let h_data = GetClipboardData(CF_UNICODETEXT);
                 if !h_data.is_null() {
                     let p_data = GlobalLock(h_data);
@@ -116,15 +172,10 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 tracing::warn!("[clipboard] Failed to open clipboard for saving");
             }
 
-            // Clear clipboard before simulating Ctrl+C
-            if OpenClipboard(std::ptr::null_mut()) != 0 {
-                EmptyClipboard();
-                CloseClipboard();
-            } else {
-                tracing::warn!("[clipboard] Failed to open clipboard for clearing");
-            }
+            // STranslate-style: do not empty first; wait for sequence change after Ctrl+C.
+            release_modifiers();
+            std::thread::sleep(std::time::Duration::from_millis(20));
 
-            // Simulate Ctrl+C
             let inputs = [
                 make_input(VK_CONTROL, KEYBD_EVENT_FLAGS(0)),
                 make_input(VK_C, KEYBD_EVENT_FLAGS(0)),
@@ -138,101 +189,55 @@ fn get_clipboard_selection() -> Option<(String, String)> {
                 );
             }
 
-            // Adaptive wait: poll clipboard every 50ms, up to 500ms
-            let mut clipboard_ready = false;
-            for _ in 0..10 {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                if OpenClipboard(std::ptr::null_mut()) != 0 {
-                    let h_data = GetClipboardData(CF_UNICODETEXT);
-                    let has_content = if !h_data.is_null() {
-                        let p_data = GlobalLock(h_data);
-                        let size = if !p_data.is_null() {
-                            GlobalSize(h_data)
-                        } else {
-                            0
-                        };
-                        if !p_data.is_null() {
-                            GlobalUnlock(h_data);
-                        }
-                        size > 2
-                    } else {
-                        false
-                    };
-                    CloseClipboard();
-                    if has_content {
-                        clipboard_ready = true;
-                        break;
-                    }
+            // Wait for GetClipboardSequenceNumber change (10ms × 50 = 500ms)
+            let mut seq_changed = false;
+            for _ in 0..50 {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                if GetClipboardSequenceNumber() != seq_before {
+                    seq_changed = true;
+                    std::thread::sleep(std::time::Duration::from_millis(30));
+                    break;
                 }
             }
-            if !clipboard_ready {
-                tracing::debug!("[clipboard] Adaptive wait: clipboard did not get new content after 500ms, trying final read");
-                // One last attempt with a bit more wait
-                std::thread::sleep(std::time::Duration::from_millis(100));
+            if !seq_changed {
+                tracing::debug!(
+                    "[clipboard] Sequence did not change after 500ms; reading current clipboard"
+                );
             }
 
-            // Read clipboard
-            let selected_text = if OpenClipboard(std::ptr::null_mut()) != 0 {
-                let h_data = GetClipboardData(CF_UNICODETEXT);
-                let text = if !h_data.is_null() {
-                    let p_data = GlobalLock(h_data);
-                    if !p_data.is_null() {
-                        let size = GlobalSize(h_data);
-                        if size > 2 {
-                            let slice = std::slice::from_raw_parts(p_data as *const u16, size / 2);
-                            let text = String::from_utf16_lossy(slice);
-                            let text = text.trim_end_matches('\0').to_string();
-                            GlobalUnlock(h_data);
-                            Some(text)
-                        } else {
-                            GlobalUnlock(h_data);
-                            None
-                        }
-                    } else {
-                        tracing::warn!("[clipboard] GlobalLock failed when reading clipboard");
-                        None
-                    }
-                } else {
-                    None
-                };
-                CloseClipboard();
-                text
-            } else {
-                tracing::warn!("[clipboard] Failed to open clipboard for reading");
-                None
-            };
+            let selected_text = read_unicode_text().filter(|t| !t.trim().is_empty());
 
-            // Restore clipboard
-            if clipboard_was_opened {
-                if OpenClipboard(std::ptr::null_mut()) != 0 {
-                    EmptyClipboard();
-                    if let Some(ref saved) = saved_text {
-                        let h_mem = GlobalAlloc(GMEM_MOVEABLE, saved.len());
-                        if !h_mem.is_null() {
-                            let p_mem = GlobalLock(h_mem);
-                            if !p_mem.is_null() {
-                                std::ptr::copy_nonoverlapping(
-                                    saved.as_ptr(),
-                                    p_mem as *mut u8,
-                                    saved.len(),
-                                );
-                                GlobalUnlock(h_mem);
-                                SetClipboardData(CF_UNICODETEXT, h_mem);
-                            } else {
-                                tracing::warn!(
-                                    "[clipboard] GlobalLock failed when restoring clipboard"
-                                );
-                            }
+            // Restore original clipboard
+            if OpenClipboard(std::ptr::null_mut()) != 0 {
+                EmptyClipboard();
+                if let Some(ref saved) = saved_text {
+                    let h_mem = GlobalAlloc(GMEM_MOVEABLE, saved.len());
+                    if !h_mem.is_null() {
+                        let p_mem = GlobalLock(h_mem);
+                        if !p_mem.is_null() {
+                            std::ptr::copy_nonoverlapping(
+                                saved.as_ptr(),
+                                p_mem as *mut u8,
+                                saved.len(),
+                            );
+                            GlobalUnlock(h_mem);
+                            SetClipboardData(CF_UNICODETEXT, h_mem);
                         } else {
                             tracing::warn!(
-                                "[clipboard] GlobalAlloc failed when restoring clipboard"
+                                "[clipboard] GlobalLock failed when restoring clipboard"
                             );
                         }
+                    } else {
+                        tracing::warn!("[clipboard] GlobalAlloc failed when restoring clipboard");
                     }
-                    CloseClipboard();
-                } else {
-                    tracing::warn!("[clipboard] Failed to open clipboard for restore");
                 }
+                CloseClipboard();
+            } else {
+                tracing::warn!("[clipboard] Failed to open clipboard for restore");
+            }
+
+            if let Some(ref t) = selected_text {
+                crate::clipboard_dedupe::mark_clipboard_text(t);
             }
 
             return selected_text.map(|t| (t, window_title));
@@ -243,10 +248,9 @@ fn get_clipboard_selection() -> Option<(String, String)> {
     None
 }
 
-/// Get window title from HWND
-#[cfg(target_os = "windows")]
 /// Get window title from HWND.
 /// SAFETY: GetWindowTextW is a standard Win32 API.
+#[cfg(target_os = "windows")]
 unsafe fn get_window_title(hwnd: *mut std::ffi::c_void) -> String {
     extern "system" {
         fn GetWindowTextW(hWnd: *mut std::ffi::c_void, lpString: *mut u16, nMaxCount: i32) -> i32;
@@ -263,7 +267,6 @@ unsafe fn get_window_title(hwnd: *mut std::ffi::c_void) -> String {
 
 /// Extract a rough app name from the window title
 fn detect_app_from_title(title: &str) -> String {
-    // Common patterns: "Document - App Name", "App Name - something"
     if let Some(pos) = title.rfind(" - ") {
         let app = &title[pos + 3..];
         if !app.is_empty() {

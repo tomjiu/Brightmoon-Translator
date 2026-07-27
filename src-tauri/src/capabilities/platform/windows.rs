@@ -50,13 +50,70 @@ unsafe fn set_clipboard_text(text: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn make_key_input(
+    vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY,
+    flags: windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS,
+) -> windows::Win32::UI::Input::KeyboardAndMouse::INPUT {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT};
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk,
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    }
+}
+
+/// Release stuck modifiers so hotkey chords do not break Ctrl+V / typing (STranslate).
+fn release_modifiers() {
+    use std::mem::size_of;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, KEYEVENTF_KEYUP, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU,
+        VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
+    };
+    let mods = [
+        VK_CONTROL,
+        VK_LCONTROL,
+        VK_RCONTROL,
+        VK_SHIFT,
+        VK_LSHIFT,
+        VK_RSHIFT,
+        VK_MENU,
+        VK_LMENU,
+        VK_RMENU,
+        VK_LWIN,
+        VK_RWIN,
+    ];
+    let inputs: Vec<_> = mods
+        .iter()
+        .map(|vk| make_key_input(*vk, KEYEVENTF_KEYUP))
+        .collect();
+    unsafe {
+        let _ = SendInput(
+            &inputs,
+            size_of::<windows::Win32::UI::Input::KeyboardAndMouse::INPUT>() as i32,
+        );
+    }
+}
+
+struct SyntheticClipboardGuard;
+impl Drop for SyntheticClipboardGuard {
+    fn drop(&mut self) {
+        crate::clipboard_dedupe::end_synthetic_clipboard();
+    }
+}
+
 /// Replace text in the foreground application via clipboard + Ctrl+V simulation.
 /// Saves and restores the original clipboard content.
 pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
     use std::mem::size_of;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
-        VIRTUAL_KEY, VK_CONTROL, VK_V,
+        SendInput, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VK_CONTROL, VK_V,
     };
 
     const CF_UNICODETEXT: u32 = 13;
@@ -73,12 +130,11 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
         fn GlobalSize(hMem: *mut std::ffi::c_void) -> usize;
     }
 
+    crate::clipboard_dedupe::begin_synthetic_clipboard();
+    let _synthetic = SyntheticClipboardGuard;
+
     // SAFETY: Win32 clipboard and input simulation APIs.
-    // Clipboard is saved/restored properly. SendInput simulates Ctrl+V.
-    // SAFETY: Win32 API calls for foreground app detection.
-    // All handles are properly closed.
     unsafe {
-        // Save current clipboard content
         let saved_text = if OpenClipboard(std::ptr::null_mut()) != 0 {
             let h_data = GetClipboardData(CF_UNICODETEXT);
             let saved = if !h_data.is_null() {
@@ -103,41 +159,29 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             None
         };
 
-        // Set translated text to clipboard — this is the critical path
         set_clipboard_text(text).map_err(|e| {
             tracing::error!("[replace] set translated clipboard failed: {}", e);
             format!("set translated clipboard failed: {}", e)
         })?;
 
-        // Simulate Ctrl+V — windows crate INPUT is 40 bytes on x64 (manual type+[u8;24] was 28).
-        fn make_input(vk: VIRTUAL_KEY, flags: KEYBD_EVENT_FLAGS) -> INPUT {
-            INPUT {
-                r#type: INPUT_KEYBOARD,
-                Anonymous: INPUT_0 {
-                    ki: KEYBDINPUT {
-                        wVk: vk,
-                        wScan: 0,
-                        dwFlags: flags,
-                        time: 0,
-                        dwExtraInfo: 0,
-                    },
-                },
-            }
-        }
+        release_modifiers();
+        std::thread::sleep(std::time::Duration::from_millis(20));
 
         let inputs = [
-            make_input(VK_CONTROL, KEYBD_EVENT_FLAGS(0)),
-            make_input(VK_V, KEYBD_EVENT_FLAGS(0)),
-            make_input(VK_V, KEYEVENTF_KEYUP),
-            make_input(VK_CONTROL, KEYEVENTF_KEYUP),
+            make_key_input(VK_CONTROL, KEYBD_EVENT_FLAGS(0)),
+            make_key_input(VK_V, KEYBD_EVENT_FLAGS(0)),
+            make_key_input(VK_V, KEYEVENTF_KEYUP),
+            make_key_input(VK_CONTROL, KEYEVENTF_KEYUP),
         ];
 
-        let sent = SendInput(&inputs, size_of::<INPUT>() as i32);
+        let sent = SendInput(
+            &inputs,
+            size_of::<windows::Win32::UI::Input::KeyboardAndMouse::INPUT>() as i32,
+        );
         if sent == 0 {
             tracing::warn!("[replace] paste delivery uncertain: SendInput returned 0");
         }
 
-        // Adaptive wait: poll clipboard to confirm paste completed, 30ms intervals, max 300ms
         let paste_confirmed = {
             let mut confirmed = false;
             for _ in 0..10 {
@@ -172,7 +216,6 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
 
-        // Restore original clipboard (or clear if it was empty) — warn on failure, not fatal
         if OpenClipboard(std::ptr::null_mut()) != 0 {
             EmptyClipboard();
 
@@ -203,11 +246,82 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
         }
     }
 
+    crate::clipboard_dedupe::mark_clipboard_text(text);
     tracing::info!(
         "[replace] Replace-via-clipboard completed for {} chars",
         text.len()
     );
     Ok(())
+}
+
+/// Type text into the foreground app via Unicode SendInput (no clipboard clobber).
+/// `cancel` polled between characters when provided.
+pub fn type_text_via_sendinput(
+    text: &str,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<(), String> {
+    use std::mem::size_of;
+    use std::sync::atomic::Ordering;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE,
+        VIRTUAL_KEY,
+    };
+
+    release_modifiers();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+
+    fn unicode_input(ch: u16, up: bool) -> INPUT {
+        let mut flags = KEYEVENTF_UNICODE;
+        if up {
+            flags |= KEYEVENTF_KEYUP;
+        }
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VIRTUAL_KEY(0),
+                    wScan: ch,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
+    }
+
+    for ch in text.encode_utf16() {
+        if cancel.map(|c| c.load(Ordering::Acquire)).unwrap_or(false) {
+            return Err("cancelled".to_string());
+        }
+        // Surrogate pairs need down/up for each code unit.
+        let inputs = [unicode_input(ch, false), unicode_input(ch, true)];
+        let sent = unsafe { SendInput(&inputs, size_of::<INPUT>() as i32) };
+        if sent == 0 {
+            return Err("SendInput type failed".to_string());
+        }
+        if ch == b'\n' as u16 || ch == b'\r' as u16 {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    tracing::info!(
+        "[replace] Type-via-sendinput completed for {} chars",
+        text.len()
+    );
+    Ok(())
+}
+
+/// Deliver replacement text: clipboard paste (default) or direct type.
+pub fn deliver_replacement_text(
+    text: &str,
+    use_clipboard_output: bool,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<(), String> {
+    if use_clipboard_output {
+        replace_text_via_clipboard(text)
+    } else {
+        type_text_via_sendinput(text, cancel)
+    }
 }
 
 /// Information about the foreground application detected via Win32 APIs.

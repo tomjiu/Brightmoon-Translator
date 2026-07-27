@@ -2,6 +2,7 @@ pub mod ai_cmd;
 pub mod batch_cmd;
 pub mod cache_cmd;
 pub mod capture;
+pub mod collection_cmd;
 pub mod config_cmd;
 pub mod data_io_cmd;
 pub mod dict_optimize_cmd;

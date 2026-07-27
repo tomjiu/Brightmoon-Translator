@@ -63,6 +63,13 @@ interface EnginesConfig {
     downloadedModels: string[];
     modelDir: string;
   };
+  /** Example sentences (not MT) */
+  tatoeba?: { enabled: boolean };
+  baiduWeb?: { enabled: boolean };
+  caiyunWeb?: { enabled: boolean };
+  volcengineWeb?: { enabled: boolean };
+  transmart?: { enabled: boolean };
+  papago?: { enabled: boolean };
 }
 
 interface HotkeyConfig {
@@ -94,7 +101,7 @@ export type RoutingStrategy =
   | 'parallel_compare'
   | 'cost_aware'
   | 'latency_first';
-export type OcrEngine = 'auto' | 'winrt' | 'youdao' | 'tesseract';
+export type OcrEngine = 'auto' | 'winrt' | 'youdao' | 'tesseract' | 'rapid' | 'paddle';
 type WindowFollowMode = 'none' | 'cursor';
 
 export interface SyncConfig {
@@ -130,6 +137,8 @@ export interface AppConfig {
   llmTemperature: number;
   llmMaxTokens: number;
   clipboardMonitor: boolean;
+  /** Replace delivery: true = paste via clipboard; false = Unicode type. */
+  useClipboardOutput: boolean;
   autoCopyResult: boolean;
   autoCopyMode: AutoCopyMode;
   translationMask: boolean;
@@ -148,6 +157,8 @@ export interface AppConfig {
   routingStrategy?: RoutingStrategy | null;
   engineOrder?: string[];
   ocrEngine: OcrEngine;
+  /** Rapid/Paddle sidecar path when ocrEngine is rapid|paddle */
+  offlineOcr?: { backend: string; pluginDir: string };
   overlayLevel?: number;
   overlayAutoDismissMs?: number;
   overlayFollowMode?: 'none' | 'cursor' | 'target_bounds';
@@ -161,12 +172,64 @@ export interface AppConfig {
   furiganaEnabled?: boolean;
   ttsAutoPlay?: boolean;
   ttsVoice?: string;
+  /** edge | openai | youdao */
+  ttsProvider?: string;
+  openaiTts?: {
+    apiKey: string;
+    baseUrl: string;
+    model: string;
+    voice: string;
+    speed: number;
+  };
   httpTimeoutSecs?: number;
   ocrTimeoutSecs?: number;
   llmTimeoutSecs?: number;
   translationTimeoutSecs?: number;
   edgeTtsToken?: string;
   sync?: SyncConfig;
+  /** External vocabulary collection (Eudic / Anki / Shanbay / Youdao / Maimemo). Not FSRS. */
+  collection?: CollectionConfig;
+}
+
+export interface CollectionConfig {
+  eudic: {
+    enabled: boolean;
+    token: string;
+    bookName: string;
+  };
+  anki: {
+    enabled: boolean;
+    port: number;
+    deck: string;
+    model: string;
+  };
+  shanbay: {
+    enabled: boolean;
+    credential: string;
+    wordbookId: string;
+  };
+  youdao: {
+    enabled: boolean;
+    cookie: string;
+    lan: string;
+  };
+  maimemo: {
+    enabled: boolean;
+    token: string;
+    notepadId: string;
+    notepadTitle: string;
+  };
+  autoPushOnSave: boolean;
+}
+
+export interface CollectionTargetResult {
+  target: string;
+  ok: boolean;
+  message: string;
+}
+
+export interface CollectionPushReport {
+  results: CollectionTargetResult[];
 }
 
 interface HookConfig {

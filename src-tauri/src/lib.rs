@@ -12,6 +12,7 @@ pub mod blacklist;
 pub mod cache;
 pub mod capabilities;
 pub mod clipboard_dedupe;
+pub mod collection;
 pub mod commands;
 pub mod config;
 pub mod dictionary;
@@ -31,6 +32,7 @@ pub mod memory;
 pub mod metrics;
 pub mod models;
 pub mod ocr_engine;
+pub mod ocr_offline;
 pub mod overlay;
 pub mod pdf;
 pub mod plugin;
@@ -324,9 +326,10 @@ pub fn run() {
                 let _ = app_state.input_replacement.set(inp_replacement);
             }
 
-            // Create system tray menu (pot-aligned: show / selection / OCR / clipboard / settings / quit)
+            // Create system tray menu (pot-aligned: show / selection / replace / OCR / clipboard / settings / quit)
             let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
             let selection = MenuItem::with_id(app, "selection", "划词翻译", true, None::<&str>)?;
+            let replace = MenuItem::with_id(app, "replace", "替换翻译", true, None::<&str>)?;
             let ocr = MenuItem::with_id(app, "ocr", "OCR截图翻译", true, None::<&str>)?;
             let clipboard_monitor =
                 MenuItem::with_id(app, "clipboard_monitor", "剪贴板监听", true, None::<&str>)?;
@@ -335,7 +338,15 @@ pub fn run() {
 
             let menu = Menu::with_items(
                 app,
-                &[&show, &selection, &ocr, &clipboard_monitor, &settings, &quit],
+                &[
+                    &show,
+                    &selection,
+                    &replace,
+                    &ocr,
+                    &clipboard_monitor,
+                    &settings,
+                    &quit,
+                ],
             )?;
 
             // Create system tray
@@ -357,6 +368,11 @@ pub fn run() {
                     "selection" => {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.emit("trigger-translate-selection", ());
+                        }
+                    }
+                    "replace" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit("trigger-replace-translate", ());
                         }
                     }
                     "ocr" => {
@@ -543,6 +559,8 @@ pub fn run() {
             commands::tools_cmd::cycle_variable_name,
             commands::tts_cmd::text_to_speech,
             commands::tts_cmd::get_tts_voices,
+            commands::collection_cmd::collection_push,
+            commands::collection_cmd::collection_test_target,
             commands::wordbook_cmd::get_wordbook,
             commands::wordbook_cmd::add_wordbook_entry,
             commands::wordbook_cmd::update_wordbook_note,
