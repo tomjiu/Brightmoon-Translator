@@ -14,6 +14,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import OcrScreenshotSelector from './components/OcrScreenshotSelector';
 import OcrRegionFrame from './components/OcrRegionFrame';
 import OcrScreenshotTranslator from './components/OcrScreenshotTranslator';
+import TitleBar from './components/TitleBar';
 import { AIGenerationProgress } from './components/vocabulary';
 import { useThemeStore } from './stores/themeStore';
 import { useToastStore } from './stores/toastStore';
@@ -206,6 +207,9 @@ function MainApp() {
       }
       if (result!.success) {
         addToast({ type: 'success', message: t('replace.success'), duration: 2000 });
+      } else if (result!.error === 'cancelled') {
+        // Second hotkey while replace in-flight: cancel-only, no toast spam
+        return;
       } else {
         // Soft failure: clipboard paste failed but translation exists
         const errMsg = result!.error || t('replace.unknownError');
@@ -300,101 +304,88 @@ function MainApp() {
   );
 
   return (
-    <div className="flex h-screen bg-bg-primary">
-      {/* Sidebar */}
-      <nav className="w-14 bg-bg-secondary border-r border-border flex flex-col items-center py-3 overflow-y-auto">
-        {/* Logo */}
-        <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center mb-4 shrink-0 border border-border">
-          <span className="text-primary-fg font-bold text-sm">M</span>
-        </div>
+    <div className="flex flex-col h-screen bg-bg-primary">
+      {/* Theme-colored frameless title strip — no product name */}
+      <TitleBar />
 
-        {/* Nav Groups */}
-        {navGroups.map((group, groupIndex) => (
-          <div key={group.key} className="w-full flex flex-col items-center gap-1">
-            {/* Separator */}
-            {groupIndex > 0 && <div className="w-6 h-px bg-border my-1 shrink-0" />}
-            {/* Nav Items */}
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              const isActive = page === item.id;
+      <div className="flex flex-1 min-h-0">
+        {/* Icon rail — monochrome chrome, no decorative logo */}
+        <nav className="w-14 bg-bg-chrome border-r border-border flex flex-col items-center py-3 overflow-y-auto">
+          {navGroups.map((group, groupIndex) => (
+            <div key={group.key} className="w-full flex flex-col items-center gap-1">
+              {groupIndex > 0 && <div className="w-6 h-px bg-border my-2 shrink-0" />}
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = page === item.id;
 
-              return (
-                <button
-                  key={item.id}
-                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
-                    isActive
-                      ? 'bg-primary text-primary-fg'
-                      : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-                  }`}
-                  onClick={() => setPage(item.id)}
-                  title={item.label}
-                >
-                  <Icon size={18} />
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={item.id}
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-150 ease-out shrink-0 ${
+                      isActive
+                        ? 'bg-primary text-primary-fg shadow-sm'
+                        : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                    }`}
+                    onClick={() => setPage(item.id)}
+                    title={item.label}
+                  >
+                    <Icon size={18} strokeWidth={isActive ? 2.25 : 1.75} />
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+
+          <div className="flex-1 min-h-2" />
+
+          <div className="w-full flex flex-col items-center gap-1 shrink-0">
+            <div className="w-6 h-px bg-border my-2" />
+
+            <button
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-150 ease-out ${
+                pinned
+                  ? 'bg-primary text-primary-fg shadow-sm'
+                  : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+              }`}
+              onClick={togglePin}
+              title={pinned ? t('common.unpin') : t('common.pin')}
+            >
+              <Pin size={18} />
+            </button>
+
+            <button
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors duration-150 ease-out"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? t('common.lightMode') : t('common.darkMode')}
+            >
+              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
           </div>
-        ))}
+        </nav>
 
-        {/* Spacer */}
-        <div className="flex-1 min-h-2" />
+        <main className="flex-1 overflow-hidden bg-bg-primary">
+          <ErrorBoundary key={page}>
+            <Suspense
+              fallback={
+                <div className="flex-1 flex items-center justify-center h-full">
+                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                </div>
+              }
+            >
+              {page === 'translator' && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
+              {page === 'documents' && <DocumentsViewer />}
+              {page === 'vocabulary' && <Vocabulary />}
+              {page === 'settings' && <Settings />}
+              {page === 'metrics' && <MetricsDashboard />}
+              {page === 'tm' && <TmManager />}
+              {page === 'hook' && <HookMonitor />}
+            </Suspense>
+          </ErrorBoundary>
+        </main>
+      </div>
 
-        {/* Bottom Actions */}
-        <div className="w-full flex flex-col items-center gap-1 shrink-0">
-          <div className="w-6 h-px bg-border my-1" />
-
-          {/* Pin Toggle */}
-          <button
-            className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-              pinned
-                ? 'bg-primary text-primary-fg shadow-md shadow-primary/25'
-                : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-            }`}
-            onClick={togglePin}
-            title={pinned ? t('common.unpin') : t('common.pin')}
-          >
-            <Pin size={18} />
-          </button>
-
-          {/* Theme Toggle */}
-          <button
-            className="w-10 h-10 rounded-lg flex items-center justify-center text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors"
-            onClick={toggleTheme}
-            title={theme === 'dark' ? t('common.lightMode') : t('common.darkMode')}
-          >
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="flex-1 overflow-hidden">
-        <ErrorBoundary key={page}>
-          <Suspense
-            fallback={
-              <div className="flex-1 flex items-center justify-center h-full">
-                <Loader2 className="w-8 h-8 text-primary animate-spin" />
-              </div>
-            }
-          >
-            {page === 'translator' && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
-            {page === 'documents' && <DocumentsViewer />}
-            {page === 'vocabulary' && <Vocabulary />}
-            {page === 'settings' && <Settings />}
-            {page === 'metrics' && <MetricsDashboard />}
-            {page === 'tm' && <TmManager />}
-            {page === 'hook' && <HookMonitor />}
-          </Suspense>
-        </ErrorBoundary>
-      </main>
-
-      {/* Headless OCR controller - handles screenshot selection and region-frame updates */}
       <OcrScreenshotTranslator launchNonce={ocrLaunchNonce} />
-
-      {/* AI Generation Progress Notification */}
       <AIGenerationProgress />
-
-      {/* Toast Notifications */}
       <ToastContainer />
     </div>
   );

@@ -37,7 +37,7 @@ function Vocabulary() {
   return (
     <div className="h-full flex flex-col">
       {/* Tab Bar */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-border bg-bg-secondary">
+      <div className="ui-chrome flex items-center gap-1 px-4 py-2.5 border-b border-border overflow-x-auto">
         <button
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             activeTab === 'dictionary'

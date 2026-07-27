@@ -194,21 +194,19 @@ export default function DictOptimization() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-bg-primary rounded-lg p-4 border border-border">
-              <div className="text-2xl font-bold">{stats.totalWords.toLocaleString()}</div>
+              <div className="ui-stat">{stats.totalWords.toLocaleString()}</div>
               <div className="text-xs text-text-secondary">总单词数</div>
             </div>
             <div className="bg-bg-primary rounded-lg p-4 border border-border">
-              <div className="text-2xl font-bold">{stats.totalSizeMb.toFixed(1)} MB</div>
+              <div className="ui-stat">{stats.totalSizeMb.toFixed(1)} MB</div>
               <div className="text-xs text-text-secondary">数据库大小</div>
             </div>
             <div className="bg-bg-primary rounded-lg p-4 border border-border">
-              <div className="text-2xl font-bold text-green-400">
-                {stats.highFreqWords.toLocaleString()}
-              </div>
+              <div className="ui-stat text-green-400">{stats.highFreqWords.toLocaleString()}</div>
               <div className="text-xs text-text-secondary">高频词</div>
             </div>
             <div className="bg-bg-primary rounded-lg p-4 border border-border">
-              <div className="text-2xl font-bold text-yellow-400">
+              <div className="ui-stat text-yellow-400">
                 {((stats.highFreqWords / stats.totalWords) * 100).toFixed(1)}%
               </div>
               <div className="text-xs text-text-secondary">高频词占比</div>

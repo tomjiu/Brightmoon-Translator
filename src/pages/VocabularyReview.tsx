@@ -255,7 +255,7 @@ export default function VocabularyReview() {
       <div className="h-full flex items-center justify-center">
         <div className="text-center max-w-md p-8">
           <CheckCircle2 className="mx-auto mb-4 text-green-500" size={64} />
-          <h2 className="text-2xl font-bold text-text-primary mb-2">🎉 太棒了！</h2>
+          <h2 className="ui-stat text-text-primary mb-2">🎉 太棒了！</h2>
           <p className="text-text-secondary mb-4">目前没有需要复习的卡牌</p>
           <button
             onClick={handleExit}
@@ -311,19 +311,19 @@ export default function VocabularyReview() {
             <h3 className="text-sm font-semibold text-text-secondary mb-4">评分分布</h3>
             <div className="grid grid-cols-4 gap-3">
               <div className="text-center">
-                <div className="text-2xl font-bold text-red-500 mb-1">{session.againCount}</div>
+                <div className="ui-stat text-red-500 mb-1">{session.againCount}</div>
                 <div className="text-xs text-text-tertiary">忘记</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-orange-500 mb-1">{session.hardCount}</div>
+                <div className="ui-stat text-orange-500 mb-1">{session.hardCount}</div>
                 <div className="text-xs text-text-tertiary">困难</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-500 mb-1">{session.goodCount}</div>
+                <div className="ui-stat text-green-500 mb-1">{session.goodCount}</div>
                 <div className="text-xs text-text-tertiary">良好</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-primary mb-1">{session.easyCount}</div>
+                <div className="ui-stat text-primary mb-1">{session.easyCount}</div>
                 <div className="text-xs text-text-tertiary">简单</div>
               </div>
             </div>

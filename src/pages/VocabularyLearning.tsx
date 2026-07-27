@@ -809,7 +809,7 @@ export default function VocabularyLearning() {
 
         {viewMode === 'stats' && (
           <div className="p-6 max-w-2xl">
-            <h1 className="text-xl font-bold text-text-primary mb-6">学习统计</h1>
+            <h1 className="ui-page-title mb-6">学习统计</h1>
             <LearningStatsPanel />
           </div>
         )}

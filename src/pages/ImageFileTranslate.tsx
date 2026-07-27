@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { invokeOrThrow } from '../services/invoke';
 import { useI18n } from '../i18n';
 import { Image, Languages, Loader2 } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
 
 interface ImageTranslationResult {
   outputPath?: string;
@@ -88,58 +89,58 @@ function ImageFileTranslate() {
 
   return (
     <div className="h-full flex flex-col p-6">
-      <div className="flex justify-between items-center mb-5 flex-wrap gap-2">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Image size={24} />
-          {t('documents.image') || '图片文件翻译'}
-        </h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <select
-            value={fromLang}
-            onChange={(e) => setFromLang(e.target.value)}
-            className="bg-bg-secondary border border-border rounded-lg px-3 py-2 text-sm"
-          >
-            <option value="auto">Auto</option>
-            <option value="en">English</option>
-            <option value="zh">中文</option>
-            <option value="ja">日本語</option>
-          </select>
-          <span>→</span>
-          <select
-            value={toLang}
-            onChange={(e) => setToLang(e.target.value)}
-            className="bg-bg-secondary border border-border rounded-lg px-3 py-2 text-sm"
-          >
-            <option value="zh">中文</option>
-            <option value="en">English</option>
-            <option value="ja">日本語</option>
-          </select>
-          <button
-            type="button"
-            onClick={openFile}
-            className="px-3 py-2 rounded-lg border border-border bg-bg-secondary text-sm"
-          >
-            {t('common.open') || '打开'}
-          </button>
-          <button
-            type="button"
-            onClick={runPreview}
-            disabled={!filePath || busy}
-            className="px-3 py-2 rounded-lg border border-border bg-bg-secondary text-sm disabled:opacity-50"
-          >
-            OCR 预览
-          </button>
-          <button
-            type="button"
-            onClick={runTranslate}
-            disabled={!filePath || busy}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-fg text-sm disabled:opacity-50"
-          >
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <Languages size={16} />}
-            翻译并保存
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={t('documents.image') || '图片文件翻译'}
+        icon={Image}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={fromLang}
+              onChange={(e) => setFromLang(e.target.value)}
+              className="bg-bg-secondary border border-border rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="auto">Auto</option>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+              <option value="ja">日本語</option>
+            </select>
+            <span>→</span>
+            <select
+              value={toLang}
+              onChange={(e) => setToLang(e.target.value)}
+              className="bg-bg-secondary border border-border rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
+            </select>
+            <button
+              type="button"
+              onClick={openFile}
+              className="px-3 py-2 rounded-lg border border-border bg-bg-secondary text-sm"
+            >
+              {t('common.open') || '打开'}
+            </button>
+            <button
+              type="button"
+              onClick={runPreview}
+              disabled={!filePath || busy}
+              className="px-3 py-2 rounded-lg border border-border bg-bg-secondary text-sm disabled:opacity-50"
+            >
+              OCR 预览
+            </button>
+            <button
+              type="button"
+              onClick={runTranslate}
+              disabled={!filePath || busy}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-fg text-sm disabled:opacity-50"
+            >
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Languages size={16} />}
+              翻译并保存
+            </button>
+          </div>
+        }
+      />
       {fileName && <p className="text-sm text-text-secondary mb-2">{fileName}</p>}
       {resultPath && (
         <p className="text-sm text-primary mb-2 truncate" title={resultPath}>

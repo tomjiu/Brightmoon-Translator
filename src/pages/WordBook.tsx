@@ -3,7 +3,19 @@ import { invokeOrThrow } from '../services/invoke';
 import { useI18n } from '../i18n';
 import { useTranslateStore } from '../stores/translateStore';
 import { isTauriRuntime } from '../services/tauriRuntime';
-import { Search, Trash2, Copy, Check, X, Download, Plus, Edit2, Save } from 'lucide-react';
+import {
+  Search,
+  Trash2,
+  Copy,
+  Check,
+  X,
+  Download,
+  Plus,
+  Edit2,
+  Save,
+  BookMarked,
+} from 'lucide-react';
+import PageHeader from '../components/PageHeader';
 
 interface WordBookItem {
   id: string;
@@ -219,56 +231,58 @@ function WordBook() {
 
   return (
     <div className="h-full flex flex-col p-6">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-5">
-        <h1 className="text-2xl font-bold">{t('wordbook.title')}</h1>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary"
-            />
-            <input
-              type="text"
-              placeholder={t('wordbook.search')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="bg-bg-secondary text-text-primary border border-border rounded-lg pl-9 pr-3 py-2 text-sm w-48 focus:border-primary outline-none"
-            />
-          </div>
-          {selectedIds.size > 0 && (
+      <PageHeader
+        title={t('wordbook.title')}
+        icon={BookMarked}
+        actions={
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary"
+              />
+              <input
+                type="text"
+                placeholder={t('wordbook.search')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="bg-bg-secondary text-text-primary border border-border rounded-lg pl-9 pr-3 py-2 text-sm w-48 focus:border-primary outline-none"
+              />
+            </div>
+            {selectedIds.size > 0 && (
+              <button
+                className="bg-error text-white border border-error rounded-lg px-4 py-2 text-sm hover:bg-error/80 transition-colors flex items-center gap-1.5"
+                onClick={batchDelete}
+              >
+                <Trash2 size={14} />
+                {t('wordbook.deleteSelected', { count: selectedIds.size })}
+              </button>
+            )}
             <button
-              className="bg-error text-white border border-error rounded-lg px-4 py-2 text-sm hover:bg-error/80 transition-colors flex items-center gap-1.5"
-              onClick={batchDelete}
+              className="bg-primary text-primary-fg border border-primary rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors flex items-center gap-1.5"
+              onClick={() => setShowAddForm(!showAddForm)}
+            >
+              <Plus size={14} />
+              {t('wordbook.addWord')}
+            </button>
+            <button
+              className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-bg-primary hover:border-primary transition-colors flex items-center gap-1.5"
+              onClick={exportCsv}
+              disabled={items.length === 0}
+            >
+              <Download size={14} />
+              {t('wordbook.exportCsv')}
+            </button>
+            <button
+              className="bg-bg-tertiary text-error border border-border rounded-lg px-4 py-2 text-sm hover:bg-error hover:text-white hover:border-error transition-colors flex items-center gap-1.5"
+              onClick={clearAll}
             >
               <Trash2 size={14} />
-              {t('wordbook.deleteSelected', { count: selectedIds.size })}
+              {t('wordbook.clearAll')}
             </button>
-          )}
-          <button
-            className="bg-primary text-primary-fg border border-primary rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors flex items-center gap-1.5"
-            onClick={() => setShowAddForm(!showAddForm)}
-          >
-            <Plus size={14} />
-            {t('wordbook.addWord')}
-          </button>
-          <button
-            className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-bg-primary hover:border-primary transition-colors flex items-center gap-1.5"
-            onClick={exportCsv}
-            disabled={items.length === 0}
-          >
-            <Download size={14} />
-            {t('wordbook.exportCsv')}
-          </button>
-          <button
-            className="bg-bg-tertiary text-error border border-border rounded-lg px-4 py-2 text-sm hover:bg-error hover:text-white hover:border-error transition-colors flex items-center gap-1.5"
-            onClick={clearAll}
-          >
-            <Trash2 size={14} />
-            {t('wordbook.clearAll')}
-          </button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Add Word Form */}
       {showAddForm && (

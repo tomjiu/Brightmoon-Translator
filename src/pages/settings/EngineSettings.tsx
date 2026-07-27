@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useConfigStore } from '../../stores/configStore';
 import type { RoutingStrategy, AppConfig } from '../../types';
 import { ROUTING_STRATEGIES } from './engines/routingStrategies';
@@ -28,14 +28,30 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
-  Globe,
-  Zap,
-  Cloud,
+  ChevronUp,
+  ChevronDown,
   Bot,
-  Database,
-  HardDrive,
-  GripVertical,
+  Languages,
 } from 'lucide-react';
+
+const DEFAULT_ENGINE_ORDER = [
+  'llm',
+  'youdao',
+  'google',
+  'caiyun',
+  'deepl',
+  'deeplx',
+  'baidu',
+  'microsoft',
+  'yandex',
+  'offline',
+  'tatoeba',
+  'baidu_web',
+  'caiyun_web',
+  'volcengine_web',
+  'transmart',
+  'papago',
+];
 
 export default function EngineSettings() {
   const config = useConfigStore((s) => s.config);
@@ -43,32 +59,19 @@ export default function EngineSettings() {
   const saveConfig = useConfigStore((s) => s.saveConfig);
 
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const toggleSecret = (key: string) => {
     setShowSecrets((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // All possible engine IDs (default priority order)
-  const allEngineIds = [
-    'llm',
-    'youdao',
-    'caiyun',
-    'deepl',
-    'deeplx',
-    'baidu',
-    'microsoft',
-    'yandex',
-    'google',
-    'offline',
-  ];
+  // Merge saved order with any new engine ids
+  const engineOrder = useMemo(() => {
+    const saved = config.engineOrder?.filter(Boolean) ?? [];
+    const base = saved.length > 0 ? saved : DEFAULT_ENGINE_ORDER;
+    const missing = DEFAULT_ENGINE_ORDER.filter((id) => !base.includes(id));
+    return [...base, ...missing];
+  }, [config.engineOrder]);
 
-  // Get current engine order (fall back to default if not configured)
-  const engineOrder =
-    config.engineOrder && config.engineOrder.length > 0 ? config.engineOrder : allEngineIds;
-
-  // Save reordered engine list to config
   const persistEngineOrder = useCallback(
     (newOrder: string[]) => {
       updateConfig((prev) => ({ ...prev, engineOrder: newOrder }));
@@ -77,44 +80,21 @@ export default function EngineSettings() {
     [updateConfig, saveConfig],
   );
 
-  // Drag handlers
-  const handleDragStart = (e: React.DragEvent, idx: number) => {
-    setDragIndex(idx);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(idx));
-  };
+  const moveEngine = useCallback(
+    (idx: number, direction: 'up' | 'down') => {
+      const next = direction === 'up' ? idx - 1 : idx + 1;
+      if (next < 0 || next >= engineOrder.length) return;
+      const order = [...engineOrder];
+      [order[idx], order[next]] = [order[next], order[idx]];
+      persistEngineOrder(order);
+    },
+    [engineOrder, persistEngineOrder],
+  );
 
-  const handleDragOver = (e: React.DragEvent, idx: number) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverIndex(idx);
-  };
-
-  const handleDragLeave = () => {
-    setDragOverIndex(null);
-  };
-
-  const handleDrop = (e: React.DragEvent, dropIdx: number) => {
-    e.preventDefault();
-    if (dragIndex === null || dragIndex === dropIdx) {
-      setDragIndex(null);
-      setDragOverIndex(null);
-      return;
-    }
-    const newOrder = [...engineOrder];
-    const [moved] = newOrder.splice(dragIndex, 1);
-    newOrder.splice(dropIdx, 0, moved);
-    persistEngineOrder(newOrder);
-    setDragIndex(null);
-    setDragOverIndex(null);
-  };
-
-  const handleDragEnd = () => {
-    setDragIndex(null);
-    setDragOverIndex(null);
-  };
-
-  const currentStrategy = config.routingStrategy || 'fallback_on_error';
+  const rawStrategy = config.routingStrategy || 'fallback_on_error';
+  const currentStrategy = ROUTING_STRATEGIES.some((s) => s.id === rawStrategy)
+    ? rawStrategy
+    : 'fallback_on_error';
 
   // 引擎配置映射 - 根据ID返回引擎配置
   const getEngineConfig = (engineId: string): EngineDisplayConfig | null => {
@@ -153,8 +133,11 @@ export default function EngineSettings() {
           name: '有道翻译',
           enabled: config.engines.youdao.enabled,
           status: 'connected' as const,
-          badges: [{ label: '免费', variant: 'success' as const }],
-          description: '有道提供的翻译服务',
+          badges: [
+            { label: '免费', variant: 'success' as const },
+            { label: '免配置网页', variant: 'info' as const },
+          ],
+          description: '有道网页免 Key 接口（非官方开放平台，可能变更）',
         };
       case 'caiyun': {
         const hasToken = !!config.engines.caiyun?.apiToken.trim();
@@ -252,6 +235,78 @@ export default function EngineSettings() {
           ],
           description: '完全本地化的翻译模型，无需网络连接',
         };
+      case 'tatoeba':
+        return {
+          id: 'tatoeba',
+          name: 'Tatoeba 例句',
+          enabled: config.engines.tatoeba?.enabled || false,
+          status: 'connected' as const,
+          badges: [
+            { label: '例句', variant: 'info' as const },
+            { label: '非机翻', variant: 'warning' as const },
+          ],
+          description: 'Tatoeba 多语例句对查询，结果为例句列表而非整段机翻',
+        };
+      case 'baidu_web':
+        return {
+          id: 'baidu_web',
+          name: '百度翻译（免配置）',
+          enabled: config.engines.baiduWeb?.enabled || false,
+          status: 'warning' as const,
+          badges: [
+            { label: '免费', variant: 'success' as const },
+            { label: '非常规', variant: 'warning' as const },
+          ],
+          description: '网页接口，无需 AppId；可能随时失效',
+        };
+      case 'caiyun_web':
+        return {
+          id: 'caiyun_web',
+          name: '彩云（免配置）',
+          enabled: config.engines.caiyunWeb?.enabled || false,
+          status: 'warning' as const,
+          badges: [
+            { label: '免费', variant: 'success' as const },
+            { label: '非常规', variant: 'warning' as const },
+          ],
+          description: '网页 JWT 路径；正式版请用「彩云小译」填 Token',
+        };
+      case 'volcengine_web':
+        return {
+          id: 'volcengine_web',
+          name: '火山翻译（免配置）',
+          enabled: config.engines.volcengineWeb?.enabled || false,
+          status: 'warning' as const,
+          badges: [
+            { label: '免费', variant: 'success' as const },
+            { label: '非常规', variant: 'warning' as const },
+          ],
+          description: 'translate.volcengine.com CRX 接口',
+        };
+      case 'transmart':
+        return {
+          id: 'transmart',
+          name: '腾讯交互翻译',
+          enabled: config.engines.transmart?.enabled || false,
+          status: 'warning' as const,
+          badges: [
+            { label: '免费', variant: 'success' as const },
+            { label: '非常规', variant: 'warning' as const },
+          ],
+          description: 'transmart.qq.com，可空凭证调用',
+        };
+      case 'papago':
+        return {
+          id: 'papago',
+          name: 'Papago',
+          enabled: config.engines.papago?.enabled || false,
+          status: 'warning' as const,
+          badges: [
+            { label: '免费', variant: 'success' as const },
+            { label: '非常规', variant: 'warning' as const },
+          ],
+          description: 'Naver Papago 网页接口',
+        };
       default:
         return null;
     }
@@ -259,22 +314,20 @@ export default function EngineSettings() {
 
   return (
     <div className="space-y-5">
-      {/* 页面标题 */}
       <div>
-        <h1 className="text-xl font-semibold text-text-primary">翻译引擎设置</h1>
-        <p className="text-xs text-text-secondary mt-1">配置翻译引擎和路由策略</p>
+        <h1 className="ui-page-title">翻译引擎</h1>
+        <p className="ui-page-desc">默认按列表顺序回退；上移 = 更高优先级</p>
       </div>
 
-      {/* 路由策略选择 */}
-      <Card title="路由策略" description="选择如何使用配置的翻译引擎">
-        <div className="space-y-3">
+      <Card title="路由" description="多数场景用「顺序回退」即可">
+        <div className="grid gap-2">
           {ROUTING_STRATEGIES.map((strategy) => (
             <label
               key={strategy.id}
-              className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
+              className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
                 currentStrategy === strategy.id
                   ? 'border-primary bg-primary/5'
-                  : 'border-border hover:border-border/60'
+                  : 'border-border hover:border-border-strong'
               }`}
             >
               <input
@@ -291,41 +344,22 @@ export default function EngineSettings() {
                 }}
                 className="mt-1"
               />
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-text-primary">{strategy.label}</span>
-                  {strategy.recommended && <Badge variant="info">推荐</Badge>}
+                  <span className="text-sm font-medium text-text-primary">{strategy.label}</span>
+                  {strategy.recommended && <Badge variant="info">默认</Badge>}
                 </div>
-                <p className="text-sm text-text-secondary mt-1">{strategy.description}</p>
+                <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
+                  {strategy.description}
+                </p>
               </div>
             </label>
           ))}
         </div>
-
-        {/* 当前使用的引擎提示 */}
-        <div className="mt-4 p-3 bg-white/10 border border-border rounded-lg">
-          <div className="flex items-start gap-2">
-            <AlertCircle size={16} className="text-primary dark:text-primary mt-0.5 shrink-0" />
-            <div className="text-sm">
-              <p className="font-medium text-primary dark:text-primary">
-                当前策略：{ROUTING_STRATEGIES.find((s) => s.id === currentStrategy)?.label}
-              </p>
-              <p className="text-text-secondary mt-1">
-                {currentStrategy === 'fallback_on_error' &&
-                  '翻译时会按下方引擎顺序依次尝试，第一个成功的结果会被返回'}
-                {currentStrategy === 'parallel_compare' &&
-                  '翻译时会同时调用所有已启用的引擎，所有结果都会显示'}
-                {currentStrategy === 'cost_aware' &&
-                  '翻译时会优先使用免费引擎（Google、Youdao等），失败后才尝试付费引擎'}
-              </p>
-            </div>
-          </div>
-        </div>
       </Card>
 
-      {/* 引擎配置列表 */}
-      <Card title="引擎配置" description="拖拽左侧手柄调整引擎顺序，开关控制启用">
-        <div className="space-y-3">
+      <Card title="引擎顺序与凭证" description="用 ▲▼ 调整回退顺序；开关控制是否参与路由">
+        <div className="space-y-2">
           {engineOrder.map((engineId, idx) => {
             const engineConfig = getEngineConfig(engineId);
             if (!engineConfig) return null;
@@ -341,23 +375,13 @@ export default function EngineSettings() {
                 showSecrets={showSecrets}
                 toggleSecret={toggleSecret}
                 index={idx}
-                isDragging={dragIndex === idx}
-                isDragOver={dragOverIndex === idx}
-                onDragStart={(e) => handleDragStart(e, idx)}
-                onDragOver={(e) => handleDragOver(e, idx)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, idx)}
-                onDragEnd={handleDragEnd}
+                total={engineOrder.length}
+                onMoveUp={() => moveEngine(idx, 'up')}
+                onMoveDown={() => moveEngine(idx, 'down')}
               />
             );
           })}
         </div>
-        {engineOrder.length > 0 && (
-          <p className="text-xs text-text-secondary mt-3 flex items-center gap-1">
-            <GripVertical size={12} />
-            拖拽左侧手柄可调整引擎优先级顺序
-          </p>
-        )}
       </Card>
     </div>
   );
@@ -651,7 +675,7 @@ function OfflineEngineConfig({ config, updateConfig, saveConfig }: EngineConfigP
   );
 }
 
-// 可拖拽排序的引擎卡片包装器
+// Ordered engine row — ▲▼ reorder (HTML5 drag is unreliable in WebView)
 interface SortableEngineCardProps {
   engineId: string;
   engineConfig: EngineDisplayConfig;
@@ -661,13 +685,9 @@ interface SortableEngineCardProps {
   showSecrets: Record<string, boolean>;
   toggleSecret: (key: string) => void;
   index: number;
-  isDragging: boolean;
-  isDragOver: boolean;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: () => void;
-  onDrop: (e: React.DragEvent) => void;
-  onDragEnd: () => void;
+  total: number;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }
 
 function SortableEngineCard({
@@ -678,13 +698,10 @@ function SortableEngineCard({
   saveConfig,
   showSecrets,
   toggleSecret,
-  isDragging,
-  isDragOver,
-  onDragStart,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  onDragEnd,
+  index,
+  total,
+  onMoveUp,
+  onMoveDown,
 }: SortableEngineCardProps) {
   // 根据不同引擎渲染不同的toggle和配置
   const getToggleHandler = () => {
@@ -776,6 +793,72 @@ function SortableEngineCard({
           }));
           void saveConfig();
         };
+      case 'tatoeba':
+        return (enabled: boolean) => {
+          updateConfig((prev) => ({
+            ...prev,
+            engines: {
+              ...prev.engines,
+              tatoeba: { ...(prev.engines.tatoeba || { enabled: false }), enabled },
+            },
+          }));
+          void saveConfig();
+        };
+      case 'baidu_web':
+        return (enabled: boolean) => {
+          updateConfig((prev) => ({
+            ...prev,
+            engines: {
+              ...prev.engines,
+              baiduWeb: { ...(prev.engines.baiduWeb || { enabled: false }), enabled },
+            },
+          }));
+          void saveConfig();
+        };
+      case 'caiyun_web':
+        return (enabled: boolean) => {
+          updateConfig((prev) => ({
+            ...prev,
+            engines: {
+              ...prev.engines,
+              caiyunWeb: { ...(prev.engines.caiyunWeb || { enabled: false }), enabled },
+            },
+          }));
+          void saveConfig();
+        };
+      case 'volcengine_web':
+        return (enabled: boolean) => {
+          updateConfig((prev) => ({
+            ...prev,
+            engines: {
+              ...prev.engines,
+              volcengineWeb: { ...(prev.engines.volcengineWeb || { enabled: false }), enabled },
+            },
+          }));
+          void saveConfig();
+        };
+      case 'transmart':
+        return (enabled: boolean) => {
+          updateConfig((prev) => ({
+            ...prev,
+            engines: {
+              ...prev.engines,
+              transmart: { ...(prev.engines.transmart || { enabled: false }), enabled },
+            },
+          }));
+          void saveConfig();
+        };
+      case 'papago':
+        return (enabled: boolean) => {
+          updateConfig((prev) => ({
+            ...prev,
+            engines: {
+              ...prev.engines,
+              papago: { ...(prev.engines.papago || { enabled: false }), enabled },
+            },
+          }));
+          void saveConfig();
+        };
       default:
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         return () => {};
@@ -783,28 +866,33 @@ function SortableEngineCard({
   };
 
   return (
-    <div
-      draggable
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
-      className={`flex items-start gap-1 transition-all ${
-        isDragging ? 'opacity-50 scale-[0.98]' : ''
-      } ${isDragOver ? 'ring-2 ring-primary ring-inset rounded-lg' : ''}`}
-    >
-      {/* Drag handle */}
-      <div
-        className="mt-4 pt-1 cursor-grab active:cursor-grabbing text-text-secondary hover:text-text-primary shrink-0"
-        title="拖拽排序"
-      >
-        <GripVertical size={16} />
+    <div className="flex items-stretch gap-1.5">
+      <div className="flex flex-col items-center justify-center gap-0.5 shrink-0 pt-1">
+        <span className="text-[10px] font-mono text-text-secondary w-5 text-center">
+          {index + 1}
+        </span>
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={index === 0}
+          className="p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-tertiary disabled:opacity-25 disabled:pointer-events-none"
+          title="上移（更高优先级）"
+        >
+          <ChevronUp size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={index >= total - 1}
+          className="p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-tertiary disabled:opacity-25 disabled:pointer-events-none"
+          title="下移"
+        >
+          <ChevronDown size={16} />
+        </button>
       </div>
       <div className="flex-1 min-w-0">
         <EngineCard
           name={engineConfig.name}
-          icon=""
           enabled={engineConfig.enabled}
           onToggle={getToggleHandler()}
           status={engineConfig.status}
@@ -868,7 +956,6 @@ function SortableEngineCard({
 // 引擎卡片组件
 interface EngineCardProps {
   name: string;
-  icon: string;
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
   status: 'connected' | 'warning' | 'error';
@@ -891,59 +978,28 @@ function EngineCard({
   alwaysShowChildren,
 }: EngineCardProps) {
   const statusIcons = {
-    connected: <CheckCircle size={16} className="text-green-600 dark:text-green-400" />,
-    warning: <AlertCircle size={16} className="text-yellow-600 dark:text-yellow-400" />,
-    error: <AlertCircle size={16} className="text-red-600 dark:text-red-400" />,
+    connected: <CheckCircle size={15} className="text-text-secondary" />,
+    warning: <AlertCircle size={15} className="text-text-secondary" />,
+    error: <AlertCircle size={15} className="text-text-primary" />,
   };
 
-  // 引擎图标映射 - 使用 lucide-react 图标
-  const getEngineIcon = () => {
-    if (name.includes('LLM') || name.includes('大模型')) {
-      return <Bot size={20} className="text-primary" />;
-    }
-    if (name.includes('Google')) {
-      return <Globe size={20} className="text-primary" />;
-    }
-    if (name.includes('有道')) {
-      return <Globe size={20} className="text-red-500" />;
-    }
-    if (name.includes('彩云')) {
-      return <Cloud size={20} className="text-primary" />;
-    }
-    if (name.includes('DeepL')) {
-      return <Zap size={20} className="text-primary" />;
-    }
-    if (name.includes('百度')) {
-      return <Globe size={20} className="text-primary" />;
-    }
-    if (name.includes('微软')) {
-      return <Globe size={20} className="text-neutral-500" />;
-    }
-    if (name.includes('Yandex')) {
-      return <Globe size={20} className="text-red-600" />;
-    }
-    if (name.includes('离线')) {
-      return <HardDrive size={20} className="text-gray-500" />;
-    }
-    return <Database size={20} className="text-gray-400" />;
-  };
+  const Icon = name.includes('LLM') || name.includes('大模型') ? Bot : Languages;
 
   return (
-    <div className="p-4 border border-border rounded-lg bg-bg-primary">
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-3 flex-1">
-          {/* 引擎图标 */}
-          <div className="w-10 h-10 rounded-lg bg-bg-secondary flex items-center justify-center shrink-0">
-            {getEngineIcon()}
+    <div className="p-3.5 border border-border rounded-xl bg-bg-secondary">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <div className="w-9 h-9 rounded-lg bg-bg-tertiary border border-border flex items-center justify-center shrink-0 text-text-secondary">
+            <Icon size={18} strokeWidth={1.75} />
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h4 className="font-medium text-text-primary">{name}</h4>
+            <div className="flex items-center gap-2 mb-0.5">
+              <h4 className="text-sm font-medium tracking-tight text-text-primary">{name}</h4>
               {statusIcons[status]}
             </div>
-            <p className="text-sm text-text-secondary mb-2">{description}</p>
-            <div className="flex flex-wrap gap-2">
+            <p className="text-xs text-text-secondary mb-2 leading-relaxed">{description}</p>
+            <div className="flex flex-wrap gap-1.5">
               {badges.map((badge, idx) => (
                 <Badge key={idx} variant={badge.variant}>
                   {badge.label}
@@ -953,13 +1009,11 @@ function EngineCard({
           </div>
         </div>
 
-        {/* 开关（LLM 由凭证决定，无假开关） */}
         {!hideToggle && <Switch checked={enabled} onChange={onToggle} />}
       </div>
 
-      {/* 额外配置 */}
       {(alwaysShowChildren || enabled) && children && (
-        <div className="mt-4 pt-4 border-t border-border">{children}</div>
+        <div className="mt-3 pt-3 border-t border-border">{children}</div>
       )}
     </div>
   );

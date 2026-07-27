@@ -36,7 +36,7 @@ function DocumentsViewer() {
   return (
     <div className="h-full flex flex-col">
       {/* Tab Bar */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-border bg-bg-secondary">
+      <div className="ui-chrome flex items-center gap-1 px-4 py-2.5 border-b border-border">
         {tabs.map((tab) => (
           <button
             key={tab.id}

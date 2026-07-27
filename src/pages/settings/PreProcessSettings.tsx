@@ -124,10 +124,8 @@ export default function PreProcessSettings() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold text-text-primary">预处理规则</h1>
-        <p className="text-xs text-text-secondary mt-1">
-          翻译前对原文进行正则替换和文本清洗（Phase 2.4）
-        </p>
+        <h1 className="ui-page-title">预处理规则</h1>
+        <p className="ui-page-desc">翻译前对原文进行正则替换和文本清洗</p>
       </div>
 
       {/* Global Options */}

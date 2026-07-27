@@ -3,6 +3,8 @@ import { invokeOrThrow } from '../../services/invoke';
 import { useI18n } from '../../i18n';
 import { isTauriRuntime } from '../../services/tauriRuntime';
 import { Puzzle, FolderOpen, RefreshCw, ExternalLink } from 'lucide-react';
+import PageHeader from '../../components/PageHeader';
+import Icon from '../../components/Icon';
 
 interface PluginManifest {
   name: string;
@@ -113,19 +115,19 @@ function Plugins() {
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Puzzle size={24} className="text-primary" />
-            {t('plugins.title')}
-          </h1>
-          <button
-            className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
-            onClick={loadPlugins}
-          >
-            <RefreshCw size={14} />
-            {t('plugins.refresh')}
-          </button>
-        </div>
+        <PageHeader
+          title={t('plugins.title')}
+          icon={Puzzle}
+          actions={
+            <button
+              className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
+              onClick={loadPlugins}
+            >
+              <Icon icon={RefreshCw} size="sm" />
+              {t('plugins.refresh')}
+            </button>
+          }
+        />
 
         {/* Plugins Directory */}
         <div className="bg-bg-secondary border border-border rounded-xl p-5 mb-5">

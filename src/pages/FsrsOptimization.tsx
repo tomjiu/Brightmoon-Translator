@@ -9,6 +9,7 @@ import {
   CheckCircle,
   Info,
 } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
 import {
   getFsrsAnalysis,
   getForgettingCurve,
@@ -109,16 +110,11 @@ export default function FsrsOptimization() {
 
   return (
     <div className="h-full overflow-y-auto p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Brain className="w-7 h-7" />
-          FSRS 算法分析
-        </h1>
-        <p className="text-sm text-text-secondary mt-1">
-          基于你的学习数据，分析记忆算法效果并提供优化建议
-        </p>
-      </div>
+      <PageHeader
+        title="FSRS 算法分析"
+        description="基于你的学习数据，分析记忆算法效果并提供优化建议"
+        icon={Brain}
+      />
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border pb-2">
@@ -367,14 +363,14 @@ export default function FsrsOptimization() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-bg-secondary rounded-lg p-4 border border-border">
                     <div className="text-sm text-text-secondary">30天总复习量</div>
-                    <div className="text-2xl font-bold">{totalDue}</div>
+                    <div className="ui-stat">{totalDue}</div>
                     <div className="text-xs text-text-secondary">
                       平均每天 {Math.round(totalDue / 30)} 词
                     </div>
                   </div>
                   <div className="bg-bg-secondary rounded-lg p-4 border border-border">
                     <div className="text-sm text-text-secondary">峰值日期</div>
-                    <div className="text-2xl font-bold">{peak.dueCount}</div>
+                    <div className="ui-stat">{peak.dueCount}</div>
                     <div className="text-xs text-text-secondary">{peak.date}</div>
                   </div>
                 </div>
@@ -487,19 +483,19 @@ export default function FsrsOptimization() {
           {/* Summary */}
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-bg-secondary rounded-lg p-4 border border-border text-center">
-              <div className="text-2xl font-bold text-green-400">
+              <div className="ui-stat text-green-400">
                 {difficulty.slice(0, 3).reduce((s, d) => s + d.count, 0)}
               </div>
               <div className="text-xs text-text-secondary">简单 (1-3)</div>
             </div>
             <div className="bg-bg-secondary rounded-lg p-4 border border-border text-center">
-              <div className="text-2xl font-bold text-yellow-400">
+              <div className="ui-stat text-yellow-400">
                 {difficulty.slice(3, 6).reduce((s, d) => s + d.count, 0)}
               </div>
               <div className="text-xs text-text-secondary">中等 (4-6)</div>
             </div>
             <div className="bg-bg-secondary rounded-lg p-4 border border-border text-center">
-              <div className="text-2xl font-bold text-red-400">
+              <div className="ui-stat text-red-400">
                 {difficulty.slice(6).reduce((s, d) => s + d.count, 0)}
               </div>
               <div className="text-xs text-text-secondary">困难 (7-10)</div>
@@ -529,7 +525,7 @@ function MetricCard({
 
   return (
     <div className={`rounded-lg p-4 border ${colorMap[color]}`}>
-      <div className="text-2xl font-bold">{value}</div>
+      <div className="ui-stat">{value}</div>
       <div className="text-xs opacity-70 mt-1">{label}</div>
     </div>
   );

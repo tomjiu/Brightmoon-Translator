@@ -3,6 +3,7 @@ import { invokeOrThrow } from '../services/invoke';
 import { Plus, Trash2, Book, Download, Upload, FileText, FileSpreadsheet } from 'lucide-react';
 import { useToastStore } from '../stores/toastStore';
 import { useI18n } from '../i18n';
+import PageHeader from '../components/PageHeader';
 
 interface GlossaryEntry {
   source: string;
@@ -214,62 +215,58 @@ function Glossary() {
 
   return (
     <div className="flex flex-col h-full p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Book size={24} className="text-primary" />
-          <h1 className="text-xl font-bold text-text-primary">
-            {t('glossary.title') || '术语表管理'}
-          </h1>
-        </div>
-
-        {/* Import/Export Buttons */}
-        <div className="flex gap-2">
-          <button
-            onClick={handleImportTmx}
-            disabled={importing}
-            className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-accent hover:text-white hover:border-accent transition-colors flex items-center gap-1.5 disabled:opacity-50"
-          >
-            <Upload size={14} />
-            <FileText size={14} />
-            {importing
-              ? t('glossary.importing') || '导入中...'
-              : t('glossary.importTmx') || '导入 TMX'}
-          </button>
-          <button
-            onClick={handleImportTbx}
-            disabled={importing}
-            className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-accent hover:text-white hover:border-accent transition-colors flex items-center gap-1.5 disabled:opacity-50"
-          >
-            <Upload size={14} />
-            <FileSpreadsheet size={14} />
-            {importing
-              ? t('glossary.importing') || '导入中...'
-              : t('glossary.importTbx') || '导入 TBX'}
-          </button>
-          <button
-            onClick={handleExportTmx}
-            disabled={exporting || Object.keys(entries).length === 0}
-            className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5 disabled:opacity-50"
-          >
-            <Download size={14} />
-            <FileText size={14} />
-            {exporting
-              ? t('glossary.exporting') || '导出中...'
-              : t('glossary.exportTmx') || '导出 TMX'}
-          </button>
-          <button
-            onClick={handleExportTbx}
-            disabled={exporting || Object.keys(entries).length === 0}
-            className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5 disabled:opacity-50"
-          >
-            <Download size={14} />
-            <FileSpreadsheet size={14} />
-            {exporting
-              ? t('glossary.exporting') || '导出中...'
-              : t('glossary.exportTbx') || '导出 TBX'}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={t('glossary.title') || '术语表管理'}
+        icon={Book}
+        actions={
+          <div className="flex gap-2">
+            <button
+              onClick={handleImportTmx}
+              disabled={importing}
+              className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-accent hover:text-white hover:border-accent transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Upload size={14} />
+              <FileText size={14} />
+              {importing
+                ? t('glossary.importing') || '导入中...'
+                : t('glossary.importTmx') || '导入 TMX'}
+            </button>
+            <button
+              onClick={handleImportTbx}
+              disabled={importing}
+              className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-accent hover:text-white hover:border-accent transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Upload size={14} />
+              <FileSpreadsheet size={14} />
+              {importing
+                ? t('glossary.importing') || '导入中...'
+                : t('glossary.importTbx') || '导入 TBX'}
+            </button>
+            <button
+              onClick={handleExportTmx}
+              disabled={exporting || Object.keys(entries).length === 0}
+              className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Download size={14} />
+              <FileText size={14} />
+              {exporting
+                ? t('glossary.exporting') || '导出中...'
+                : t('glossary.exportTmx') || '导出 TMX'}
+            </button>
+            <button
+              onClick={handleExportTbx}
+              disabled={exporting || Object.keys(entries).length === 0}
+              className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Download size={14} />
+              <FileSpreadsheet size={14} />
+              {exporting
+                ? t('glossary.exporting') || '导出中...'
+                : t('glossary.exportTbx') || '导出 TBX'}
+            </button>
+          </div>
+        }
+      />
 
       {/* Add Entry Form */}
       <div className="bg-bg-secondary border border-border rounded-xl p-4 mb-6">

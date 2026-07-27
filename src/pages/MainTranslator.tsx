@@ -31,7 +31,9 @@ import {
   Mic,
   MicOff,
   Sparkles,
+  Bookmark,
 } from 'lucide-react';
+import { saveAndCollect, summarizeReport } from '../hooks/useCollectionPush';
 
 interface MainTranslatorProps {
   onOcrScreenshot: () => void;
@@ -124,6 +126,29 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
   const [maskRevealed, setMaskRevealed] = useState(false);
   const [deleteNewlines, setDeleteNewlines] = useState(false);
   const [bilingualMode, setBilingualMode] = useState(false);
+  const [collectedIndex, setCollectedIndex] = useState<number | null>(null);
+  const [collectHint, setCollectHint] = useState<string | null>(null);
+
+  const handleCollect = useCallback(
+    async (text: string, index: number) => {
+      const word = sourceText.trim();
+      if (!word) return;
+      try {
+        const { report } = await saveAndCollect({
+          word,
+          translation: text,
+          fromLang: fromLang === 'auto' ? detectedLang || 'en' : fromLang,
+          toLang,
+        });
+        setCollectedIndex(index);
+        setCollectHint(summarizeReport(report));
+        window.setTimeout(() => setCollectHint(null), 4000);
+      } catch (err) {
+        setCollectHint(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [sourceText, fromLang, toLang, detectedLang],
+  );
 
   const handleInput = useCallback(
     (value: string) => {
@@ -240,14 +265,14 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
   };
 
   return (
-    <div className="flex flex-col h-full p-3 gap-2">
-      {/* Language Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-1 basis-[280px] items-center justify-center gap-1.5">
+    <div className="flex flex-col h-full">
+      {/* Chrome bar — same surface as Documents / Vocabulary tab strips */}
+      <div className="ui-chrome flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-border">
+        <div className="flex min-w-0 flex-1 basis-[280px] items-center gap-1.5">
           <select
             value={fromLang}
             onChange={(e) => setFromLang(e.target.value)}
-            className="h-8 min-w-0 w-[clamp(96px,22vw,132px)] bg-bg-secondary text-text-primary border border-border rounded-md px-2 py-1 text-xs cursor-pointer focus:border-primary"
+            className="h-8 min-w-0 w-[clamp(96px,22vw,132px)] bg-bg-tertiary text-text-primary border border-border rounded-lg px-2 py-1 text-xs cursor-pointer"
           >
             {LANGUAGES.map((l) => (
               <option key={l.code} value={l.code}>
@@ -266,7 +291,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
           )}
 
           <button
-            className="h-8 w-8 shrink-0 bg-bg-tertiary border border-border text-text-primary rounded-md hover:bg-primary hover:text-primary-fg transition-colors flex items-center justify-center"
+            className="h-8 w-8 shrink-0 bg-bg-tertiary border border-border text-text-primary rounded-lg hover:bg-primary hover:text-primary-fg transition-colors duration-150 flex items-center justify-center"
             onClick={swapLanguages}
             title={t('translator.swapLang')}
           >
@@ -276,7 +301,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
           <select
             value={toLang}
             onChange={(e) => setToLang(e.target.value)}
-            className="h-8 min-w-0 w-[clamp(96px,22vw,132px)] bg-bg-secondary text-text-primary border border-border rounded-md px-2 py-1 text-xs cursor-pointer focus:border-primary"
+            className="h-8 min-w-0 w-[clamp(96px,22vw,132px)] bg-bg-tertiary text-text-primary border border-border rounded-lg px-2 py-1 text-xs cursor-pointer"
           >
             {LANGUAGES.filter((l) => l.code !== 'auto').map((l) => (
               <option key={l.code} value={l.code}>
@@ -288,21 +313,19 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
 
         <div className="flex shrink-0 items-center gap-1.5">
           <button
-            className="h-8 w-8 shrink-0 bg-primary text-primary-fg rounded-md hover:bg-primary-hover transition-colors flex items-center justify-center shadow-sm shadow-primary/20"
+            className="h-8 w-8 shrink-0 bg-primary text-primary-fg rounded-lg hover:bg-primary-hover transition-colors duration-150 flex items-center justify-center"
             onClick={onOcrScreenshot}
             title={t('ocr.screenshotTranslate') || 'OCR截图翻译'}
           >
             <Scan size={16} />
           </button>
 
-          {/* Mode Toggles Group */}
-          <div className="flex items-center gap-0.5 bg-bg-tertiary/50 rounded-md p-0.5">
-            {/* Incremental Mode Toggle */}
+          <div className="flex items-center gap-0.5 bg-bg-tertiary rounded-lg p-0.5 border border-border">
             <button
-              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors duration-150 ${
                 incrementalMode
-                  ? 'bg-accent text-white'
-                  : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                  ? 'bg-primary text-primary-fg'
+                  : 'text-text-secondary hover:text-text-primary'
               }`}
               onClick={toggleIncrementalMode}
               title={t(
@@ -312,12 +335,11 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
               <Layers size={14} />
             </button>
 
-            {/* Delete Newlines Toggle */}
             <button
-              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors duration-150 ${
                 deleteNewlines
-                  ? 'bg-warning text-white'
-                  : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                  ? 'bg-primary text-primary-fg'
+                  : 'text-text-secondary hover:text-text-primary'
               }`}
               onClick={() => setDeleteNewlines(!deleteNewlines)}
               title={t(deleteNewlines ? 'translator.keepNewlines' : 'translator.deleteNewlines')}
@@ -325,12 +347,11 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
               <Eraser size={14} />
             </button>
 
-            {/* Clipboard Monitor Toggle */}
             <button
-              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors duration-150 ${
                 clipboardMonitorEnabled
                   ? 'bg-primary text-primary-fg'
-                  : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                  : 'text-text-secondary hover:text-text-primary'
               }`}
               onClick={toggleClipboardMonitor}
               title={t(
@@ -342,12 +363,11 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
               <Clipboard size={14} />
             </button>
 
-            {/* Bilingual Mode Toggle */}
             <button
-              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors duration-150 ${
                 bilingualMode
-                  ? 'bg-accent text-white'
-                  : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                  ? 'bg-primary text-primary-fg'
+                  : 'text-text-secondary hover:text-text-primary'
               }`}
               onClick={() => setBilingualMode(!bilingualMode)}
               title={t(bilingualMode ? 'translator.bilingualOff' : 'translator.bilingualOn')}
@@ -355,12 +375,11 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
               <Columns size={14} />
             </button>
 
-            {/* Embedded Translation Mode Toggle */}
             <button
-              className={`w-7 h-7 rounded flex items-center justify-center transition-colors ${
+              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors duration-150 ${
                 embeddedMode
                   ? 'bg-primary text-primary-fg'
-                  : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                  : 'text-text-secondary hover:text-text-primary'
               }`}
               onClick={() => {
                 toggleEmbeddedMode();
@@ -374,9 +393,9 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
       </div>
 
       {/* Translation Area */}
-      <div className="flex gap-2 flex-1 min-h-0">
+      <div className="flex gap-3 flex-1 min-h-0 p-3">
         {/* Source Panel */}
-        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-lg overflow-hidden">
+        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="flex-1 relative">
             <textarea
               value={sourceText}
@@ -407,8 +426,8 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
                 <button
                   className={`p-1.5 rounded-lg transition-colors flex items-center gap-1 ${
                     isListening
-                      ? 'bg-error text-white animate-pulse'
-                      : 'text-text-secondary hover:text-primary hover:bg-bg-tertiary'
+                      ? 'bg-primary text-primary-fg animate-pulse'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
                   }`}
                   onClick={() => {
                     if (isListening) {
@@ -454,7 +473,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
         </div>
 
         {/* Result Panel */}
-        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-lg overflow-hidden">
+        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="flex-1 overflow-y-auto">
             {/* Incremental Entries */}
             {incrementalMode && incrementalEntries.length > 0 && (
@@ -652,6 +671,18 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
                           {speakingIndex === i ? t('translator.speaking') : t('translator.speak')}
                         </button>
                         <button
+                          className={`border border-border rounded-md px-2 py-1 text-xs transition-colors flex items-center gap-1 ${
+                            collectedIndex === i
+                              ? 'bg-primary text-primary-fg border-primary'
+                              : 'bg-bg-tertiary text-text-secondary hover:bg-primary hover:text-primary-fg hover:border-primary'
+                          }`}
+                          onClick={() => void handleCollect(r.text, i)}
+                          title="收藏到生词本（含外送）"
+                        >
+                          <Bookmark size={12} />
+                          {collectedIndex === i ? '已收藏' : '收藏'}
+                        </button>
+                        <button
                           className="bg-bg-tertiary border border-border text-text-secondary rounded-md px-2 py-1 text-xs hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1"
                           onClick={() => copyResult(r.text, i)}
                         >
@@ -705,6 +736,11 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
                           enabled={config.furiganaEnabled && toLang === 'ja'}
                         />
                       </div>
+                    )}
+                    {collectHint && collectedIndex === i && (
+                      <p className="mt-2 text-xs text-text-secondary whitespace-pre-wrap">
+                        {collectHint}
+                      </p>
                     )}
                   </div>
                 ))

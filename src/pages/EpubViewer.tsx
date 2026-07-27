@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { invokeOrThrow } from '../services/invoke';
 import { useI18n } from '../i18n';
 import { BookOpen, Languages, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
 
 interface EpubChapter {
   chapterNumber: number;
@@ -123,71 +124,74 @@ function EpubViewer() {
   return (
     <div className="h-full flex flex-col p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-5">
-        <h1 className="text-2xl font-bold">{t('epub.title')}</h1>
-        <div className="flex items-center gap-3">
-          <select
-            value={fromLang}
-            onChange={(e) => setFromLang(e.target.value)}
-            className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm cursor-pointer focus:border-primary"
-          >
-            <option value="auto">Auto</option>
-            <option value="en">English</option>
-            <option value="zh">中文</option>
-            <option value="ja">日本語</option>
-            <option value="ko">한국어</option>
-          </select>
-          <span className="text-text-secondary">→</span>
-          <select
-            value={toLang}
-            onChange={(e) => setToLang(e.target.value)}
-            className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm cursor-pointer focus:border-primary"
-          >
-            <option value="zh">中文</option>
-            <option value="en">English</option>
-            <option value="ja">日本語</option>
-            <option value="ko">한국어</option>
-          </select>
-          <button
-            className="bg-primary text-primary-fg border border-primary rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors flex items-center gap-1.5"
-            onClick={openFile}
-          >
-            <BookOpen size={14} />
-            {t('epub.openFile')}
-          </button>
-          {epubDoc && (
-            <button
-              className="bg-accent text-white border border-accent rounded-lg px-4 py-2 text-sm hover:bg-accent/80 transition-colors flex items-center gap-1.5 disabled:opacity-50"
-              onClick={translateEpub}
-              disabled={translating}
+      <PageHeader
+        title={t('epub.title')}
+        icon={BookOpen}
+        actions={
+          <div className="flex items-center gap-3">
+            <select
+              value={fromLang}
+              onChange={(e) => setFromLang(e.target.value)}
+              className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm cursor-pointer focus:border-primary"
             >
-              <Languages size={14} />
-              {translating ? t('epub.translating') : t('epub.translate')}
+              <option value="auto">Auto</option>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+            </select>
+            <span className="text-text-secondary">→</span>
+            <select
+              value={toLang}
+              onChange={(e) => setToLang(e.target.value)}
+              className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm cursor-pointer focus:border-primary"
+            >
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+            </select>
+            <button
+              className="bg-primary text-primary-fg border border-primary rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors flex items-center gap-1.5"
+              onClick={openFile}
+            >
+              <BookOpen size={14} />
+              {t('epub.openFile')}
             </button>
-          )}
-          {translatedEpub && (
-            <>
+            {epubDoc && (
               <button
-                className={`border rounded-lg px-4 py-2 text-sm transition-colors ${
-                  showBilingual
-                    ? 'bg-primary text-primary-fg border-primary'
-                    : 'bg-bg-tertiary text-text-secondary border-border hover:bg-bg-tertiary/80'
-                }`}
-                onClick={() => setShowBilingual(!showBilingual)}
+                className="bg-accent text-white border border-accent rounded-lg px-4 py-2 text-sm hover:bg-accent/80 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                onClick={translateEpub}
+                disabled={translating}
               >
-                {t('epub.bilingual')}
+                <Languages size={14} />
+                {translating ? t('epub.translating') : t('epub.translate')}
               </button>
-              <button
-                className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
-                onClick={exportTranslatedEpub}
-              >
-                <Download size={14} />
-                {t('epub.export')}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+            )}
+            {translatedEpub && (
+              <>
+                <button
+                  className={`border rounded-lg px-4 py-2 text-sm transition-colors ${
+                    showBilingual
+                      ? 'bg-primary text-primary-fg border-primary'
+                      : 'bg-bg-tertiary text-text-secondary border-border hover:bg-bg-tertiary/80'
+                  }`}
+                  onClick={() => setShowBilingual(!showBilingual)}
+                >
+                  {t('epub.bilingual')}
+                </button>
+                <button
+                  className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
+                  onClick={exportTranslatedEpub}
+                >
+                  <Download size={14} />
+                  {t('epub.export')}
+                </button>
+              </>
+            )}
+          </div>
+        }
+      />
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">

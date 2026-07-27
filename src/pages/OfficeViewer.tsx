@@ -4,6 +4,7 @@ import { invokeOrThrow } from '../services/invoke';
 import { useI18n } from '../i18n';
 import { isTauriRuntime } from '../services/tauriRuntime';
 import { FileText, Languages, Download, Loader2 } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
 
 type OfficeKind = 'docx' | 'excel' | 'pptx';
 
@@ -259,62 +260,66 @@ function OfficeViewer({ kind }: { kind: OfficeKind }) {
 
   return (
     <div className="h-full flex flex-col p-6">
-      <div className="flex justify-between items-center mb-5 flex-wrap gap-2">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <FileText size={24} />
-          {meta.label}
-        </h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <select
-            value={fromLang}
-            onChange={(e) => setFromLang(e.target.value)}
-            className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm"
-          >
-            <option value="auto">Auto</option>
-            <option value="en">English</option>
-            <option value="zh">中文</option>
-            <option value="ja">日本語</option>
-            <option value="ko">한국어</option>
-          </select>
-          <span className="text-text-secondary">→</span>
-          <select
-            value={toLang}
-            onChange={(e) => setToLang(e.target.value)}
-            className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm"
-          >
-            <option value="zh">中文</option>
-            <option value="en">English</option>
-            <option value="ja">日本語</option>
-            <option value="ko">한국어</option>
-          </select>
-          <button
-            type="button"
-            onClick={openFile}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bg-secondary border border-border text-sm hover:bg-bg-tertiary"
-          >
-            <FileText size={16} />
-            {t('common.open') || '打开'}
-          </button>
-          <button
-            type="button"
-            onClick={runPreview}
-            disabled={!filePath || translating}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-fg text-sm disabled:opacity-50"
-          >
-            {translating ? <Loader2 size={16} className="animate-spin" /> : <Languages size={16} />}
-            {t('common.translate') || '预览翻译'}
-          </button>
-          <button
-            type="button"
-            onClick={exportTranslated}
-            disabled={!filePath || exporting}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bg-secondary border border-border text-sm hover:bg-bg-tertiary disabled:opacity-50"
-          >
-            {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-            {t('common.export') || '导出译文'}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={meta.label}
+        icon={FileText}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={fromLang}
+              onChange={(e) => setFromLang(e.target.value)}
+              className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="auto">Auto</option>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+            </select>
+            <span className="text-text-secondary">→</span>
+            <select
+              value={toLang}
+              onChange={(e) => setToLang(e.target.value)}
+              className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+            </select>
+            <button
+              type="button"
+              onClick={openFile}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bg-secondary border border-border text-sm hover:bg-bg-tertiary"
+            >
+              <FileText size={16} />
+              {t('common.open') || '打开'}
+            </button>
+            <button
+              type="button"
+              onClick={runPreview}
+              disabled={!filePath || translating}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-fg text-sm disabled:opacity-50"
+            >
+              {translating ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Languages size={16} />
+              )}
+              {t('common.translate') || '预览翻译'}
+            </button>
+            <button
+              type="button"
+              onClick={exportTranslated}
+              disabled={!filePath || exporting}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-bg-secondary border border-border text-sm hover:bg-bg-tertiary disabled:opacity-50"
+            >
+              {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+              {t('common.export') || '导出译文'}
+            </button>
+          </div>
+        }
+      />
 
       {fileName && (
         <p className="text-sm text-text-secondary mb-2 truncate" title={filePath || undefined}>

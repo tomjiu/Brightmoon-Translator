@@ -13,6 +13,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { saveAndCollect, summarizeReport } from '../hooks/useCollectionPush';
+import PageHeader from '../components/PageHeader';
 
 interface PhoneticInfo {
   text?: string;
@@ -223,20 +225,26 @@ function DictionarySearch() {
       {/* Search Bar */}
       <div className="p-6 border-b border-border bg-bg-secondary">
         <div className="max-w-3xl mx-auto">
-          <div className="flex items-center gap-2 mb-4">
-            <h1 className="text-2xl font-bold text-text-primary">词典查询</h1>
-            <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded flex items-center gap-1">
-              <Globe size={12} />
-              多源聚合
-            </span>
-            <button
-              onClick={handleImport}
-              disabled={isImporting}
-              className="ml-auto text-xs px-3 py-1 bg-bg-tertiary text-text-secondary rounded hover:text-primary border border-border disabled:opacity-50"
-            >
-              {isImporting ? '导入中...' : '重新导入词典'}
-            </button>
-          </div>
+          <PageHeader
+            title="词典查询"
+            icon={BookOpen}
+            className="mb-4"
+            actions={
+              <div className="flex items-center gap-2">
+                <span className="ui-caption px-2 py-1 bg-bg-tertiary border border-border rounded flex items-center gap-1">
+                  <Globe size={12} />
+                  多源聚合
+                </span>
+                <button
+                  onClick={handleImport}
+                  disabled={isImporting}
+                  className="text-xs px-3 py-1 bg-bg-tertiary text-text-secondary rounded hover:text-primary border border-border disabled:opacity-50"
+                >
+                  {isImporting ? '导入中...' : '重新导入词典'}
+                </button>
+              </div>
+            }
+          />
           {importStatus && <p className="text-xs text-primary mb-2">{importStatus}</p>}
           <div ref={searchRef} className="relative">
             <div className="flex gap-2">
@@ -353,19 +361,21 @@ function ResultCard({
 }) {
   const primaryPhonetic = result.phonetics.find((p) => p.text);
   const [collected, setCollected] = useState(false);
+  const [collectMsg, setCollectMsg] = useState<string | null>(null);
 
   const handleCollect = async () => {
     try {
-      await invoke('add_wordbook_entry', {
+      const { report } = await saveAndCollect({
         word: result.word,
         translation: result.chineseTranslation || '',
         fromLang: 'en',
         toLang: 'zh',
-        note: null,
       });
       setCollected(true);
+      setCollectMsg(summarizeReport(report));
     } catch (err) {
       console.error('Failed to add to wordbook:', err);
+      setCollectMsg(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -407,27 +417,30 @@ function ResultCard({
             </div>
           </div>
           <div className="flex items-center gap-1">
-            {/* 收藏到词本 */}
             <button
-              onClick={handleCollect}
+              onClick={() => void handleCollect()}
               disabled={collected}
               className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded transition-colors ${
                 collected
-                  ? 'bg-red-50 text-red-500 border border-red-200'
-                  : 'bg-bg-tertiary text-text-secondary hover:text-red-500 border border-border'
+                  ? 'bg-bg-tertiary text-primary border border-primary'
+                  : 'bg-bg-tertiary text-text-secondary hover:text-primary border border-border'
               }`}
-              title={collected ? '已收藏' : '收藏到词本'}
+              title={collected ? '已收藏（含外送）' : '收藏到生词本（含外送）'}
             >
-              {collected ? '❤️ 已收藏' : '🤍 收藏'}
+              {collected ? '已收藏' : '收藏'}
             </button>
             <button
               onClick={() => navigator.clipboard.writeText(result.word)}
               className="p-2 hover:bg-bg-tertiary rounded"
+              title="复制"
             >
               <Copy size={16} className="text-text-secondary" />
             </button>
           </div>
         </div>
+        {collectMsg && (
+          <p className="text-xs text-text-secondary mb-2 whitespace-pre-wrap">{collectMsg}</p>
+        )}
 
         {/* 中文释义（ECDICT） */}
         {result.chineseTranslation && (

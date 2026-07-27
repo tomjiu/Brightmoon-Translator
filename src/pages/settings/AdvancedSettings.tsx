@@ -13,8 +13,8 @@ export default function AdvancedSettings() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold text-text-primary">高级设置</h1>
-        <p className="text-xs text-text-secondary mt-1">配置高级功能和选项</p>
+        <h1 className="ui-page-title">高级设置</h1>
+        <p className="ui-page-desc">配置高级功能和选项</p>
       </div>
 
       {isTauri && (

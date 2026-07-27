@@ -13,6 +13,7 @@ import {
   PROVIDER_PRESETS,
   type ModelInfo,
   type LlmProviderEntry,
+  type LlmApiFormat,
 } from '../services/modelProvider';
 import {
   Sparkles,
@@ -50,22 +51,24 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
   const [availableModels, setAvailableModels] = useState<Record<string, ModelInfo[]>>({});
 
   // 提取当前 providers 列表（兼容旧配置）
-  const providers: LlmProviderEntry[] = config.llm.providers.length
-    ? config.llm.providers
-    : config.llm.apiKey || config.llm.baseUrl
-      ? [
-          {
-            id: 'default',
-            name: config.llm.provider || '自定义',
-            baseUrl: config.llm.baseUrl,
-            apiKey: config.llm.apiKey,
-            model: config.llm.model,
-            priority: 0,
-            enabled: true,
-            models: [],
-          },
-        ]
-      : [];
+  const providers: LlmProviderEntry[] =
+    Array.isArray(config.llm.providers) && config.llm.providers.length
+      ? config.llm.providers
+      : config.llm.apiKey || config.llm.baseUrl
+        ? [
+            {
+              id: 'default',
+              name: config.llm.provider || '自定义',
+              baseUrl: config.llm.baseUrl || '',
+              apiKey: config.llm.apiKey || '',
+              model: config.llm.model || '',
+              priority: 0,
+              enabled: true,
+              models: [],
+              apiFormat: 'openai',
+            },
+          ]
+        : [];
 
   const [editProviders, setEditProviders] = useState<LlmProviderEntry[]>(providers);
 
@@ -92,7 +95,7 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
   // ====== 提供商管理 ======
 
   const addProvider = (preset?: (typeof PROVIDER_PRESETS)[0]) => {
-    const id = `provider_${Date.now()}`;
+    const id = preset?.id ? `${preset.id}_${Date.now()}` : `provider_${Date.now()}`;
     const newProvider: LlmProviderEntry = {
       id,
       name: preset?.name || '自定义',
@@ -102,6 +105,7 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
       priority: editProviders.length,
       enabled: true,
       models: [],
+      apiFormat: preset?.apiFormat || 'openai',
     };
     setEditProviders([...editProviders, newProvider]);
   };
@@ -133,7 +137,11 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
     if (!provider.baseUrl) return;
     setFetchingModels((prev) => ({ ...prev, [provider.id]: true }));
     try {
-      const models = await fetchAvailableModels(provider.baseUrl, provider.apiKey);
+      const models = await fetchAvailableModels(
+        provider.baseUrl,
+        provider.apiKey,
+        provider.apiFormat || 'openai',
+      );
       setAvailableModels((prev) => ({ ...prev, [provider.id]: models }));
       updateProvider(
         provider.id,
@@ -160,7 +168,12 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
     if (!provider.baseUrl || !provider.model) return;
     setTestingConnection((prev) => ({ ...prev, [provider.id]: true }));
     try {
-      const result = await testLlmConnection(provider.baseUrl, provider.apiKey, provider.model);
+      const result = await testLlmConnection(
+        provider.baseUrl,
+        provider.apiKey,
+        provider.model,
+        provider.apiFormat || 'openai',
+      );
       addToast({ type: 'success', message: result, duration: 5000 });
     } catch (err) {
       addToast({ type: 'error', message: `连接失败: ${err}`, duration: 5000 });
@@ -285,7 +298,8 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
         {expandedSection === 'llm' && (
           <div className="p-4 space-y-4">
             <p className="text-sm text-text-secondary">
-              配置多个 LLM 提供商，按优先级自动回退。排在前面的优先使用。
+              选内置模板填 Key，或自定义并选择请求格式（OpenAI / Anthropic /
+              Gemini）。按列表顺序回退。
             </p>
 
             {/* 提供商列表 */}
@@ -332,6 +346,22 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
                   </div>
                 </div>
 
+                {/* 请求格式 */}
+                <div>
+                  <label className="text-xs text-text-secondary mb-1 block">请求格式</label>
+                  <select
+                    value={provider.apiFormat || 'openai'}
+                    onChange={(e) =>
+                      updateProvider(provider.id, 'apiFormat', e.target.value as LlmApiFormat)
+                    }
+                    className="w-full px-2.5 py-1.5 bg-bg-secondary border border-border rounded text-sm"
+                  >
+                    <option value="openai">OpenAI 兼容（/chat/completions）</option>
+                    <option value="anthropic">Anthropic（/messages）</option>
+                    <option value="gemini">Google Gemini（generateContent）</option>
+                  </select>
+                </div>
+
                 {/* API 地址 + 拉取模型 */}
                 <div className="flex gap-2">
                   <div className="flex-1">
@@ -340,7 +370,13 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
                       type="text"
                       value={provider.baseUrl}
                       onChange={(e) => updateProvider(provider.id, 'baseUrl', e.target.value)}
-                      placeholder="https://api.deepseek.com/v1"
+                      placeholder={
+                        (provider.apiFormat || 'openai') === 'gemini'
+                          ? 'https://generativelanguage.googleapis.com/v1beta'
+                          : (provider.apiFormat || 'openai') === 'anthropic'
+                            ? 'https://api.anthropic.com/v1'
+                            : 'https://api.deepseek.com/v1'
+                      }
                       className="w-full px-2.5 py-1.5 bg-bg-secondary border border-border rounded text-sm"
                     />
                   </div>
@@ -387,14 +423,14 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
                 {/* 模型选择 */}
                 <div>
                   <label className="text-xs text-text-secondary mb-1 block">模型</label>
-                  {availableModels[provider.id].length ? (
+                  {(availableModels[provider.id].length ?? 0) > 0 ? (
                     <select
                       value={provider.model}
                       onChange={(e) => updateProvider(provider.id, 'model', e.target.value)}
                       className="w-full px-2.5 py-1.5 bg-bg-secondary border border-border rounded text-sm"
                     >
                       <option value="">选择模型...</option>
-                      {availableModels[provider.id].map((m) => (
+                      {(availableModels[provider.id] ?? []).map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.id} {m.ownedBy ? `(${m.ownedBy})` : ''}
                         </option>
@@ -429,18 +465,17 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
 
             {/* 添加提供商 */}
             <div className="flex gap-2 flex-wrap">
-              {PROVIDER_PRESETS.filter((p) => !editProviders.some((ep) => ep.name === p.name)).map(
-                (preset) => (
-                  <button
-                    key={preset.name}
-                    onClick={() => addProvider(preset)}
-                    className="flex items-center gap-1 px-3 py-1.5 border border-dashed border-border rounded text-xs hover:border-primary hover:text-primary transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    {preset.name}
-                  </button>
-                ),
-              )}
+              {PROVIDER_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  onClick={() => addProvider(preset)}
+                  className="flex items-center gap-1 px-3 py-1.5 border border-dashed border-border rounded text-xs hover:border-primary hover:text-primary transition-colors"
+                  title={`${preset.apiFormat} · ${preset.baseUrl}`}
+                >
+                  <Plus className="w-3 h-3" />
+                  {preset.name}
+                </button>
+              ))}
               <button
                 onClick={() => addProvider()}
                 className="flex items-center gap-1 px-3 py-1.5 border border-dashed border-border rounded text-xs hover:border-primary hover:text-primary transition-colors"
@@ -549,18 +584,18 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
             <p className="text-sm text-text-secondary">从翻译对中自动提取专业术语，生成术语表。</p>
             <div className="space-y-2">
               <label className="text-sm font-medium">翻译样本：</label>
-              {sampleTexts.map(([source, target], i) => (
+              {sampleTexts.map((pair, i) => (
                 <div key={i} className="flex gap-2">
                   <input
                     type="text"
-                    value={source}
+                    value={pair[0] ?? ''}
                     onChange={(e) => updateSampleText(i, 0, e.target.value)}
                     placeholder="原文"
                     className="flex-1 px-3 py-2 bg-bg-primary border border-border rounded-md text-sm"
                   />
                   <input
                     type="text"
-                    value={target}
+                    value={pair[1] ?? ''}
                     onChange={(e) => updateSampleText(i, 1, e.target.value)}
                     placeholder="译文"
                     className="flex-1 px-3 py-2 bg-bg-primary border border-border rounded-md text-sm"

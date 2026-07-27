@@ -14,6 +14,8 @@ import {
   Clock,
   History,
 } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
+import Icon from '../components/Icon';
 
 interface EngineStats {
   count: number;
@@ -171,52 +173,53 @@ export default function MetricsDashboard() {
     <div className="h-full overflow-y-auto p-6">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <BarChart3 className="text-primary" size={24} />
-            <h1 className="text-xl font-bold text-text-primary">{t('metrics.title')}</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={hours}
-              onChange={(e) => setHours(Number(e.target.value))}
-              className="px-3 py-1.5 bg-bg-secondary border border-border rounded-lg text-sm text-text-primary"
-            >
-              <option value={6}>{t('metrics.last6h')}</option>
-              <option value={24}>{t('metrics.last24h')}</option>
-              <option value={72}>{t('metrics.last3d')}</option>
-              <option value={168}>{t('metrics.last7d')}</option>
-            </select>
-            <button
-              onClick={loadMetrics}
-              className="p-2 rounded-lg hover:bg-bg-tertiary text-text-secondary transition-colors"
-              title={t('metrics.refresh')}
-            >
-              <RefreshCw size={16} />
-            </button>
-            <button
-              onClick={handleExportCsv}
-              className="p-2 rounded-lg hover:bg-bg-tertiary text-text-secondary transition-colors"
-              title="CSV"
-            >
-              <Download size={16} />
-            </button>
-            <button
-              onClick={handleExportJson}
-              className="p-2 rounded-lg hover:bg-bg-tertiary text-text-secondary transition-colors"
-              title="JSON"
-            >
-              <Download size={16} />
-            </button>
-            <button
-              onClick={handleClear}
-              className="p-2 rounded-lg hover:bg-error/10 text-error transition-colors"
-              title={t('metrics.clear')}
-            >
-              <Trash2 size={16} />
-            </button>
-          </div>
-        </div>
+        <PageHeader
+          title={t('metrics.title')}
+          icon={BarChart3}
+          className="mb-0"
+          actions={
+            <div className="flex items-center gap-2">
+              <select
+                value={hours}
+                onChange={(e) => setHours(Number(e.target.value))}
+                className="px-3 py-1.5 bg-bg-secondary border border-border rounded-lg text-sm text-text-primary"
+              >
+                <option value={6}>{t('metrics.last6h')}</option>
+                <option value={24}>{t('metrics.last24h')}</option>
+                <option value={72}>{t('metrics.last3d')}</option>
+                <option value={168}>{t('metrics.last7d')}</option>
+              </select>
+              <button
+                onClick={loadMetrics}
+                className="p-2 rounded-lg hover:bg-bg-tertiary text-text-secondary transition-colors"
+                title={t('metrics.refresh')}
+              >
+                <Icon icon={RefreshCw} size="md" />
+              </button>
+              <button
+                onClick={handleExportCsv}
+                className="p-2 rounded-lg hover:bg-bg-tertiary text-text-secondary transition-colors"
+                title="CSV"
+              >
+                <Icon icon={Download} size="md" />
+              </button>
+              <button
+                onClick={handleExportJson}
+                className="p-2 rounded-lg hover:bg-bg-tertiary text-text-secondary transition-colors"
+                title="JSON"
+              >
+                <Icon icon={Download} size="md" />
+              </button>
+              <button
+                onClick={handleClear}
+                className="p-2 rounded-lg hover:bg-error/10 text-error transition-colors"
+                title={t('metrics.clear')}
+              >
+                <Icon icon={Trash2} size="md" />
+              </button>
+            </div>
+          }
+        />
 
         {/* Overview Cards */}
         {summary && (
@@ -280,7 +283,7 @@ export default function MetricsDashboard() {
                     />
                   </div>
                 </div>
-                <div className="text-2xl font-bold text-text-primary">
+                <div className="ui-stat text-text-primary">
                   {(summary.cache_stats.hit_rate * 100).toFixed(1)}%
                 </div>
               </div>
@@ -294,15 +297,11 @@ export default function MetricsDashboard() {
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-2xl font-bold text-text-primary">
-                      {summary.ocr_stats.count}
-                    </div>
+                    <div className="ui-stat text-text-primary">{summary.ocr_stats.count}</div>
                     <div className="text-xs text-text-secondary">{t('metrics.ocrCount')}</div>
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-text-primary">
-                      {summary.ocr_stats.avg_ms}ms
-                    </div>
+                    <div className="ui-stat text-text-primary">{summary.ocr_stats.avg_ms}ms</div>
                     <div className="text-xs text-text-secondary">{t('metrics.avgLatency')}</div>
                   </div>
                 </div>
@@ -441,7 +440,7 @@ function StatCard({
         <div className={color}>{icon}</div>
         <span className="text-xs text-text-secondary">{label}</span>
       </div>
-      <div className="text-2xl font-bold text-text-primary">{value}</div>
+      <div className="ui-stat">{value}</div>
     </div>
   );
 }

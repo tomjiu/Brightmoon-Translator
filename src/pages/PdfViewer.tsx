@@ -12,6 +12,7 @@ import {
   ScanLine,
   Loader2,
 } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
 
 interface PdfPage {
   pageNumber: number;
@@ -193,81 +194,85 @@ function PdfViewer() {
   return (
     <div className="h-full flex flex-col p-6">
       {/* Header */}
-      <div className="flex justify-between items-center mb-5">
-        <h1 className="text-2xl font-bold">{t('pdf.title')}</h1>
-        <div className="flex items-center gap-3">
-          <select
-            value={fromLang}
-            onChange={(e) => setFromLang(e.target.value)}
-            className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm cursor-pointer focus:border-primary"
-          >
-            <option value="auto">Auto</option>
-            <option value="en">English</option>
-            <option value="zh">中文</option>
-            <option value="ja">日本語</option>
-            <option value="ko">한국어</option>
-          </select>
-          <span className="text-text-secondary">→</span>
-          <select
-            value={toLang}
-            onChange={(e) => setToLang(e.target.value)}
-            className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm cursor-pointer focus:border-primary"
-          >
-            <option value="zh">中文</option>
-            <option value="en">English</option>
-            <option value="ja">日本語</option>
-            <option value="ko">한국어</option>
-          </select>
-          <button
-            className="bg-primary text-primary-fg border border-primary rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors flex items-center gap-1.5"
-            onClick={openFile}
-          >
-            <FileText size={14} />
-            {t('pdf.openFile')}
-          </button>
-          {pdfDoc && !pdfDoc.isScanned && (
-            <button
-              className="bg-accent text-white border border-accent rounded-lg px-4 py-2 text-sm hover:bg-accent/80 transition-colors flex items-center gap-1.5 disabled:opacity-50"
-              onClick={translatePdf}
-              disabled={translating}
+      <PageHeader
+        title={t('pdf.title')}
+        icon={FileText}
+        className="mb-5"
+        actions={
+          <div className="flex items-center gap-3">
+            <select
+              value={fromLang}
+              onChange={(e) => setFromLang(e.target.value)}
+              className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm cursor-pointer focus:border-primary"
             >
-              <Languages size={14} />
-              {translating ? t('pdf.translating') : t('pdf.translate')}
-            </button>
-          )}
-          {pdfDoc && hasOcrText && pdfDoc.isScanned && (
-            <button
-              className="bg-accent text-white border border-accent rounded-lg px-4 py-2 text-sm hover:bg-accent/80 transition-colors flex items-center gap-1.5 disabled:opacity-50"
-              onClick={translatePdf}
-              disabled={translating}
+              <option value="auto">Auto</option>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+            </select>
+            <span className="text-text-secondary">→</span>
+            <select
+              value={toLang}
+              onChange={(e) => setToLang(e.target.value)}
+              className="bg-bg-secondary text-text-primary border border-border rounded-lg px-3 py-2 text-sm cursor-pointer focus:border-primary"
             >
-              <Languages size={14} />
-              {translating ? t('pdf.translating') : t('pdf.translate')}
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+            </select>
+            <button
+              className="bg-primary text-primary-fg border border-primary rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors flex items-center gap-1.5"
+              onClick={openFile}
+            >
+              <FileText size={14} />
+              {t('pdf.openFile')}
             </button>
-          )}
-          {translatedPdf && (
-            <>
+            {pdfDoc && !pdfDoc.isScanned && (
               <button
-                className={`border rounded-lg px-4 py-2 text-sm transition-colors ${
-                  showBilingual
-                    ? 'bg-primary text-primary-fg border-primary'
-                    : 'bg-bg-tertiary text-text-secondary border-border hover:bg-bg-tertiary/80'
-                }`}
-                onClick={() => setShowBilingual(!showBilingual)}
+                className="bg-accent text-white border border-accent rounded-lg px-4 py-2 text-sm hover:bg-accent/80 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                onClick={translatePdf}
+                disabled={translating}
               >
-                {t('pdf.bilingual')}
+                <Languages size={14} />
+                {translating ? t('pdf.translating') : t('pdf.translate')}
               </button>
+            )}
+            {pdfDoc && hasOcrText && pdfDoc.isScanned && (
               <button
-                className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
-                onClick={exportTranslatedPdf}
+                className="bg-accent text-white border border-accent rounded-lg px-4 py-2 text-sm hover:bg-accent/80 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                onClick={translatePdf}
+                disabled={translating}
               >
-                <Download size={14} />
-                {t('pdf.export')}
+                <Languages size={14} />
+                {translating ? t('pdf.translating') : t('pdf.translate')}
               </button>
-            </>
-          )}
-        </div>
-      </div>
+            )}
+            {translatedPdf && (
+              <>
+                <button
+                  className={`border rounded-lg px-4 py-2 text-sm transition-colors ${
+                    showBilingual
+                      ? 'bg-primary text-primary-fg border-primary'
+                      : 'bg-bg-tertiary text-text-secondary border-border hover:bg-bg-tertiary/80'
+                  }`}
+                  onClick={() => setShowBilingual(!showBilingual)}
+                >
+                  {t('pdf.bilingual')}
+                </button>
+                <button
+                  className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
+                  onClick={exportTranslatedPdf}
+                >
+                  <Download size={14} />
+                  {t('pdf.export')}
+                </button>
+              </>
+            )}
+          </div>
+        }
+      />
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">

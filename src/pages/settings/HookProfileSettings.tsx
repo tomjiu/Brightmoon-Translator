@@ -150,10 +150,8 @@ export default function HookProfileSettings() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold text-text-primary">Hook 配置文件</h1>
-        <p className="text-xs text-text-secondary mt-1">
-          为不同游戏/应用保存独立的钩取和翻译配置（Phase 3.1）
-        </p>
+        <h1 className="ui-page-title">Hook 配置文件</h1>
+        <p className="ui-page-desc">为不同游戏/应用保存独立的钩取和翻译配置（Phase 3.1）</p>
       </div>
 
       {/* Active Profile Indicator */}

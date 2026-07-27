@@ -1,19 +1,72 @@
+import { useCallback, useState } from 'react';
+import { Keyboard } from 'lucide-react';
 import { useConfigStore } from '../../stores/configStore';
 import Card from '../../components/Card';
 import { isTauriRuntime } from '../../services/tauriRuntime';
+
+type HotkeyKey =
+  | 'ocrTranslate'
+  | 'showWindow'
+  | 'translateSelection'
+  | 'replaceTranslate'
+  | 'toggleOverlayClickThrough';
+
+const FIELDS: Array<{ key: HotkeyKey; label: string; placeholder: string }> = [
+  { key: 'ocrTranslate', label: 'OCR 截图翻译', placeholder: 'Ctrl+Shift+T' },
+  { key: 'showWindow', label: '显示主窗口', placeholder: 'Ctrl+T' },
+  { key: 'translateSelection', label: '选中文本翻译', placeholder: 'Ctrl+Shift+Y' },
+  { key: 'replaceTranslate', label: '替换翻译', placeholder: 'Ctrl+Shift+R' },
+  {
+    key: 'toggleOverlayClickThrough',
+    label: '浮层取消穿透',
+    placeholder: 'Ctrl+Shift+Escape',
+  },
+];
+
+function formatHotkey(e: React.KeyboardEvent): string | null {
+  if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return null;
+
+  const parts: string[] = [];
+  if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+
+  let key = e.key;
+  if (key === ' ') key = 'Space';
+  else if (key === 'Escape') key = 'Escape';
+  else if (key.length === 1) key = key.toUpperCase();
+  else if (key.startsWith('Arrow')) key = key.replace('Arrow', '');
+  else key = key.charAt(0).toUpperCase() + key.slice(1);
+
+  parts.push(key);
+  return parts.join('+');
+}
 
 export default function HotkeySettings() {
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
   const isTauri = isTauriRuntime();
+  const [capturing, setCapturing] = useState<HotkeyKey | null>(null);
+
+  const commit = useCallback(
+    (key: HotkeyKey, value: string) => {
+      updateConfig((prev) => ({
+        ...prev,
+        hotkeys: { ...prev.hotkeys, [key]: value },
+      }));
+      void saveConfig();
+      setCapturing(null);
+    },
+    [saveConfig, updateConfig],
+  );
 
   if (!isTauri) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-5">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">快捷键设置</h1>
-          <p className="text-sm text-text-secondary mt-1">快捷键仅在桌面版可用</p>
+          <h1 className="ui-page-title">快捷键</h1>
+          <p className="ui-page-desc">快捷键仅在桌面版可用</p>
         </div>
       </div>
     );
@@ -22,62 +75,59 @@ export default function HotkeySettings() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold text-text-primary">快捷键设置</h1>
-        <p className="text-xs text-text-secondary mt-1">配置全局快捷键</p>
+        <h1 className="ui-page-title">快捷键</h1>
+        <p className="ui-page-desc">点击输入框后按下组合键即可录制；保存后需重启应用生效</p>
       </div>
 
-      <Card title="全局快捷键" description="设置系统级快捷键">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">OCR 截图翻译</label>
-            <input
-              type="text"
-              value={config.hotkeys.ocrTranslate || 'Ctrl+Shift+T'}
-              onChange={(e) => {
-                updateConfig((prev) => ({
-                  ...prev,
-                  hotkeys: { ...prev.hotkeys, ocrTranslate: e.target.value },
-                }));
-              }}
-              onBlur={() => void saveConfig()}
-              placeholder="Ctrl+Shift+T"
-              className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">显示主窗口</label>
-            <input
-              type="text"
-              value={config.hotkeys.showWindow || 'Ctrl+T'}
-              onChange={(e) => {
-                updateConfig((prev) => ({
-                  ...prev,
-                  hotkeys: { ...prev.hotkeys, showWindow: e.target.value },
-                }));
-              }}
-              onBlur={() => void saveConfig()}
-              placeholder="Ctrl+T"
-              className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">选中文本翻译</label>
-            <input
-              type="text"
-              value={config.hotkeys.translateSelection || 'Ctrl+Shift+Y'}
-              onChange={(e) => {
-                updateConfig((prev) => ({
-                  ...prev,
-                  hotkeys: { ...prev.hotkeys, translateSelection: e.target.value },
-                }));
-              }}
-              onBlur={() => void saveConfig()}
-              placeholder="Ctrl+Shift+Y"
-              className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary outline-none"
-            />
-          </div>
+      <Card title="全局快捷键" description="系统级热键 · Lucide 图标导航对应功能">
+        <div className="space-y-3">
+          {FIELDS.map((f) => {
+            const value = config.hotkeys[f.key] || f.placeholder;
+            const isCap = capturing === f.key;
+            return (
+              <div
+                key={f.key}
+                className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-2 border-b border-border last:border-0"
+              >
+                <label className="sm:w-40 shrink-0 text-sm font-medium text-text-primary">
+                  {f.label}
+                </label>
+                <div className="flex-1 relative">
+                  <Keyboard
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none"
+                  />
+                  <input
+                    type="text"
+                    readOnly
+                    value={isCap ? '按下快捷键…' : value}
+                    placeholder={f.placeholder}
+                    onFocus={() => setCapturing(f.key)}
+                    onBlur={() => setCapturing(null)}
+                    onKeyDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.key === 'Escape') {
+                        setCapturing(null);
+                        return;
+                      }
+                      if (e.key === 'Backspace' || e.key === 'Delete') {
+                        commit(f.key, '');
+                        return;
+                      }
+                      const next = formatHotkey(e);
+                      if (next) commit(f.key, next);
+                    }}
+                    className={`w-full pl-9 pr-3 py-2.5 bg-bg-tertiary text-text-primary border rounded-lg text-sm font-mono tracking-tight cursor-pointer transition-colors ${
+                      isCap
+                        ? 'border-primary ring-0 shadow-[var(--ring)]'
+                        : 'border-border hover:border-border-strong'
+                    }`}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Card>
     </div>

@@ -16,6 +16,8 @@ import {
   Loader2,
   Check,
 } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
+import Icon from '../components/Icon';
 
 // ── Types ───────────────────────────────────────────────────────────────────────
 
@@ -234,46 +236,62 @@ function TmManager() {
     <div className="h-full overflow-y-auto p-6">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Database size={24} className="text-primary" />
-            {t('tm.title')}
-          </h1>
-          <div className="flex gap-2">
-            <button
-              onClick={handleExportJson}
-              disabled={exporting}
-              className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
-            >
-              {exporting ? <Loader2 size={14} className="animate-spin" /> : <FileJson size={14} />}
-              {t('tm.exportJson')}
-            </button>
-            <button
-              onClick={handleExportTmx}
-              disabled={exporting}
-              className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
-            >
-              {exporting ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-              {t('tm.exportTmx')}
-            </button>
-            <button
-              onClick={handleImportJson}
-              disabled={importing}
-              className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
-            >
-              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {t('tm.importJson')}
-            </button>
-            <button
-              onClick={handleImportTmx}
-              disabled={importing}
-              className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
-            >
-              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {t('tm.importTmx')}
-            </button>
-          </div>
-        </div>
+        <PageHeader
+          title={t('tm.title')}
+          icon={Database}
+          actions={
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={handleExportJson}
+                disabled={exporting}
+                className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {exporting ? (
+                  <Icon icon={Loader2} size="sm" className="animate-spin" />
+                ) : (
+                  <Icon icon={FileJson} size="sm" />
+                )}
+                {t('tm.exportJson')}
+              </button>
+              <button
+                onClick={handleExportTmx}
+                disabled={exporting}
+                className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {exporting ? (
+                  <Icon icon={Loader2} size="sm" className="animate-spin" />
+                ) : (
+                  <Icon icon={FileText} size="sm" />
+                )}
+                {t('tm.exportTmx')}
+              </button>
+              <button
+                onClick={handleImportJson}
+                disabled={importing}
+                className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {importing ? (
+                  <Icon icon={Loader2} size="sm" className="animate-spin" />
+                ) : (
+                  <Icon icon={Upload} size="sm" />
+                )}
+                {t('tm.importJson')}
+              </button>
+              <button
+                onClick={handleImportTmx}
+                disabled={importing}
+                className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {importing ? (
+                  <Icon icon={Loader2} size="sm" className="animate-spin" />
+                ) : (
+                  <Icon icon={Upload} size="sm" />
+                )}
+                {t('tm.importTmx')}
+              </button>
+            </div>
+          }
+        />
 
         {/* Statistics */}
         {stats && (

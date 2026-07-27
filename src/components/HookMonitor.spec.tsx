@@ -52,6 +52,7 @@ const baseConfig: AppConfig = {
   llmTemperature: 0.3,
   llmMaxTokens: 4096,
   clipboardMonitor: false,
+  useClipboardOutput: true,
   autoCopyResult: false,
   autoCopyMode: 'translated',
   translationMask: false,

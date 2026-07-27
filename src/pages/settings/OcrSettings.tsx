@@ -1,149 +1,217 @@
+import { CheckCircle, Monitor, Sparkles, BookOpen, Cpu, type LucideIcon } from 'lucide-react';
 import { useConfigStore } from '../../stores/configStore';
 import Card from '../../components/Card';
 import Badge from '../../components/Badge';
-import { CheckCircle } from 'lucide-react';
 import {
   OCR_WATCH_INTERVAL_DEFAULT_MS,
   OCR_WATCH_INTERVAL_MIN_MS,
 } from '../../services/ocrConstants';
+
+type OcrEngineId = 'auto' | 'winrt' | 'youdao' | 'tesseract' | 'rapid' | 'paddle';
+
+interface OcrEngineOption {
+  id: OcrEngineId;
+  name: string;
+  description: string;
+  icon: LucideIcon;
+  status: 'available' | 'unavailable';
+  recommended?: boolean;
+  badges: Array<{ label: string; variant: 'success' | 'warning' | 'error' | 'info' }>;
+}
 
 export default function OcrSettings() {
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
 
-  const ocrEngines = [
+  const ocrEngines: OcrEngineOption[] = [
     {
       id: 'winrt',
       name: 'Windows 原生 OCR',
-      description: '使用 Windows 内置的 OCR 引擎，快速、准确、免费',
-      icon: '🪟',
+      description: '系统内置引擎，速度快、免费、无需密钥',
+      icon: Monitor,
       status: 'available',
       recommended: true,
       badges: [
-        { label: '推荐', variant: 'success' as const },
-        { label: '快速', variant: 'info' as const },
-        { label: '免费', variant: 'success' as const },
+        { label: '推荐', variant: 'success' },
+        { label: '快速', variant: 'info' },
+        { label: '免费', variant: 'success' },
       ],
     },
     {
       id: 'auto',
       name: '自动选择',
-      description: '并行尝试多个 OCR 引擎，可能较慢',
-      icon: '🤖',
+      description: '并行尝试多个引擎，兼容性更好但可能更慢',
+      icon: Sparkles,
       status: 'available',
-      badges: [{ label: '智能', variant: 'info' as const }],
+      badges: [{ label: '智能', variant: 'info' }],
     },
     {
       id: 'youdao',
       name: '有道 OCR',
-      description: '有道提供的免费 OCR 服务（已逆向工程，无需 API Key）',
-      icon: '📘',
+      description: '有道免费 OCR 通道，无需单独配置 API Key',
+      icon: BookOpen,
       status: 'available',
       badges: [
-        { label: '免费', variant: 'success' as const },
-        { label: '无需配置', variant: 'info' as const },
+        { label: '免费', variant: 'success' },
+        { label: '无需配置', variant: 'info' },
       ],
     },
     {
       id: 'tesseract',
-      name: 'Tesseract.js',
-      description: '离线 OCR 引擎，速度较慢但完全本地化',
-      icon: '📝',
+      name: 'Tesseract',
+      description: '本地离线识别，速度较慢但完全本地化',
+      icon: Cpu,
       status: 'available',
       badges: [
-        { label: '离线', variant: 'info' as const },
-        { label: '慢速', variant: 'warning' as const },
+        { label: '离线', variant: 'info' },
+        { label: '慢速', variant: 'warning' },
+      ],
+    },
+    {
+      id: 'rapid',
+      name: 'RapidOCR（离线）',
+      description: '需自备 RapidOcrOnnx + 模型目录（见 docs/OCR_OFFLINE.md）',
+      icon: Cpu,
+      status: 'available',
+      badges: [
+        { label: '离线', variant: 'info' },
+        { label: '外置模型', variant: 'warning' },
+      ],
+    },
+    {
+      id: 'paddle',
+      name: 'PaddleOCR-json（离线）',
+      description: '需自备 PaddleOCR-json.exe + models（Windows）',
+      icon: Cpu,
+      status: 'available',
+      badges: [
+        { label: '离线', variant: 'info' },
+        { label: '外置模型', variant: 'warning' },
       ],
     },
   ];
 
-  const currentEngine = config.ocrEngine || 'winrt';
+  const currentEngine = (config.ocrEngine || 'winrt') as OcrEngineId;
   const currentEngineInfo = ocrEngines.find((e) => e.id === currentEngine);
+  const CurrentIcon = currentEngineInfo?.icon ?? Monitor;
 
   return (
     <div className="space-y-5">
-      {/* 页面标题 */}
       <div>
-        <h1 className="text-xl font-semibold text-text-primary">OCR 设置</h1>
-        <p className="text-xs text-text-secondary mt-1">配置屏幕截图 OCR 识别引擎</p>
+        <h1 className="ui-page-title">OCR 设置</h1>
+        <p className="ui-page-desc">截图识别引擎与区域监视参数</p>
       </div>
 
-      {/* 当前使用的引擎 */}
       <Card>
-        <div className="flex items-center gap-3 p-4 bg-primary/5 border border-primary/30 rounded-lg">
-          <div className="text-3xl">{currentEngineInfo?.icon}</div>
-          <div className="flex-1">
-            <p className="text-sm text-text-secondary">当前使用</p>
-            <p className="text-lg font-semibold text-primary">{currentEngineInfo?.name}</p>
+        <div className="flex items-center gap-3 p-3.5 rounded-xl border border-border bg-bg-tertiary">
+          <div className="w-11 h-11 rounded-xl bg-bg-secondary border border-border flex items-center justify-center text-text-primary shrink-0">
+            <CurrentIcon size={22} strokeWidth={1.75} />
           </div>
-          <CheckCircle size={24} className="text-primary" />
+          <div className="flex-1 min-w-0">
+            <p className="ui-caption">当前使用</p>
+            <p className="ui-section-title mt-0.5">{currentEngineInfo?.name}</p>
+          </div>
+          <CheckCircle size={20} className="text-text-secondary shrink-0" />
         </div>
         {(currentEngine === 'winrt' || currentEngine === 'tesseract') && (
-          <div className="mt-3 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
-            <p className="text-sm text-green-700 dark:text-green-400">
-              ✅ {currentEngine === 'winrt' ? 'Windows 原生 OCR' : 'Tesseract.js'}{' '}
-              已开箱即用，无需配置，完全免费！
-            </p>
-          </div>
+          <p className="ui-caption mt-3 leading-relaxed">
+            {currentEngine === 'winrt' ? 'Windows 原生 OCR' : 'Tesseract'} 开箱即用，无需额外配置。
+          </p>
         )}
       </Card>
 
-      {/* OCR 引擎选择 */}
-      <Card title="选择 OCR 引擎" description="选择一个 OCR 引擎用于屏幕截图翻译">
-        <div className="space-y-3">
-          {ocrEngines.map((engine) => (
-            <label
-              key={engine.id}
-              className={`flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                currentEngine === engine.id
-                  ? 'border-primary bg-primary/5'
-                  : engine.status === 'unavailable'
-                    ? 'border-border opacity-50 cursor-not-allowed'
-                    : 'border-border hover:border-border/60'
-              }`}
-            >
-              <input
-                type="radio"
-                name="ocrEngine"
-                value={engine.id}
-                checked={currentEngine === engine.id}
-                disabled={engine.status === 'unavailable'}
-                onChange={(e) => {
-                  updateConfig((prev) => ({
-                    ...prev,
-                    ocrEngine: e.target.value as 'auto' | 'winrt' | 'youdao' | 'tesseract',
-                  }));
-                  void saveConfig();
-                }}
-                className="mt-1"
-              />
+      <Card title="选择 OCR 引擎" description="用于截图翻译的识别后端">
+        <div className="space-y-2">
+          {ocrEngines.map((engine) => {
+            const Icon = engine.icon;
+            const active = currentEngine === engine.id;
+            return (
+              <label
+                key={engine.id}
+                className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors duration-150 ${
+                  active
+                    ? 'border-primary bg-primary/5'
+                    : engine.status === 'unavailable'
+                      ? 'border-border opacity-50 cursor-not-allowed'
+                      : 'border-border hover:border-border-strong'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="ocrEngine"
+                  value={engine.id}
+                  checked={active}
+                  disabled={engine.status === 'unavailable'}
+                  onChange={(e) => {
+                    updateConfig((prev) => ({
+                      ...prev,
+                      ocrEngine: e.target.value as OcrEngineId,
+                    }));
+                    void saveConfig();
+                  }}
+                  className="mt-2.5"
+                />
 
-              <div className="text-3xl shrink-0">{engine.icon}</div>
+                <div className="w-9 h-9 rounded-lg bg-bg-tertiary border border-border flex items-center justify-center shrink-0 text-text-secondary">
+                  <Icon size={18} strokeWidth={1.75} />
+                </div>
 
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium text-text-primary">{engine.name}</span>
-                  {engine.recommended && currentEngine !== engine.id && (
-                    <Badge variant="success">推荐</Badge>
-                  )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-sm font-medium tracking-tight text-text-primary">
+                      {engine.name}
+                    </span>
+                    {engine.recommended && !active && <Badge variant="success">推荐</Badge>}
+                  </div>
+                  <p className="ui-caption mb-2 leading-relaxed">{engine.description}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {engine.badges.map((badge, idx) => (
+                      <Badge key={idx} variant={badge.variant}>
+                        {badge.label}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-                <p className="text-sm text-text-secondary mb-2">{engine.description}</p>
-                <div className="flex flex-wrap gap-2">
-                  {engine.badges.map((badge, idx) => (
-                    <Badge key={idx} variant={badge.variant}>
-                      {badge.label}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </label>
-          ))}
+              </label>
+            );
+          })}
         </div>
       </Card>
 
-      {/* OCR 参数配置 */}
-      <Card title="OCR 参数" description="配置 OCR 行为参数">
+      {(currentEngine === 'rapid' || currentEngine === 'paddle') && (
+        <Card title="离线 OCR 目录" description="不内置模型；指向 pot 插件或 Paddle 解压目录">
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                插件/模型目录 pluginDir
+              </label>
+              <input
+                type="text"
+                value={config.offlineOcr?.pluginDir || ''}
+                onChange={(e) => {
+                  updateConfig((prev) => ({
+                    ...prev,
+                    offlineOcr: {
+                      backend: currentEngine === 'paddle' ? 'paddle' : 'rapid',
+                      pluginDir: e.target.value,
+                    },
+                  }));
+                }}
+                onBlur={() => void saveConfig()}
+                placeholder="例如 D:\ocr\rapid 或 pot 插件解压路径"
+                className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+              />
+              <p className="ui-caption mt-1.5">
+                Rapid 需含 RapidOcrOnnx.exe + models；Paddle 需 PaddleOCR-json.exe。详见
+                docs/OCR_OFFLINE.md
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <Card title="OCR 参数" description="区域监视行为">
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">
@@ -165,9 +233,9 @@ export default function OcrSettings() {
                 }));
               }}
               onBlur={() => void saveConfig()}
-              className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+              className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg"
             />
-            <p className="text-xs text-text-secondary mt-1">
+            <p className="ui-caption mt-1.5 leading-relaxed">
               结果框开启「区域监视」后的检测间隔（默认 {OCR_WATCH_INTERVAL_DEFAULT_MS}
               ms，最小 {OCR_WATCH_INTERVAL_MIN_MS}
               ms）。内容未变时会自动拉长间隔以省电。
