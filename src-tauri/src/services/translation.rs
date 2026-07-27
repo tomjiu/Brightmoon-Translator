@@ -105,7 +105,7 @@ impl TranslationService {
         };
 
         let pp = self.post_processor.lock().await;
-        let processed = pp.process(&restored);
+        let processed = pp.process_with_source(&restored, Some(source));
         let ac = pp.auto_correct(&processed, source, from, to);
         if !ac.warnings.is_empty() {
             tracing::warn!("[Translation] Auto-correct warnings: {:?}", ac.warnings);
@@ -119,7 +119,7 @@ impl TranslationService {
     async fn finalize_batch(&self, results: &mut [BatchTranslationResult], from: &str, to: &str) {
         let pp = self.post_processor.lock().await;
         for result in results.iter_mut() {
-            result.translated = pp.process(&result.translated);
+            result.translated = pp.process_with_source(&result.translated, Some(&result.original));
             let ac = pp.auto_correct(&result.translated, &result.original, from, to);
             if !ac.warnings.is_empty() {
                 tracing::warn!(
@@ -782,6 +782,19 @@ impl TranslationService {
             }
 
             results.sort_by_key(|r| r.index);
+
+            // AiNiee-style segment validation (warn only — do not drop results)
+            let sources: Vec<String> = results.iter().map(|r| r.original.clone()).collect();
+            let translations: Vec<String> = results.iter().map(|r| r.translated.clone()).collect();
+            let check = crate::response_check::check_segments(
+                &sources,
+                &translations,
+                &crate::response_check::ResponseCheckOptions::strict(),
+            );
+            if !check.ok {
+                tracing::warn!("[translate_batch] response check: {}", check.message);
+            }
+
             results
         }
         .instrument(span)

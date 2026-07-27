@@ -20,6 +20,13 @@ pub struct PostProcessConfig {
     pub fix_punctuation: bool,
     pub fix_newlines: bool,
     pub auto_correct: bool,
+    /// Align dialogue quotes / CJK punctuation with source (AiNiee TextSymbolRepair).
+    #[serde(default = "default_true")]
+    pub symbol_repair: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for PostProcessConfig {
@@ -30,6 +37,7 @@ impl Default for PostProcessConfig {
             fix_punctuation: true,
             fix_newlines: true,
             auto_correct: true,
+            symbol_repair: true,
         }
     }
 }
@@ -249,10 +257,14 @@ impl PostProcessor {
     }
 
     pub fn process(&self, text: &str) -> String {
+        self.process_with_source(text, None)
+    }
+
+    /// Post-process translation; when `source` is set, apply AiNiee-style symbol repair.
+    pub fn process_with_source(&self, text: &str, source: Option<&str>) -> String {
         let config = self.config.lock().unwrap_or_else(|e| e.into_inner());
         let mut result = text.to_string();
 
-        // Apply replacement rules
         for rule in &config.rules {
             if !rule.enabled {
                 continue;
@@ -267,17 +279,20 @@ impl PostProcessor {
             }
         }
 
-        // Fix punctuation
+        if config.symbol_repair {
+            if let Some(src) = source {
+                result = repair_text_symbols(src, &result);
+            }
+        }
+
         if config.fix_punctuation {
             result = fix_punctuation(&result);
         }
 
-        // Fix newlines
         if config.fix_newlines {
             result = fix_newlines(&result);
         }
 
-        // Trim whitespace
         if config.trim_whitespace {
             result = result.trim().to_string();
         }
@@ -372,6 +387,143 @@ fn fix_punctuation(text: &str) -> String {
     result
 }
 
+/// AiNiee TextSymbolRepair: restore source dialogue brackets / CJK punctuation in translation.
+pub fn repair_text_symbols(original_text: &str, translated_text: &str) -> String {
+    let leading: String = original_text
+        .chars()
+        .take_while(|c| c.is_whitespace())
+        .collect();
+    let trailing: String = original_text
+        .chars()
+        .rev()
+        .take_while(|c| c.is_whitespace())
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+
+    let original_stripped = original_text.trim();
+    let mut translated_stripped = translated_text.trim().to_string();
+
+    if original_stripped.is_empty() || translated_stripped.is_empty() {
+        return translated_text.to_string();
+    }
+
+    // Boundary pairs: source quote style → common LLM alternatives
+    let boundary_pairs: &[(&str, &str, &[&str], &[&str])] = &[
+        ("「", "」", &["“", "‘", "\""], &["”", "’", "\""]),
+        ("『", "』", &["“", "‘", "\""], &["”", "’", "\""]),
+        ("“", "”", &["‘", "「", "\""], &["’", "」", "\""]),
+        ("‘", "’", &["“", "「", "\""], &["”", "」", "\""]),
+    ];
+
+    for (orig_start, orig_end, alt_starts, alt_ends) in boundary_pairs {
+        let start_count = original_stripped.matches(orig_start).count();
+        let end_count = original_stripped.matches(orig_end).count();
+        if original_stripped.starts_with(orig_start)
+            && original_stripped.ends_with(orig_end)
+            && start_count == 1
+            && end_count == 1
+        {
+            let mut matched = false;
+            for (alt_start, alt_end) in alt_starts.iter().zip(alt_ends.iter()) {
+                if translated_stripped.starts_with(alt_start)
+                    && translated_stripped.ends_with(alt_end)
+                {
+                    let inner = strip_prefix_suffix(&translated_stripped, alt_start, alt_end);
+                    translated_stripped = format!("{}{}{}", orig_start, inner, orig_end);
+                    matched = true;
+                    break;
+                }
+            }
+            if matched {
+                break;
+            }
+        }
+    }
+
+    // Internal 「」 vs ASCII " pair swap when counts match
+    let orig_open = original_stripped.matches('「').count();
+    let orig_close = original_stripped.matches('」').count();
+    let quote_count = translated_stripped.matches('"').count();
+    if orig_open > 0
+        && orig_open == orig_close
+        && quote_count > 0
+        && quote_count % 2 == 0
+        && orig_open == quote_count / 2
+    {
+        let mut chars: Vec<char> = translated_stripped.chars().collect();
+        let mut open_next = true;
+        for ch in chars.iter_mut() {
+            if *ch == '"' {
+                *ch = if open_next { '「' } else { '」' };
+                open_next = !open_next;
+            }
+        }
+        translated_stripped = chars.into_iter().collect();
+    }
+
+    // Global punctuation preferred by source style
+    if original_stripped.contains('…') {
+        translated_stripped = translated_stripped.replace("...", "…");
+        translated_stripped = translated_stripped.replace("。。。", "…");
+    }
+    if original_stripped.contains('—') {
+        translated_stripped = translated_stripped.replace("--", "—");
+    }
+    if original_stripped.contains('\u{FF1F}') {
+        // fullwidth question mark
+        translated_stripped = translated_stripped.replace('?', "\u{FF1F}");
+    }
+
+    translated_stripped = adjust_spurious_line_quotes(original_stripped, &translated_stripped);
+
+    format!("{}{}{}", leading, translated_stripped, trailing)
+}
+
+fn strip_prefix_suffix(s: &str, prefix: &str, suffix: &str) -> String {
+    let without_prefix = s.strip_prefix(prefix).unwrap_or(s);
+    without_prefix
+        .strip_suffix(suffix)
+        .unwrap_or(without_prefix)
+        .to_string()
+}
+
+/// Drop per-line ASCII quotes that the model added when the source line has none.
+fn adjust_spurious_line_quotes(original: &str, translation: &str) -> String {
+    let orig_lines: Vec<&str> = original.split('\n').collect();
+    let trans_lines: Vec<&str> = translation.split('\n').collect();
+    if orig_lines.len() != trans_lines.len() {
+        return translation.to_string();
+    }
+
+    let quote_starts = ['"', '“', '「', '\''];
+    let quote_ends = ['"', '”', '」', '\''];
+
+    let mut out = Vec::with_capacity(trans_lines.len());
+    for (orig_line, trans_line) in orig_lines.iter().zip(trans_lines.iter()) {
+        let mut line = (*trans_line).to_string();
+        let orig_chars: Vec<char> = orig_line.chars().collect();
+        let mut trans_chars: Vec<char> = line.chars().collect();
+
+        if trans_chars.len() >= 2 && trans_chars[0] == '"' {
+            let orig_start = orig_chars.first().copied().unwrap_or('\0');
+            if !quote_starts.contains(&orig_start) {
+                trans_chars.remove(0);
+            }
+        }
+        if trans_chars.len() >= 2 && *trans_chars.last().unwrap_or(&'\0') == '"' {
+            let orig_end = orig_chars.last().copied().unwrap_or('\0');
+            if !quote_ends.contains(&orig_end) {
+                trans_chars.pop();
+            }
+        }
+        line = trans_chars.into_iter().collect();
+        out.push(line);
+    }
+    out.join("\n")
+}
+
 fn fix_newlines(text: &str) -> String {
     let mut result = String::new();
     let mut prev_empty = false;
@@ -445,6 +597,7 @@ mod tests {
                 fix_punctuation: false,
                 fix_newlines: false,
                 auto_correct: true,
+                symbol_repair: true,
             }),
         };
         assert_eq!(processor.process("hello foo world"), "hello bar world");
@@ -465,6 +618,7 @@ mod tests {
                 fix_punctuation: false,
                 fix_newlines: false,
                 auto_correct: true,
+                symbol_repair: true,
             }),
         };
         assert_eq!(processor.process("hello foo world"), "hello foo world");
@@ -529,6 +683,7 @@ mod tests {
                 fix_punctuation: false,
                 fix_newlines: false,
                 auto_correct: true,
+                symbol_repair: true,
             }),
         };
         let result = processor.auto_correct("HÃ©llo World", "Hello World", "en", "zh");
@@ -545,6 +700,7 @@ mod tests {
                 fix_punctuation: false,
                 fix_newlines: false,
                 auto_correct: true,
+                symbol_repair: true,
             }),
         };
         // Same text with different languages should trigger warning
@@ -561,6 +717,7 @@ mod tests {
                 fix_punctuation: false,
                 fix_newlines: false,
                 auto_correct: true,
+                symbol_repair: true,
             }),
         };
         // Same language, same text = no warning (could be valid)
@@ -577,6 +734,7 @@ mod tests {
                 fix_punctuation: false,
                 fix_newlines: false,
                 auto_correct: false,
+                symbol_repair: true,
             }),
         };
         // Even garbled text passes through when disabled
@@ -594,6 +752,7 @@ mod tests {
                 fix_punctuation: false,
                 fix_newlines: false,
                 auto_correct: true,
+                symbol_repair: true,
             }),
         };
         // If cleaning garbled chars leaves empty string, fallback to source
@@ -601,5 +760,48 @@ mod tests {
         assert!(result.warnings.iter().any(|w| w.contains("乱码")));
         assert!(result.warnings.iter().any(|w| w.contains("为空")));
         assert_eq!(result.corrected, "Hello");
+    }
+
+    #[test]
+    fn test_repair_boundary_quotes_to_corner() {
+        let src = "「文句を言う前に」";
+        let tr = "\"在抱怨之前\"";
+        let out = repair_text_symbols(src, tr);
+        assert!(out.starts_with('「') && out.ends_with('」'), "got: {out}");
+        assert!(out.contains("在抱怨之前"));
+    }
+
+    #[test]
+    fn test_repair_ellipsis_and_question() {
+        let src = "本当…？";
+        let tr = "真的...?";
+        let out = repair_text_symbols(src, tr);
+        assert!(out.contains('…'), "got: {out}");
+        assert!(out.contains('？'), "got: {out}");
+    }
+
+    #[test]
+    fn test_repair_preserves_whitespace() {
+        let src = "  「hello」  ";
+        let tr = "  \"你好\"  ";
+        let out = repair_text_symbols(src, tr);
+        assert!(out.starts_with("  "));
+        assert!(out.ends_with("  "));
+    }
+
+    #[test]
+    fn test_process_with_source_applies_symbol_repair() {
+        let processor = PostProcessor {
+            config: Mutex::new(PostProcessConfig {
+                rules: Vec::new(),
+                trim_whitespace: true,
+                fix_punctuation: false,
+                fix_newlines: false,
+                auto_correct: false,
+                symbol_repair: true,
+            }),
+        };
+        let out = processor.process_with_source("\"hi\"", Some("「hi」"));
+        assert!(out.starts_with('「') && out.ends_with('」'), "got: {out}");
     }
 }

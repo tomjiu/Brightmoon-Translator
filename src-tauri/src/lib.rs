@@ -40,6 +40,7 @@ pub mod pptx;
 pub mod pre_process;
 pub mod project;
 pub mod quality;
+pub mod response_check;
 pub mod security;
 pub mod selection;
 pub mod services;
