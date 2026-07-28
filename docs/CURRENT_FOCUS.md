@@ -4,7 +4,7 @@
 
 **Do not** change OCR session lifecycle (`ocr_begin/end_session_*`, selector→result baton) or other already-solid OCR code unless fixing a proven regression.
 
-**Git checkpoint:** `c19611d` — selection/hover UX (hooks, pop button, ClipWait, settings).
+**Git checkpoint:** `4313d99` (ahead of origin) — selection UX + batch TM/cache + hook_process_messages + DLL search.
 
 ---
 

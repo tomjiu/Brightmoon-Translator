@@ -3,8 +3,8 @@
 //! Hover dictionary (Alt+dwell) remains polled lightly.
 
 use super::hover_pick::{
-    format_dict_body, pick_word_at_cursor_uia, pick_word_line_strip_ocr, pick_word_near_cursor_ocr,
-    HoverDedupe,
+    format_dict_body, is_ui_chrome_word, pick_word_at_cursor_uia, pick_word_line_strip_ocr,
+    pick_word_near_cursor_ocr, HoverDedupe,
 };
 use crate::config::{SelectionTriggerMode, SelectionUxConfig};
 use crate::dictionary;
@@ -373,13 +373,7 @@ async fn handle_hook_event(
 }
 
 fn is_junk_hover_word(w: &str) -> bool {
-    let n = w.to_ascii_lowercase();
-    n == "powershell"
-        || n == "pwsh"
-        || n == "cmd"
-        || n == "terminal"
-        || n.contains("powershell")
-        || n.ends_with(".exe")
+    is_ui_chrome_word(w)
 }
 
 async fn show_hover_dictionary(app: &AppHandle, word: &str, x: f64, y: f64) {

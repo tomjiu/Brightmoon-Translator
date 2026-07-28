@@ -36,7 +36,7 @@ pub fn extract_word_candidate(text: &str) -> Option<String> {
 }
 
 /// UI chrome / process names that UIA Name often returns instead of real text.
-fn is_ui_chrome_word(w: &str) -> bool {
+pub fn is_ui_chrome_word(w: &str) -> bool {
     let n = w.trim().to_ascii_lowercase();
     matches!(
         n.as_str(),
