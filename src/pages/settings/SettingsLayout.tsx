@@ -10,6 +10,7 @@ import {
   Puzzle,
   Sparkles,
   Filter,
+  Wand2,
   Gamepad2,
   Bell,
   Cloud,
@@ -25,6 +26,7 @@ import PluginSettings from './PluginSettings';
 import CollectionSettings from './CollectionSettings';
 import AiSettings from '../../components/AiSettings';
 import PreProcessSettings from './PreProcessSettings';
+import PostProcessSettings from './PostProcessSettings';
 import HookProfileSettings from './HookProfileSettings';
 import SyncSettings from './SyncSettings';
 import { NotificationManager } from '../../components/vocabulary';
@@ -45,6 +47,7 @@ export default function SettingsLayout() {
     { id: 'ai', icon: <Sparkles size={16} />, label: 'AI 增强', group: 'translate' },
     { id: 'ocr', icon: <Eye size={16} />, label: 'OCR', group: 'translate' },
     { id: 'preprocess', icon: <Filter size={16} />, label: '预处理', group: 'translate' },
+    { id: 'postprocess', icon: <Wand2 size={16} />, label: '后处理', group: 'translate' },
     { id: 'hotkeys', icon: <Keyboard size={16} />, label: '快捷键', group: 'interact' },
     { id: 'hookprofiles', icon: <Gamepad2 size={16} />, label: 'Hook', group: 'interact' },
     { id: 'appearance', icon: <Palette size={16} />, label: '外观', group: 'interact' },
@@ -77,6 +80,8 @@ export default function SettingsLayout() {
         return <HotkeySettings />;
       case 'preprocess':
         return <PreProcessSettings />;
+      case 'postprocess':
+        return <PostProcessSettings />;
       case 'hookprofiles':
         return <HookProfileSettings />;
       case 'notifications':

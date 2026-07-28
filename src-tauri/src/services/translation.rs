@@ -841,15 +841,22 @@ impl TranslationService {
             results.sort_by_key(|r| r.index);
 
             // AiNiee-style segment validation (warn only — do not drop results)
-            let sources: Vec<String> = results.iter().map(|r| r.original.clone()).collect();
-            let translations: Vec<String> = results.iter().map(|r| r.translated.clone()).collect();
-            let check = crate::response_check::check_segments(
-                &sources,
-                &translations,
-                &crate::response_check::ResponseCheckOptions::strict(),
-            );
-            if !check.ok {
-                tracing::warn!("[translate_batch] response check: {}", check.message);
+            let response_check_enabled = {
+                let pp = self.post_processor.lock().await;
+                pp.get_config().response_check
+            };
+            if response_check_enabled {
+                let sources: Vec<String> = results.iter().map(|r| r.original.clone()).collect();
+                let translations: Vec<String> =
+                    results.iter().map(|r| r.translated.clone()).collect();
+                let check = crate::response_check::check_segments(
+                    &sources,
+                    &translations,
+                    &crate::response_check::ResponseCheckOptions::strict(),
+                );
+                if !check.ok {
+                    tracing::warn!("[translate_batch] response check: {}", check.message);
+                }
             }
 
             results

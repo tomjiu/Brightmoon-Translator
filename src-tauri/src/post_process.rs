@@ -23,6 +23,9 @@ pub struct PostProcessConfig {
     /// Align dialogue quotes / CJK punctuation with source (AiNiee TextSymbolRepair).
     #[serde(default = "default_true")]
     pub symbol_repair: bool,
+    /// Run batch segment response checks (AiNiee ResponseChecker; warn-only).
+    #[serde(default = "default_true")]
+    pub response_check: bool,
 }
 
 fn default_true() -> bool {
@@ -38,6 +41,7 @@ impl Default for PostProcessConfig {
             fix_newlines: true,
             auto_correct: true,
             symbol_repair: true,
+            response_check: true,
         }
     }
 }
@@ -598,6 +602,7 @@ mod tests {
                 fix_newlines: false,
                 auto_correct: true,
                 symbol_repair: true,
+                response_check: true,
             }),
         };
         assert_eq!(processor.process("hello foo world"), "hello bar world");
@@ -619,6 +624,7 @@ mod tests {
                 fix_newlines: false,
                 auto_correct: true,
                 symbol_repair: true,
+                response_check: true,
             }),
         };
         assert_eq!(processor.process("hello foo world"), "hello foo world");
@@ -684,6 +690,7 @@ mod tests {
                 fix_newlines: false,
                 auto_correct: true,
                 symbol_repair: true,
+                response_check: true,
             }),
         };
         let result = processor.auto_correct("HÃ©llo World", "Hello World", "en", "zh");
@@ -701,6 +708,7 @@ mod tests {
                 fix_newlines: false,
                 auto_correct: true,
                 symbol_repair: true,
+                response_check: true,
             }),
         };
         // Same text with different languages should trigger warning
@@ -718,6 +726,7 @@ mod tests {
                 fix_newlines: false,
                 auto_correct: true,
                 symbol_repair: true,
+                response_check: true,
             }),
         };
         // Same language, same text = no warning (could be valid)
@@ -735,6 +744,7 @@ mod tests {
                 fix_newlines: false,
                 auto_correct: false,
                 symbol_repair: true,
+                response_check: true,
             }),
         };
         // Even garbled text passes through when disabled
@@ -753,6 +763,7 @@ mod tests {
                 fix_newlines: false,
                 auto_correct: true,
                 symbol_repair: true,
+                response_check: true,
             }),
         };
         // If cleaning garbled chars leaves empty string, fallback to source
@@ -799,6 +810,7 @@ mod tests {
                 fix_newlines: false,
                 auto_correct: false,
                 symbol_repair: true,
+                response_check: true,
             }),
         };
         let out = processor.process_with_source("\"hi\"", Some("「hi」"));
