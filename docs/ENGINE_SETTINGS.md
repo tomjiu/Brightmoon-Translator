@@ -14,7 +14,8 @@ Authoritative mapping of translation engine ids to enable rules (must match Rust
 | microsoft | `engines.microsoft.enabled` | none | 翻译引擎 |
 | yandex | `engines.yandex.enabled` | none | 翻译引擎 |
 | offline | `engines.offline.enabled` | models/modelDir (show autoSwitch) | 翻译引擎 |
-| plugin_* | plugin manifest | PluginSettings | 插件管理 |
+
+**Product rule:** first-party engines only — no external plugin marketplace / scan.
 
 **Notes:**
 

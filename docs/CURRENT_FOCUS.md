@@ -1,43 +1,42 @@
-# Current focus (2026-07-27)
+# Current focus (2026-07-28)
 
-Stabilization before broad features. **Freeze** new learning/cloud/multi-end work until OCR + engine façade are healthy.
+**Product rule:** all capabilities are **first-party in-repo**. No plugin marketplace, no runtime third-party plugin host. Optional enhancements stay in main binary or are skipped—not external packages.
 
-## Done recently (2026-07-27)
+Stabilization + feature wiring on fixed façades. **Do not** change OCR session lifecycle (`ocr_begin/end_session_*`, selector→result baton).
+
+## Done recently
 
 | Slice | Where |
 |-------|--------|
-| **AiNiee ports** | `post_process` symbol repair + `response_check` batch validation; study map in [REFERENCE_STUDY.md](./REFERENCE_STUDY.md) §6 |
-| **FE chrome** | `.ui-*` typography in `src/index.css`; `Icon` + `PageHeader`; page titles unified |
-| **Collection thin slice** | Eudic / AnkiConnect / Shanbay — [COLLECTION.md](./COLLECTION.md) |
-| **Engine settings / LLM router** | [ENGINE_SETTINGS.md](./ENGINE_SETTINGS.md), [LLM_PROVIDERS.md](./LLM_PROVIDERS.md) |
+| OCR session lifecycle (main out of OCR) | `ocr_begin/end_session_*`, `OcrScreenshotTranslator` |
+| Feature sprint Wave A/B | collection push-on-save, control/bridge UX, tray label, numbered LLM parse, OCR UI feedback, post-process settings, engine settings sections |
+| CI | pnpm packageManager, archive stale demos, TS EnginesConfig fix |
+| Repo | strip Claude co-author trailers; plugin marketplace **removed** |
 
 ## Priority order
 
-1. **Repo hygiene** — done baseline; **now:** keep `docs/` index honest, don’t commit `tmp/reference` (gitignored); prefer `AiNiee-extract` over failed empty clones.
-2. **Module map** — done → [MODULE_MAP.md](./MODULE_MAP.md).
-3. **Trust base (partial)** — `loadConfig` + save guard; pnpm; CI; icons; extension hosts; caiyun encrypt. [HEALTH_AUDIT.md](./HEALTH_AUDIT.md).
-4. **OCR vertical** — smoke checklist in code; **manual** green via [OCR_SMOKE.md](./OCR_SMOKE.md) still required before “OCR fixed”.  
-   **Later:** pinned region watch polish (`OCR_STRATEGY.md`) only after smoke green.
-5. **Engine façade** — inventory + `run*` + channels + batch prepare **done** → [ENGINE_FACADE_INVENTORY.md](./ENGINE_FACADE_INVENTORY.md).  
-   **Optional later:** EngineSettings split; stream multi-endpoint; per-segment batch cache/TM; wire `parse_numbered_response` into LLM multi-seg path if product needs it.
-6. **Hook verdict** — passive UIA/clipboard = supported; DLL inject = experimental (**UI labeled**); no Luna deep-dive now.
-7. **Extension** — after desktop OCR+engines stable.
+1. Keep façades modular (engine / collection / control / OCR present).
+2. Manual OCR smoke when free — [OCR_SMOKE.md](./OCR_SMOKE.md) (not blocking feature wiring).
+3. Optional Wave C (in-app only): ExternalCall mutex, overlay DPI, layout analyzer **default off** — see plan notes.
+4. Extension depth (batch/context) after desktop stable.
+5. Hook: passive only; DLL inject stays experimental / no deep invest.
 
-## Non-goals (for now)
+## Non-goals
 
-- Full AppState rewrite, multi-platform Cloudflare, vocabulary expansion (FSRS/learning product), plugin marketplace.
-- AiNiee game extractors (Mtool/T++/Renpy) and Qt UI — out of product scope.
+- Plugin marketplace, plugin SDK, sandbox HTTP plugin engines  
+- Luna inject deep-dive, multi-end Cloudflare, FSRS product expansion, AppState big-bang  
+- Floating multi-engine popup (new window / z-order risk) unless explicitly reopened  
 
-## Allowed thin slices
+## Architecture
 
-- **Collection adapters** first-party only — [COLLECTION.md](./COLLECTION.md).
-- **Post-process / quality** polish that stays on the translation façade (symbol repair, response checks) — already landed; no new verticals.
+```
+UI / tray / extension / HTTP control  →  commands / api_server
+  → translate · collection · capture · post_process
+  → engine/* · collection/* · Win32
+```
 
-## Acceptance (OCR)
+New features = first-party module + one command/settings key + CI green.
 
-Manual smoke in OCR_INVARIANTS / OCR_SMOKE must pass before claiming OCR fixed.
+## References
 
-## Full audit & references
-
-- 2026-07-26 multi-agent coverage → [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md).
-- OSS steal map (STranslate / pot / read-frog / **AiNiee**) → [REFERENCE_STUDY.md](./REFERENCE_STUDY.md).
+- [MODULE_MAP.md](./MODULE_MAP.md) · [REFERENCE_STUDY.md](./REFERENCE_STUDY.md) · [FEATURES.md](./FEATURES.md)

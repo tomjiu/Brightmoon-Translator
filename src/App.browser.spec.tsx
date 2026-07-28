@@ -25,14 +25,6 @@ vi.mock('./pages/Vocabulary', () => ({
   default: () => <div />,
 }));
 
-vi.mock('./pages/Plugins', () => ({
-  default: () => <div />,
-}));
-
-vi.mock('./pages/PluginMarketplace', () => ({
-  default: () => <div />,
-}));
-
 vi.mock('./pages/MetricsDashboard', () => ({
   default: () => <div />,
 }));

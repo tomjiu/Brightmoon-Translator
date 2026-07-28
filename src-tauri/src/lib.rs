@@ -35,8 +35,6 @@ pub mod ocr_engine;
 pub mod ocr_offline;
 pub mod overlay;
 pub mod pdf;
-pub mod plugin;
-pub mod plugin_sandbox;
 pub mod post_process;
 pub mod pptx;
 pub mod pre_process;
@@ -456,10 +454,6 @@ pub fn run() {
             // Start API server if enabled
             start_api_server(app);
 
-            // Initialize plugin sandbox and start health check task
-            plugin_sandbox::init_sandbox();
-            plugin_sandbox::spawn_health_check_task();
-
             // Warmup OCR screenshot cache for instant capture
             // Spawns a background task 1 second after startup to pre-capture and cache screen
             // This eliminates the 1-2 second lag when user clicks OCR button
@@ -625,25 +619,6 @@ pub fn run() {
             commands::pre_process_cmd::remove_pre_process_rule,
             commands::pre_process_cmd::update_pre_process_rule,
             commands::pre_process_cmd::test_pre_process,
-            commands::plugin_cmd::get_plugins,
-            commands::plugin_cmd::set_plugin_enabled,
-            commands::plugin_cmd::get_plugins_dir,
-            commands::plugin_cmd::open_plugins_dir,
-            commands::plugin_cmd::install_plugin,
-            commands::plugin_cmd::uninstall_plugin,
-            commands::plugin_cmd::enable_plugin,
-            commands::plugin_cmd::disable_plugin,
-            commands::plugin_cmd::check_plugin_update,
-            commands::plugin_cmd::get_plugin_errors,
-            commands::plugin_cmd::start_plugin_sandbox,
-            commands::plugin_cmd::stop_plugin_sandbox,
-            commands::plugin_cmd::get_plugin_sandbox_status,
-            commands::plugin_cmd::get_all_plugin_sandbox_status,
-            commands::plugin_cmd::sandbox_translate,
-            commands::plugin_cmd::plugin_list_marketplace,
-            commands::plugin_cmd::plugin_install_marketplace,
-            commands::plugin_cmd::plugin_uninstall_marketplace,
-            commands::plugin_cmd::plugin_update_marketplace,
             commands::hook_cmd::start_hook_monitor,
             commands::hook_cmd::stop_hook_monitor,
             commands::hook_cmd::get_hook_monitor_status,

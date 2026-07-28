@@ -71,8 +71,8 @@ Inject reality: Win32 LoadLibrary path works in **dev** if DLL found under `hook
 
 | Hot core | Freeze / demote |
 |----------|-----------------|
-| MainTranslator, OCR components, engine, overlay/selection, capture/window cmds | Vocabulary/learning expansion, cloudflare-api, sdk marketplace |
-| config + engine settings | Project manager (UI deleted, BE remains) |
+| MainTranslator, OCR components, engine, overlay/selection, capture/window cmds | Vocabulary/learning expansion, cloudflare-api |
+| config + engine settings | Project manager (UI deleted, BE remains); **no plugin marketplace** (first-party only) |
 
 **God surfaces:** `lib.rs` ~268 handlers · `AppState` ~136 State grabs · `capture.rs` / `window.rs` fat · `App.tsx` event bus · learning bolted on same binary.
 

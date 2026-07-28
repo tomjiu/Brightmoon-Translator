@@ -3,7 +3,9 @@
 References: immersive-translate, LunaTranslator, read-frog, pot-desktop, STranslate  
 Integration matrix: `docs/integration-plan.md`. Live compass: `docs/CURRENT_FOCUS.md`, `docs/MODULE_MAP.md`.
 
-Status is **code-truth as of 2026-07-25** (not marketing). OCR GUI smoke still manual.
+Status is **code-truth as of 2026-07-28** (not marketing). OCR GUI smoke still manual.
+
+**Product:** first-party only — no plugin marketplace / external plugin host.
 
 ---
 
@@ -36,6 +38,7 @@ Status is **code-truth as of 2026-07-25** (not marketing). OCR GUI smoke still m
 | Parallel / fallback strategies | ✅ | Config `routingStrategy` |
 | Translation cache / TM | ✅ | Cache + TM commands/UI |
 | Unified façade | ⚠️ | Multiple entrypoints — `MODULE_MAP` B |
+| External plugins / marketplace | ❌ removed | First-party engines only |
 
 ### 1.4 Hook
 | Feature | Status | Notes |

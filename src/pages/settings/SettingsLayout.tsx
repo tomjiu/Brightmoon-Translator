@@ -7,7 +7,6 @@ import {
   Keyboard,
   Palette,
   Settings as SettingsIcon,
-  Puzzle,
   Sparkles,
   Filter,
   Wand2,
@@ -22,7 +21,6 @@ import OcrSettings from './OcrSettings';
 import HotkeySettings from './HotkeySettings';
 import AppearanceSettings from './AppearanceSettings';
 import AdvancedSettings from './AdvancedSettings';
-import PluginSettings from './PluginSettings';
 import CollectionSettings from './CollectionSettings';
 import AiSettings from '../../components/AiSettings';
 import PreProcessSettings from './PreProcessSettings';
@@ -54,7 +52,6 @@ export default function SettingsLayout() {
     { id: 'notifications', icon: <Bell size={16} />, label: '学习提醒', group: 'learn' },
     { id: 'collection', icon: <BookMarked size={16} />, label: '生词本外送', group: 'learn' },
     { id: 'sync', icon: <Cloud size={16} />, label: '云同步', group: 'system' },
-    { id: 'plugins', icon: <Puzzle size={16} />, label: '插件', group: 'system' },
     { id: 'advanced', icon: <SettingsIcon size={16} />, label: '高级', group: 'system' },
   ];
 
@@ -92,8 +89,6 @@ export default function SettingsLayout() {
         return <AppearanceSettings />;
       case 'sync':
         return <SyncSettings />;
-      case 'plugins':
-        return <PluginSettings />;
       case 'advanced':
         return <AdvancedSettings />;
       default:

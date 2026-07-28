@@ -16,7 +16,6 @@ pub mod yandex;
 pub mod youdao;
 
 use crate::config::AppConfig;
-use crate::plugin;
 use async_trait::async_trait;
 use reqwest::Client;
 use std::sync::Arc;
@@ -33,70 +32,6 @@ pub(crate) fn check_response(resp: &reqwest::Response, engine_name: &str) -> any
         return Err(anyhow::anyhow!("{} API error: {}", engine_name, status));
     }
     Ok(())
-}
-
-/// A translation engine backed by an external plugin HTTP endpoint
-pub struct PluginEngine {
-    name: String,
-    endpoint: String,
-    headers: std::collections::HashMap<String, String>,
-    client: Client,
-}
-
-impl PluginEngine {
-    pub fn new(
-        name: &str,
-        endpoint: &str,
-        headers: std::collections::HashMap<String, String>,
-    ) -> Self {
-        Self {
-            name: name.to_string(),
-            endpoint: endpoint.to_string(),
-            headers,
-            client: Client::new(),
-        }
-    }
-
-    pub fn with_client(mut self, client: Client) -> Self {
-        self.client = client;
-        self
-    }
-}
-
-#[async_trait]
-impl TranslationEngine for PluginEngine {
-    async fn translate(&self, text: &str, from: &str, to: &str) -> anyhow::Result<String> {
-        let mut req = self.client.post(&self.endpoint);
-
-        for (key, value) in &self.headers {
-            req = req.header(key, value);
-        }
-
-        let body = serde_json::json!({
-            "text": text,
-            "from": from,
-            "to": to,
-        });
-
-        let resp = req.json(&body).send().await?;
-        check_response(&resp, "Plugin")?;
-
-        let result: serde_json::Value = resp.json().await?;
-
-        result
-            .get("translated")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| anyhow::anyhow!("Plugin response missing 'translated' field"))
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 #[async_trait]
@@ -309,28 +244,7 @@ impl Router {
             });
         }
 
-        // Load plugin engines
-        let plugins = plugin::scan_plugins();
-        for p in &plugins {
-            if p.manifest.enabled {
-                if let Some(ref tc) = p.manifest.translation {
-                    let plugin_id = format!(
-                        "plugin_{}",
-                        p.manifest.name.to_lowercase().replace(' ', "_")
-                    );
-                    let engine = PluginEngine::new(
-                        &format!("Plugin: {}", p.manifest.name),
-                        &tc.endpoint,
-                        tc.headers.clone(),
-                    )
-                    .with_client(client.clone());
-                    available.push(EngineEntry {
-                        id: plugin_id,
-                        engine: Arc::new(engine),
-                    });
-                }
-            }
-        }
+        // First-party engines only (no external plugin scan / marketplace).
 
         // Order engines according to config
         let engines = order_engines(available, &config.engine_order);
@@ -362,7 +276,7 @@ impl Router {
         self.engines.first().map(|e| e.name())
     }
 
-    /// Rebuild engines list with new config (used when plugins change)
+    /// Rebuild engines list with new config
     pub fn rebuild(&self, config: &AppConfig) -> Self {
         Self::new(config)
     }

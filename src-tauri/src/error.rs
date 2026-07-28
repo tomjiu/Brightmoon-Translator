@@ -51,9 +51,6 @@ pub enum AppError {
     #[error("Path traversal detected")]
     PathTraversal,
 
-    #[error("Invalid plugin name: {0}")]
-    InvalidPluginName(String),
-
     // ── IO / File errors ──────────────────────────────────────────────────
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -81,16 +78,6 @@ pub enum AppError {
     // ── Configuration errors ──────────────────────────────────────────────
     #[error("Configuration error: {0}")]
     Config(String),
-
-    // ── Plugin errors ─────────────────────────────────────────────────────
-    #[error("Plugin '{name}' error: {message}")]
-    Plugin { name: String, message: String },
-
-    #[error("Plugin not found: {0}")]
-    PluginNotFound(String),
-
-    #[error("Plugin sandbox error: {0}")]
-    PluginSandbox(String),
 
     // ── OCR / Capture errors ──────────────────────────────────────────────
     #[error("OCR error: {0}")]
@@ -220,7 +207,6 @@ impl AppError {
             Self::InvalidLanguage(code) => format!("无效的语言代码: {}", code),
             Self::InvalidPath(msg) => format!("无效的文件路径: {}", msg),
             Self::PathTraversal => "检测到路径穿越攻击".to_string(),
-            Self::InvalidPluginName(msg) => format!("无效的插件名称: {}", msg),
 
             // IO
             Self::Io(e) => format!("IO 错误: {}", e),
@@ -237,11 +223,6 @@ impl AppError {
 
             // Config
             Self::Config(msg) => format!("配置错误: {}", msg),
-
-            // Plugin
-            Self::Plugin { name, message } => format!("插件 '{}' 错误: {}", name, message),
-            Self::PluginNotFound(name) => format!("插件未找到: {}", name),
-            Self::PluginSandbox(msg) => format!("插件沙箱错误: {}", msg),
 
             // OCR / Capture
             Self::Ocr(msg) => format!("OCR 错误: {}", msg),
@@ -303,8 +284,7 @@ impl AppError {
             | Self::TextTooLong { .. }
             | Self::InvalidLanguage(_)
             | Self::InvalidPath(_)
-            | Self::PathTraversal
-            | Self::InvalidPluginName(_) => {
+            | Self::PathTraversal => {
                 tracing::info!("[AppError] {}", sanitized);
             },
             // Everything else
@@ -338,7 +318,10 @@ impl From<crate::models::error::TranslationError> for AppError {
             TE::ConfigError(msg) => Self::Config(msg),
             TE::NetworkError(msg) => Self::Network(msg),
             TE::CacheError(msg) => Self::Cache(msg),
-            TE::PluginError { name, message } => Self::Plugin { name, message },
+            TE::PluginError { name, message } => Self::EngineError {
+                engine: name,
+                message,
+            },
             TE::StreamingNotSupported => Self::StreamingNotSupported,
             TE::Internal(msg) => Self::Internal(msg),
         }
@@ -428,14 +411,6 @@ impl AppError {
     pub fn engine(engine: &str, message: impl fmt::Display) -> Self {
         Self::EngineError {
             engine: engine.to_string(),
-            message: message.to_string(),
-        }
-    }
-
-    /// Create a plugin error.
-    pub fn plugin(name: &str, message: impl fmt::Display) -> Self {
-        Self::Plugin {
-            name: name.to_string(),
             message: message.to_string(),
         }
     }

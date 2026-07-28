@@ -26,7 +26,6 @@ pub mod model_provider_cmd;
 pub mod notification_cmd;
 pub mod offline_cmd;
 pub mod pdf_cmd;
-pub mod plugin_cmd;
 pub mod post_process_cmd;
 pub mod pptx_cmd;
 pub mod pre_process_cmd;
