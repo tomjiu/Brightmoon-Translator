@@ -69,6 +69,14 @@ use tauri::{
 };
 use tokio::sync::{Mutex, OnceCell as TokioOnceCell};
 
+fn clipboard_monitor_menu_text(on: bool) -> &'static str {
+    if on {
+        "剪贴板监听：开"
+    } else {
+        "剪贴板监听：关"
+    }
+}
+
 fn saved_window_bounds_are_visible(
     app: &tauri::App,
     x: f64,
@@ -327,12 +335,22 @@ pub fn run() {
             }
 
             // Create system tray menu (pot-aligned: show / selection / replace / OCR / clipboard / settings / quit)
+            let clipboard_monitor_on = {
+                let app_state = app.state::<AppState>();
+                let config = app_state.system.config.blocking_lock();
+                config.clipboard_monitor
+            };
             let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
             let selection = MenuItem::with_id(app, "selection", "划词翻译", true, None::<&str>)?;
             let replace = MenuItem::with_id(app, "replace", "替换翻译", true, None::<&str>)?;
             let ocr = MenuItem::with_id(app, "ocr", "OCR截图翻译", true, None::<&str>)?;
-            let clipboard_monitor =
-                MenuItem::with_id(app, "clipboard_monitor", "剪贴板监听", true, None::<&str>)?;
+            let clipboard_monitor = MenuItem::with_id(
+                app,
+                "clipboard_monitor",
+                clipboard_monitor_menu_text(clipboard_monitor_on),
+                true,
+                None::<&str>,
+            )?;
             let settings = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
@@ -354,11 +372,12 @@ pub fn run() {
                 tracing::warn!("No default window icon found, using empty icon");
                 tauri::image::Image::new(&[], 0, 0)
             });
+            let clipboard_monitor_item = clipboard_monitor.clone();
             let _tray = TrayIconBuilder::new()
                 .icon(icon)
                 .menu(&menu)
                 .tooltip("Moon Translator")
-                .on_menu_event(|app, event| match event.id().as_ref() {
+                .on_menu_event(move |app, event| match event.id().as_ref() {
                     "show" => {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
@@ -382,6 +401,7 @@ pub fn run() {
                     }
                     "clipboard_monitor" => {
                         let app_handle = app.clone();
+                        let item = clipboard_monitor_item.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
                             let enabled = {
@@ -391,6 +411,7 @@ pub fn run() {
                                 config.save();
                                 on
                             };
+                            let _ = item.set_text(clipboard_monitor_menu_text(enabled));
                             // FE syncs listener via config.clipboardMonitor + App effect
                             if let Some(window) = app_handle.get_webview_window("main") {
                                 let _ = window.emit("clipboard-monitor-toggled", enabled);
