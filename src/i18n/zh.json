@@ -176,7 +176,13 @@
       "updateConfig": "POST /config - 更新配置",
       "getHistory": "GET /history - 翻译历史",
       "getEngines": "GET /engines - 引擎列表",
-      "health": "GET /health - 健康检查"
+      "health": "GET /health - 健康检查",
+      "controlShow": "POST /control/show - 显示主窗口",
+      "controlSelection": "POST /control/selection_translate - 划词翻译",
+      "controlOcr": "POST /control/ocr_translate - OCR 翻译",
+      "controlSettings": "POST /control/open_settings - 打开设置",
+      "token": "API 令牌",
+      "tokenHint": "Bearer / X-Api-Token；扩展填入 desktopApiToken"
     },
     "postProcess": {
       "title": "翻译后处理",

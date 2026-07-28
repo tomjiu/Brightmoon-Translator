@@ -31,9 +31,9 @@ export default function AdvancedSettings() {
                 className="rounded"
               />
               <div>
-                <p className="text-sm font-medium text-text-primary">启用桌面桥接服务</p>
+                <p className="text-sm font-medium text-text-primary">启用 API 服务器（桌面桥接）</p>
                 <p className="text-xs text-text-secondary">
-                  允许浏览器扩展连接到桌面应用使用完整功能
+                  开启后监听 127.0.0.1，扩展与外部工具可调用翻译与 /control/* 路由（需重启生效）
                 </p>
               </div>
             </label>
@@ -122,6 +122,10 @@ export default function AdvancedSettings() {
                   </div>
                   <p className="text-xs text-text-secondary">
                     除 GET /health 外均需令牌。端口 {config.apiServerPort || 60828}
+                  </p>
+                  <p className="text-xs text-text-secondary mt-2">
+                    控制路由（POST）：/control/show · /control/selection_translate ·
+                    /control/ocr_translate · /control/open_settings
                   </p>
                 </div>
               </>

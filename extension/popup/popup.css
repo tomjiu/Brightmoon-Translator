@@ -72,6 +72,29 @@ body {
   background: #e2e8f0;
 }
 
+.bridge-hint {
+  margin: 0 12px 4px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #f59e0b55;
+  border-radius: 8px;
+}
+
+.bridge-hint strong {
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bridge-hint {
+    color: #fde68a;
+    background: #422006aa;
+    border-color: #f59e0b44;
+  }
+}
+
 /* Section */
 .section {
   display: flex;

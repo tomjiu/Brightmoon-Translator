@@ -143,28 +143,40 @@ function showNotification(message, isError = false) {
 
 // ==================== Desktop Status ====================
 
+function setBridgeUi(reachable) {
+  const status = document.getElementById("desktopStatus");
+  const dot = document.querySelector("#desktopStatus .status-dot");
+  const text = document.querySelector("#desktopStatus .status-text");
+  const hint = document.getElementById("bridgeHint");
+  const syncBtn = document.getElementById("syncGlossary");
+
+  if (dot) {
+    dot.classList.toggle("connected", reachable);
+    dot.classList.toggle("disconnected", !reachable);
+  }
+  if (text) {
+    text.textContent = reachable ? "桌面已连接" : "桌面未连接";
+  }
+  if (status) {
+    status.title = reachable
+      ? "桌面 API 桥接可用"
+      : "请在桌面高级设置启用 API 服务器并配置令牌";
+  }
+  if (hint) {
+    hint.style.display = reachable ? "none" : "block";
+  }
+  if (syncBtn) {
+    syncBtn.style.display = reachable ? "block" : "none";
+  }
+}
+
 async function checkDesktopStatus() {
   try {
     // Use checkDesktopHealth for a real-time probe, not the cached value
     const response = await chrome.runtime.sendMessage({ type: "checkDesktopHealth" });
-    const dot = document.querySelector("#desktopStatus .status-dot");
-    const syncBtn = document.getElementById("syncGlossary");
-
-    if (response?.reachable) {
-      dot.classList.add("connected");
-      dot.classList.remove("disconnected");
-      if (syncBtn) syncBtn.style.display = "block";
-    } else {
-      dot.classList.add("disconnected");
-      dot.classList.remove("connected");
-      if (syncBtn) syncBtn.style.display = "none";
-    }
+    setBridgeUi(!!response?.reachable);
   } catch {
-    const dot = document.querySelector("#desktopStatus .status-dot");
-    if (dot) {
-      dot.classList.add("disconnected");
-      dot.classList.remove("connected");
-    }
+    setBridgeUi(false);
   }
 }
 

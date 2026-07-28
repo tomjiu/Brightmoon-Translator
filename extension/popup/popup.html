@@ -12,12 +12,17 @@
     <div class="header">
       <div class="logo">🌙 Moon Translator</div>
       <div class="header-right">
-        <div id="desktopStatus" class="desktop-status">
+        <div id="desktopStatus" class="desktop-status" title="">
           <span class="status-dot"></span>
           <span class="status-text">桌面版</span>
         </div>
         <div class="version">v1.0.0</div>
       </div>
+    </div>
+
+    <!-- Desktop bridge offline hint -->
+    <div id="bridgeHint" class="bridge-hint" style="display:none" role="status">
+      无法连接桌面桥接。请在桌面版 <strong>高级设置</strong> 启用 API 服务器（默认端口 60828），复制令牌到下方「桌面桥接令牌」，并重启桌面应用后重试。
     </div>
 
     <!-- Quick Translate -->
@@ -160,7 +165,7 @@
 
       <div class="setting-group">
         <label class="setting-label">桌面桥接令牌</label>
-        <p class="hint">与桌面「高级设置 → API 令牌」一致；除 /health 外均需鉴权</p>
+        <p class="hint">桌面「高级设置 → 浏览器扩展」启用 API 服务器后复制 apiServerToken；除 GET /health 外均需 Bearer 鉴权</p>
         <div class="input-field">
           <label>API Token</label>
           <input type="password" id="desktopApiToken" placeholder="粘贴桌面 apiServerToken" autocomplete="off">

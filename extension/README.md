@@ -61,6 +61,36 @@ node build.js
 - 配置 LLM API Key
 - 设置默认源语言和目标语言
 - 配置 DeepL API
+- 粘贴桌面桥接 API 令牌（`desktopApiToken`）
+
+## 桌面桥接（可选）
+
+扩展默认连接桌面本地 API：`http://127.0.0.1:60828`。桌面 **API 服务器默认关闭**。
+
+1. 打开桌面版 → **高级设置 → 浏览器扩展**
+2. 启用「桌面桥接服务 / API 服务器」（`apiServerEnabled`）
+3. 确认端口（默认 `60828`，`apiServerPort`）
+4. 复制 **API 令牌**（`apiServerToken`）到扩展弹窗「桌面桥接令牌」
+5. **重启桌面应用** 使监听生效
+
+鉴权：除 `GET /health` 外，请求需带：
+
+```http
+Authorization: Bearer <apiServerToken>
+```
+
+或 `X-Api-Token: <apiServerToken>`。
+
+控制路由（需鉴权，触发桌面动作）：
+
+| 方法 | 路径 | 作用 |
+|------|------|------|
+| POST | `/control/show` | 显示主窗口 |
+| POST | `/control/selection_translate` | 划词翻译 |
+| POST | `/control/ocr_translate` | OCR 截图翻译 |
+| POST | `/control/open_settings` | 打开设置 |
+
+桥接不可用时弹窗会提示启用 API 服务器；扩展回退到本地引擎。完整接口见仓库 `docs/API.md`。
 
 ## 开发
 

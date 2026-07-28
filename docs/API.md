@@ -1531,14 +1531,28 @@ X-Api-Token: <apiServerToken>
 
 ### 控制路由（需鉴权，触发桌面 UI / 热键等价动作）
 
-| 方法 | 路径 | 作用 |
-|------|------|------|
-| POST | `/control/show` | 显示并聚焦主窗口 |
-| POST | `/control/selection_translate` | 划词翻译（`trigger-translate-selection`） |
-| POST | `/control/ocr_translate` | OCR 截图翻译（`trigger-ocr-screenshot`） |
-| POST | `/control/open_settings` | 打开设置页 |
+> 需先启用 `apiServerEnabled`（高级设置 → 浏览器扩展），并携带 Bearer / `X-Api-Token`。实现：`src-tauri/src/api_server.rs`。
 
-响应：`{ "ok": true }`
+| 方法 | 路径 | 作用 | 内部事件 |
+|------|------|------|----------|
+| POST | `/control/show` | 显示并聚焦主窗口 | `window.show` + `set_focus` |
+| POST | `/control/selection_translate` | 划词翻译 | `trigger-translate-selection` |
+| POST | `/control/ocr_translate` | OCR 截图翻译 | `trigger-ocr-screenshot` |
+| POST | `/control/open_settings` | 打开设置页 | `navigate` → `settings` |
+
+**响应**: `{ "ok": true }`（无 handle 时 `503`）
+
+**示例**:
+
+```bash
+curl -X POST http://127.0.0.1:60828/control/show \
+  -H "Authorization: Bearer <apiServerToken>"
+
+curl -X POST http://127.0.0.1:60828/control/selection_translate \
+  -H "X-Api-Token: <apiServerToken>"
+```
+
+浏览器扩展桥接失败时，请在桌面高级设置启用 API 服务器并配置同一令牌（见 `extension/README.md`）。
 
 ### 端点列表
 

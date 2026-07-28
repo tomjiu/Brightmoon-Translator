@@ -176,7 +176,13 @@
       "updateConfig": "POST /config - Update config",
       "getHistory": "GET /history - Translation history",
       "getEngines": "GET /engines - Engine list",
-      "health": "GET /health - Health check"
+      "health": "GET /health - Health check",
+      "controlShow": "POST /control/show - Show main window",
+      "controlSelection": "POST /control/selection_translate - Selection translate",
+      "controlOcr": "POST /control/ocr_translate - OCR translate",
+      "controlSettings": "POST /control/open_settings - Open settings",
+      "token": "API token",
+      "tokenHint": "Bearer / X-Api-Token; extension uses desktopApiToken"
     },
     "postProcess": {
       "title": "Translation Post-Processing",
