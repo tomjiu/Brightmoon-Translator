@@ -15,7 +15,7 @@
 | Item | Status | Notes |
 |------|--------|--------|
 | Pop / auto / hotkey selection | **Working baseline** | Easydict-style `WH_MOUSE_LL`, process class, ClipWait |
-| Hover dictionary | **Partial** | Free dwell; **terminals skip**; typing dismisses card; junk-word filter |
+| Hover dictionary | **Partial** | Free dwell; **terminals skip**; typing dismisses card; junk-word filter + unit tests for chrome rejection |
 | Overlay card polish | **Partial** | Compact card + theme via `set_overlay_theme`; still improve light/dark feel |
 | Dict miss → MT | **Partial** | Real dict only on hover; selection falls through to MT |
 | Multi-engine selection text | **Partial** | Show multiple engines when router returns >1 result |
@@ -31,7 +31,7 @@
 | Passive UIA/clipboard monitor | **Production-ish** | `start_hook_monitor` applies active/auto profile |
 | DLL inject → `TranslationService` | **Improved 2026-07-29** | `hook_process_messages` translates + emits `hook-text-translated`; IAT/DLL quality still weak |
 | Profiles applied on start | **Done (passive path)** | `hook_cmd::start_hook_monitor` already applies profile |
-| Bundle hook DLL in release | **Open** | Dev-only path today |
+| Bundle hook DLL in release | **Improved 2026-07-29** | `tauri.conf.json` resources + richer `find_hook_dll` (exe-dir, CARGO_MANIFEST_DIR, Debug/Release); DLL copied to `src-tauri/bin/` when built |
 
 ### C — 长文本 / documents / batch
 

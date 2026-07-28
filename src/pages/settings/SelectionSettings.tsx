@@ -210,9 +210,9 @@ export default function SelectionSettings() {
             <p className="text-sm font-medium text-text-primary">选区为空时 OCR 补取光标附近文字</p>
             <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
               仅在这些情况生效：① 拖选/双击后 UIA+剪贴板都取不到字；②
-              按划词热键时没有选区。会截光标旁一小块（约 200×80）做 WinRT
-              OCR。图片/游戏/浏览器里「选不中」的字才有感；普通记事本能选中时几乎感觉不到。整页/框选仍用工具栏「OCR
-              截图翻译」。
+              按划词热键时没有选区。补取用光标旁横向窄条（约 180×28）WinRT
+              OCR，减少标题栏误识。图片/游戏里「选不中」的字才有感；终端默认不做悬停
+              OCR。整页/框选仍用工具栏「OCR 截图翻译」。
             </p>
           </div>
           <Switch checked={ux.ocrForcePickup} onChange={(v) => patchUx({ ocrForcePickup: v })} />

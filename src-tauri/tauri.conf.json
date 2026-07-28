@@ -36,6 +36,9 @@
     "targets": "all",
     "icon": [
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "bin/moon_hook.dll": "moon_hook.dll"
+    }
   }
 }

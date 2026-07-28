@@ -320,21 +320,47 @@ impl HookManager {
     }
 
     fn find_hook_dll(&self) -> Result<String, String> {
-        // Look for moon_hook.dll in several locations
+        // Look for moon_hook.dll next to the exe (release bundle), then dev build outputs.
         let exe_dir = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|p| p.to_path_buf()))
             .unwrap_or_default();
 
-        let candidates = vec![
+        let mut candidates = vec![
+            // Release / portable: DLL next to moontranslator.exe
             exe_dir.join("moon_hook.dll"),
+            exe_dir.join("resources").join("moon_hook.dll"),
+            exe_dir.join("bin").join("moon_hook.dll"),
+            // Relative to exe when running from target/debug
+            exe_dir.join("..\\..\\hook-dll\\build\\Release\\moon_hook.dll"),
+            exe_dir.join("..\\..\\bin\\moon_hook.dll"),
             exe_dir.join("..\\..\\src-tauri\\bin\\moon_hook.dll"),
-            // Dev build output (CMake Release) — primary location in this repo
             exe_dir.join("..\\..\\src-tauri\\hook-dll\\build\\Release\\moon_hook.dll"),
+            // CWD-relative (cargo run from repo root or src-tauri)
+            std::path::PathBuf::from("moon_hook.dll"),
+            std::path::PathBuf::from("bin\\moon_hook.dll"),
             std::path::PathBuf::from("src-tauri\\bin\\moon_hook.dll"),
             std::path::PathBuf::from("src-tauri\\hook-dll\\build\\Release\\moon_hook.dll"),
             std::path::PathBuf::from("hook-dll\\build\\Release\\moon_hook.dll"),
         ];
+
+        // Compile-time crate dir → always find repo hook-dll in dev
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        candidates.push(manifest_dir.join("bin").join("moon_hook.dll"));
+        candidates.push(
+            manifest_dir
+                .join("hook-dll")
+                .join("build")
+                .join("Release")
+                .join("moon_hook.dll"),
+        );
+        candidates.push(
+            manifest_dir
+                .join("hook-dll")
+                .join("build")
+                .join("Debug")
+                .join("moon_hook.dll"),
+        );
 
         for candidate in &candidates {
             if candidate.exists() {
@@ -342,14 +368,14 @@ impl HookManager {
                     .canonicalize()
                     .unwrap_or_else(|_| candidate.clone())
                     .to_str()
-                    .ok_or("Invalid path".to_string())
+                    .ok_or_else(|| "Invalid path".to_string())
                     .map(|s| s.to_string());
             }
         }
 
         Err(format!(
-            "moon_hook.dll not found. Searched: {:?}",
-            candidates
+            "moon_hook.dll not found. Place it next to the app or under src-tauri/hook-dll/build/Release/. Searched {} paths.",
+            candidates.len()
         ))
     }
 

@@ -404,10 +404,20 @@ mod tests {
             extract_word_candidate("  hello  ").as_deref(),
             Some("hello")
         );
+        // Mid-token preference (closer to "under cursor" than first token)
         assert_eq!(
             extract_word_candidate("Say hello, world!").as_deref(),
-            Some("Say")
+            Some("hello")
         );
+    }
+
+    #[test]
+    fn rejects_ui_chrome_and_titles() {
+        assert!(extract_word_candidate("PowerShell").is_none());
+        assert!(extract_word_candidate("Windows PowerShell").is_none());
+        assert!(extract_word_candidate("Administrator: Windows PowerShell").is_none());
+        assert!(is_ui_chrome_word("pwsh"));
+        assert!(!is_ui_chrome_word("translate"));
     }
 
     #[test]
@@ -415,5 +425,10 @@ mod tests {
         let w = extract_word_candidate("你好世界测试").unwrap();
         assert!(w.chars().count() <= 4);
         assert!(!w.is_empty());
+    }
+
+    #[test]
+    fn format_dict_body_none_on_empty() {
+        assert!(format_dict_body("hello", &[]).is_none());
     }
 }
