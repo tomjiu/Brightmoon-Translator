@@ -8,7 +8,7 @@ Run: `pnpm run tauri dev`. Region-watch product expansion stays frozen until thi
 |---|------------|
 | 1 一轮/少闪 | preCaptured 不 hide；ready **注册后** + ping 防竞态；回调身份稳定 |
 | 2 叠字对齐 | payload 图尺寸；contentSize 启动即测；I5 |
-| 3 窄框工具栏 | min 380 装下整条工具栏；按钮不压扁 |
+| 3 窄框工具栏 | min **460** 装下整条工具栏（含引擎切换）；按钮不压扁 |
 | 4 空结果 | I4 错误+重试 |
 | 5 拖动 | position 只 x/y |
 | 6 缩放 | 仅 hasOcr 后采纳尺寸 |

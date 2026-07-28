@@ -16,6 +16,12 @@ import {
 } from 'lucide-react';
 import type { OcrLineResult } from '../services/ocr';
 import { useI18n } from '../i18n';
+import { useConfigStore } from '../stores/configStore';
+import {
+  DEFAULT_ENGINE_ORDER,
+  ENGINE_META,
+  type EngineId,
+} from '../pages/settings/engines/enginesMeta';
 import {
   frameToCaptureRegion,
   ocrLineToCssRect,
@@ -154,9 +160,44 @@ const TranslationLine = memo(
 
 TranslationLine.displayName = 'TranslationLine';
 
+const ENGINE_CFG_KEY: Record<string, string> = {
+  google: 'google',
+  youdao: 'youdao',
+  baidu: 'baidu',
+  deepl: 'deepl',
+  deeplx: 'deeplx',
+  microsoft: 'microsoft',
+  yandex: 'yandex',
+  offline: 'offline',
+  caiyun: 'caiyun',
+  tatoeba: 'tatoeba',
+  baidu_web: 'baiduWeb',
+  caiyun_web: 'caiyunWeb',
+  volcengine_web: 'volcengineWeb',
+  transmart: 'transmart',
+  papago: 'papago',
+};
+
+function isEngineEnabled(
+  engines: Record<string, { enabled?: boolean } | undefined>,
+  id: string,
+): boolean {
+  if (id === 'llm') return true;
+  const key = ENGINE_CFG_KEY[id] || id;
+  return !!engines[key]?.enabled;
+}
+
 export default function OcrRegionFrame() {
   const { t } = useI18n();
   const win = getCurrentWindow();
+  const engines = useConfigStore((s) => s.config.engines);
+  const engineOrder = useConfigStore((s) => s.config.engineOrder);
+  const primaryEngineId = (() => {
+    const order =
+      engineOrder && engineOrder.length > 0 ? engineOrder : (DEFAULT_ENGINE_ORDER as string[]);
+    const eng = engines as unknown as Record<string, { enabled?: boolean } | undefined>;
+    return order.find((id) => isEngineEnabled(eng, id)) || order[0] || 'youdao';
+  })();
 
   const getLangName = useCallback(
     (code: string) => {
@@ -359,6 +400,8 @@ export default function OcrRegionFrame() {
     };
 
     const applySessionReset = () => {
+      // Soft reset: clear OCR text state but keep freeze screenshot if already painted.
+      // Hard-clearing img made the frame flash empty ("clicked once and gone").
       receivedDataRef.current = false;
       armDataTimeout();
       setContinuous(false);
@@ -368,12 +411,20 @@ export default function OcrRegionFrame() {
       setDisplayMode('translation');
       setActionHint(null);
       prevSourceTextRef.current = '';
-      screenshotUrlRef.current = '';
-      if (screenshotImgRef.current) {
-        screenshotImgRef.current.removeAttribute('src');
-      }
-      setData(null);
-      setImageSize({ w: 0, h: 0 });
+      setData((prev) =>
+        prev?.screenshot
+          ? {
+              screenshot: prev.screenshot,
+              sourceText: '',
+              translatedText: '',
+              ocrLines: [],
+              lineTranslations: [],
+              sourceLang: prev.sourceLang,
+              targetLang: prev.targetLang,
+              refreshIntervalMs: prev.refreshIntervalMs,
+            }
+          : null,
+      );
       void emitTo('main', 'ocr-region-session-reset-ack', null).catch(() => undefined);
     };
 
@@ -582,9 +633,8 @@ export default function OcrRegionFrame() {
     }
   }, [continuous]);
 
-  // ---- Native OS drag (replaces manual setPosition to prevent ghost windows) ----
-  const onMouseDown = async (e: React.MouseEvent) => {
-    // Allow drag from toolbar background, but not from buttons, selects, or text content
+  // ---- Native OS drag: toolbar chrome only (not content — that ate clicks / felt like "gone") ----
+  const onToolbarMouseDown = async (e: React.MouseEvent) => {
     if (
       (e.target as HTMLElement).closest('button') ||
       (e.target as HTMLElement).closest('select')
@@ -595,7 +645,6 @@ export default function OcrRegionFrame() {
     pauseParentRefresh();
     try {
       await win.startDragging();
-      // After drag completes, notify the main window of new position
       await emitTo('main', 'ocr-region-position-changed', await getCaptureRegion());
     } catch {
       /* ignore */
@@ -824,6 +873,34 @@ export default function OcrRegionFrame() {
     });
   }, []);
 
+  const handleEngineSelect = useCallback(
+    (engineId: string) => {
+      if (!engineId) return;
+      // Promote to primary + ensure enabled, then re-translate.
+      void emitTo('main', 'ocr-region-engine-change', {
+        engineId,
+        enabled: true,
+        promote: true,
+      });
+      flashHint(tf('ocrRegion.engineSwitched', '已切换引擎'));
+    },
+    [flashHint, tf],
+  );
+
+  const handleEngineToggleEnabled = useCallback(
+    (engineId: string, enabled: boolean) => {
+      void emitTo('main', 'ocr-region-engine-change', {
+        engineId,
+        enabled,
+        promote: enabled,
+      });
+      flashHint(
+        enabled ? tf('ocrRegion.engineOn', '引擎已启用') : tf('ocrRegion.engineOff', '引擎已关闭'),
+      );
+    },
+    [flashHint, tf],
+  );
+
   // ---- Compute text area bounds from OCR lines (CSS space) ----
   const textAreaBounds = useCallback(() => {
     if (!data?.ocrLines.length) return null;
@@ -871,7 +948,6 @@ export default function OcrRegionFrame() {
     <div
       ref={containerRef}
       className="fixed inset-0 select-none outline-none overflow-visible"
-      onMouseDown={onMouseDown}
       style={{
         // Do NOT use overflow:hidden on the root — it clips toolbar icons on narrow frames.
         minWidth: MIN_FRAME_LOGICAL_W,
@@ -884,10 +960,11 @@ export default function OcrRegionFrame() {
         WebkitTapHighlightColor: 'transparent',
       }}
     >
-      {/* Full toolbar strip: fixed height, never shrink buttons; window min-width holds full bar (I3=360). */}
+      {/* Full toolbar strip: drag only here (content clicks must not startDragging). */}
       <div
         ref={toolbarRef}
         className="absolute top-0 left-0 right-0 z-50 px-1.5 flex flex-nowrap items-center gap-0.5 text-xs overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden"
+        onMouseDown={onToolbarMouseDown}
         style={{
           height: `${TOOLBAR_HEIGHT}px`,
           minHeight: `${TOOLBAR_HEIGHT}px`,
@@ -1030,6 +1107,64 @@ export default function OcrRegionFrame() {
             </option>
           ))}
         </select>
+        <span className="w-px h-3 bg-white/15 flex-shrink-0" />
+
+        {/* Engine switch + enable (primary order) */}
+        <select
+          className="bg-black/40 text-white/80 rounded border border-white/10 pl-1 pr-4 py-0.5 text-[10px] cursor-pointer flex-shrink-0 shrink-0 appearance-auto"
+          style={{
+            width: '5.2rem',
+            minWidth: '5.2rem',
+            maxWidth: '6.5rem',
+            paddingRight: '1.1rem',
+            textOverflow: 'ellipsis',
+          }}
+          value={primaryEngineId}
+          onChange={(e) => handleEngineSelect(e.target.value)}
+          title={tf('ocrRegion.engine', '翻译引擎')}
+        >
+          {(engineOrder && engineOrder.length > 0
+            ? engineOrder
+            : (DEFAULT_ENGINE_ORDER as string[])
+          ).map((id) => {
+            const meta = ENGINE_META.find((m) => m.id === (id as EngineId));
+            const label = meta?.nameZh.replace(/翻译|大模型/g, '').trim() || id;
+            const eng = engines as unknown as Record<string, { enabled?: boolean } | undefined>;
+            const on = isEngineEnabled(eng, id);
+            return (
+              <option key={id} value={id}>
+                {on ? '● ' : '○ '}
+                {label}
+              </option>
+            );
+          })}
+        </select>
+        <button
+          type="button"
+          className={`${btnBase} ${
+            isEngineEnabled(
+              engines as unknown as Record<string, { enabled?: boolean } | undefined>,
+              primaryEngineId,
+            )
+              ? 'text-emerald-300 bg-emerald-400/15'
+              : btnIdle
+          }`}
+          onClick={() => {
+            const eng = engines as unknown as Record<string, { enabled?: boolean } | undefined>;
+            const on = isEngineEnabled(eng, primaryEngineId);
+            handleEngineToggleEnabled(primaryEngineId, !on);
+          }}
+          title={
+            isEngineEnabled(
+              engines as unknown as Record<string, { enabled?: boolean } | undefined>,
+              primaryEngineId,
+            )
+              ? tf('ocrRegion.disableEngine', '关闭当前引擎')
+              : tf('ocrRegion.enableEngine', '启用当前引擎')
+          }
+        >
+          <span className="text-[9px] font-semibold leading-none">机</span>
+        </button>
         <span className="w-px h-3 bg-white/15 flex-shrink-0" />
 
         {/* Pin always-on-top */}

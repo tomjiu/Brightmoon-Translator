@@ -59,10 +59,19 @@ fn ocr_snapshot_meta_path() -> PathBuf {
     std::env::temp_dir().join("moontranslator_ocr_snapshot.json")
 }
 
+/// Unique path per capture so asset protocol / WebView2 never serves a stale freeze
+/// (same fixed filename + cache can paint black or old desktop).
+fn ocr_snapshot_image_path_unique() -> PathBuf {
+    let id = Uuid::new_v4().to_string();
+    std::env::temp_dir().join(format!("moontranslator_ocr_snapshot_{id}.png"))
+}
+
+fn snapshot_path_string_for(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 fn snapshot_path_string() -> String {
-    ocr_snapshot_image_path()
-        .to_string_lossy()
-        .replace('\\', "/")
+    snapshot_path_string_for(&ocr_snapshot_image_path())
 }
 
 /// Generate a unique temp file path for OCR to avoid race conditions
@@ -89,6 +98,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 struct CachedSnapshot {
     png_bytes: Vec<u8>,
+    /// Absolute path written for FE convertFileSrc (unique per capture when possible).
+    image_path: PathBuf,
     /// Lazily decoded for crop (avoid re-decode PNG on every crop_screenshot_snapshot).
     decoded: Option<screenshots::image::DynamicImage>,
     info: ScreenshotSnapshotInfo,
@@ -102,7 +113,7 @@ fn snapshot_cache() -> &'static std::sync::Mutex<Option<CachedSnapshot>> {
     SNAPSHOT_CACHE.get_or_init(|| std::sync::Mutex::new(None))
 }
 
-fn cache_snapshot(png_bytes: Vec<u8>, info: &ScreenshotSnapshotInfo) {
+fn cache_snapshot(png_bytes: Vec<u8>, info: &ScreenshotSnapshotInfo, image_path: PathBuf) {
     if let Ok(mut cache) = snapshot_cache().lock() {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -111,6 +122,7 @@ fn cache_snapshot(png_bytes: Vec<u8>, info: &ScreenshotSnapshotInfo) {
 
         *cache = Some(CachedSnapshot {
             png_bytes,
+            image_path,
             decoded: None,
             info: info.clone(),
             timestamp,
@@ -124,19 +136,17 @@ fn read_cached_snapshot_info() -> Option<ScreenshotSnapshotInfo> {
 }
 
 fn read_cached_snapshot() -> Option<ScreenshotSnapshot> {
-    let info = read_cached_snapshot_info()?;
-    // Ensure disk file exists for convertFileSrc (prepare writes it; rewrite if missing).
-    let path = ocr_snapshot_image_path();
-    if !path.exists() {
-        if let Ok(guard) = snapshot_cache().lock() {
-            if let Some(ref c) = *guard {
-                let _ = std::fs::write(&path, &c.png_bytes);
-            }
+    let mut cache = snapshot_cache().lock().ok()?;
+    let c = cache.as_mut()?;
+    if !c.image_path.exists() {
+        if c.image_path.as_os_str().is_empty() {
+            c.image_path = ocr_snapshot_image_path();
         }
+        let _ = std::fs::write(&c.image_path, &c.png_bytes);
     }
     Some(ScreenshotSnapshot {
-        image_path: snapshot_path_string(),
-        info,
+        image_path: snapshot_path_string_for(&c.image_path),
+        info: c.info.clone(),
     })
 }
 
@@ -518,10 +528,13 @@ pub async fn prepare_screenshot_snapshot(
             (info, png_bytes)
         };
 
-        // Save to disk as backup first (uses reference, no clone needed)
-        if let Err(e) = std::fs::write(ocr_snapshot_image_path(), &png_bytes) {
+        // Unique file each capture so asset:// never hits a stale WebView2 cache entry.
+        let image_path = ocr_snapshot_image_path_unique();
+        if let Err(e) = std::fs::write(&image_path, &png_bytes) {
             tracing::warn!("Failed to save OCR snapshot image: {}", e);
         }
+        // Also keep legacy fixed name for tools / fallbacks.
+        let _ = std::fs::write(ocr_snapshot_image_path(), &png_bytes);
         if let Ok(meta) = serde_json::to_vec(&info) {
             if let Err(e) = std::fs::write(ocr_snapshot_meta_path(), meta) {
                 tracing::warn!("Failed to save OCR snapshot metadata: {}", e);
@@ -531,7 +544,7 @@ pub async fn prepare_screenshot_snapshot(
         let size_kb = png_bytes.len() / 1024;
 
         // Cache in memory for instant access by the selector window (moves bytes, no clone)
-        cache_snapshot(png_bytes, &info);
+        cache_snapshot(png_bytes, &info, image_path);
 
         tracing::info!("prepare_screenshot_snapshot: done ({}KB cached)", size_kb);
         Ok(info)

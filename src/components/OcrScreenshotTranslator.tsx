@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { safeInvoke, invokeOrThrow } from '../services/invoke';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { isTauriRuntime } from '../services/tauriRuntime';
 import { useI18n } from '../i18n';
 import {
@@ -15,7 +15,7 @@ import {
   type OcrResultDetailed,
 } from '../services/ocr';
 import { useConfigStore } from '../stores/configStore';
-import type { TranslateResponse, DetectionResult } from '../types';
+import type { AppConfig, TranslateResponse, DetectionResult } from '../types';
 import { WindowBindingManager } from '../hooks/ocrWindowBinding';
 import { normalizeOcrText, textSimilarity, OCR_TEXT_SIMILARITY_SKIP } from '../hooks/ocrQuality';
 import {
@@ -36,8 +36,8 @@ interface RegionRect {
   height: number;
 }
 
-/** Default must be long enough for cold webview create (was 300ms — first paint race). */
-const OCR_FRAME_READY_TIMEOUT_MS = 2500;
+/** Cold webview create; shortened after instant crop preview (was 2500). */
+const OCR_FRAME_READY_TIMEOUT_MS = 1200;
 
 /** true = frame listeners registered; false = timeout (do not OCR blindly). */
 function waitForOcrRegionFrameReady(timeoutMs: number): Promise<boolean> {
@@ -87,6 +87,26 @@ function waitForSessionResetAck(timeoutMs: number): Promise<boolean> {
   });
 }
 
+/** Selector freeze painted + window shown (or timeout). */
+function waitForOcrScreenshotReady(timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let done = false;
+    let unlisten: (() => void) | undefined;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(timer);
+      unlisten?.();
+      resolve(ok);
+    };
+    const timer = window.setTimeout(() => finish(false), timeoutMs);
+    void listen('ocr-screenshot-ready', () => finish(true)).then((fn) => {
+      unlisten = fn;
+      if (done) fn();
+    });
+  });
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => {
@@ -108,6 +128,8 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
 export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreenshotTranslatorProps) {
   const { t } = useI18n();
   const config = useConfigStore((state) => state.config);
+  const updateConfig = useConfigStore((state) => state.updateConfig);
+  const saveConfig = useConfigStore((state) => state.saveConfig);
   const isTauri = isTauriRuntime();
   // I1: continuous MUST default false (also forced off after selection). true here restarts the flicker loop.
   const ocrIntervalMs = Math.max(
@@ -133,6 +155,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
   const pendingRegionRef = useRef<RegionRect | null>(null);
   const continuousRef = useRef(false);
   const frameClosedRef = useRef(true);
+  /** OCR session owns main visibility: hidden from session start until result close / cancel. */
+  const ocrSessionActiveRef = useRef(false);
   const sessionIdRef = useRef(0);
   const lastOcrTextRef = useRef<string>('');
   /** Last successful translation for I7 geometry-only updates (skip re-translate). */
@@ -331,6 +355,10 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           lastOcrTextRef.current
         ) {
           consecutiveSkipRef.current = Math.min(consecutiveSkipRef.current + 1, 8);
+          console.info('[OCR] continuous skip (fingerprint unchanged)', {
+            skips: consecutiveSkipRef.current,
+            fp: fp.slice(0, 12),
+          });
           return;
         }
         consecutiveSkipRef.current = 0;
@@ -426,6 +454,20 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           lineTranslations = allLines.map((l) => l.text);
           translatedText = '';
           let translateFailed = false;
+
+          // Progressive paint: show OCR text immediately, then replace with translation.
+          // Cuts perceived latency when network engines are slow.
+          if (nonEmptyIdx.length > 0 && preCapturedImage) {
+            void sendToRegionFrame(
+              image,
+              ocrResult,
+              sourceTextTrimmed,
+              lineTranslations,
+              detectedLangName,
+              imageNatural,
+              false,
+            );
+          }
 
           if (nonEmptyIdx.length === 0) {
             await emitTo('ocr-region-frame', 'ocr-region-error', {
@@ -770,9 +812,59 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       },
     );
 
-    // Region frame closed
+    // Engine switch / enable from region frame toolbar
+    void registerListener<{ engineId: string; enabled?: boolean; promote?: boolean }>(
+      'ocr-region-engine-change',
+      (event) => {
+        const { engineId, enabled, promote } = event.payload || {};
+        if (!engineId) return;
+        updateConfig((prev) => {
+          const engines = { ...prev.engines } as AppConfig['engines'] &
+            Record<string, { enabled?: boolean }>;
+          const keyMap: Record<string, keyof AppConfig['engines']> = {
+            google: 'google',
+            youdao: 'youdao',
+            baidu: 'baidu',
+            deepl: 'deepl',
+            deeplx: 'deeplx',
+            microsoft: 'microsoft',
+            yandex: 'yandex',
+            offline: 'offline',
+            caiyun: 'caiyun',
+            tatoeba: 'tatoeba',
+            baidu_web: 'baiduWeb',
+            caiyun_web: 'caiyunWeb',
+            volcengine_web: 'volcengineWeb',
+            transmart: 'transmart',
+            papago: 'papago',
+          };
+          const cfgKey = keyMap[engineId] || engineId;
+          if (cfgKey !== 'llm' && engines[cfgKey as keyof typeof engines]) {
+            const cur = engines[cfgKey as keyof typeof engines] as { enabled?: boolean };
+            engines[cfgKey as keyof typeof engines] = {
+              ...cur,
+              enabled: enabled === undefined ? true : enabled,
+            } as never;
+          }
+          let engineOrder = [...(prev.engineOrder || [])];
+          if (promote) {
+            engineOrder = [engineId, ...engineOrder.filter((id) => id !== engineId)];
+          }
+          return { ...prev, engines, engineOrder };
+        });
+        void saveConfig();
+        lastOcrTextRef.current = '';
+        lastImageFpRef.current = '';
+        if (regionRef.current) {
+          void captureAndTranslate(regionRef.current);
+        }
+      },
+    );
+
+    // Region frame closed → OCR session ends → main may return (lifecycle, not focus fight).
     void registerListener<unknown>('ocr-region-close', async () => {
       frameClosedRef.current = true;
+      ocrSessionActiveRef.current = false;
       sessionIdRef.current += 1;
       pendingRegionRef.current = null;
       setContinuous(false);
@@ -789,7 +881,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       await safeInvoke('set_ocr_region_frame_click_through', { ignore: false }, { silent: true });
       await safeInvoke('set_ocr_region_frame_sampling', { sampling: false }, { silent: true });
       await safeInvoke('close_ocr_region_frame', undefined, { silent: true });
-      await getCurrentWindow().show();
+      await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
     });
 
     return () => {
@@ -798,7 +890,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       unlisteners.forEach((fn) => fn());
       windowBindingRef.current?.unbind();
     };
-  }, [captureAndTranslate, isTauri]);
+  }, [captureAndTranslate, isTauri, updateConfig, saveConfig]);
 
   // Window-binding manager for follow mode (move region frame with target window)
   useEffect(() => {
@@ -971,6 +1063,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
 
       let image: string;
       try {
+        // Lifecycle handoff (pot): result show+focus FIRST, then destroy screenshot.
+        // Main stays out of session (STranslate) — no focus fight with DWM.
         const framePromise = invokeOrThrow('create_ocr_region_frame', {
           x: screenX,
           y: screenY,
@@ -980,43 +1074,40 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         const [img] = await Promise.all([cropPromise, framePromise]);
         image = img;
         frameClosedRef.current = false;
-        // Keep main hidden under the result frame (not shown until user closes OCR).
-        // close_ocr_screenshot_selector will topmost the region frame if present.
-        const mainWin = getCurrentWindow();
-        await mainWin.hide();
-        await safeInvoke(
-          'set_window_exclude_from_capture',
-          { label: 'main', exclude: false },
-          { silent: true },
-        );
+        ocrSessionActiveRef.current = true;
+        await safeInvoke('set_ocr_region_frame_click_through', { ignore: false }, { silent: true });
+        // Result takes foreground before selector dies (no empty-foreground gap).
         await safeInvoke('set_ocr_region_frame_visible', { visible: true }, { silent: true });
         await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
-        // Re-hide main if closing selector stole focus / showed main.
-        await mainWin.hide();
-        await safeInvoke('set_ocr_region_frame_visible', { visible: true }, { silent: true });
       } catch (err) {
         if (cancelled) return;
+        ocrSessionActiveRef.current = false;
         await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
         await safeInvoke('close_ocr_region_frame', undefined, { silent: true });
-        await safeInvoke(
-          'set_window_exclude_from_capture',
-          { label: 'main', exclude: false },
-          { silent: true },
-        );
-        await getCurrentWindow().show();
+        await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
         console.error('[OCR] Failed to create region frame or crop:', err);
         return;
       }
 
       continuousRef.current = false;
       setContinuous(false);
-      // Selection finished — stop stuck-selector watchdog
       if (selectorSafetyTimerRef.current) {
         window.clearTimeout(selectorSafetyTimerRef.current);
         selectorSafetyTimerRef.current = null;
       }
 
-      // Wait for listeners, then reset reused-frame UI, then OCR (order matters).
+      // Instant preview while OCR/translate run.
+      void emitTo('ocr-region-frame', 'ocr-region-update-data', {
+        screenshot: image,
+        sourceText: '',
+        translatedText: '',
+        ocrLines: [],
+        lineTranslations: [],
+        sourceLang: sourceLangRef.current,
+        targetLang: targetLangRef.current,
+        refreshIntervalMs: ocrIntervalMsRef.current,
+      }).catch(() => undefined);
+
       const frameReady = await waitForOcrRegionFrameReady(OCR_FRAME_READY_TIMEOUT_MS);
       if (!frameReady) {
         console.warn('[OCR] region frame ready timeout — retrying create once');
@@ -1027,6 +1118,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
             width: screenW,
             height: screenH,
           });
+          await safeInvoke('set_ocr_region_frame_visible', { visible: true }, { silent: true });
           const ready2 = await waitForOcrRegionFrameReady(OCR_FRAME_READY_TIMEOUT_MS);
           if (!ready2) {
             throw new Error('OCR 区域窗口未就绪，请重试');
@@ -1034,28 +1126,36 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         } catch (readyErr) {
           if (cancelled) return;
           console.error('[OCR] frame not ready:', readyErr);
+          ocrSessionActiveRef.current = false;
           await safeInvoke('close_ocr_region_frame', undefined, { silent: true });
-          await getCurrentWindow().show();
+          await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
           return;
         }
       }
       void emitTo('ocr-region-frame', 'ocr-region-continuous-state', { enabled: false }).catch(
         () => undefined,
       );
-      // ACK eliminates reset-vs-first-payload race (was fixed 32ms sleep).
-      const resetOk = await waitForSessionResetAck(800);
+      const resetOk = await waitForSessionResetAck(200);
       if (!resetOk) {
         console.warn('[OCR] session-reset ack timeout — continuing');
       }
+      void emitTo('ocr-region-frame', 'ocr-region-update-data', {
+        screenshot: image,
+        sourceText: '',
+        translatedText: '',
+        ocrLines: [],
+        lineTranslations: [],
+        sourceLang: sourceLangRef.current,
+        targetLang: targetLangRef.current,
+        refreshIntervalMs: ocrIntervalMsRef.current,
+      }).catch(() => undefined);
 
       lastOcrTextRef.current = '';
       lastImageFpRef.current = '';
       try {
-        // Pre-captured image: no hide/show — single OCR cycle for selection (I1 smoke).
         await captureAndTranslate(region, image);
       } catch (err) {
         if (cancelled) return;
-        // Keep the region frame open so the user can retry / resize / close manually.
         console.error('[OCR] captureAndTranslate failed after selection:', err);
         void emitTo('ocr-region-frame', 'ocr-region-error', {
           message: err instanceof Error ? err.message : String(err),
@@ -1073,7 +1173,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       cancelled = true;
       unlisten?.();
     };
-  }, [captureAndTranslate, isTauri]);
+  }, [captureAndTranslate, isTauri, updateConfig, saveConfig]);
 
   // Guard ref to prevent concurrent startScreenshotTranslate calls
   const startingRef = useRef(false);
@@ -1087,7 +1187,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     }
   }, []);
 
-  // ---- Cancelled listener ----
+  // ---- Cancelled listener (Esc / selector fail) → end session, restore main ----
   useEffect(() => {
     if (!isTauri) return;
 
@@ -1097,14 +1197,10 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     listen('ocr-screenshot-cancelled', () => {
       if (cancelled) return;
       clearSelectorSafetyTimer();
+      ocrSessionActiveRef.current = false;
       void (async () => {
-        await safeInvoke(
-          'set_window_exclude_from_capture',
-          { label: 'main', exclude: false },
-          { silent: true },
-        );
-        await getCurrentWindow().show();
-        await getCurrentWindow().setFocus();
+        await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
+        await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
       })();
     }).then((fn) => {
       if (cancelled) {
@@ -1121,6 +1217,11 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
   }, [isTauri, clearSelectorSafetyTimer]);
 
   // ---- Start screenshot translate ----
+  // Lifecycle (STranslate + pot):
+  //   session start → main collapsed (out of OCR)
+  //   selector visible → user selects
+  //   result show+focus → destroy selector (result takes baton)
+  //   session end (close/cancel) → main show
   const startScreenshotTranslate = useCallback(async () => {
     if (!isTauri) return;
     if (startingRef.current) return;
@@ -1128,6 +1229,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
 
     continuousRef.current = false;
     frameClosedRef.current = true;
+    ocrSessionActiveRef.current = true;
     sessionIdRef.current += 1;
     pendingRegionRef.current = null;
     setContinuous(false);
@@ -1145,32 +1247,17 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
 
     try {
       await safeInvoke('set_ocr_region_frame_sampling', { sampling: false }, { silent: true });
-      // Hide (don't destroy) so create_ocr_region_frame can reuse the webview.
       await safeInvoke('set_ocr_region_frame_visible', { visible: false }, { silent: true });
-      // Clear watch/UI on hidden reused frame (listener may still be alive).
       void emitTo('ocr-region-frame', 'ocr-region-continuous-state', { enabled: false }).catch(
         () => undefined,
       );
       void emitTo('ocr-region-frame', 'ocr-region-session-reset', null).catch(() => undefined);
       await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
       frameClosedRef.current = true;
-      const appWindow = getCurrentWindow();
 
-      // Prefer WDA_EXCLUDEFROMCAPTURE on main: BitBlt won't include our UI, but
-      // the user still sees the desktop (no hide → black gap). Fall back to hide.
-      const [excludeOk] = await safeInvoke<boolean>(
-        'set_window_exclude_from_capture',
-        { label: 'main', exclude: true },
-        { silent: true },
-      );
-      const usedAffinity = excludeOk === true;
-      if (!usedAffinity) {
-        await appWindow.hide();
-        await new Promise((resolve) => setTimeout(resolve, 48));
-      } else {
-        // Brief settle so affinity applies before GDI grab
-        await new Promise((resolve) => setTimeout(resolve, 16));
-      }
+      // STranslate: collapse main for whole OCR session (not just capture).
+      await safeInvoke('ocr_begin_session_hide_main', undefined, { silent: true });
+      await new Promise((resolve) => setTimeout(resolve, 32));
 
       let info: ScreenshotSnapshotInfo;
       try {
@@ -1180,64 +1267,46 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           t('ocr.captureTimeout') || '屏幕捕获超时：当前桌面会话可能不允许截图',
         );
       } catch (capErr) {
-        await safeInvoke(
-          'set_window_exclude_from_capture',
-          { label: 'main', exclude: false },
-          { silent: true },
-        );
-        if (!usedAffinity) {
-          await appWindow.show();
-          await appWindow.setFocus();
-        }
+        ocrSessionActiveRef.current = false;
+        await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
         throw capErr;
       }
       snapshotInfoRef.current = info;
+
       try {
+        const readyPromise = waitForOcrScreenshotReady(8000);
         await invokeOrThrow('create_ocr_screenshot_selector');
-      } catch (selErr) {
-        await safeInvoke(
-          'set_window_exclude_from_capture',
-          { label: 'main', exclude: false },
-          { silent: true },
-        );
-        if (!usedAffinity) {
-          await appWindow.show();
-          await appWindow.setFocus();
+        const ready = await readyPromise;
+        if (!ready) {
+          console.warn('[OCR] selector freeze ready timeout — force-show selector');
+          try {
+            const sel = await WebviewWindow.getByLabel('ocr-screenshot');
+            await sel?.show();
+            await sel?.setFocus();
+          } catch {
+            /* ignore */
+          }
         }
+      } catch (selErr) {
+        ocrSessionActiveRef.current = false;
+        await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
+        await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
         throw selErr;
       }
 
-      // Selector covers the desktop. Hide main underneath (no black flash — freeze
-      // already on top). Clear capture exclusion so later show() is normal.
-      await appWindow.hide();
-      await safeInvoke(
-        'set_window_exclude_from_capture',
-        { label: 'main', exclude: false },
-        { silent: true },
-      );
-
-      // Stuck-selector safety: restore main after 20s
+      // Main stays collapsed for the rest of the session (until result close / cancel).
+      // Stuck-selector safety: end session after 20s if still no selection.
       selectorSafetyTimerRef.current = window.setTimeout(() => {
         selectorSafetyTimerRef.current = null;
         void (async () => {
           try {
-            const w = getCurrentWindow();
-            await safeInvoke(
-              'set_window_exclude_from_capture',
-              { label: 'main', exclude: false },
-              { silent: true },
-            );
-            if (!(await w.isVisible())) {
-              console.warn('[OCR] Main still hidden after 20s — force show');
-              await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
-              await safeInvoke(
-                'set_ocr_region_frame_visible',
-                { visible: false },
-                { silent: true },
-              );
-              await w.show();
-              await w.setFocus();
-            }
+            if (!ocrSessionActiveRef.current) return;
+            if (!frameClosedRef.current) return; // result already up
+            console.warn('[OCR] Selector stuck 20s — end session, restore main');
+            ocrSessionActiveRef.current = false;
+            await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
+            await safeInvoke('set_ocr_region_frame_visible', { visible: false }, { silent: true });
+            await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
           } catch {
             /* ignore */
           }
@@ -1246,14 +1315,9 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     } catch (err) {
       console.error('[OCR] Error in startScreenshotTranslate:', err);
       clearSelectorSafetyTimer();
+      ocrSessionActiveRef.current = false;
       try {
-        await safeInvoke(
-          'set_window_exclude_from_capture',
-          { label: 'main', exclude: false },
-          { silent: true },
-        );
-        await getCurrentWindow().show();
-        await getCurrentWindow().setFocus();
+        await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
       } catch {
         // ignore
       }

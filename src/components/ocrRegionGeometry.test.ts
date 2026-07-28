@@ -13,7 +13,7 @@ import {
 describe('ocrRegionGeometry', () => {
   it('exports stable geometry constants for I2/I3', () => {
     expect(OCR_TOOLBAR_HEIGHT_CSS).toBe(32);
-    expect(OCR_MIN_FRAME_WIDTH_CSS).toBe(380);
+    expect(OCR_MIN_FRAME_WIDTH_CSS).toBe(460);
     expect(OCR_SELECTION_PAD_PX).toBe(2);
   });
 

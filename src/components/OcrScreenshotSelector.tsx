@@ -56,6 +56,8 @@ export default function OcrScreenshotSelector() {
       const win = getCurrentWindow();
       await win.show();
       await win.setFocus();
+      // Main must not hide until freeze is on screen (avoids main-hide + hidden selector = void/black).
+      await emitTo('main', 'ocr-screenshot-ready');
     } catch (e) {
       console.warn('[OCR selector] show failed', e);
     }
@@ -65,9 +67,10 @@ export default function OcrScreenshotSelector() {
     // Kill any leftover theme accent / focus blue in this window only
     const killBlue = document.createElement('style');
     killBlue.setAttribute('data-ocr-selector-neutral', '1');
+    // Neutral dark chrome — pure #000 + empty img looked identical to "black screen" bug.
     killBlue.textContent = `
       html, body, #root { margin:0!important; padding:0!important; width:100%!important; height:100%!important;
-        overflow:hidden!important; background:#000!important; outline:none!important; }
+        overflow:hidden!important; background:#111!important; outline:none!important; }
       * { outline: none !important; caret-color: transparent !important; }
       ::selection { background: rgba(255,255,255,0.18) !important; color: #fff !important; }
       *::-moz-focus-inner { border: 0 !important; }
@@ -75,13 +78,13 @@ export default function OcrScreenshotSelector() {
     document.head.appendChild(killBlue);
 
     document.documentElement.style.cssText =
-      'margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;outline:none;';
+      'margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#111;outline:none;';
     document.body.style.cssText =
-      'margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;outline:none;';
+      'margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#111;outline:none;';
     const root = document.getElementById('root');
     if (root) {
       root.style.cssText =
-        'margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;outline:none;';
+        'margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#111;outline:none;';
     }
 
     const win = getCurrentWindow();
@@ -99,9 +102,10 @@ export default function OcrScreenshotSelector() {
         snapshotRef.current = snap;
         const path = snap.imagePath;
         if (!path) throw new Error('snapshot path missing');
-        // Cache-bust: same disk path every snip; WebView2 may show stale freeze without query.
+        // Do NOT append ?query — asset protocol often 404s and never paints freeze (black chrome).
+        // Fragment only busts React/img cache identity without changing the asset path.
         const bust = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        setImgUrl(`${convertFileSrc(path)}?v=${bust}`);
+        setImgUrl(`${convertFileSrc(path)}#${bust}`);
       })
       .catch(async (err: unknown) => {
         setError(String(err));
@@ -110,12 +114,7 @@ export default function OcrScreenshotSelector() {
         } catch {
           /* ignore */
         }
-        try {
-          await win.show();
-          await win.setFocus();
-        } catch {
-          /* ignore */
-        }
+        // Do not show() here — black chrome flash if snapshot failed after main hide.
         try {
           await win.close();
         } catch {
@@ -205,7 +204,7 @@ export default function OcrScreenshotSelector() {
   return (
     <div
       className="fixed inset-0 z-50 text-white select-none cursor-crosshair overflow-hidden outline-none"
-      style={{ background: '#000', width: '100%', height: '100%', outline: 'none' }}
+      style={{ background: '#111', width: '100%', height: '100%', outline: 'none' }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         finishingRef.current = false;
@@ -264,6 +263,7 @@ export default function OcrScreenshotSelector() {
             void winShowReady();
           }}
           onError={() => {
+            console.error('[OCR selector] freeze image failed to load (asset protocol?)');
             setError('截图预览加载失败');
             void emitTo('main', 'ocr-screenshot-cancelled');
             void getCurrentWindow().close();

@@ -502,6 +502,8 @@ pub fn run() {
             commands::window::update_overlay_position,
             commands::window::create_ocr_screenshot_selector,
             commands::window::close_ocr_screenshot_selector,
+            commands::window::ocr_begin_session_hide_main,
+            commands::window::ocr_end_session_show_main,
             commands::window::create_ocr_region_frame,
             commands::window::close_ocr_region_frame,
             commands::window::set_ocr_region_frame_visible,

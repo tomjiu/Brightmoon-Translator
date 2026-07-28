@@ -21,7 +21,7 @@ export default function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm">
+    <div className="fixed top-12 right-4 z-[40] flex flex-col gap-2 max-w-sm pointer-events-none [&>*]:pointer-events-auto">
       {toasts.map((toast) => {
         const Icon = iconMap[toast.type];
         return (

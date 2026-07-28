@@ -12,7 +12,8 @@ export interface RegionRect {
  */
 export const OCR_TOOLBAR_HEIGHT_CSS = 32;
 /** Min frame width = full toolbar (icons + language). Keep TS+Rust in sync (I3). */
-export const OCR_MIN_FRAME_WIDTH_CSS = 380;
+/** Toolbar fits langs + engine select + engine toggle + pin/follow/watch (I3). */
+export const OCR_MIN_FRAME_WIDTH_CSS = 460;
 /** Expand selection crop slightly so edge glyphs are not clipped (image px, 1:1 physical). */
 export const OCR_SELECTION_PAD_PX = 2;
 

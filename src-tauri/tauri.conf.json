@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "",
+        "title": "Moon Translator",
         "width": 900,
         "height": 600,
         "minWidth": 700,
@@ -20,7 +20,7 @@
         "resizable": true,
         "decorations": false,
         "visible": true,
-        "backgroundColor": "#000000"
+        "backgroundColor": "#0a0a0a"
       }
     ],
     "security": {
