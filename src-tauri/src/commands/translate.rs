@@ -545,6 +545,7 @@ impl Clone for AppState {
             // OnceCell fields: create new empty cells for clones
             selection_translation: tokio::sync::OnceCell::new(),
             input_replacement: tokio::sync::OnceCell::new(),
+            selection_auto_watch: tokio::sync::OnceCell::new(),
             // Batch manager: share the same Arc
             batch: self.batch.clone(),
             // Speech recognition state

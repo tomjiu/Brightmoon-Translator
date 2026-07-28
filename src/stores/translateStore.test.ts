@@ -145,6 +145,7 @@ describe('translateStore', () => {
           text: 'Hello',
           from: 'en',
           to: 'zh',
+          channel: 'ui',
         },
       });
     });
@@ -205,7 +206,7 @@ describe('translateStore', () => {
       await useTranslateStore.getState().translate();
 
       expect(safeInvoke).toHaveBeenCalledWith('translate', {
-        request: { text: 'Hello', from: 'auto', to: 'zh' },
+        request: { text: 'Hello', from: 'auto', to: 'zh', channel: 'ui' },
       });
     });
 

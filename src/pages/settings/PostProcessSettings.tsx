@@ -180,11 +180,11 @@ export default function PostProcessSettings() {
       </Card>
 
       <Card
-        title={`${t('settings.postProcess.replacementRules')} (${config.rules.length})`}
+        title={`${t('settings.postProcess.replacementRules')} (${(config.rules ?? []).length})`}
         description={t('settings.postProcess.hint')}
       >
         <div className="space-y-3">
-          {config.rules.map((rule) => (
+          {(config.rules ?? []).map((rule) => (
             <div
               key={rule.id}
               className={`flex items-center gap-3 p-3 rounded-lg border ${
@@ -232,7 +232,7 @@ export default function PostProcessSettings() {
             </div>
           ))}
 
-          {config.rules.length === 0 && (
+          {(config.rules ?? []).length === 0 && (
             <p className="text-sm text-text-tertiary text-center py-4">
               {t('settings.postProcess.noRules')}
             </p>

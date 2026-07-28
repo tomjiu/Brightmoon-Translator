@@ -8,7 +8,7 @@ use crate::metrics::MetricsCollector;
 use crate::models::error::TranslationError;
 pub use crate::models::translation::BatchTranslationResult;
 use crate::models::translation::{
-    TranslateChannel, TranslateOutcome, TranslateRequest, TranslationMode,
+    RoutingStrategy, TranslateChannel, TranslateOutcome, TranslateRequest, TranslationMode,
 };
 use crate::post_process::PostProcessor;
 use crate::pre_process::PreProcessor;
@@ -146,7 +146,9 @@ impl TranslationService {
         async {
             match req.mode {
                 TranslationMode::Full => {
-                    let r = self.translate(&req.text, &req.from, &req.to).await?;
+                    let r = self
+                        .translate(req.channel, &req.text, &req.from, &req.to)
+                        .await?;
                     Ok(TranslateOutcome::Full(r))
                 },
                 TranslationMode::Primary => {
@@ -167,7 +169,7 @@ impl TranslationService {
                         req.segments.iter().map(|(i, s)| (*i, s.as_str())).collect()
                     };
                     let r = self
-                        .translate_batch(&lines, &req.from, &req.to, req.concurrency)
+                        .translate_batch(req.channel, &lines, &req.from, &req.to, req.concurrency)
                         .await;
                     Ok(TranslateOutcome::Batch(r))
                 },
@@ -276,14 +278,35 @@ impl TranslationService {
         }
     }
 
+    /// Product-channel default routing (overrides global `routingStrategy` for UI / OCR).
+    fn strategy_for_channel(
+        channel: TranslateChannel,
+        configured: RoutingStrategy,
+    ) -> RoutingStrategy {
+        match channel {
+            // Main window: always multi-engine results
+            TranslateChannel::Ui => RoutingStrategy::ParallelCompare,
+            // OCR frame: single result with ordered fallback
+            TranslateChannel::Ocr => RoutingStrategy::FallbackOnError,
+            _ => configured,
+        }
+    }
+
     /// Translate text with full pipeline: pre-process -> glossary -> blacklist -> TM -> cache -> engine -> restore -> cache -> history
     pub async fn translate(
         &self,
+        channel: TranslateChannel,
         text: &str,
         from: &str,
         to: &str,
     ) -> Result<TranslateResponse, TranslationError> {
-        let span = info_span!("translate", chars = text.len(), from, to);
+        let span = info_span!(
+            "translate",
+            channel = ?channel,
+            chars = text.len(),
+            from,
+            to
+        );
         async {
             let preview: String = text.chars().take(100).collect();
             tracing::info!(
@@ -294,14 +317,23 @@ impl TranslationService {
 
             let prepared = self.prepare(text, from, to).await;
 
+            let strategy = {
+                let config = self.config.lock().await;
+                Self::strategy_for_channel(
+                    channel,
+                    config.routing_strategy.clone().unwrap_or_default(),
+                )
+            };
+            let want_multi = matches!(strategy, RoutingStrategy::ParallelCompare);
+
             // Get TM config
             let (tm_enabled, tm_threshold) = {
                 let config = self.config.lock().await;
                 (config.tm_enabled, config.tm_threshold)
             };
 
-            // Check Translation Memory before cache
-            if tm_enabled {
+            // TM is single-result; skip for multi-result UI so homepage still compares engines
+            if tm_enabled && !want_multi {
                 let history = self.history.lock().await;
                 if let Some(tm_match) = history.fuzzy_match(&prepared.text, from, to, tm_threshold)
                 {
@@ -334,28 +366,31 @@ impl TranslationService {
                 }
             }
 
-            // Check cache first
+            // Check cache first (UI multi needs ≥2 engines; single-entry cache is a miss)
             let cache_span = info_span!("cache_lookup");
             let cached = async { self.cache.get(&prepared.text, from, to).await }
                 .instrument(cache_span)
                 .await;
             if let Some(cached) = cached {
-                self.metrics.record_cache_hit();
-                let mut results = Vec::with_capacity(cached.results.len());
-                for (engine, cached_text) in cached.results {
-                    let final_text = self
-                        .finalize(&cached_text, text, from, to, &prepared.blacklist)
-                        .await;
-                    results.push(TranslationResult {
-                        engine,
-                        text: final_text,
-                        latency_ms: None,
+                let usable = !want_multi || cached.results.len() >= 2;
+                if usable {
+                    self.metrics.record_cache_hit();
+                    let mut results = Vec::with_capacity(cached.results.len());
+                    for (engine, cached_text) in cached.results {
+                        let final_text = self
+                            .finalize(&cached_text, text, from, to, &prepared.blacklist)
+                            .await;
+                        results.push(TranslationResult {
+                            engine,
+                            text: final_text,
+                            latency_ms: None,
+                        });
+                    }
+                    return Ok(TranslateResponse {
+                        results,
+                        detected_language: None,
                     });
                 }
-                return Ok(TranslateResponse {
-                    results,
-                    detected_language: None,
-                });
             }
             self.metrics.record_cache_miss();
 
@@ -363,12 +398,17 @@ impl TranslationService {
             let start = Instant::now();
             let router = self.engine_router.read().await;
             let mut response = if prepared.glossary_hint.is_empty() {
-                let engine_span = info_span!("engine_translate_all");
-                async { router.translate_all(&prepared.text, from, to).await }
-                    .instrument(engine_span)
-                    .await
-            } else {
-                let engine_span = info_span!("engine_translate_glossary");
+                let engine_span = info_span!("engine_translate_strategy", ?strategy);
+                async {
+                    router
+                        .translate_with_strategy(strategy.clone(), &prepared.text, from, to)
+                        .await
+                }
+                .instrument(engine_span)
+                .await
+            } else if want_multi {
+                // Glossary on primary + parallel rest (main window multi-result)
+                let engine_span = info_span!("engine_translate_glossary_multi");
                 async {
                     let primary_result = router
                         .translate_primary_with_glossary(
@@ -397,7 +437,9 @@ impl TranslationService {
                                 "[translate] Primary engine with glossary failed: {}, falling back",
                                 e
                             );
-                            let fallback = router.translate_primary(&prepared.text, from, to).await;
+                            let fallback = router
+                                .translate_fallback_string(&prepared.text, from, to)
+                                .await;
                             if let Ok(translated) = fallback {
                                 let engine_name = router
                                     .primary_engine_name()
@@ -415,6 +457,45 @@ impl TranslationService {
                         },
                     }
                     resp
+                }
+                .instrument(engine_span)
+                .await
+            } else {
+                // Single-result path (OCR / fallback): glossary primary, then ordered fallback
+                let engine_span = info_span!("engine_translate_glossary_single");
+                async {
+                    match router
+                        .translate_primary_with_glossary(
+                            &prepared.text,
+                            from,
+                            to,
+                            &prepared.glossary_hint,
+                        )
+                        .await
+                    {
+                        Ok(translated) => TranslateResponse {
+                            results: vec![TranslationResult {
+                                engine: router.primary_engine_name().unwrap_or("LLM").to_string(),
+                                text: translated,
+                                latency_ms: None,
+                            }],
+                            detected_language: None,
+                        },
+                        Err(e) => {
+                            tracing::warn!(
+                                "[translate] Primary with glossary failed: {}, ordered fallback",
+                                e
+                            );
+                            router
+                                .translate_with_strategy(
+                                    RoutingStrategy::FallbackOnError,
+                                    &prepared.text,
+                                    from,
+                                    to,
+                                )
+                                .await
+                        },
+                    }
                 }
                 .instrument(engine_span)
                 .await
@@ -692,8 +773,10 @@ impl TranslationService {
     /// Core batch translation logic shared by translate_batch and translate_embedded_batch.
     /// Spawns concurrent translation tasks with context reuse and optional progress callback.
     /// When primary is LLM and multi-seg, uses numbered pack/parse (A4) instead of N calls.
+    /// OCR channel uses ordered engine fallback per segment (or after LLM pack failure).
     async fn translate_batch_core<F>(
         &self,
+        channel: TranslateChannel,
         lines: &[(usize, &str)],
         from: &str,
         to: &str,
@@ -703,7 +786,14 @@ impl TranslationService {
     where
         F: FnMut(usize, usize),
     {
-        let span = info_span!("translate_batch", total = lines.len(), from, to);
+        let ocr_fallback = matches!(channel, TranslateChannel::Ocr);
+        let span = info_span!(
+            "translate_batch",
+            channel = ?channel,
+            total = lines.len(),
+            from,
+            to
+        );
         async {
             let total = lines.len();
             if total == 0 {
@@ -746,7 +836,22 @@ impl TranslationService {
                                     "[translate_batch] LLM numbered batch failed: {}",
                                     e
                                 );
-                                vec![String::new(); segs.len()]
+                                if ocr_fallback {
+                                    // Per-seg ordered fallback when LLM pack fails
+                                    let mut fallbacks = Vec::with_capacity(segs.len());
+                                    for seg in &segs {
+                                        match router
+                                            .translate_fallback_string(seg, from, to)
+                                            .await
+                                        {
+                                            Ok(t) => fallbacks.push(t),
+                                            Err(_) => fallbacks.push(String::new()),
+                                        }
+                                    }
+                                    fallbacks
+                                } else {
+                                    vec![String::new(); segs.len()]
+                                }
                             },
                         }
                     };
@@ -785,27 +890,45 @@ impl TranslationService {
                         let context_snapshot: Vec<TranslationContext> =
                             context.iter().cloned().collect();
                         let router = self.engine_router.clone();
+                        let use_fallback = ocr_fallback;
 
                         let handle = tokio::spawn(async move {
                             let router = router.read().await;
-                            let translated = match router
-                                .translate_primary_with_context(
-                                    &protected,
-                                    &from_s,
-                                    &to_s,
-                                    &context_snapshot,
-                                )
-                                .await
-                            {
-                                Ok(t) => t,
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "[translate_batch] Translation failed for segment {}: {}",
-                                        idx,
-                                        e
-                                    );
-                                    String::new()
-                                },
+                            let translated = if use_fallback {
+                                match router
+                                    .translate_fallback_string(&protected, &from_s, &to_s)
+                                    .await
+                                {
+                                    Ok(t) => t,
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "[translate_batch] OCR fallback failed for segment {}: {}",
+                                            idx,
+                                            e
+                                        );
+                                        String::new()
+                                    },
+                                }
+                            } else {
+                                match router
+                                    .translate_primary_with_context(
+                                        &protected,
+                                        &from_s,
+                                        &to_s,
+                                        &context_snapshot,
+                                    )
+                                    .await
+                                {
+                                    Ok(t) => t,
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "[translate_batch] Translation failed for segment {}: {}",
+                                            idx,
+                                            e
+                                        );
+                                        String::new()
+                                    },
+                                }
                             };
                             drop(router);
 
@@ -869,18 +992,27 @@ impl TranslationService {
     /// Returns results in the same order as input
     pub async fn translate_batch(
         &self,
+        channel: TranslateChannel,
         lines: &[(usize, &str)],
         from: &str,
         to: &str,
         concurrency: usize,
     ) -> Vec<BatchTranslationResult> {
-        self.translate_batch_core(lines, from, to, concurrency, |_completed, _total| {})
-            .await
+        self.translate_batch_core(
+            channel,
+            lines,
+            from,
+            to,
+            concurrency,
+            |_completed, _total| {},
+        )
+        .await
     }
 
     /// Translate text lines for embedded/subtitle with progress callback
     pub async fn translate_embedded_batch<F>(
         &self,
+        channel: TranslateChannel,
         text: &str,
         from: &str,
         to: &str,
@@ -897,7 +1029,7 @@ impl TranslationService {
             .map(|(i, l)| (i, l.trim()))
             .collect();
 
-        self.translate_batch_core(&lines, from, to, concurrency, on_progress)
+        self.translate_batch_core(channel, &lines, from, to, concurrency, on_progress)
             .await
     }
 }

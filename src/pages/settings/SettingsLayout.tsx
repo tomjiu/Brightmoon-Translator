@@ -14,6 +14,7 @@ import {
   Bell,
   Cloud,
   BookMarked,
+  MousePointer2,
 } from 'lucide-react';
 import BasicSettings from './BasicSettings';
 import EngineSettings from './EngineSettings';
@@ -22,6 +23,7 @@ import HotkeySettings from './HotkeySettings';
 import AppearanceSettings from './AppearanceSettings';
 import AdvancedSettings from './AdvancedSettings';
 import CollectionSettings from './CollectionSettings';
+import SelectionSettings from './SelectionSettings';
 import AiSettings from '../../components/AiSettings';
 import PreProcessSettings from './PreProcessSettings';
 import PostProcessSettings from './PostProcessSettings';
@@ -30,7 +32,8 @@ import SyncSettings from './SyncSettings';
 import { NotificationManager } from '../../components/vocabulary';
 
 export default function SettingsLayout() {
-  const [activeSection, setActiveSection] = useState('basic');
+  // 默认打开划词翻译，避免用户找不到入口
+  const [activeSection, setActiveSection] = useState('selection');
 
   const groups = [
     { key: 'translate', label: '翻译' },
@@ -41,9 +44,11 @@ export default function SettingsLayout() {
 
   const sections = [
     { id: 'basic', icon: <Globe size={16} />, label: '基础设置', group: 'translate' },
+    // 划词放「翻译」分组靠前，避免滚到「交互」才找得到
+    { id: 'selection', icon: <MousePointer2 size={16} />, label: '划词翻译', group: 'translate' },
     { id: 'engines', icon: <Languages size={16} />, label: '翻译引擎', group: 'translate' },
-    { id: 'ai', icon: <Sparkles size={16} />, label: 'AI 增强', group: 'translate' },
-    { id: 'ocr', icon: <Eye size={16} />, label: 'OCR', group: 'translate' },
+    { id: 'ai', icon: <Sparkles size={16} />, label: '大模型', group: 'translate' },
+    { id: 'ocr', icon: <Eye size={16} />, label: 'OCR 识别', group: 'translate' },
     { id: 'preprocess', icon: <Filter size={16} />, label: '预处理', group: 'translate' },
     { id: 'postprocess', icon: <Wand2 size={16} />, label: '后处理', group: 'translate' },
     { id: 'hotkeys', icon: <Keyboard size={16} />, label: '快捷键', group: 'interact' },
@@ -55,24 +60,30 @@ export default function SettingsLayout() {
     { id: 'advanced', icon: <SettingsIcon size={16} />, label: '高级', group: 'system' },
   ];
 
+  const go = (id: string) => setActiveSection(id);
+
   const renderContent = () => {
     switch (activeSection) {
       case 'basic':
         return <BasicSettings />;
       case 'engines':
-        return <EngineSettings />;
+        return <EngineSettings onNavigate={go} />;
       case 'ai':
         return (
           <div className="space-y-5 animate-fadeIn">
             <div>
-              <h1 className="ui-page-title">AI 增强</h1>
-              <p className="ui-page-desc">使用 AI 提升翻译质量与效率</p>
+              <h1 className="ui-page-title">大模型</h1>
+              <p className="ui-page-desc">
+                API 密钥、模型与提示词。启用顺序在「翻译引擎」；学习功能也用此处模型
+              </p>
             </div>
-            <AiSettings />
+            <AiSettings onNavigate={go} />
           </div>
         );
       case 'ocr':
-        return <OcrSettings />;
+        return <OcrSettings onNavigate={go} />;
+      case 'selection':
+        return <SelectionSettings />;
       case 'hotkeys':
         return <HotkeySettings />;
       case 'preprocess':

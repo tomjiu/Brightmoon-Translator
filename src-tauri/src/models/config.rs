@@ -340,6 +340,74 @@ pub struct HotkeyConfig {
     pub toggle_overlay_click_through: String,
 }
 
+/// How selection translation is triggered (Youdao-like UX).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SelectionTriggerMode {
+    /// Only global hotkey / tray / HTTP
+    HotkeyOnly,
+    /// After mouse button release, if there is a selection → translate + overlay
+    AutoOnSelect,
+    /// After drag-select → floating pop button; click to translate (Easydict default)
+    #[default]
+    PopButton,
+}
+
+/// Desktop 划词 / 取词 UX (Youdao-inspired).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionUxConfig {
+    /// Select text → popup: hotkey only vs auto on mouse-up
+    #[serde(default)]
+    pub trigger_mode: SelectionTriggerMode,
+    /// Mouse dwell → word dictionary popup (system-wide)
+    #[serde(default)]
+    pub hover_dictionary: bool,
+    /// Dwell time before hover dictionary (ms)
+    #[serde(default = "default_hover_dwell_ms")]
+    pub hover_dwell_ms: u32,
+    /// When UIA/clipboard selection is empty, try OCR near cursor (force 取词)
+    #[serde(default)]
+    pub ocr_force_pickup: bool,
+    /// Min selection length for auto-on-select (chars)
+    #[serde(default = "default_selection_min_chars")]
+    pub auto_min_chars: u32,
+    /// Min mouse drag distance (px) before auto-on-select fires (Easydict MinDragDistance)
+    #[serde(default = "default_min_drag_px")]
+    pub min_drag_px: u32,
+    /// Process names (no .exe) to never auto/hover-select, e.g. "potplayer"
+    #[serde(default)]
+    pub exclude_processes: Vec<String>,
+}
+
+fn default_hover_dwell_ms() -> u32 {
+    400
+}
+
+fn default_selection_min_chars() -> u32 {
+    1
+}
+
+fn default_min_drag_px() -> u32 {
+    // Easydict MinDragDistance = 10; double-click (0 drag) still accepted if text exists
+    10
+}
+
+impl Default for SelectionUxConfig {
+    fn default() -> Self {
+        Self {
+            // Match UI + Easydict: pop button by default
+            trigger_mode: SelectionTriggerMode::PopButton,
+            hover_dictionary: false,
+            hover_dwell_ms: default_hover_dwell_ms(),
+            ocr_force_pickup: false,
+            auto_min_chars: default_selection_min_chars(),
+            min_drag_px: default_min_drag_px(),
+            exclude_processes: Vec::new(),
+        }
+    }
+}
+
 fn default_overlay_click_through_hotkey() -> String {
     "Ctrl+Shift+Escape".to_string()
 }
@@ -664,6 +732,9 @@ pub struct AppConfig {
     pub api_server_token: String,
     #[serde(default)]
     pub hotkeys: HotkeyConfig,
+    /// 划词 / 悬停词典 / OCR 强力取词
+    #[serde(default)]
+    pub selection_ux: SelectionUxConfig,
     #[serde(default)]
     pub proxy: ProxyConfig,
     #[serde(default)]
@@ -1366,6 +1437,7 @@ impl Default for AppConfig {
             api_server_port: 60828,
             api_server_token: String::new(),
             hotkeys: HotkeyConfig::default(),
+            selection_ux: SelectionUxConfig::default(),
             proxy: ProxyConfig::default(),
             window_x: None,
             window_y: None,

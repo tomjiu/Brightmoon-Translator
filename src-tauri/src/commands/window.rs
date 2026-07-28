@@ -606,9 +606,35 @@ pub async fn trigger_selection_translate(
     Ok(())
 }
 
+/// Pop button clicked → translate pending selection text and show overlay.
+#[command]
+pub async fn pop_button_confirm(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let text = crate::selection::pop_button::take_pending()
+        .ok_or_else(|| "No pending selection".to_string())?;
+    let _ = crate::selection::pop_button::dismiss(&app);
+    translate_selection(app, state, text, None).await
+}
+
+/// Hide pop button without translating.
+#[command]
+pub async fn pop_button_dismiss(app: tauri::AppHandle) -> Result<(), String> {
+    crate::selection::pop_button::dismiss(&app)
+}
+
 #[command]
 pub async fn set_overlay_click_through(app: tauri::AppHandle, ignore: bool) -> Result<(), String> {
     crate::overlay::interaction::set_click_through(&app, ignore)
+}
+
+/// Sync main-window theme (dark|light) to selection/hover overlay cards.
+#[command]
+pub async fn set_overlay_theme(theme: String) -> Result<(), String> {
+    let light = theme.eq_ignore_ascii_case("light");
+    crate::overlay::window_manager::set_overlay_theme_light(light);
+    Ok(())
 }
 
 #[command]

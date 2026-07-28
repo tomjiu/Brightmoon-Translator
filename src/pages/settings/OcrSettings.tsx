@@ -19,7 +19,11 @@ interface OcrEngineOption {
   badges: Array<{ label: string; variant: 'success' | 'warning' | 'error' | 'info' }>;
 }
 
-export default function OcrSettings() {
+interface OcrSettingsProps {
+  onNavigate?: (sectionId: string) => void;
+}
+
+export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
@@ -41,7 +45,7 @@ export default function OcrSettings() {
     {
       id: 'auto',
       name: '自动选择',
-      description: '并行尝试多个引擎，兼容性更好但可能更慢',
+      description: '依次尝试多个识别后端，兼容性更好但可能更慢（与翻译多引擎无关）',
       icon: Sparkles,
       status: 'available',
       badges: [{ label: '智能', variant: 'info' }],
@@ -99,9 +103,34 @@ export default function OcrSettings() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="ui-page-title">OCR 设置</h1>
-        <p className="ui-page-desc">截图识别引擎与区域监视参数</p>
+        <h1 className="ui-page-title">OCR 识别</h1>
+        <p className="ui-page-desc">
+          只管「图 → 字」。识完后的翻译按引擎列表顺序回退；换引擎在结果框内操作
+        </p>
       </div>
+
+      <Card title="与翻译的关系">
+        <ul className="text-xs text-text-secondary space-y-1.5 leading-relaxed list-disc pl-4">
+          <li>
+            <span className="text-text-primary font-medium">本页</span>
+            ：识别后端（WinRT / 有道 / 离线等）与监视间隔
+          </li>
+          <li>
+            <span className="text-text-primary font-medium">翻译引擎</span>
+            ：字 → 另一种语言的优先级与密钥
+          </li>
+          <li>OCR 框默认单条译文 + 失败回退，不并排多引擎对比</li>
+        </ul>
+        {onNavigate && (
+          <button
+            type="button"
+            onClick={() => onNavigate('engines')}
+            className="mt-3 text-xs font-medium text-primary hover:underline"
+          >
+            去「翻译引擎」调整优先级 →
+          </button>
+        )}
+      </Card>
 
       <Card>
         <div className="flex items-center gap-3 p-3.5 rounded-xl border border-border bg-bg-tertiary">
@@ -109,7 +138,7 @@ export default function OcrSettings() {
             <CurrentIcon size={22} strokeWidth={1.75} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="ui-caption">当前使用</p>
+            <p className="ui-caption">当前识别引擎</p>
             <p className="ui-section-title mt-0.5">{currentEngineInfo?.name}</p>
           </div>
           <CheckCircle size={20} className="text-text-secondary shrink-0" />
@@ -121,7 +150,7 @@ export default function OcrSettings() {
         )}
       </Card>
 
-      <Card title="选择 OCR 引擎" description="用于截图翻译的识别后端">
+      <Card title="选择识别引擎" description="截图翻译的图→字后端（不是翻译引擎）">
         <div className="space-y-2">
           {ocrEngines.map((engine) => {
             const Icon = engine.icon;

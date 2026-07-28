@@ -76,7 +76,9 @@ export default function HotkeySettings() {
     <div className="space-y-5">
       <div>
         <h1 className="ui-page-title">快捷键</h1>
-        <p className="ui-page-desc">点击输入框后按下组合键即可录制；保存后需重启应用生效</p>
+        <p className="ui-page-desc">
+          点击输入框后按下组合键即可录制；保存后立即生效。自动划词/浮钮请到「划词翻译」页
+        </p>
       </div>
 
       <Card title="全局快捷键" description="系统级热键 · Lucide 图标导航对应功能">

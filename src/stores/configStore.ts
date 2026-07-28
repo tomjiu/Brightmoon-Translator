@@ -47,6 +47,15 @@ const INITIAL_CONFIG: AppConfig = {
     replaceTranslate: '',
     toggleOverlayClickThrough: '',
   },
+  selectionUx: {
+    triggerMode: 'pop_button',
+    hoverDictionary: false,
+    hoverDwellMs: 400,
+    ocrForcePickup: false,
+    autoMinChars: 1,
+    minDragPx: 10,
+    excludeProcesses: [],
+  },
   proxy: { enabled: false, proxyType: 'http', host: '', port: 7890, username: '', password: '' },
   windowFollowMode: 'none',
   translationBlacklist: [],
@@ -183,7 +192,60 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       }
       return;
     }
-    set({ config: loadedCfg, loaded: true });
+    // Merge with INITIAL so missing nested fields never crash settings UI (.length on undefined)
+    const merged: AppConfig = {
+      ...INITIAL_CONFIG,
+      ...loadedCfg,
+      llm: { ...INITIAL_CONFIG.llm, ...(loadedCfg.llm ?? {}) },
+      engines: { ...INITIAL_CONFIG.engines, ...(loadedCfg.engines ?? {}) } as AppConfig['engines'],
+      hotkeys: { ...INITIAL_CONFIG.hotkeys, ...(loadedCfg.hotkeys ?? {}) },
+      selectionUx: {
+        ...INITIAL_CONFIG.selectionUx!,
+        ...(loadedCfg.selectionUx ?? {}),
+      } as AppConfig['selectionUx'],
+      proxy: { ...INITIAL_CONFIG.proxy, ...(loadedCfg.proxy ?? {}) },
+      hook: { ...INITIAL_CONFIG.hook!, ...(loadedCfg.hook ?? {}) },
+      sync: { ...INITIAL_CONFIG.sync!, ...(loadedCfg.sync ?? {}) },
+      collection: {
+        ...INITIAL_CONFIG.collection!,
+        ...(loadedCfg.collection ?? {}),
+        eudic: {
+          ...INITIAL_CONFIG.collection!.eudic,
+          ...(loadedCfg.collection?.eudic ?? {}),
+        },
+        anki: {
+          ...INITIAL_CONFIG.collection!.anki,
+          ...(loadedCfg.collection?.anki ?? {}),
+        },
+        shanbay: {
+          ...INITIAL_CONFIG.collection!.shanbay,
+          ...(loadedCfg.collection?.shanbay ?? {}),
+        },
+        youdao: {
+          ...INITIAL_CONFIG.collection!.youdao,
+          ...(loadedCfg.collection?.youdao ?? {}),
+        },
+        maimemo: {
+          ...INITIAL_CONFIG.collection!.maimemo,
+          ...(loadedCfg.collection?.maimemo ?? {}),
+        },
+      },
+      offlineOcr: {
+        backend: loadedCfg.offlineOcr?.backend ?? INITIAL_CONFIG.offlineOcr?.backend ?? 'rapid',
+        pluginDir: loadedCfg.offlineOcr?.pluginDir ?? INITIAL_CONFIG.offlineOcr?.pluginDir ?? '',
+      },
+      openaiTts: {
+        apiKey: loadedCfg.openaiTts?.apiKey ?? INITIAL_CONFIG.openaiTts?.apiKey ?? '',
+        baseUrl:
+          loadedCfg.openaiTts?.baseUrl ??
+          INITIAL_CONFIG.openaiTts?.baseUrl ??
+          'https://api.openai.com/v1',
+        model: loadedCfg.openaiTts?.model ?? INITIAL_CONFIG.openaiTts?.model ?? 'tts-1',
+        voice: loadedCfg.openaiTts?.voice ?? INITIAL_CONFIG.openaiTts?.voice ?? 'alloy',
+        speed: loadedCfg.openaiTts?.speed ?? INITIAL_CONFIG.openaiTts?.speed ?? 1,
+      },
+    };
+    set({ config: merged, loaded: true });
   },
 
   saveConfig: async () => {

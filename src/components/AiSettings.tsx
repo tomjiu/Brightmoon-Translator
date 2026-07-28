@@ -35,9 +35,11 @@ import {
 
 interface AiSettingsProps {
   onTermsExtracted?: (terms: AiTermEntry[]) => void;
+  /** Jump to another settings section */
+  onNavigate?: (sectionId: string) => void;
 }
 
-export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
+export default function AiSettings({ onTermsExtracted, onNavigate }: AiSettingsProps) {
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
@@ -50,18 +52,26 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
   const [testingConnection, setTestingConnection] = useState<Record<string, boolean>>({});
   const [availableModels, setAvailableModels] = useState<Record<string, ModelInfo[]>>({});
 
-  // 提取当前 providers 列表（兼容旧配置）
+  // 提取当前 providers 列表（兼容旧配置 / 残缺 llm）
+  const llm = config.llm ?? {
+    provider: '',
+    apiKey: '',
+    apiKeys: [],
+    baseUrl: '',
+    model: '',
+    providers: [],
+  };
   const providers: LlmProviderEntry[] =
-    Array.isArray(config.llm.providers) && config.llm.providers.length
-      ? config.llm.providers
-      : config.llm.apiKey || config.llm.baseUrl
+    Array.isArray(llm.providers) && llm.providers.length
+      ? llm.providers
+      : llm.apiKey || llm.baseUrl
         ? [
             {
               id: 'default',
-              name: config.llm.provider || '自定义',
-              baseUrl: config.llm.baseUrl || '',
-              apiKey: config.llm.apiKey || '',
-              model: config.llm.model || '',
+              name: llm.provider || '自定义',
+              baseUrl: llm.baseUrl || '',
+              apiKey: llm.apiKey || '',
+              model: llm.model || '',
               priority: 0,
               enabled: true,
               models: [],
@@ -74,7 +84,7 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
 
   useEffect(() => {
     setEditProviders(providers);
-  }, [config.llm.providers, config.llm.apiKey, config.llm.baseUrl, config.llm.model]);
+  }, [llm.providers, llm.apiKey, llm.baseUrl, llm.model]);
 
   // 术语提取相关
   const [isExtracting, setIsExtracting] = useState(false);
@@ -270,10 +280,21 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-text-primary flex items-center gap-2">
-        <Sparkles className="w-5 h-5 text-primary" />
-        AI 增强功能
-      </h3>
+      <div className="rounded-xl border border-border bg-bg-secondary p-3 space-y-2">
+        <p className="text-xs text-text-secondary leading-relaxed">
+          密钥与模型只在本页编辑。要让大模型参与主页对比 / OCR
+          回退，请在「翻译引擎」把「大模型翻译」排进优先级并保证已配置。
+        </p>
+        {onNavigate && (
+          <button
+            type="button"
+            onClick={() => onNavigate('engines')}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            去「翻译引擎」调整顺序 →
+          </button>
+        )}
+      </div>
 
       {/* ==================== LLM 多提供商配置 ==================== */}
       <div className="border border-border rounded-lg overflow-hidden">
@@ -283,7 +304,7 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
         >
           <div className="flex items-center gap-2">
             <Zap className="w-4 h-4 text-primary" />
-            <span className="font-medium">LLM 模型配置</span>
+            <span className="font-medium">API 与模型</span>
             <span className="text-xs text-text-secondary">({editProviders.length} 个提供商)</span>
             {editProviders.some((p) => p.enabled && p.apiKey) && (
               <CheckCircle className="w-3.5 h-3.5 text-green-500" />
@@ -423,7 +444,7 @@ export default function AiSettings({ onTermsExtracted }: AiSettingsProps) {
                 {/* 模型选择 */}
                 <div>
                   <label className="text-xs text-text-secondary mb-1 block">模型</label>
-                  {(availableModels[provider.id].length ?? 0) > 0 ? (
+                  {((availableModels[provider.id] ?? []).length ?? 0) > 0 ? (
                     <select
                       value={provider.model}
                       onChange={(e) => updateProvider(provider.id, 'model', e.target.value)}

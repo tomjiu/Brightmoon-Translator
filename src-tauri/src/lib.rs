@@ -128,6 +128,8 @@ pub struct AppState {
     // Capability cells (initialized in setup() after AppHandle is available)
     pub selection_translation: TokioOnceCell<Arc<dyn SelectionTranslation>>,
     pub input_replacement: TokioOnceCell<Arc<dyn InputReplacement>>,
+    /// Auto-on-select mouseup watcher (Youdao-like)
+    pub selection_auto_watch: TokioOnceCell<Arc<selection::SelectionAutoWatch>>,
 
     // Batch translation manager
     pub batch: Arc<BatchManager>,
@@ -236,6 +238,7 @@ pub fn run() {
         system: ctx.system,
         selection_translation: TokioOnceCell::new(),
         input_replacement: TokioOnceCell::new(),
+        selection_auto_watch: TokioOnceCell::new(),
         batch: Arc::new(BatchManager::new()),
         speech_state: Arc::new(Mutex::new(SpeechState::new())),
         ecdict_pool,
@@ -330,6 +333,11 @@ pub fn run() {
                     ));
                 let _ = app_state.selection_translation.set(sel_translation);
                 let _ = app_state.input_replacement.set(inp_replacement);
+
+                let ux = app_state.system.config.blocking_lock().selection_ux.clone();
+                let watch = Arc::new(selection::SelectionAutoWatch::new(ux));
+                watch.start(app.handle().clone());
+                let _ = app_state.selection_auto_watch.set(watch);
             }
 
             // Create system tray menu (pot-aligned: show / selection / replace / OCR / clipboard / settings / quit)
@@ -500,11 +508,14 @@ pub fn run() {
             commands::window::get_selected_text,
             commands::window::translate_selection,
             commands::window::trigger_selection_translate,
+            commands::window::pop_button_confirm,
+            commands::window::pop_button_dismiss,
             commands::window::get_cursor_position,
             commands::window::toggle_always_on_top,
             commands::window::get_always_on_top,
             commands::window::move_window_to_cursor,
             commands::window::set_overlay_click_through,
+            commands::window::set_overlay_theme,
             commands::window::pin_overlay,
             commands::window::move_overlay,
             commands::window::resize_overlay,

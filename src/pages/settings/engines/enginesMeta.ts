@@ -28,13 +28,13 @@ export interface EngineSectionMeta {
 export const ENGINE_SECTIONS: EngineSectionMeta[] = [
   {
     id: 'llm',
-    title: 'LLM 大模型',
-    description: '在「AI 增强」配置密钥与模型；此处仅摘要与路由顺序',
+    title: '大模型翻译',
+    description: '密钥与模型在「大模型」页；此处只排优先级（与其它引擎同一列表）',
   },
   {
     id: 'official',
     title: '官方引擎',
-    description: '官方 API 或稳定公开服务；部分需填写密钥后才会被路由使用',
+    description: '官方 API 或稳定公开服务；部分需密钥后才会参与翻译',
   },
   {
     id: 'web',
@@ -43,8 +43,8 @@ export const ENGINE_SECTIONS: EngineSectionMeta[] = [
   },
   {
     id: 'offline',
-    title: '离线翻译 / OCR',
-    description: '本地翻译模型；离线 OCR 后端与模型目录在「OCR 识别」中配置',
+    title: '离线翻译',
+    description: '本地文字翻译模型（图→字请到「OCR 识别」）',
   },
 ];
 

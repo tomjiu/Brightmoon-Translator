@@ -146,6 +146,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
         text: sourceText.trim(),
         from: fromLang,
         to: toLang,
+        channel: 'ui',
       },
     });
 
@@ -157,11 +158,11 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       return;
     }
 
-    // PrimaryOnly / all-engine failure often returns 200 with empty results — surface it
+    // All engines failed / empty payload — surface it
     if (!response.results.length || !response.results.some((r) => r.text.trim())) {
       set({
         results: response.results || [],
-        error: '翻译无结果：请检查引擎是否启用、密钥/网络，或切换路由策略为失败回退',
+        error: '翻译无结果：请检查已启用引擎、密钥与网络',
         loading: false,
         detectedLang: response.detectedLanguage || '',
       });

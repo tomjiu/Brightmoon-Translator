@@ -39,7 +39,12 @@ interface EngineDisplayConfig {
   description: string;
 }
 
-export default function EngineSettings() {
+interface EngineSettingsProps {
+  /** Jump to another settings section (e.g. ai / ocr) */
+  onNavigate?: (sectionId: string) => void;
+}
+
+export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
@@ -302,10 +307,51 @@ export default function EngineSettings() {
     <div className="space-y-5">
       <div>
         <h1 className="ui-page-title">翻译引擎</h1>
-        <p className="ui-page-desc">默认按列表顺序回退；上移 = 更高优先级</p>
+        <p className="ui-page-desc">
+          管「字 → 另一种语言」：开关、密钥（非大模型）、全局优先级。图→字在「OCR 识别」
+        </p>
       </div>
 
-      <Card title="路由" description="多数场景用「顺序回退」即可">
+      <Card title="各入口怎么用引擎" description="产品固定策略，不随下方路由单选改变">
+        <ul className="text-xs text-text-secondary space-y-1.5 leading-relaxed list-disc pl-4">
+          <li>
+            <span className="text-text-primary font-medium">主页复制翻译</span>
+            ：已启用引擎并行，展示多条结果
+          </li>
+          <li>
+            <span className="text-text-primary font-medium">OCR 框</span>
+            ：按列表顺序回退，单条译文；框内可换引擎重翻
+          </li>
+          <li>
+            <span className="text-text-primary font-medium">划词 / Hook 等</span>
+            ：由下方「路由」决定
+          </li>
+        </ul>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {onNavigate && (
+            <>
+              <button
+                type="button"
+                onClick={() => onNavigate('ai')}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                配置大模型密钥
+                <ExternalLink size={12} />
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('ocr')}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                OCR 识别设置
+                <ExternalLink size={12} />
+              </button>
+            </>
+          )}
+        </div>
+      </Card>
+
+      <Card title="路由（划词 / Hook 等）" description="主页与 OCR 已固定；此处只影响其它通道">
         <div className="grid gap-2">
           {ROUTING_STRATEGIES.map((strategy) => (
             <label
@@ -345,8 +391,7 @@ export default function EngineSettings() {
       </Card>
 
       <p className="text-xs text-text-secondary leading-relaxed">
-        下方按类型分组展示；▲▼ 仍调整全局回退优先级（数字越小越优先）。离线 OCR 模型路径在「OCR
-        识别」页。
+        下方按类型分组；▲▼ 调整全局优先级（数字越小越优先）。大模型密钥不在此页填写。
       </p>
 
       {ENGINE_SECTIONS.map((section) => {
@@ -375,14 +420,14 @@ export default function EngineSettings() {
                     total={engineOrder.length}
                     onMoveUp={() => moveEngine(idx, 'up')}
                     onMoveDown={() => moveEngine(idx, 'down')}
+                    onNavigate={onNavigate}
                   />
                 );
               })}
             </div>
             {section.id === 'offline' && (
               <p className="mt-3 text-xs text-text-secondary leading-relaxed">
-                离线 OCR（WinRT / Tesseract / Rapid / Paddle 等）请到设置 → OCR 识别
-                选择引擎与模型目录；本区仅管本地翻译引擎。
+                截图识字（WinRT / Tesseract / Rapid / Paddle）在「OCR 识别」；本区仅本地文字翻译。
               </p>
             )}
           </Card>
@@ -399,18 +444,38 @@ interface EngineConfigProps {
   saveConfig: () => Promise<void>;
   showSecrets?: Record<string, boolean>;
   toggleSecret?: (key: string) => void;
+  onNavigate?: (sectionId: string) => void;
 }
 
-function LLMEngineConfig({ config }: EngineConfigProps) {
-  const configured = isLlmConfigured(config.llm);
-  const model = config.llm.model.trim() || '未设置模型';
-  const provider = config.llm.provider || 'custom';
+function LLMEngineConfig({ config, onNavigate }: EngineConfigProps) {
+  const llm = config.llm ?? {
+    provider: '',
+    apiKey: '',
+    apiKeys: [],
+    baseUrl: '',
+    model: '',
+    providers: [],
+  };
+  const configured = isLlmConfigured(llm);
+  const model = (llm.model ?? '').trim() || '未设置模型';
+  const provider = llm.provider || 'custom';
   return (
     <div className="mt-3 space-y-2">
       <p className="text-sm text-text-secondary">
         状态：{configured ? `已配置（${provider} / ${model}）` : '未配置 API Key'}
       </p>
-      <p className="text-sm text-primary">在「AI 增强」中配置</p>
+      {onNavigate ? (
+        <button
+          type="button"
+          onClick={() => onNavigate('ai')}
+          className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+        >
+          去「大模型」配置密钥与模型
+          <ExternalLink size={14} />
+        </button>
+      ) : (
+        <p className="text-sm text-primary">在设置 → 大模型 中配置</p>
+      )}
     </div>
   );
 }
@@ -653,8 +718,13 @@ function DeepLXEngineConfig({
 }
 
 function OfflineEngineConfig({ config, updateConfig, saveConfig }: EngineConfigProps) {
-  const offline = config.engines.offline;
-  const modelCount = offline.downloadedModels.length ?? 0;
+  const offline = config.engines.offline ?? {
+    enabled: false,
+    autoSwitch: true,
+    downloadedModels: [],
+    modelDir: '',
+  };
+  const modelCount = (offline.downloadedModels ?? []).length;
   return (
     <div className="mt-3 space-y-2">
       <p className="ui-caption">已下载模型: {modelCount} 个</p>
@@ -698,6 +768,7 @@ interface SortableEngineCardProps {
   total: number;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onNavigate?: (sectionId: string) => void;
 }
 
 function SortableEngineCard({
@@ -712,6 +783,7 @@ function SortableEngineCard({
   total,
   onMoveUp,
   onMoveDown,
+  onNavigate,
 }: SortableEngineCardProps) {
   // 根据不同引擎渲染不同的toggle和配置
   const getToggleHandler = () => {
@@ -920,7 +992,12 @@ function SortableEngineCard({
           alwaysShowChildren={engineId === 'llm'}
         >
           {engineId === 'llm' && (
-            <LLMEngineConfig config={config} updateConfig={updateConfig} saveConfig={saveConfig} />
+            <LLMEngineConfig
+              config={config}
+              updateConfig={updateConfig}
+              saveConfig={saveConfig}
+              onNavigate={onNavigate}
+            />
           )}
           {engineId === 'caiyun' && (
             <CaiyunEngineConfig

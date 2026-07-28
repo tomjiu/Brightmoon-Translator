@@ -1,8 +1,9 @@
 use crate::config::AppConfig;
 use crate::engine::Router;
 use crate::error::AppError;
+use crate::hotkey;
 use crate::AppState;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, AppError> {
@@ -18,7 +19,11 @@ pub async fn get_default_config() -> Result<AppConfig, AppError> {
 }
 
 #[tauri::command]
-pub async fn save_config(state: State<'_, AppState>, config: AppConfig) -> Result<(), AppError> {
+pub async fn save_config(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    config: AppConfig,
+) -> Result<(), AppError> {
     config.save();
     let mut current = state.system.config.lock().await;
     *current = config.clone();
@@ -28,6 +33,15 @@ pub async fn save_config(state: State<'_, AppState>, config: AppConfig) -> Resul
     let new_router = Router::new(&config);
     let mut router = state.translation.engine_router.write().await;
     *router = new_router;
+    drop(router);
+
+    // Hot-reload selection UX (auto-on-select / hover / pop button)
+    if let Some(watch) = state.selection_auto_watch.get() {
+        watch.update_config(config.selection_ux.clone()).await;
+    }
+
+    // Re-register global hotkeys so settings apply without restart
+    hotkey::reregister(&app, &config.hotkeys);
 
     Ok(())
 }

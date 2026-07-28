@@ -80,6 +80,25 @@ interface HotkeyConfig {
   toggleOverlayClickThrough: string;
 }
 
+/** Desktop 划词 / 取词 (Youdao-inspired) */
+export type SelectionTriggerMode = 'hotkey_only' | 'auto_on_select' | 'pop_button';
+
+export interface SelectionUxConfig {
+  /** Select → popup: hotkey only vs auto after mouse-up */
+  triggerMode: SelectionTriggerMode;
+  /** Mouse dwell → dictionary popup (system-wide; phased) */
+  hoverDictionary: boolean;
+  hoverDwellMs: number;
+  /** Empty UIA/clipboard → OCR near cursor (phased) */
+  ocrForcePickup: boolean;
+  /** Min selection length for auto-on-select */
+  autoMinChars: number;
+  /** Min drag pixels before auto-on-select (Easydict-style) */
+  minDragPx?: number;
+  /** Process names to skip (no .exe), e.g. potplayer */
+  excludeProcesses?: string[];
+}
+
 interface ProxyConfig {
   enabled: boolean;
   proxyType: string;
@@ -147,6 +166,7 @@ export interface AppConfig {
   /** Local HTTP bridge token (Bearer). Required when API is enabled. */
   apiServerToken: string;
   hotkeys: HotkeyConfig;
+  selectionUx?: SelectionUxConfig;
   proxy: ProxyConfig;
   windowX?: number;
   windowY?: number;

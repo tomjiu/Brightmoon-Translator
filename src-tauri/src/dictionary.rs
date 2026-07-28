@@ -174,21 +174,8 @@ impl Dictionary {
             }
         }
 
-        // Fallback: return a basic result
-        Ok(vec![DictionaryResult {
-            word: word.to_string(),
-            phonetic: None,
-            meanings: vec![Meaning {
-                part_of_speech: "未找到释义".to_string(),
-                definitions: vec![Definition {
-                    definition: format!("未找到单词 \"{}\" 的释义", word),
-                    example: None,
-                    synonyms: vec![],
-                    antonyms: vec![],
-                }],
-            }],
-            source_urls: vec![],
-        }])
+        // Miss: empty list so callers fall through to machine translate / silent skip
+        Ok(vec![])
     }
 
     /// Lookup Chinese word using Youdao Dictionary API
@@ -265,22 +252,24 @@ impl Dictionary {
             }
         }
 
-        // Fallback: return a basic result
-        Ok(vec![DictionaryResult {
-            word: word.to_string(),
-            phonetic: None,
-            meanings: vec![Meaning {
-                part_of_speech: "未找到释义".to_string(),
-                definitions: vec![Definition {
-                    definition: format!("未找到词语 \"{}\" 的释义", word),
-                    example: None,
-                    synonyms: vec![],
-                    antonyms: vec![],
-                }],
-            }],
-            source_urls: vec![],
-        }])
+        Ok(vec![])
     }
+}
+
+/// True if results are usable dictionary hits (not empty / not legacy miss placeholders).
+pub fn has_real_meanings(results: &[DictionaryResult]) -> bool {
+    results.iter().any(|r| {
+        r.meanings.iter().any(|m| {
+            let pos = m.part_of_speech.as_str();
+            if pos.contains("未找到") {
+                return false;
+            }
+            m.definitions.iter().any(|d| {
+                let def = d.definition.as_str();
+                !def.is_empty() && !def.contains("未找到")
+            })
+        })
+    })
 }
 
 /// Check if text is a single word (for dictionary lookup)

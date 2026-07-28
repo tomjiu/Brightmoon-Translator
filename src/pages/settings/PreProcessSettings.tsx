@@ -153,9 +153,12 @@ export default function PreProcessSettings() {
       </Card>
 
       {/* Rules */}
-      <Card title={`替换规则 (${config.rules.length})`} description="按顺序执行的文本替换规则">
+      <Card
+        title={`替换规则 (${(config.rules ?? []).length})`}
+        description="按顺序执行的文本替换规则"
+      >
         <div className="space-y-3">
-          {config.rules.map((rule) => (
+          {(config.rules ?? []).map((rule) => (
             <div
               key={rule.id}
               className={`flex items-center gap-3 p-3 rounded-lg border ${
@@ -208,7 +211,7 @@ export default function PreProcessSettings() {
             </div>
           ))}
 
-          {config.rules.length === 0 && (
+          {(config.rules ?? []).length === 0 && (
             <p className="text-sm text-text-tertiary text-center py-4">暂无替换规则</p>
           )}
 

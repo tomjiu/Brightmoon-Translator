@@ -17,6 +17,7 @@ Follow-up to [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md) §6 — previously
 | read-frog | Plan ideas | + host/translate batch, prompts, providers, content entry |
 | **AiNiee** | Missing | **2026-07-27** zip extract + A1–A3 ports (symbol repair, response check, numbered parse) — §6 |
 | youdao-dict | Policy only | Unchanged |
+| **Easydict / QTranslate / MTT / YomiNinja** | — | **2026-07-28** 克隆 + 划词深读 → [REFERENCE_SELECTION_UX.md](./REFERENCE_SELECTION_UX.md) |
 
 ---
 
@@ -149,3 +150,10 @@ Do not copy: Qt UI, full plugin marketplace, game-only IO plugins.
 - `.../Domain/ResponseChecker/{ResponseChecker,BaseChecks,AdvancedChecks}.py`
 - Moon ports: `src-tauri/src/post_process.rs`, `src-tauri/src/response_check.rs`
 - FE typography/icons: `src/index.css` (`.ui-*`), `src/components/{Icon,PageHeader}.tsx`
+
+### Selection / hover / OCR pickup (2026-07-28)
+- Full write-up: [REFERENCE_SELECTION_UX.md](./REFERENCE_SELECTION_UX.md)
+- `tmp/reference/oss/easydict_win32/dotnet/src/Easydict.WinUI/Services/{MouseHook,TextSelection,PopButton}Service.cs`
+- `tmp/reference/oss/QTranslate/ui-swing/.../{QuickTranslateDialog,QuickDictionaryDialog}.kt`
+- `tmp/reference/oss/MouseTooltipTranslator/src/event/mouseover.js`, `src/ocr/ocrView.js`
+- `tmp/reference/oss/YomiNinja/yomininja-e/electron-src/{ocr_recognition,overlay}/`

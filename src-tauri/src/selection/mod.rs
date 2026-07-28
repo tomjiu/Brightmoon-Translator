@@ -1,8 +1,18 @@
+pub mod auto_watch;
 pub mod clipboard;
+pub mod hover_pick;
 pub mod manager;
+#[cfg(windows)]
+pub mod mouse_hook;
+pub mod pop_button;
+pub mod process_class;
 pub mod uiautomation;
+#[cfg(windows)]
+pub mod win_noactivate;
 
+pub use auto_watch::SelectionAutoWatch;
 pub use manager::SelectionProviderManager;
+pub use process_class::{foreground_process, SelectionStrategy};
 
 use serde::{Deserialize, Serialize};
 

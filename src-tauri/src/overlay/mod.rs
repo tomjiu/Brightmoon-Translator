@@ -94,13 +94,13 @@ impl OverlayPosition {
         }
     }
 
-    /// Create position at cursor + offset
+    /// Create position at cursor + offset (capped so it never looks like a black full screen)
     pub fn at_cursor(cursor_x: f64, cursor_y: f64) -> Self {
         Self {
-            x: cursor_x + 10.0,
-            y: cursor_y + 10.0,
-            width: 350.0,
-            height: 200.0,
+            x: cursor_x + 12.0,
+            y: cursor_y + 12.0,
+            width: 320.0,
+            height: 160.0,
         }
     }
 

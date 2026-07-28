@@ -27,10 +27,23 @@ pub struct UiAutomationSelectionProvider;
 #[async_trait::async_trait]
 impl SelectionProvider for UiAutomationSelectionProvider {
     async fn get_selection(&self) -> Option<SelectionResult> {
-        // UIA calls are blocking, run on a dedicated thread
-        tokio::task::spawn_blocking(|| get_uia_selection())
-            .await
-            .ok()?
+        // Easydict: UIA execution timeout 800ms — never hang selection path
+        match tokio::time::timeout(
+            std::time::Duration::from_millis(800),
+            tokio::task::spawn_blocking(get_uia_selection),
+        )
+        .await
+        {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => {
+                tracing::warn!("[uiautomation] join error: {e}");
+                None
+            },
+            Err(_) => {
+                tracing::warn!("[uiautomation] timed out after 800ms");
+                None
+            },
+        }
     }
 
     fn name(&self) -> &'static str {
@@ -89,11 +102,12 @@ fn get_uia_selection() -> Option<SelectionResult> {
             }
         };
 
-        // Try patterns in order: TextPattern -> ValuePattern with selection -> ValuePattern full -> children
+        // Easydict-style: ONLY real selection ranges — never full ValuePattern text.
+        // Full-value "selection" was the main source of wrong-word / whole-document bugs.
         let (text, bounds) = match try_text_pattern(&element) {
             Ok(result) => {
                 tracing::info!(
-                    "[uiautomation] TextPattern success: {} chars",
+                    "[uiautomation] TextPattern selection: {} chars",
                     result.0.len()
                 );
                 result
@@ -103,36 +117,30 @@ fn get_uia_selection() -> Option<SelectionResult> {
                 match try_value_pattern_with_selection(&element, &automation) {
                     Ok(result) => {
                         tracing::info!(
-                            "[uiautomation] ValuePattern+selection success: {} chars",
+                            "[uiautomation] Value+TextPattern selection: {} chars",
                             result.0.len()
                         );
                         result
                     },
                     Err(e2) => {
-                        tracing::debug!("[uiautomation] ValuePattern+selection failed: {}", e2);
-                        match try_value_pattern_full(&element) {
-                            Ok(result) => {
+                        tracing::debug!(
+                            "[uiautomation] no confirmed selection (Value+Text failed: {})",
+                            e2
+                        );
+                        // Children: TextPattern selection only (no full value)
+                        match find_text_selection_in_children(&element, &automation, 0) {
+                            Some(result) => {
                                 tracing::info!(
-                                    "[uiautomation] ValuePattern(full) success: {} chars",
+                                    "[uiautomation] child TextPattern selection: {} chars",
                                     result.0.len()
                                 );
                                 result
                             },
-                            Err(e3) => {
-                                tracing::debug!("[uiautomation] ValuePattern(full) failed: {}", e3);
-                                match find_text_in_children(&element, &automation, 0) {
-                                    Some(result) => {
-                                        tracing::info!(
-                                            "[uiautomation] Children walk success: {} chars",
-                                            result.0.len()
-                                        );
-                                        result
-                                    },
-                                    None => {
-                                        tracing::debug!("[uiautomation] All patterns exhausted for focused element");
-                                        return None;
-                                    },
-                                }
+                            None => {
+                                tracing::debug!(
+                                    "[uiautomation] no selection — fall through to clipboard"
+                                );
+                                return None;
                             },
                         }
                     },
@@ -279,9 +287,8 @@ unsafe fn try_value_pattern_with_selection(
     Err("ValuePattern: no confirmed selection, only full text available".into())
 }
 
-/// Pure ValuePattern fallback — returns the full value (no selection info).
-/// Pure ValuePattern fallback.
-/// SAFETY: UI Automation COM interface calls.
+/// Full ValuePattern — not used for selection (would return whole document).
+#[allow(dead_code)]
 unsafe fn try_value_pattern_full(
     element: &IUIAutomationElement,
 ) -> Result<(String, Option<SelectionBounds>), Box<dyn std::error::Error>> {
@@ -305,44 +312,27 @@ unsafe fn try_value_pattern_full(
     Ok((text, bounds))
 }
 
-/// Walk the UIA tree to find a child (or descendant) that supports TextPattern.
-/// Max depth: 5, max children per level: 10.
-/// Walk UIA tree to find child with TextPattern.
-/// SAFETY: UI Automation COM interface calls. Max depth: 5.
-unsafe fn find_text_in_children(
+/// Walk children for TextPattern **selection** only (Easydict — no full Value).
+/// Max depth 3, max 8 children (bounded for 800ms timeout).
+unsafe fn find_text_selection_in_children(
     element: &IUIAutomationElement,
     automation: &IUIAutomation,
     depth: u32,
 ) -> Option<(String, Option<SelectionBounds>)> {
-    if depth >= 5 {
+    if depth >= 3 {
         return None;
     }
 
-    let true_cond = match automation.CreateTrueCondition() {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::debug!("[uiautomation] CreateTrueCondition failed: {}", e);
-            return None;
-        },
-    };
-
-    let children = match element.FindAll(
-        windows::Win32::UI::Accessibility::TreeScope_Children,
-        &true_cond,
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::debug!(
-                "[uiautomation] FindAll children failed at depth {}: {}",
-                depth,
-                e
-            );
-            return None;
-        },
-    };
+    let true_cond = automation.CreateTrueCondition().ok()?;
+    let children = element
+        .FindAll(
+            windows::Win32::UI::Accessibility::TreeScope_Children,
+            &true_cond,
+        )
+        .ok()?;
 
     let count = children.Length().unwrap_or(0);
-    let limit = count.min(10); // max 10 children per level
+    let limit = count.min(8);
 
     for i in 0..limit {
         let child = match children.GetElement(i) {
@@ -350,29 +340,17 @@ unsafe fn find_text_in_children(
             Err(_) => continue,
         };
 
-        // Try TextPattern on this child
         if let Ok(result) = try_text_pattern(&child) {
             if !result.0.trim().is_empty() {
                 return Some(result);
             }
         }
-
-        // Try ValuePattern+selection on this child
         if let Ok(result) = try_value_pattern_with_selection(&child, automation) {
             if !result.0.trim().is_empty() {
                 return Some(result);
             }
         }
-
-        // Try ValuePattern full on this child
-        if let Ok(result) = try_value_pattern_full(&child) {
-            if !result.0.trim().is_empty() {
-                return Some(result);
-            }
-        }
-
-        // Recurse into grandchildren
-        if let Some(result) = find_text_in_children(&child, automation, depth + 1) {
+        if let Some(result) = find_text_selection_in_children(&child, automation, depth + 1) {
             return Some(result);
         }
     }

@@ -1,7 +1,7 @@
 use crate::config::HotkeyConfig;
 use crate::overlay;
-use tauri::{Emitter, Manager};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 /// Parse a hotkey string like "Ctrl+Shift+T" into a Shortcut.
 pub fn parse_hotkey(hotkey: &str) -> Option<Shortcut> {
@@ -93,16 +93,27 @@ fn parse_key_code(key: &str) -> Option<Code> {
     }
 }
 
-/// Register all global hotkeys from config.
-/// Must be called inside Tauri setup() where AppHandle is available.
+/// Register all global hotkeys (startup).
 pub fn register_all(app: &tauri::App, config: &HotkeyConfig) {
-    // OCR hotkey
+    register_with_handle(app.handle(), config);
+}
+
+/// Unregister all then re-register (call on save_config so hotkeys apply live).
+pub fn reregister(app: &AppHandle, config: &HotkeyConfig) {
+    if let Err(e) = app.global_shortcut().unregister_all() {
+        tracing::warn!("[hotkey] unregister_all: {e}");
+    }
+    register_with_handle(app, config);
+    tracing::info!("[hotkey] re-registered from config");
+}
+
+fn register_with_handle(app: &AppHandle, config: &HotkeyConfig) {
     if let Some(shortcut) = parse_hotkey(&config.ocr_translate) {
-        let app_handle = app.handle().clone();
+        let app_handle = app.clone();
         let _ = app
             .global_shortcut()
-            .on_shortcut(shortcut, move |_app, _shortcut, event| {
-                if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+            .on_shortcut(shortcut, move |_app, _s, event| {
+                if event.state == ShortcutState::Pressed {
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.emit("trigger-ocr-screenshot", ());
                     }
@@ -110,13 +121,12 @@ pub fn register_all(app: &tauri::App, config: &HotkeyConfig) {
             });
     }
 
-    // Show window hotkey
     if let Some(shortcut) = parse_hotkey(&config.show_window) {
-        let app_handle = app.handle().clone();
+        let app_handle = app.clone();
         let _ = app
             .global_shortcut()
-            .on_shortcut(shortcut, move |_app, _shortcut, event| {
-                if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+            .on_shortcut(shortcut, move |_app, _s, event| {
+                if event.state == ShortcutState::Pressed {
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
@@ -125,13 +135,13 @@ pub fn register_all(app: &tauri::App, config: &HotkeyConfig) {
             });
     }
 
-    // Translate selection: fire on key-up so modifiers are released before Ctrl+C (S2).
+    // Selection: fire on key-up so modifiers are released before Ctrl+C
     if let Some(shortcut) = parse_hotkey(&config.translate_selection) {
-        let app_handle = app.handle().clone();
+        let app_handle = app.clone();
         let _ = app
             .global_shortcut()
-            .on_shortcut(shortcut, move |_app, _shortcut, event| {
-                if event.state == tauri_plugin_global_shortcut::ShortcutState::Released {
+            .on_shortcut(shortcut, move |_app, _s, event| {
+                if event.state == ShortcutState::Released {
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.emit("trigger-translate-selection", ());
                     }
@@ -139,13 +149,12 @@ pub fn register_all(app: &tauri::App, config: &HotkeyConfig) {
             });
     }
 
-    // Replace translate: key-up so delivery SendInput is not blocked by held chord.
     if let Some(shortcut) = parse_hotkey(&config.replace_translate) {
-        let app_handle = app.handle().clone();
+        let app_handle = app.clone();
         let _ = app
             .global_shortcut()
-            .on_shortcut(shortcut, move |_app, _shortcut, event| {
-                if event.state == tauri_plugin_global_shortcut::ShortcutState::Released {
+            .on_shortcut(shortcut, move |_app, _s, event| {
+                if event.state == ShortcutState::Released {
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.emit("trigger-replace-translate", ());
                     }
@@ -153,13 +162,12 @@ pub fn register_all(app: &tauri::App, config: &HotkeyConfig) {
             });
     }
 
-    // Overlay click-through toggle hotkey
     if let Some(shortcut) = parse_hotkey(&config.toggle_overlay_click_through) {
-        let app_handle = app.handle().clone();
+        let app_handle = app.clone();
         let _ = app
             .global_shortcut()
-            .on_shortcut(shortcut, move |_app, _shortcut, event| {
-                if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+            .on_shortcut(shortcut, move |_app, _s, event| {
+                if event.state == ShortcutState::Pressed {
                     overlay::interaction::disable_click_through_and_focus(&app_handle);
                 }
             });

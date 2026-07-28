@@ -126,13 +126,52 @@ impl SelectionTranslation for DefaultSelectionTranslation {
         // Step 1: Detect foreground app for strategy dispatch
         let app_ctx = self.app_detector.detect().await;
 
-        // Step 2: Get selection using the full provider chain (UIA → clipboard)
-        // All apps, including embedded (Electron/WebView2/CEF), go through the same chain.
-        let selection = self.selection_manager.get_selection().await;
-
-        let selection = selection.ok_or(TranslationError::InvalidInput(
-            "No text selected".to_string(),
-        ))?;
+        // Step 2: Process-routed selection (Easydict: Electron→clipboard, terminal→UIA only).
+        // If empty and OCR force pickup is on, OCR a small region around the cursor.
+        let (ocr_force, exclude) = {
+            let c = self.config.lock().await;
+            (
+                c.selection_ux.ocr_force_pickup,
+                c.selection_ux.exclude_processes.clone(),
+            )
+        };
+        let selection = self.selection_manager.get_selection_routed(&exclude).await;
+        let selection = match selection {
+            Some(s) if !s.text.trim().is_empty() => s,
+            _ => {
+                if ocr_force {
+                    let pick = tokio::task::spawn_blocking(|| {
+                        crate::selection::hover_pick::pick_word_near_cursor_ocr(100, 40)
+                    })
+                    .await
+                    .ok()
+                    .flatten();
+                    if let Some(p) = pick {
+                        tracing::info!(
+                            "[selection_translate] OCR force pickup: {} chars via {}",
+                            p.word.len(),
+                            p.source
+                        );
+                        crate::selection::SelectionResult {
+                            text: p.word,
+                            source_app: "ocr-force".into(),
+                            window_title: String::new(),
+                            bounds: p.bounds,
+                            confidence: 0.55,
+                            provider: "ocr_force",
+                        }
+                    } else {
+                        return Err(TranslationError::InvalidInput(
+                            "No text selected".to_string(),
+                        ));
+                    }
+                } else {
+                    return Err(TranslationError::InvalidInput(
+                        "No text selected".to_string(),
+                    ));
+                }
+            },
+        };
 
         tracing::info!(
             "[selection_translate] Got selection via '{}': {} chars, app='{}'",
