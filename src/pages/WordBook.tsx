@@ -3,6 +3,8 @@ import { invokeOrThrow } from '../services/invoke';
 import { useI18n } from '../i18n';
 import { useTranslateStore } from '../stores/translateStore';
 import { isTauriRuntime } from '../services/tauriRuntime';
+import { saveAndCollect } from '../hooks/useCollectionPush';
+import { useToastStore } from '../stores/toastStore';
 import {
   Search,
   Trash2,
@@ -119,12 +121,12 @@ function WordBook() {
   const addWord = async () => {
     if (!newWord.trim() || !newTranslation.trim()) return;
     try {
-      await invokeOrThrow('add_wordbook_entry', {
+      await saveAndCollect({
         word: newWord.trim(),
         translation: newTranslation.trim(),
         fromLang,
         toLang,
-        note: newNote.trim() || null,
+        note: newNote.trim() || undefined,
       });
       setNewWord('');
       setNewTranslation('');
@@ -133,6 +135,11 @@ function WordBook() {
       loadWordBook();
     } catch (err) {
       console.error('Failed to add word:', err);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : String(err),
+        duration: 4000,
+      });
     }
   };
 
