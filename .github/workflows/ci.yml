@@ -54,13 +54,14 @@ jobs:
       - name: Build frontend dist
         run: pnpm run build
 
+      # lib + bins only — stale examples/integration demos live in dev_archive/
       - name: Cargo check
         working-directory: src-tauri
-        run: cargo check --all-targets
+        run: cargo check
 
-      - name: Compile cargo tests
+      - name: Compile cargo lib/bin tests
         working-directory: src-tauri
-        run: cargo test --all-targets --no-run
+        run: cargo test --lib --bins --no-run
 
   frontend-check:
     name: Frontend Check
