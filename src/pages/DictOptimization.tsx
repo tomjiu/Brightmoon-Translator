@@ -160,11 +160,11 @@ export default function DictOptimization() {
       <div className="max-w-3xl mx-auto space-y-8">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-            <Database className="w-8 h-8" />
+          <h1 className="ui-page-title flex items-center gap-2.5">
+            <Database className="w-5 h-5 shrink-0" />
             词典优化
           </h1>
-          <p className="text-text-secondary">压缩和分片词典数据，为移动端部署做准备</p>
+          <p className="ui-page-desc">压缩和分片词典数据，减小体积、便于备份与迁移</p>
         </div>
 
         {/* Result Toast */}
@@ -187,8 +187,8 @@ export default function DictOptimization() {
 
         {/* Current Stats */}
         <div className="bg-bg-secondary rounded-xl border border-border p-6">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <HardDrive className="w-5 h-5" />
+          <h2 className="ui-section-title mb-4 flex items-center gap-2">
+            <HardDrive className="w-4 h-4" />
             当前词典状态
           </h2>
 
@@ -235,7 +235,7 @@ export default function DictOptimization() {
 
         {/* Export Compressed */}
         <div className="bg-bg-secondary rounded-xl border border-border p-6">
-          <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+          <h2 className="ui-section-title mb-2 flex items-center gap-2">
             <FileJson className="w-5 h-5" />
             压缩导出
           </h2>
@@ -283,7 +283,7 @@ export default function DictOptimization() {
 
         {/* Export Shards */}
         <div className="bg-bg-secondary rounded-xl border border-border p-6">
-          <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+          <h2 className="ui-section-title mb-2 flex items-center gap-2">
             <Layers className="w-5 h-5" />
             分片导出
           </h2>
@@ -312,7 +312,7 @@ export default function DictOptimization() {
 
         {/* GitHub Export */}
         <div className="bg-bg-secondary rounded-xl border border-border p-6">
-          <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+          <h2 className="ui-section-title mb-2 flex items-center gap-2">
             <Github className="w-5 h-5" />
             GitHub 数据源导出
           </h2>

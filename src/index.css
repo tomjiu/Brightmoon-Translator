@@ -6,6 +6,16 @@
  * Dual theme: pure black / pure white monochrome.
  * primary = high-contrast action fill (white on dark, black on light).
  * Always pair filled primary with text-primary-fg — never raw text-white.
+ *
+ * Typography (user-facing UI — prefer these over ad-hoc text-3xl / text-2xl):
+ *   .ui-page-title   18px  page H1
+ *   .ui-page-desc    12px  subtitle under H1 (user help only; no dev jargon)
+ *   .ui-section-title 14px section H2
+ *   .ui-body         14px  primary body / form labels
+ *   .ui-caption      12px  hints, secondary help
+ *   .ui-stat         24px  dashboard numbers only
+ *   body default     14px
+ * Dev-only notes belong in source comments or console under import.meta.env.DEV — never in UI copy.
  */
 :root,
 .dark {
@@ -123,6 +133,22 @@ body {
   letter-spacing: -0.02em;
   line-height: 1.2;
   color: var(--color-text-primary);
+}
+
+/* Soft-normalize oversized utility titles left in older pages (keep word heroes readable). */
+.ui-normalize-type h1.text-3xl,
+.ui-normalize-type h1.text-2xl {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+.ui-normalize-type h2.text-xl,
+.ui-normalize-type h2.text-lg {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
 }
 
 .ui-icon {

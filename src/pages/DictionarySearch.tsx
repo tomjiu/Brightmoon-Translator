@@ -384,7 +384,9 @@ function ResultCard({
       <div className="bg-bg-secondary border border-border rounded-lg p-6 animate-fadeIn">
         <div className="flex items-start justify-between mb-3">
           <div>
-            <h2 className="text-3xl font-bold text-text-primary mb-2">{result.word}</h2>
+            <h2 className="text-xl font-semibold text-text-primary mb-2 tracking-tight">
+              {result.word}
+            </h2>
             <div className="flex items-center gap-3 flex-wrap">
               {primaryPhonetic?.text && (
                 <span className="text-text-secondary">/{primaryPhonetic.text}/</span>

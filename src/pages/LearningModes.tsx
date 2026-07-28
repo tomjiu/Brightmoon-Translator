@@ -156,8 +156,8 @@ export default function LearningModes() {
     <div className="h-full overflow-y-auto p-8">
       <div className="max-w-3xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">学习模式</h1>
-          <p className="text-text-secondary">选择不同的练习方式，让词汇学习更有趣、更高效</p>
+          <h1 className="ui-page-title mb-1">学习模式</h1>
+          <p className="ui-page-desc">选择练习方式，巩固词汇</p>
         </div>
 
         {loading ? (
@@ -174,10 +174,10 @@ export default function LearningModes() {
                 className={`bg-gradient-to-br ${m.gradient} border border-border rounded-xl p-6 text-left hover:border-primary/50 hover:scale-[1.02] transition-all group`}
               >
                 <div className={`inline-flex p-3 rounded-lg mb-4 ${m.color}`}>{m.icon}</div>
-                <h3 className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">
+                <h3 className="ui-section-title mb-2 group-hover:text-primary transition-colors">
                   {m.title}
                 </h3>
-                <p className="text-sm text-text-secondary">{m.description}</p>
+                <p className="ui-caption">{m.description}</p>
                 <div className="mt-4 text-xs text-text-tertiary">{QUIZ_COUNT} 题/轮</div>
               </button>
             ))}

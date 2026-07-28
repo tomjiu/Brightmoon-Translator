@@ -59,7 +59,7 @@ export function CardDetail({ cardId, onClose }: CardDetailProps) {
       <div className="p-6 border-b">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold mb-2">{card.word}</h1>
+            <h1 className="text-xl font-semibold tracking-tight mb-2">{card.word}</h1>
             <div className="flex items-center gap-2">
               <span
                 className={`text-xs px-2 py-1 rounded ${getPhaseColorClass(inferPhase(card.fsrs_state))}`}

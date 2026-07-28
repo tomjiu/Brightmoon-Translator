@@ -355,10 +355,6 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           lastOcrTextRef.current
         ) {
           consecutiveSkipRef.current = Math.min(consecutiveSkipRef.current + 1, 8);
-          console.info('[OCR] continuous skip (fingerprint unchanged)', {
-            skips: consecutiveSkipRef.current,
-            fp: fp.slice(0, 12),
-          });
           return;
         }
         consecutiveSkipRef.current = 0;
@@ -1035,13 +1031,6 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       const screenY = Math.round(offsetY + cropTop);
       const screenW = Math.round(cropW);
       const screenH = Math.round(cropH);
-
-      console.info('[OCR] selection→frame', {
-        sel,
-        crop: { cropLeft, cropTop, cropW, cropH },
-        screen: { screenX, screenY, screenW, screenH },
-        info,
-      });
 
       const region: RegionRect = { x: screenX, y: screenY, width: screenW, height: screenH };
       regionRef.current = region;

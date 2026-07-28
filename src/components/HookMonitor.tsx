@@ -189,7 +189,7 @@ function HookMonitor() {
   const hookConfig = config.hook;
   const [showOverlay, setShowOverlay] = useState(hookConfig?.showOverlay === true);
   const [autoCopy, setAutoCopy] = useState(hookConfig?.autoCopy ?? false);
-  // Default: UIA + clipboard only. OCR-in-hook + raw hook fight the screenshot OCR path and are experimental.
+  // Default sources: UIA + clipboard (product path).
   const [enabledSources, setEnabledSources] = useState<string[]>(
     hookConfig?.enabledSources?.length ? hookConfig.enabledSources : ['uia', 'clipboard'],
   );

@@ -189,11 +189,11 @@ export default function DataIO() {
       <div className="max-w-3xl mx-auto space-y-8">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
-            <Database className="w-8 h-8" />
+          <h1 className="ui-page-title flex items-center gap-2.5">
+            <Database className="w-5 h-5 shrink-0" />
             数据管理
           </h1>
-          <p className="text-text-secondary">导入导出学习数据，支持 JSON、CSV、Anki 等多种格式</p>
+          <p className="ui-page-desc">导入导出学习数据，支持 JSON、CSV、Anki 等格式</p>
         </div>
 
         {/* Result Toast */}
@@ -224,7 +224,7 @@ export default function DataIO() {
 
         {/* Export Section */}
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
+          <h2 className="ui-section-title flex items-center gap-2">
             <Download className="w-5 h-5" />
             导出数据
           </h2>
@@ -272,7 +272,7 @@ export default function DataIO() {
 
         {/* Import Section */}
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
+          <h2 className="ui-section-title flex items-center gap-2">
             <Upload className="w-5 h-5" />
             导入数据
           </h2>
@@ -308,7 +308,7 @@ export default function DataIO() {
 
         {/* Auto Backup */}
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
+          <h2 className="ui-section-title flex items-center gap-2">
             <FolderOpen className="w-5 h-5" />
             自动备份
           </h2>

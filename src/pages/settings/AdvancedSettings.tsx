@@ -32,9 +32,7 @@ export default function AdvancedSettings() {
               />
               <div>
                 <p className="text-sm font-medium text-text-primary">启用 API 服务器（桌面桥接）</p>
-                <p className="text-xs text-text-secondary">
-                  开启后监听 127.0.0.1，扩展与外部工具可调用翻译与 /control/* 路由（需重启生效）
-                </p>
+                <p className="ui-caption">开启后本机扩展可连接桌面端翻译（修改后需重启应用）</p>
               </div>
             </label>
 
@@ -106,9 +104,8 @@ export default function AdvancedSettings() {
                       复制
                     </button>
                   </div>
-                  <p className="text-xs text-text-secondary mt-1">
-                    请求头：Authorization: Bearer &lt;令牌&gt; 或 X-Api-Token。扩展需在存储中配置
-                    desktopApiToken。
+                  <p className="ui-caption mt-1">
+                    在浏览器扩展设置中填入相同令牌即可连接。请勿把令牌发给他人。
                   </p>
                 </div>
 
@@ -120,12 +117,8 @@ export default function AdvancedSettings() {
                     </span>
                     <Badge variant="success">鉴权</Badge>
                   </div>
-                  <p className="text-xs text-text-secondary">
-                    除 GET /health 外均需令牌。端口 {config.apiServerPort || 60828}
-                  </p>
-                  <p className="text-xs text-text-secondary mt-2">
-                    控制路由（POST）：/control/show · /control/selection_translate ·
-                    /control/ocr_translate · /control/open_settings
+                  <p className="ui-caption">
+                    本地端口 {config.apiServerPort || 60828}；扩展连接时需携带令牌。
                   </p>
                 </div>
               </>

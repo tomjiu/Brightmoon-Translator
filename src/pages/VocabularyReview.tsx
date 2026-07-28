@@ -279,19 +279,17 @@ export default function VocabularyReview() {
       <div className="h-full flex items-center justify-center bg-gradient-to-br from-green-50 to-neutral-50 dark:from-gray-900 dark:to-gray-800">
         <div className="max-w-2xl w-full p-8 text-center">
           <Trophy className="mx-auto mb-4 text-yellow-500" size={80} />
-          <h1 className="text-3xl font-bold text-text-primary mb-2">复习完成！</h1>
-          <p className="text-text-secondary mb-8">坚持就是胜利 💪</p>
+          <h1 className="ui-page-title mb-2">复习完成</h1>
+          <p className="ui-page-desc mb-8">本轮复习已结束</p>
 
           {/* 统计卡片 */}
           <div className="grid grid-cols-2 gap-4 mb-8">
             <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border border-border shadow-sm">
-              <div className="text-4xl font-bold text-primary mb-1">{session.reviewedCount}</div>
-              <div className="text-sm text-text-secondary">复习卡牌数</div>
+              <div className="ui-stat text-primary mb-1">{session.reviewedCount}</div>
+              <div className="ui-caption">复习卡牌数</div>
             </div>
             <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border border-border shadow-sm">
-              <div className="text-4xl font-bold text-green-600 mb-1">
-                {session.correctRate.toFixed(0)}%
-              </div>
+              <div className="ui-stat text-primary mb-1">{session.correctRate.toFixed(0)}%</div>
               <div className="text-sm text-text-secondary">正确率</div>
             </div>
             <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border border-border shadow-sm">

@@ -73,8 +73,7 @@ export default function CollectionSettings() {
       <div>
         <h1 className="ui-page-title">生词本外送</h1>
         <p className="ui-page-desc">
-          将 pot / STranslate 的 collection 能力做成默认：欧陆、AnkiConnect、扇贝、有道、墨墨。不改
-          FSRS 学习系统，不做插件市场。
+          将单词同步到欧陆词典、Anki、扇贝、有道单词本或墨墨。与应用内学习记录相互独立。
         </p>
       </div>
 
@@ -253,10 +252,9 @@ export default function CollectionSettings() {
             启用
           </label>
         </div>
-        <p className="text-xs text-text-secondary">
-          对齐 pot-app-collection-plugin-shanbay：Cookie 中的{' '}
-          <code className="text-xs">auth_token</code>。登录失效时会返回错误。也可使用生词本 CSV
-          导出（兼容扇贝导入）。
+        <p className="ui-caption">
+          在浏览器登录扇贝后，从 Cookie 复制 <code className="text-xs">auth_token</code>
+          。登录过期需重新复制。也可使用生词本 CSV 导出后在扇贝中导入。
         </p>
         <div className="space-y-2">
           <label className="block text-xs text-text-secondary">auth_token</label>
@@ -314,12 +312,12 @@ export default function CollectionSettings() {
             启用
           </label>
         </div>
-        <p className="text-xs text-text-secondary">
-          对齐 pot-app-collection-plugin-youdao：浏览器打开{' '}
+        <p className="ui-caption">
+          浏览器打开{' '}
           <a className="underline" href="https://www.youdao.com/" target="_blank" rel="noreferrer">
             youdao.com
           </a>{' '}
-          登录 → F12 网络 → 找到 accountinfo → 复制完整 Cookie。
+          并登录，在开发者工具的网络请求中找到 accountinfo，复制完整 Cookie 填入下方。
         </p>
         <div className="space-y-2">
           <label className="block text-xs text-text-secondary">Cookie</label>

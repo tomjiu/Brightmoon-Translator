@@ -78,9 +78,9 @@ export const NotificationManager: FC = () => {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Bell className="w-7 h-7" />
-          学习提醒设置
+        <h2 className="ui-page-title flex items-center gap-2">
+          <Bell className="w-5 h-5" />
+          学习提醒
         </h2>
         <button
           onClick={testNotification}

@@ -125,8 +125,8 @@ export const LearningStatsDashboard: FC = () => {
     <div className="h-full overflow-y-auto p-6 space-y-6">
       {/* Header with Actions */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <BarChart3 className="w-7 h-7" />
+        <h2 className="ui-page-title flex items-center gap-2">
+          <BarChart3 className="w-5 h-5" />
           学习统计
         </h2>
         <div className="flex items-center gap-2">
@@ -262,9 +262,9 @@ const StatCard: FC<StatCardProps> = ({ icon, label, value, color, trend, trendVa
   return (
     <div className="bg-gray-800 rounded-lg p-6 hover:bg-gray-750 transition-colors">
       <div className={`inline-flex p-3 rounded-lg mb-4 ${colorClasses[color]}`}>{icon}</div>
-      <div className="text-3xl font-bold mb-1">{value}</div>
+      <div className="ui-stat mb-1">{value}</div>
       <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-400">{label}</div>
+        <div className="ui-caption">{label}</div>
         {trend && trendValue !== undefined && (
           <div className="flex items-center gap-1 text-xs">
             {getTrendIcon()}
@@ -298,8 +298,8 @@ const DetailCard: FC<DetailCardProps> = ({ label, value, icon }) => {
     <div className="bg-gray-800 rounded-lg p-4 flex items-center gap-4">
       <div className="text-4xl">{icon}</div>
       <div>
-        <div className="text-2xl font-bold">{value}</div>
-        <div className="text-sm text-gray-400">{label}</div>
+        <div className="ui-stat text-[1.25rem]">{value}</div>
+        <div className="ui-caption">{label}</div>
       </div>
     </div>
   );

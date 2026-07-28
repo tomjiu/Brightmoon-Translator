@@ -304,8 +304,7 @@ function MainApp() {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-bg-primary">
-      {/* Theme-colored frameless title strip — no product name */}
+    <div className="flex flex-col h-screen bg-bg-primary ui-normalize-type">
       <TitleBar />
 
       <div className="flex flex-1 min-h-0">
