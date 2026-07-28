@@ -691,12 +691,12 @@ export default function OcrRegionFrame() {
     window.addEventListener('mouseup', onUp);
   };
 
-  const [actionHint, setActionHint] = useState<string | null>(null);
+  const [actionHint, setActionHint] = useState<{ text: string; error?: boolean } | null>(null);
   const actionHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flashHint = useCallback((msg: string) => {
-    setActionHint(msg);
+  const flashHint = useCallback((msg: string, error = false) => {
+    setActionHint({ text: msg, error });
     if (actionHintTimer.current) window.clearTimeout(actionHintTimer.current);
-    actionHintTimer.current = window.setTimeout(() => setActionHint(null), 1200);
+    actionHintTimer.current = window.setTimeout(() => setActionHint(null), 1400);
   }, []);
 
   useEffect(() => {
@@ -767,7 +767,10 @@ export default function OcrRegionFrame() {
 
   const copyToClipboard = useCallback(
     async (text: string) => {
-      if (!text) return;
+      if (!text) {
+        flashHint(tf('ocrRegion.nothingToCopy', '无可复制内容'), true);
+        return;
+      }
       try {
         await navigator.clipboard.writeText(text);
         flashHint(tf('common.copied', '已复制'));
@@ -782,11 +785,16 @@ export default function OcrRegionFrame() {
         ta.style.left = '-9999px';
         document.body.appendChild(ta);
         ta.select();
-        document.execCommand('copy');
+        const ok = document.execCommand('copy');
         document.body.removeChild(ta);
-        flashHint(tf('common.copied', '已复制'));
+        if (ok) {
+          flashHint(tf('common.copied', '已复制'));
+        } else {
+          flashHint(tf('ocrRegion.copyFailed', '复制失败'), true);
+        }
       } catch {
         console.warn('[OcrRegionFrame] copy failed');
+        flashHint(tf('ocrRegion.copyFailed', '复制失败'), true);
       }
     },
     [flashHint, tf],
@@ -827,26 +835,35 @@ export default function OcrRegionFrame() {
   }, [copyToClipboard, handleRefresh]);
 
   const handleCopyScreenshot = useCallback(async () => {
-    if (!data?.screenshot) return;
+    if (!data?.screenshot) {
+      flashHint(tf('ocrRegion.needOcr', '识别完成后可用'), true);
+      return;
+    }
     try {
       const blob = await (await fetch(data.screenshot)).blob();
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
       flashHint(tf('ocrRegion.copiedImage', '截图已复制'));
     } catch {
-      await copyToClipboard(data.sourceText);
+      flashHint(tf('ocrRegion.copyImageFailed', '截图复制失败'), true);
     }
-  }, [data, copyToClipboard, flashHint, tf]);
+  }, [data, flashHint, tf]);
 
   /** Save region crop PNG to disk (dialog). */
   const handleSaveScreenshot = useCallback(async () => {
-    if (!data?.screenshot) return;
+    if (!data?.screenshot) {
+      flashHint(tf('ocrRegion.needOcr', '识别完成后可用'), true);
+      return;
+    }
     try {
       const { save } = await import('@tauri-apps/plugin-dialog');
       const path = await save({
         defaultPath: `ocr-region-${Date.now()}.png`,
         filters: [{ name: 'PNG', extensions: ['png'] }],
       });
-      if (!path) return;
+      if (!path) {
+        flashHint(tf('ocrRegion.saveCancelled', '已取消保存'));
+        return;
+      }
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('write_file_base64', {
         filePath: path,
@@ -855,9 +872,9 @@ export default function OcrRegionFrame() {
       flashHint(tf('ocrRegion.savedImage', '已保存'));
     } catch (e) {
       console.warn('[OcrRegionFrame] save screenshot failed', e);
-      await handleCopyScreenshot();
+      flashHint(tf('ocrRegion.saveFailed', '保存失败'), true);
     }
-  }, [data, handleCopyScreenshot, flashHint, tf]);
+  }, [data, flashHint, tf]);
 
   const handleLangChange = useCallback((type: 'source' | 'target', value: string) => {
     if (type === 'source') {
@@ -1198,8 +1215,8 @@ export default function OcrRegionFrame() {
           onClick={handleToggleContinuous}
           title={
             continuous
-              ? `${tf('ocrRegion.pauseWatch', '暂停区域监视')} (${refreshIntervalLabel})`
-              : tf('ocrRegion.startWatch', '开启区域监视（内容变化才翻译）')
+              ? `${tf('ocrRegion.pauseWatch', '暂停监视')} (${refreshIntervalLabel})`
+              : tf('ocrRegion.startWatch', '监视（内容变化才译）')
           }
         >
           {continuous ? <Pause size={11} /> : <Play size={11} />}
@@ -1235,8 +1252,12 @@ export default function OcrRegionFrame() {
         </button>
 
         {actionHint ? (
-          <span className="ml-1 text-[10px] text-emerald-300/90 pointer-events-none whitespace-nowrap flex-shrink-0">
-            {actionHint}
+          <span
+            className={`ml-1 text-[10px] pointer-events-none whitespace-nowrap flex-shrink-0 ${
+              actionHint.error ? 'text-red-300/95' : 'text-emerald-300/90'
+            }`}
+          >
+            {actionHint.text}
           </span>
         ) : null}
       </div>
