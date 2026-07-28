@@ -182,7 +182,7 @@ impl Router {
             });
         }
 
-        // Google engine (free, no config needed) - lowest priority
+        // Google: try direct (no_proxy) first, then shared client (user proxy) on failure.
         if config.engines.google.enabled {
             available.push(EngineEntry {
                 id: "google".to_string(),

@@ -50,7 +50,7 @@ export default function SettingsLayout() {
     { id: 'hookprofiles', icon: <Gamepad2 size={16} />, label: 'Hook', group: 'interact' },
     { id: 'appearance', icon: <Palette size={16} />, label: '外观', group: 'interact' },
     { id: 'notifications', icon: <Bell size={16} />, label: '学习提醒', group: 'learn' },
-    { id: 'collection', icon: <BookMarked size={16} />, label: '生词本外送', group: 'learn' },
+    { id: 'collection', icon: <BookMarked size={16} />, label: '外部生词本', group: 'learn' },
     { id: 'sync', icon: <Cloud size={16} />, label: '云同步', group: 'system' },
     { id: 'advanced', icon: <SettingsIcon size={16} />, label: '高级', group: 'system' },
   ];

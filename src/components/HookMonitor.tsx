@@ -216,7 +216,6 @@ function HookMonitor() {
   const hcodePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [showProcessPicker, setShowProcessPicker] = useState(false);
   const [dllAvailable, setDllAvailable] = useState<boolean | null>(null);
-  const [dllPath, setDllPath] = useState<string | null>(null);
 
   // Check initial status
   useEffect(() => {
@@ -328,9 +327,6 @@ function HookMonitor() {
 
     void safeInvoke<boolean>('hook_dll_available', undefined, { silent: true }).then(([ok]) => {
       setDllAvailable(ok === true);
-    });
-    void safeInvoke<string | null>('hook_dll_path', undefined, { silent: true }).then(([p]) => {
-      setDllPath(typeof p === 'string' ? p : null);
     });
 
     safeInvoke<HookStatus>('hook_status', undefined, { silent: true })
@@ -614,14 +610,12 @@ function HookMonitor() {
               <p className="text-[11px] text-text-secondary">{t('hook.hcode.description')}</p>
 
               {dllAvailable === false && (
-                <div className="text-[11px] text-amber-300 bg-amber-400/10 border border-amber-400/20 rounded px-2 py-1.5">
-                  未找到 moon_hook.dll，注入不可用。请编译 hook-dll 或放到 src-tauri/bin/。
+                <div className="ui-caption text-amber-300 bg-amber-400/10 border border-amber-400/20 rounded px-2 py-1.5">
+                  注入组件未就绪，此功能暂不可用。
                 </div>
               )}
-              {dllAvailable === true && dllPath && (
-                <div className="text-[10px] text-text-secondary truncate" title={dllPath}>
-                  DLL: {dllPath}
-                </div>
+              {dllAvailable === true && (
+                <div className="ui-caption text-text-secondary">注入组件已就绪</div>
               )}
 
               {/* PID Input */}
@@ -656,7 +650,7 @@ function HookMonitor() {
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50"
                     onClick={handleHcodeInject}
                     disabled={hcodeLoading || !hcodePid || dllAvailable !== true}
-                    title={dllAvailable !== true ? '等待 DLL 检测或缺少 moon_hook.dll' : undefined}
+                    title={dllAvailable !== true ? '注入组件未就绪' : undefined}
                   >
                     {hcodeLoading ? t('hook.hcode.injecting') : t('hook.hcode.inject')}
                   </button>

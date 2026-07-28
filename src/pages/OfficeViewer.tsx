@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 import { isTauriRuntime } from '../services/tauriRuntime';
 import { FileText, Languages, Download, Loader2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
+import { takePendingDocPath } from '../services/docHandoff';
 
 type OfficeKind = 'docx' | 'excel' | 'pptx';
 
@@ -184,6 +185,21 @@ function OfficeViewer({ kind }: { kind: OfficeKind }) {
     });
     return () => unlisten?.();
   }, [isTauri, meta.progress]);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    const path = takePendingDocPath();
+    if (!path) return;
+    setFilePath(path);
+    setFileName(path.split(/[/\\]/).pop() || 'file');
+    setPreview(null);
+    setProgress(null);
+    setLoading(true);
+    void invokeOrThrow<DocxDocument | ExcelDocument | PptxDocument>(meta.open, { filePath: path })
+      .then((opened) => setDoc(opened))
+      .catch((err: unknown) => console.error('open office file failed:', err))
+      .finally(() => setLoading(false));
+  }, [isTauri, meta.open]);
 
   const openFile = async () => {
     try {

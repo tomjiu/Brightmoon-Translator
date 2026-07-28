@@ -653,28 +653,33 @@ function DeepLXEngineConfig({
 }
 
 function OfflineEngineConfig({ config, updateConfig, saveConfig }: EngineConfigProps) {
+  const offline = config.engines.offline;
+  const modelCount = offline.downloadedModels.length ?? 0;
   return (
     <div className="mt-3 space-y-2">
-      <p className="text-xs text-text-secondary">
-        已下载模型: {config.engines.offline.downloadedModels.length || 0} 个
-      </p>
+      <p className="ui-caption">已下载模型: {modelCount} 个</p>
       <label className="flex items-center gap-2">
         <input
           type="checkbox"
-          checked={config.engines.offline.autoSwitch || false}
+          checked={offline.autoSwitch || false}
           onChange={(e) => {
             updateConfig((prev) => ({
               ...prev,
               engines: {
                 ...prev.engines,
-                offline: { ...prev.engines.offline, autoSwitch: e.target.checked },
+                offline: {
+                  enabled: prev.engines.offline.enabled ?? false,
+                  autoSwitch: e.target.checked,
+                  downloadedModels: prev.engines.offline.downloadedModels ?? [],
+                  modelDir: prev.engines.offline.modelDir ?? '',
+                },
               },
             }));
             void saveConfig();
           }}
           className="rounded"
         />
-        <span className="text-sm text-text-secondary">离线可用时自动切换</span>
+        <span className="ui-body text-text-secondary">离线可用时自动切换</span>
       </label>
     </div>
   );
@@ -794,7 +799,15 @@ function SortableEngineCard({
         return (enabled: boolean) => {
           updateConfig((prev) => ({
             ...prev,
-            engines: { ...prev.engines, offline: { ...prev.engines.offline, enabled } },
+            engines: {
+              ...prev.engines,
+              offline: {
+                enabled,
+                autoSwitch: prev.engines.offline.autoSwitch ?? true,
+                downloadedModels: prev.engines.offline.downloadedModels ?? [],
+                modelDir: prev.engines.offline.modelDir ?? '',
+              },
+            },
           }));
           void saveConfig();
         };

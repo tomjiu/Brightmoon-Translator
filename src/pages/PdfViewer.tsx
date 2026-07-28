@@ -13,6 +13,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
+import { takePendingDocPath } from '../services/docHandoff';
 
 interface PdfPage {
   pageNumber: number;
@@ -84,6 +85,23 @@ function PdfViewer() {
     return () => {
       unlisten?.();
     };
+  }, [isTauri]);
+
+  // Auto-open path from DocumentsViewer single-entry handoff
+  useEffect(() => {
+    if (!isTauri) return;
+    const path = takePendingDocPath();
+    if (!path) return;
+    setFilePath(path);
+    setFileName(path.split(/[/\\]/).pop() || 'document.pdf');
+    setTranslatedPdf(null);
+    setCurrentPage(1);
+    setOcrProgress(null);
+    setLoading(true);
+    void invokeOrThrow<PdfDocument>('open_pdf', { filePath: path })
+      .then(setPdfDoc)
+      .catch((err: unknown) => console.error('Failed to open PDF:', err))
+      .finally(() => setLoading(false));
   }, [isTauri]);
 
   const openFile = async () => {

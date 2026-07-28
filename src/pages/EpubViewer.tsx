@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { invokeOrThrow } from '../services/invoke';
 import { useI18n } from '../i18n';
+import { isTauriRuntime } from '../services/tauriRuntime';
+import { takePendingDocPath } from '../services/docHandoff';
 import { BookOpen, Languages, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 
@@ -41,6 +43,22 @@ function EpubViewer() {
   const [fromLang, setFromLang] = useState('auto');
   const [toLang, setToLang] = useState('zh');
   const { t } = useI18n();
+  const isTauri = isTauriRuntime();
+
+  useEffect(() => {
+    if (!isTauri) return;
+    const path = takePendingDocPath();
+    if (!path) return;
+    setFilePath(path);
+    setFileName(path.split(/[/\\]/).pop() || 'book.epub');
+    setTranslatedEpub(null);
+    setCurrentChapter(1);
+    setLoading(true);
+    void invokeOrThrow<EpubDocument>('open_epub', { filePath: path })
+      .then(setEpubDoc)
+      .catch((err: unknown) => console.error('Failed to open EPUB:', err))
+      .finally(() => setLoading(false));
+  }, [isTauri]);
 
   const openFile = async () => {
     try {

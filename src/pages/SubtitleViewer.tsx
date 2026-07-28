@@ -13,6 +13,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
+import { takePendingDocPath } from '../services/docHandoff';
 
 interface SubtitleEntry {
   index: number;
@@ -67,6 +68,22 @@ function SubtitleViewer() {
     return () => {
       unlisten.then((fn) => fn());
     };
+  }, [isTauri]);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    const path = takePendingDocPath();
+    if (!path) return;
+    setFilePath(path);
+    setFileName(path.split(/[/\\]/).pop() || 'subtitle.srt');
+    setTranslatedSub(null);
+    setCurrentPage(1);
+    setProgress(null);
+    setLoading(true);
+    void invokeOrThrow<SubtitleDocument>('open_subtitle', { filePath: path })
+      .then(setSubtitleDoc)
+      .catch((err: unknown) => console.error('Failed to open subtitle:', err))
+      .finally(() => setLoading(false));
   }, [isTauri]);
 
   const openFile = async () => {

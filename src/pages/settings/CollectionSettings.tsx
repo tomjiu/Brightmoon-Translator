@@ -71,9 +71,9 @@ export default function CollectionSettings() {
   return (
     <div className="space-y-5 animate-fadeIn">
       <div>
-        <h1 className="ui-page-title">生词本外送</h1>
+        <h1 className="ui-page-title">同步到外部生词本</h1>
         <p className="ui-page-desc">
-          将单词同步到欧陆词典、Anki、扇贝、有道单词本或墨墨。与应用内学习记录相互独立。
+          把本应用里收藏的单词，同步到欧陆、Anki、扇贝、有道或墨墨等外部词库（可选，默认不推送）。
         </p>
       </div>
 

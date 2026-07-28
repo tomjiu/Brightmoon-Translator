@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { invokeOrThrow } from '../services/invoke';
 import { useI18n } from '../i18n';
+import { isTauriRuntime } from '../services/tauriRuntime';
+import { takePendingDocPath } from '../services/docHandoff';
 import { Image, Languages, Loader2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 
@@ -27,6 +29,17 @@ function ImageFileTranslate() {
   const [fromLang, setFromLang] = useState('auto');
   const [toLang, setToLang] = useState('zh');
   const { t } = useI18n();
+  const isTauri = isTauriRuntime();
+
+  useEffect(() => {
+    if (!isTauri) return;
+    const path = takePendingDocPath();
+    if (!path) return;
+    setFilePath(path);
+    setFileName(path.split(/[/\\]/).pop() || 'image');
+    setPreview(null);
+    setResultPath(null);
+  }, [isTauri]);
 
   const openFile = async () => {
     try {

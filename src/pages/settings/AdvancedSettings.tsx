@@ -187,8 +187,15 @@ export default function AdvancedSettings() {
         </Card>
       )}
 
-      <Card title="代理设置" description="配置网络代理">
+      <Card
+        title="代理设置"
+        description="主要用于大模型等需代理的接口；Google 会先直连，失败再走代理"
+      >
         <div className="space-y-4">
+          <p className="ui-caption">
+            多数官方引擎可直连。Google 翻译会自动：先尝试直连，不通时再用下方代理。大模型 API
+            若在海外，请按需开启代理。
+          </p>
           <label className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -204,7 +211,7 @@ export default function AdvancedSettings() {
             />
             <div>
               <p className="text-sm font-medium text-text-primary">启用代理</p>
-              <p className="text-xs text-text-secondary">通过代理服务器访问翻译 API</p>
+              <p className="ui-caption">应用到支持代理的网络请求（含 LLM、Google 回退等）</p>
             </div>
           </label>
 
