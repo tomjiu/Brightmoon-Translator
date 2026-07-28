@@ -28,8 +28,9 @@
 | Item | Status | Notes |
 |------|--------|--------|
 | Hook monitor UI | Exists | Experimental |
-| DLL inject → `TranslationService` | **Incomplete** | Messages not fully wired; IAT patch weak |
-| Profiles applied on start | **Incomplete** | CRUD exists, apply path weak |
+| Passive UIA/clipboard monitor | **Production-ish** | `start_hook_monitor` applies active/auto profile |
+| DLL inject → `TranslationService` | **Improved 2026-07-29** | `hook_process_messages` translates + emits `hook-text-translated`; IAT/DLL quality still weak |
+| Profiles applied on start | **Done (passive path)** | `hook_cmd::start_hook_monitor` already applies profile |
 | Bundle hook DLL in release | **Open** | Dev-only path today |
 
 ### C — 长文本 / documents / batch

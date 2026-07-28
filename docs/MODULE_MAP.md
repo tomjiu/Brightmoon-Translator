@@ -61,7 +61,7 @@ MainTranslator / tray
 | **Passive monitor** (UIA + clipboard → translate) | Production-ish; default sources OK |
 | **DLL inject / H-Code** (`moon_hook.dll`) | Skeleton only |
 
-Inject reality: Win32 LoadLibrary path works in **dev** if DLL found under `hook-dll/build/Release`. **IAT patch almost certainly wrong** → may inject with **zero text**. Messages **not** wired to `TranslationService`. Eject incomplete. Not in Tauri bundle. Profiles CRUD **not** applied on monitor start.
+Inject reality: Win32 LoadLibrary path works in **dev** if DLL found under `hook-dll/build/Release`. **IAT patch almost certainly wrong** → may inject with **zero text**. **2026-07-29:** `hook_process_messages` reads shared mem → `TranslationService::run_full(Hook)` → emits `hook-text-translated` (same UI event as passive monitor). Eject still incomplete. Not in Tauri bundle. Passive passive monitor **does** apply active/auto profile on start.
 
 **Verdict:** gate as experimental; **do not invest** until OCR+engines green. Supported story = UIA/clipboard monitor only.
 

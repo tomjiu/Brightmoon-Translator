@@ -865,6 +865,19 @@ impl TranslationService {
                         let translated = self
                             .finalize(&raw, original, from, to, &prepared.blacklist)
                             .await;
+                        // Cache + history for non-OCR long-text LLM packs (parity with single path)
+                        if !ocr_fallback && !translated.trim().is_empty() {
+                            self.cache
+                                .set(
+                                    &prepared.text,
+                                    from,
+                                    to,
+                                    vec![("batch-llm".into(), translated.clone())],
+                                )
+                                .await;
+                            let history = self.history.lock().await;
+                            history.add(original, &translated, from, to, "batch-llm");
+                        }
                         context.push_back(TranslationContext {
                             source: original.clone(),
                             translation: translated.clone(),

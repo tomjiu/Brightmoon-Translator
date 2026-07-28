@@ -343,7 +343,8 @@ function HookMonitor() {
     if (hcodeStatus?.injected) {
       hcodePollRef.current = setInterval(async () => {
         try {
-          const [msgs] = await safeInvoke<CapturedText[]>('hook_read_messages', undefined, {
+          // Process through TranslationService + emit hook-text-translated (same as UIA monitor)
+          const [msgs] = await safeInvoke<CapturedText[]>('hook_process_messages', undefined, {
             silent: true,
           });
           if (msgs && msgs.length > 0) {
@@ -351,7 +352,6 @@ function HookMonitor() {
               const next = [...prev, ...msgs];
               return next.length > 500 ? next.slice(-500) : next;
             });
-            // Update status
             const [status] = await safeInvoke<HookStatus>('hook_status', undefined, {
               silent: true,
             });
@@ -360,7 +360,7 @@ function HookMonitor() {
         } catch (e) {
           console.error('H-Code message polling error:', e);
         }
-      }, 200);
+      }, 400);
     }
     return () => {
       if (hcodePollRef.current) {

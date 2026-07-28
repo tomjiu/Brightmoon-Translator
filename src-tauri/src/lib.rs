@@ -573,6 +573,7 @@ pub fn run() {
             commands::hook_inject_cmd::hook_dll_available,
             commands::hook_inject_cmd::hook_dll_path,
             commands::hook_inject_cmd::hook_read_messages,
+            commands::hook_inject_cmd::hook_process_messages,
             commands::process_list::get_process_list,
             commands::glossary_cmd::get_glossary,
             commands::glossary_cmd::get_all_glossary,
