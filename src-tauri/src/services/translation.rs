@@ -691,6 +691,7 @@ impl TranslationService {
 
     /// Core batch translation logic shared by translate_batch and translate_embedded_batch.
     /// Spawns concurrent translation tasks with context reuse and optional progress callback.
+    /// When primary is LLM and multi-seg, uses numbered pack/parse (A4) instead of N calls.
     async fn translate_batch_core<F>(
         &self,
         lines: &[(usize, &str)],
@@ -717,52 +718,43 @@ impl TranslationService {
 
             self.metrics.record_chunk_size(total).await;
 
-            for chunk in lines.chunks(concurrency) {
-                let mut handles = Vec::new();
+            let use_llm_numbered = {
+                let router = self.engine_router.read().await;
+                router.primary_is_llm() && total > 1
+            };
 
-                for &(idx, text) in chunk {
-                    // Pipeline parity: pre-process / glossary / blacklist before engine
+            if use_llm_numbered {
+                // Prepare all segments, then pack numbered LLM calls in concurrency-sized chunks
+                let mut prepared_rows: Vec<(usize, String, PreparedText)> =
+                    Vec::with_capacity(total);
+                for &(idx, text) in lines {
                     let prepared = self.prepare(text, from, to).await;
-                    let original = text.to_string();
-                    let protected = prepared.text.clone();
-                    let from_s = from.to_string();
-                    let to_s = to.to_string();
-                    let context_snapshot: Vec<TranslationContext> =
-                        context.iter().cloned().collect();
-                    let router = self.engine_router.clone();
-
-                    let handle = tokio::spawn(async move {
-                        let router = router.read().await;
-                        let translated = match router
-                            .translate_primary_with_context(
-                                &protected,
-                                &from_s,
-                                &to_s,
-                                &context_snapshot,
-                            )
-                            .await
-                        {
-                            Ok(t) => t,
-                            Err(e) => {
-                                tracing::warn!(
-                                    "[translate_batch] Translation failed for segment {}: {}",
-                                    idx,
-                                    e
-                                );
-                                String::new()
-                            },
-                        };
-                        drop(router);
-
-                        (idx, original, translated, prepared.blacklist)
-                    });
-
-                    handles.push(handle);
+                    prepared_rows.push((idx, text.to_string(), prepared));
                 }
 
-                for handle in handles {
-                    if let Ok((idx, original, raw, blacklist)) = handle.await {
-                        let translated = self.finalize(&raw, &original, from, to, &blacklist).await;
+                for chunk in prepared_rows.chunks(concurrency) {
+                    let segs: Vec<&str> = chunk.iter().map(|(_, _, p)| p.text.as_str()).collect();
+                    let raws = {
+                        let router = self.engine_router.read().await;
+                        match router
+                            .translate_primary_batch_segments(&segs, from, to)
+                            .await
+                        {
+                            Ok(v) => v,
+                            Err(e) => {
+                                tracing::warn!(
+                                    "[translate_batch] LLM numbered batch failed: {}",
+                                    e
+                                );
+                                vec![String::new(); segs.len()]
+                            },
+                        }
+                    };
+
+                    for ((idx, original, prepared), raw) in chunk.iter().zip(raws.into_iter()) {
+                        let translated = self
+                            .finalize(&raw, original, from, to, &prepared.blacklist)
+                            .await;
                         context.push_back(TranslationContext {
                             source: original.clone(),
                             translation: translated.clone(),
@@ -771,12 +763,77 @@ impl TranslationService {
                             context.pop_front();
                         }
                         results.push(BatchTranslationResult {
-                            index: idx,
-                            original,
+                            index: *idx,
+                            original: original.clone(),
                             translated,
                         });
                         completed += 1;
                         on_progress(completed, total);
+                    }
+                }
+            } else {
+                for chunk in lines.chunks(concurrency) {
+                    let mut handles = Vec::new();
+
+                    for &(idx, text) in chunk {
+                        // Pipeline parity: pre-process / glossary / blacklist before engine
+                        let prepared = self.prepare(text, from, to).await;
+                        let original = text.to_string();
+                        let protected = prepared.text.clone();
+                        let from_s = from.to_string();
+                        let to_s = to.to_string();
+                        let context_snapshot: Vec<TranslationContext> =
+                            context.iter().cloned().collect();
+                        let router = self.engine_router.clone();
+
+                        let handle = tokio::spawn(async move {
+                            let router = router.read().await;
+                            let translated = match router
+                                .translate_primary_with_context(
+                                    &protected,
+                                    &from_s,
+                                    &to_s,
+                                    &context_snapshot,
+                                )
+                                .await
+                            {
+                                Ok(t) => t,
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "[translate_batch] Translation failed for segment {}: {}",
+                                        idx,
+                                        e
+                                    );
+                                    String::new()
+                                },
+                            };
+                            drop(router);
+
+                            (idx, original, translated, prepared.blacklist)
+                        });
+
+                        handles.push(handle);
+                    }
+
+                    for handle in handles {
+                        if let Ok((idx, original, raw, blacklist)) = handle.await {
+                            let translated =
+                                self.finalize(&raw, &original, from, to, &blacklist).await;
+                            context.push_back(TranslationContext {
+                                source: original.clone(),
+                                translation: translated.clone(),
+                            });
+                            while context.len() > 5 {
+                                context.pop_front();
+                            }
+                            results.push(BatchTranslationResult {
+                                index: idx,
+                                original,
+                                translated,
+                            });
+                            completed += 1;
+                            on_progress(completed, total);
+                        }
                     }
                 }
             }

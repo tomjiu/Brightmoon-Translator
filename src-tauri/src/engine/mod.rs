@@ -722,6 +722,37 @@ impl Router {
         }
     }
 
+    /// True when primary engine is the LLM adapter (numbered multi-seg path applies).
+    pub fn primary_is_llm(&self) -> bool {
+        self.engines
+            .first()
+            .map(|e| e.as_any().downcast_ref::<llm::LlmEngine>().is_some())
+            .unwrap_or(false)
+    }
+
+    /// Multi-segment primary translate: LLM uses numbered pack/parse; others translate one-by-one.
+    pub async fn translate_primary_batch_segments(
+        &self,
+        segments: &[&str],
+        from: &str,
+        to: &str,
+    ) -> anyhow::Result<Vec<String>> {
+        if let Some(engine) = self.engines.first() {
+            if let Some(llm_engine) = engine.as_any().downcast_ref::<llm::LlmEngine>() {
+                return llm_engine
+                    .translate_batch_segments(segments, from, to)
+                    .await;
+            }
+            let mut out = Vec::with_capacity(segments.len());
+            for seg in segments {
+                out.push(engine.translate(seg, from, to).await.unwrap_or_default());
+            }
+            Ok(out)
+        } else {
+            Err(anyhow::anyhow!("No translation engine available"))
+        }
+    }
+
     /// Stream translation using primary engine, sending tokens via channel
     pub async fn translate_stream(
         &self,

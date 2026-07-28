@@ -762,6 +762,61 @@ impl LlmEngine {
         self.call_llm_with_temperature(&system_prompt, text, temperature)
             .await
     }
+
+    /// Multi-segment batch: send numbered list, parse numbered reply (fallback: line split).
+    pub async fn translate_batch_segments(
+        &self,
+        segments: &[&str],
+        from: &str,
+        to: &str,
+    ) -> anyhow::Result<Vec<String>> {
+        if segments.is_empty() {
+            return Ok(Vec::new());
+        }
+        if segments.len() == 1 {
+            let one = self.translate(segments[0], from, to).await?;
+            return Ok(vec![one]);
+        }
+
+        let numbered_input = format_numbered_batch_input(segments);
+        let base = self.build_system_prompt(from, to, None);
+        let system_prompt = format!(
+            "{base}\n\n输入为编号列表（1. 2. …）。请按相同编号逐条翻译，仅返回编号译文，不要解释。"
+        );
+        let raw = self.call_llm(&system_prompt, &numbered_input).await?;
+        Ok(split_batch_response(&raw, segments.len()))
+    }
+}
+
+/// Pack segments as `1. …\n2. …` for multi-seg LLM batch.
+pub fn format_numbered_batch_input(segments: &[&str]) -> String {
+    segments
+        .iter()
+        .enumerate()
+        .map(|(i, s)| format!("{}. {}", i + 1, s))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Prefer numbered parse; on failure split non-empty lines and pad/truncate to `expected`.
+pub fn split_batch_response(response: &str, expected: usize) -> Vec<String> {
+    if expected == 0 {
+        return Vec::new();
+    }
+    if let Some(parsed) = crate::response_check::parse_numbered_response(response, expected) {
+        return parsed;
+    }
+    // Fallback: line split (previous multi-seg behaviour)
+    let mut lines: Vec<String> = response
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    while lines.len() < expected {
+        lines.push(String::new());
+    }
+    lines.truncate(expected);
+    lines
 }
 
 fn truncate_text(text: &str, max_len: usize) -> String {
@@ -771,5 +826,43 @@ fn truncate_text(text: &str, max_len: usize) -> String {
         // Use char-based truncation to avoid panicking on multi-byte UTF-8 boundaries
         let truncated: String = text.chars().take(max_len).collect();
         format!("{}...", truncated)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_numbered_batch_input() {
+        let segs = ["a", "b"];
+        assert_eq!(format_numbered_batch_input(&segs), "1. a\n2. b");
+    }
+
+    #[test]
+    fn test_split_batch_response_numbered() {
+        let raw = "1. 你好\n2. 世界";
+        assert_eq!(
+            split_batch_response(raw, 2),
+            vec!["你好".to_string(), "世界".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_split_batch_response_fallback_lines() {
+        let raw = "hello\nworld\nextra";
+        assert_eq!(
+            split_batch_response(raw, 2),
+            vec!["hello".to_string(), "world".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_split_batch_response_fallback_pad() {
+        let raw = "only-one";
+        assert_eq!(
+            split_batch_response(raw, 2),
+            vec!["only-one".to_string(), String::new()]
+        );
     }
 }

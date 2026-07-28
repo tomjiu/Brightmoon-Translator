@@ -106,7 +106,7 @@ Source: `tmp/reference/oss/AiNiee-extract/AiNiee-main/` (main.zip via ghfast; di
 |---|--------|-------------|--------|
 | **A1** | `TextSymbolRepair` dialogue quotes / CJK punct | `post_process.rs` `repair_text_symbols` + `symbol_repair` config; `process_with_source` in translation finalize | Done |
 | **A2** | `ResponseChecker` line/empty/identical/newline | `response_check.rs`; warn after `translate_batch_core` | Done |
-| **A3** | Numbered `1.` batch parse | `parse_numbered_response` in `response_check.rs` | Done (API ready) |
+| **A3** | Numbered `1.` batch parse | `parse_numbered_response` in `response_check.rs`; wired via `LlmEngine::translate_batch_segments` + batch core | Done |
 | **A4** | Game extractors (Mtool/T++/Renpy…) | Not needed for desktop OCR/clipboard product | Skip |
 | **A5** | PyQt UI / full file writers matrix | Already have docx/pdf/epub/subtitle paths | Skip |
 
