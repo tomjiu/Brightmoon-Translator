@@ -36,8 +36,8 @@
 
 | Item | Status | Notes |
 |------|--------|--------|
-| Document batch translate | Exists | Pipeline uneven vs single-shot |
-| Batch pre/glossary/TM/cache | **Gap** | MODULE_MAP: batch/compare skip some stages |
+| Document batch translate | Exists | `BatchManager` → `run_full` per task |
+| Batch pre/glossary/TM/cache | **Improved 2026-07-29** | Non-OCR `translate_batch_core`: prepare + TM + cache hit/set + history; OCR path unchanged |
 | Long-text chunk quality | **Open** | Numbered LLM batch parse exists; extend carefully |
 
 ### D — Other (later)

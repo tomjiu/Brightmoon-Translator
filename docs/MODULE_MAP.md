@@ -43,7 +43,7 @@ MainTranslator / tray
 |---------|--------|
 | Many public APIs | Tauri cmds + HTTP + capabilities + extension local engines |
 | Same intent, different quality | replace→primary; OCR/hook→full; UI→stream/embedded; docs→batch |
-| Pipeline uneven | batch/compare skip pre/glossary/TM/cache |
+| Pipeline uneven | ~~batch skip TM/cache~~ **mitigated 2026-07-29** (`translate_batch_core` non-OCR: prepare + TM + cache + finalize); compare multi still multi-result |
 | Config drift | Rust default google+youdao ON; TS INITIAL all off; extension own defaults |
 | Dead types | `TranslationJob` unused; `OcrTranslation` trait no impl |
 | FE store drift | product uses `translateStore`; clipboard/stream stores mostly dead |

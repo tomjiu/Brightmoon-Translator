@@ -882,14 +882,89 @@ impl TranslationService {
                     }
                 }
             } else {
+                // Long-text / document segments: full pipeline parity with single-shot
+                // (prepare already; add TM + cache for non-OCR). OCR path unchanged.
+                let (tm_enabled, tm_threshold) = {
+                    let config = self.config.lock().await;
+                    (config.tm_enabled, config.tm_threshold)
+                };
+
                 for chunk in lines.chunks(concurrency) {
                     let mut handles = Vec::new();
 
                     for &(idx, text) in chunk {
-                        // Pipeline parity: pre-process / glossary / blacklist before engine
                         let prepared = self.prepare(text, from, to).await;
                         let original = text.to_string();
+
+                        // TM + cache (skip for OCR channel — keep OCR path lean / unchanged)
+                        if !ocr_fallback {
+                            if tm_enabled {
+                                let history = self.history.lock().await;
+                                if let Some(tm_match) = history.fuzzy_match(
+                                    &prepared.text,
+                                    from,
+                                    to,
+                                    tm_threshold,
+                                ) {
+                                    let translated = self
+                                        .finalize(
+                                            &tm_match.translated_text,
+                                            &original,
+                                            from,
+                                            to,
+                                            &prepared.blacklist,
+                                        )
+                                        .await;
+                                    drop(history);
+                                    context.push_back(TranslationContext {
+                                        source: original.clone(),
+                                        translation: translated.clone(),
+                                    });
+                                    while context.len() > 5 {
+                                        context.pop_front();
+                                    }
+                                    results.push(BatchTranslationResult {
+                                        index: idx,
+                                        original,
+                                        translated,
+                                    });
+                                    completed += 1;
+                                    on_progress(completed, total);
+                                    continue;
+                                }
+                            }
+                            if let Some(cached) = self.cache.get(&prepared.text, from, to).await {
+                                if let Some((_, cached_text)) = cached.results.first() {
+                                    let translated = self
+                                        .finalize(
+                                            cached_text,
+                                            &original,
+                                            from,
+                                            to,
+                                            &prepared.blacklist,
+                                        )
+                                        .await;
+                                    context.push_back(TranslationContext {
+                                        source: original.clone(),
+                                        translation: translated.clone(),
+                                    });
+                                    while context.len() > 5 {
+                                        context.pop_front();
+                                    }
+                                    results.push(BatchTranslationResult {
+                                        index: idx,
+                                        original,
+                                        translated,
+                                    });
+                                    completed += 1;
+                                    on_progress(completed, total);
+                                    continue;
+                                }
+                            }
+                        }
+
                         let protected = prepared.text.clone();
+                        let protected_for_cache = prepared.text.clone();
                         let from_s = from.to_string();
                         let to_s = to.to_string();
                         let context_snapshot: Vec<TranslationContext> =
@@ -937,16 +1012,34 @@ impl TranslationService {
                             };
                             drop(router);
 
-                            (idx, original, translated, prepared.blacklist)
+                            (
+                                idx,
+                                original,
+                                translated,
+                                prepared.blacklist,
+                                protected_for_cache,
+                            )
                         });
 
                         handles.push(handle);
                     }
 
                     for handle in handles {
-                        if let Ok((idx, original, raw, blacklist)) = handle.await {
+                        if let Ok((idx, original, raw, blacklist, prepared_key)) = handle.await {
                             let translated =
                                 self.finalize(&raw, &original, from, to, &blacklist).await;
+                            if !ocr_fallback && !translated.trim().is_empty() {
+                                self.cache
+                                    .set(
+                                        &prepared_key,
+                                        from,
+                                        to,
+                                        vec![("batch".into(), translated.clone())],
+                                    )
+                                    .await;
+                                let history = self.history.lock().await;
+                                history.add(&original, &translated, from, to, "batch");
+                            }
                             context.push_back(TranslationContext {
                                 source: original.clone(),
                                 translation: translated.clone(),
