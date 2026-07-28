@@ -2,7 +2,26 @@ import { useState, useCallback, useMemo } from 'react';
 import { useConfigStore } from '../../stores/configStore';
 import type { RoutingStrategy, AppConfig } from '../../types';
 import { ROUTING_STRATEGIES } from './engines/routingStrategies';
-import { isLlmConfigured } from './engines/enginesMeta';
+import {
+  DEFAULT_ENGINE_ORDER,
+  ENGINE_SECTIONS,
+  enginesInSection,
+  isLlmConfigured,
+} from './engines/enginesMeta';
+import Card from '../../components/Card';
+import Switch from '../../components/Switch';
+import Badge from '../../components/Badge';
+import {
+  AlertCircle,
+  CheckCircle,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  ChevronUp,
+  ChevronDown,
+  Bot,
+  Languages,
+} from 'lucide-react';
 
 type ConfigUpdater = (updater: (prev: AppConfig) => AppConfig) => void;
 
@@ -19,39 +38,6 @@ interface EngineDisplayConfig {
   badges: EngineBadge[];
   description: string;
 }
-import Card from '../../components/Card';
-import Switch from '../../components/Switch';
-import Badge from '../../components/Badge';
-import {
-  AlertCircle,
-  CheckCircle,
-  ExternalLink,
-  Eye,
-  EyeOff,
-  ChevronUp,
-  ChevronDown,
-  Bot,
-  Languages,
-} from 'lucide-react';
-
-const DEFAULT_ENGINE_ORDER = [
-  'llm',
-  'youdao',
-  'google',
-  'caiyun',
-  'deepl',
-  'deeplx',
-  'baidu',
-  'microsoft',
-  'yandex',
-  'offline',
-  'tatoeba',
-  'baidu_web',
-  'caiyun_web',
-  'volcengine_web',
-  'transmart',
-  'papago',
-];
 
 export default function EngineSettings() {
   const config = useConfigStore((s) => s.config);
@@ -358,31 +344,50 @@ export default function EngineSettings() {
         </div>
       </Card>
 
-      <Card title="引擎顺序与凭证" description="用 ▲▼ 调整回退顺序；开关控制是否参与路由">
-        <div className="space-y-2">
-          {engineOrder.map((engineId, idx) => {
-            const engineConfig = getEngineConfig(engineId);
-            if (!engineConfig) return null;
+      <p className="text-xs text-text-secondary leading-relaxed">
+        下方按类型分组展示；▲▼ 仍调整全局回退优先级（数字越小越优先）。离线 OCR 模型路径在「OCR
+        识别」页。
+      </p>
 
-            return (
-              <SortableEngineCard
-                key={engineId}
-                engineId={engineId}
-                engineConfig={engineConfig}
-                config={config}
-                updateConfig={updateConfig}
-                saveConfig={saveConfig}
-                showSecrets={showSecrets}
-                toggleSecret={toggleSecret}
-                index={idx}
-                total={engineOrder.length}
-                onMoveUp={() => moveEngine(idx, 'up')}
-                onMoveDown={() => moveEngine(idx, 'down')}
-              />
-            );
-          })}
-        </div>
-      </Card>
+      {ENGINE_SECTIONS.map((section) => {
+        const sectionIds = enginesInSection(engineOrder, section.id);
+        if (sectionIds.length === 0) return null;
+
+        return (
+          <Card key={section.id} title={section.title} description={section.description}>
+            <div className="space-y-2">
+              {sectionIds.map((engineId) => {
+                const idx = engineOrder.indexOf(engineId);
+                const engineConfig = getEngineConfig(engineId);
+                if (!engineConfig || idx < 0) return null;
+
+                return (
+                  <SortableEngineCard
+                    key={engineId}
+                    engineId={engineId}
+                    engineConfig={engineConfig}
+                    config={config}
+                    updateConfig={updateConfig}
+                    saveConfig={saveConfig}
+                    showSecrets={showSecrets}
+                    toggleSecret={toggleSecret}
+                    index={idx}
+                    total={engineOrder.length}
+                    onMoveUp={() => moveEngine(idx, 'up')}
+                    onMoveDown={() => moveEngine(idx, 'down')}
+                  />
+                );
+              })}
+            </div>
+            {section.id === 'offline' && (
+              <p className="mt-3 text-xs text-text-secondary leading-relaxed">
+                离线 OCR（WinRT / Tesseract / Rapid / Paddle 等）请到设置 → OCR 识别
+                选择引擎与模型目录；本区仅管本地翻译引擎。
+              </p>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }
