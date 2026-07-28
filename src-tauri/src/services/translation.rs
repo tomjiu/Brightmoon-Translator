@@ -286,8 +286,13 @@ impl TranslationService {
         match channel {
             // Main window: always multi-engine results
             TranslateChannel::Ui => RoutingStrategy::ParallelCompare,
-            // OCR frame: single result with ordered fallback
+            // OCR frame: single result with ordered fallback (do not change)
             TranslateChannel::Ocr => RoutingStrategy::FallbackOnError,
+            // Selection / hover popups: use global strategy (user-configurable in settings)
+            // so划词 can opt into ParallelCompare without hard-coding here.
+            TranslateChannel::Selection
+            | TranslateChannel::Clipboard
+            | TranslateChannel::Replace => configured,
             _ => configured,
         }
     }
