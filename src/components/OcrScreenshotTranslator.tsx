@@ -838,10 +838,11 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
             transmart: 'transmart',
             papago: 'papago',
           };
-          const cfgKey = keyMap[engineId] || engineId;
-          if (cfgKey !== 'llm' && engines[cfgKey as keyof typeof engines]) {
-            const cur = engines[cfgKey as keyof typeof engines] as { enabled?: boolean };
-            engines[cfgKey as keyof typeof engines] = {
+          // Only known engine keys (llm lives on config.llm, not engines).
+          const cfgKey = keyMap[engineId];
+          if (cfgKey) {
+            const cur = engines[cfgKey] as { enabled?: boolean };
+            engines[cfgKey] = {
               ...cur,
               enabled: enabled === undefined ? true : enabled,
             } as never;
