@@ -29,7 +29,10 @@ Status is **code-truth as of 2026-07-28** (not marketing). OCR GUI smoke still m
 | WinRT / Youdao / tesseract.js | ✅ | |
 | Continuous refresh | ✅ | **Default OFF** (I1) |
 | Follow window | ✅ | I6 |
-| Box/flicker residuals | ⚠️ | See `OCR_INVARIANTS.md` — active work |
+| Box/flicker residuals | ⚠️ | See `OCR_INVARIANTS.md`; smoke later |
+| Layout analysis (merge/split) | ⏳ medium | Needed; not urgent |
+| Overlay visual polish | ⏳ low | Font/theme/paint order |
+| Recognize workspace page | ⏳ maybe | Prefer mature OCR backends over pot-style IDE |
 
 ### 1.3 Engines
 | Feature | Status | Notes |
@@ -44,7 +47,7 @@ Status is **code-truth as of 2026-07-28** (not marketing). OCR GUI smoke still m
 | Feature | Status | Notes |
 |---------|--------|-------|
 | UIA + clipboard monitor | ✅ | Default sources |
-| DLL inject (H-Code) | ⚠️ experimental | IAT likely broken; not product |
+| DLL inject (H-Code) | ⚠️ experimental | **Next major** after OCR+划词 stable (shell apps) |
 | Profiles UI | ✅ | Not fully applied at monitor start |
 
 ---
@@ -55,21 +58,31 @@ Status is **code-truth as of 2026-07-28** (not marketing). OCR GUI smoke still m
 |---------|--------|-------|
 | Selection popup | ✅ | |
 | Page translate | ✅ | |
-| Hover translate | ✅ | `hover-translator.js` (was wrongly ❌) |
-| Desktop bridge `:60828` | ⚠️ | Server **default off** — enable in settings |
+| Hover translate | ✅ | `hover-translator.js` |
+| Desktop bridge `:60828` | ⚠️ | Server **default off** — enable in Advanced |
+| Batch / context / queues (depth) | ⏳ need | When fine-tuning browser side |
 | Bilingual / PDF / YT | ❌ | vs immersive-translate |
 
 ---
 
-## 3. Explicitly frozen / secondary
+## 3. Explicitly frozen / secondary / skip
 
-Vocabulary learning, Cloudflare multi-end, plugin marketplace — see `CURRENT_FOCUS` non-goals until OCR+engines stable.
+| Item | Status |
+|------|--------|
+| Plugin marketplace | ❌ removed (first-party only) |
+| Floating multi-engine popup | Skip (main window multi-engine enough) |
+| Vocabulary boom / Cloudflare multi-end / AppState rewrite | Frozen non-goals |
+| Extra local HTTP ExternalCall polish | Low — last, no arch churn |
+| Luna-class inject deep product | After OCR + 划词 |
+
+See [CURRENT_FOCUS.md](./docs/CURRENT_FOCUS.md) tiers.
 
 ---
 
 ## 4. Priority (now)
 
-1. OCR vertical (invariants smoke)  
-2. Engine façade  
-3. Extension bridge UX  
-4. Doc/status hygiene (this file + archive)
+1. Keep desktop OCR + 划词 stable (smoke when free)  
+2. Extension **depth** when browser phase starts  
+3. OCR layout analysis (medium) → overlay polish (low)  
+4. Inject/Hook major vertical after 1  
+5. HTTP control extras last
