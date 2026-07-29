@@ -43,6 +43,7 @@ Smart features map cleanly if Capture/Present stay pure:
 | Copy 原文/译文 | Actions on stable text | After geometry green |
 | Save region image | Capture crop → file | After single capture path |
 | Freeform / multi-rect | Capture selection model | **Later** (rect first) |
+| **Screenshot-app multi-frame** (多框 + 原图/原文/译文) | Capture + Present + session-per-id | **Scheduled later** — see § below |
 | Handwriting / ink | Present overlay + export | **Later** |
 | Auto text region detect | Recognize | Optional / P2 |
 
@@ -77,6 +78,80 @@ Smart features map cleanly if Capture/Present stay pure:
 | 异形选区 | Capture | 仅矩形 | 后置 |
 
 **验收（监视阶段，单次 OCR 绿了之后）：** 固定网页段落 → 开连续 → 滚动使该段变/不变 → 仅变时更新译文；跟窗移动不丢绑。
+
+### Screenshot-app multi-frame — **产品目标（排期，现在不做）**
+
+> **Owner intent (2026-07-29)：** 长期希望 OCR **像截图软件一样用**——框选、拖走、多框并存、框内切换 **原图 / 原文 / 译文**。  
+> **现在不做。** 先稳 **单例** `ocr-region-frame` 几何/闪烁/对齐；再开本轨。  
+> 参考深读：`docs/REFERENCE_OCR_CAPTURE.md`（snow-shot / capcap / kivio）。  
+> **三家都没有「多 continuous live OCR 框」现成实现**——本能力是 Moon **自研产品面**，只吸 pipeline 片段。
+
+#### 用户故事（验收口径）
+
+```
+热键/工具栏 → 框选屏幕区域（像 snip）
+  → 生成可拖拽浮框（可移到旁屏，不关就一直在）
+  → 框内显示模式切换：原图 | 原文(OCR) | 译文
+  → 可选：再框选 → 第二/第三个框（互不抢 session）
+  → 可选：单框 continuous / follow（与现有监视同族，但 per-regionId）
+```
+
+**非目标（仍不抄 snip 全家桶）：** 完整标注/马赛克/美化/图床/录屏；Agent 壳；插件市场。
+
+#### 与「冻结 OCR session」的边界
+
+| 现状 | 风险 |
+|------|------|
+| 全局单 label `ocr-region-frame` | 再开只会 reuse，不能多框 |
+| 主窗 `OcrScreenshotTranslator` 单会话 | 多框会 **抢 capture / translate / continuous tick** |
+| `ocr_begin/end_session_*` · selector→result baton | **禁止在未设计 multi-session 前改 lifecycle** |
+| 采样 `WDA_EXCLUDEFROMCAPTURE` | 多框时必须 **排除所有 region chrome**，否则互吃画面 |
+
+**原则：** 多框 = **新一层 Present/Capture 编排**（regionId 路由），不是在现 baton 上硬叠第二个 HWND。  
+落地前单独设计 **Session-per-region**（或「一主会话 + 只读钉图」两档），再动代码。
+
+#### 能力分层（建议实现顺序，仍属 Later）
+
+| 阶段 | 内容 | 参考 | 依赖 |
+|------|------|------|------|
+| **M0** | 单框稳：闪/偏/错位/排除自捕获 smoke 绿 | 现 OCR_INVARIANTS | **当前门闩** |
+| **M1** | 单框 **显示模式**：原图 / 原文 / 译文（工具栏切换，同一 session） | kivio 卡、snow-shot 块 | 不改 multi-label |
+| **M2** | **静态钉图**多开（截图结果钉桌面，可拖；**不** continuous OCR） | snow-shot fixedContent、capcap Pin | 可与 session 解耦 |
+| **M3** | **多 live region**：`ocr-region-frame-{id}` + 事件带 regionId | 无现成 | 需 multi-session 设计 |
+| **M4** | 每框 continuous / follow / 引擎 | Moon 现有 + per-id | M3 之后 |
+| **M5** | 可选 **替换译**（画在原位） | kivio replace pipeline | 独立模式，可并行研究 |
+
+#### 参考项目 → 本轨映射
+
+| 吸什么 | 来源 | 用在哪一阶段 |
+|--------|------|----------------|
+| 多贴图窗生命周期、冻帧 OCR 块 | snow-shot | M2、M1 |
+| 排除 chrome / 不排除整进程策略 | capcap（思路） | M0/M3 捕获卫生 |
+| 原文+译文卡片、替换几何与批量 id | kivio | M1、M5 |
+| `%%` 多行一次译 + 对齐 | snow-shot | 译质量（任意阶段） |
+| 小图上采样再 OCR | snow-shot | Recognize 预处理 |
+
+#### 排期位置（roadmap）
+
+| 位置 | 说明 |
+|------|------|
+| **不在** 当前划词/hook 冲刺 | 见 `CURRENT_FOCUS.md` |
+| **Tier 1.5 / OCR 产品化**（单框 polish 之后） | 先 **M1 显示模式**，再 **M2 钉图** |
+| **Tier 2+** | **M3+ 多 live 框**（工作量大，单独 milestone） |
+| 与 Hook Tier 2 | 可并行文档设计，**实现**上 OCR 多框优先于 Luna 级 inject 亦可，由 owner 选 |
+
+#### 预留实现位（将来填，现在禁止扩功能）
+
+| 槽位 | 将来符号/落点（示意） | 现状 |
+|------|------------------------|------|
+| 显示模式 | `OcrRegionFrame` viewMode: `image` \| `source` \| `translated` | 叠字+底图混在一起 |
+| 多窗 label | `create_ocr_region_frame(id, …)` | 固定 `"ocr-region-frame"` |
+| Session map | `Map<regionId, OcrSession>` | 单例 translator 状态 |
+| 事件路由 | `ocr-region-*-${id}` 或 payload.regionId | 无 id |
+| 全框排除捕获 | 枚举所有 region HWND → sampling | 仅单框 |
+| 钉图 | 独立 `pin-frame-*` 只读窗 | 无 |
+
+**一句话：** 要截图软件手感 = **M1→M2→M3**；**现在只排期不写代码**；动 M3 前必须先过 multi-session 设计，避免拆坏冻结的 session lifecycle。
 
 ## Near-term vertical slices
 

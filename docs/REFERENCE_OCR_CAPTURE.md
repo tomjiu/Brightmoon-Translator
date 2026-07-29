@@ -142,15 +142,21 @@ Agent/MCP/RAG/Skills 整壳（另一产品）；GPL 面；默认依赖大型 inp
 
 ## 4. 对 Moon 的映射（执行顺序）
 
+**产品排期（owner，2026-07-29）——现在不做，以后必做：**
+
+> 截图软件式使用：框选拖拽、多框可拖到旁边不关、框内 **原图 / 原文 / 译文** 切换。  
+> 正式里程碑与 session 边界见 **[OCR_STRATEGY.md § Screenshot-app multi-frame](./OCR_STRATEGY.md)**（M0→M5）。
+
 | 优先级 | 动作 | 参考 | 落点 | 注意 |
 |--------|------|------|------|------|
-| P0 | 用户 smoke 单框几何/闪烁 | — | 现有 region frame | 文档已要求先稳单框 |
+| P0 | 用户 smoke 单框几何/闪烁 | — | 现有 region frame | **M0 门闩** |
 | P1 | 捕获排除清单对齐（采样开/关复位） | snow-shot / kivio / capcap 策略 | `set_ocr_region_frame_sampling` | **不**改 session baton |
 | P1 | OCR 多行 → 译 分隔符/对齐 | snow-shot `%%` | 已有 `run_batch` 可加强契约 | 非 OCR lifecycle |
-| P2 | 可选「替换译」模式 | kivio replace | 新模式 + 布局，独立于 session | 大块功能 |
-| P2 | 小图上采样再 OCR | snow-shot | 识别前 preprocess | |
-| P3 | 多 continuous OCR 框 | **无现成** | 多 label + 多 session 路由 | 产品自研；见用户问答 |
-| P3 | 多静态钉图 | snow-shot / capcap | 可选「钉截图」 | 非 OCR 监视 |
+| **Later M1** | 单框 **原图/原文/译文** 显示切换 | kivio 卡、snow-shot 块 | `OcrRegionFrame` viewMode | 仍单 session |
+| **Later M2** | 多 **静态钉图**（可拖，不 continuous） | snow-shot fixedContent、capcap Pin | 新 pin label | 可与 session 解耦 |
+| **Later M3+** | 多 **live** OCR 框 + per-id session | **无现成** | 多 label + 事件 regionId | **须先 multi-session 设计** |
+| Later M5 | 可选「替换译」 | kivio replace | 布局+inpaint 可选 | 大块；独立模式 |
+| P2 | 小图上采样再 OCR | snow-shot | 识别前 preprocess | 任意阶段可插 |
 
 **明确非目标（与 OCR_STRATEGY 一致）：** 整站 snip 标注、美化、图床、Agent 壳、插件市场。
 

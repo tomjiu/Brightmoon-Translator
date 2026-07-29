@@ -83,3 +83,14 @@ Product intent (scroll/change → re-OCR+translate) is specified in
 `OCR_STRATEGY.md` § Pinned region watch. **Do not expand continuous-mode
 features until smoke 1–5 pass.** Skeleton (continuous + fingerprint + I7)
 may stay; treat regressions there as bugs, not as a green light for new work.
+
+## Deferred: screenshot-app multi-frame
+
+Owner wants snip-like UX later: multi drag frames, **image / source / translated**
+toggle, frames parked on side monitors. Spec + phases **M0–M5** in
+`OCR_STRATEGY.md` § Screenshot-app multi-frame; refs in
+`REFERENCE_OCR_CAPTURE.md`.
+
+**Do not implement multi-label regions or rewrite `ocr_begin/end_session_*`
+without an explicit multi-session design.** Single `ocr-region-frame` remains
+the only live OCR chrome until that milestone opens.

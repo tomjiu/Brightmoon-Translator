@@ -54,6 +54,18 @@
 | ExternalCall HTTP extras | Low / last |
 | Plugin marketplace | Removed (non-goal) |
 
+### E — OCR 截图软件化（**排期 / 现在不做**）
+
+| Item | Status | Notes |
+|------|--------|--------|
+| 单框稳（M0） | **Current gate** | 几何/闪/对齐 smoke；见 OCR_INVARIANTS |
+| 原图/原文/译文切换（M1） | **Scheduled** | 仍单 `ocr-region-frame` |
+| 多静态钉图（M2） | **Scheduled** | snow-shot / capcap 贴图 |
+| 多 live 框 + 拖旁屏（M3+） | **Scheduled** | 需 multi-session；**禁**未设计就改 baton |
+| 替换译（M5） | **Optional later** | kivio replace pipeline |
+
+完整用户故事与阶段表：**[OCR_STRATEGY.md § Screenshot-app multi-frame](./OCR_STRATEGY.md)** · 参考 [REFERENCE_OCR_CAPTURE.md](./REFERENCE_OCR_CAPTURE.md)。
+
 ---
 
 ## Roadmap tiers (owner intent)
@@ -67,7 +79,14 @@
 ### Tier 1 — After 划词 good enough
 
 - Browser extension depth
-- OCR layout / polish (**only polish**, no session rewrite)
+- OCR **single-frame** polish only（**no** session rewrite, **no** multi-frame yet）
+
+### Tier 1.5 — OCR 截图软件化（**scheduled, not now**）
+
+- **M1** 单框：原图 / 原文 / 译文切换  
+- **M2** 多钉图（静态，可拖）  
+- **M3+** 多 live 框（单独 milestone + multi-session 设计）  
+- 详见 `OCR_STRATEGY.md`；参考 snow-shot / capcap / kivio
 
 ### Tier 2 — Hook / inject
 
