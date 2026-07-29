@@ -3,8 +3,8 @@
 //! Hover dictionary (Alt+dwell) remains polled lightly.
 
 use super::hover_pick::{
-    format_dict_body, is_ui_chrome_word, pick_word_at_cursor_uia, pick_word_line_strip_ocr,
-    pick_word_near_cursor_ocr, HoverDedupe,
+    format_dict_body, is_ui_chrome_word, pick_word_line_strip_ocr, pick_word_near_cursor_ocr,
+    HoverDedupe,
 };
 use crate::config::{SelectionTriggerMode, SelectionUxConfig};
 use crate::dictionary;
@@ -157,9 +157,10 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
 
         // Hover dictionary (MTT-inspired on desktop):
         // - dwell then pick; never while typing (key within 1.5s)
-        // - terminals: OFF free-hover (UIA Name = "PowerShell"; OCR = title bar junk)
-        // - pick: UIA first; OCR only as long horizontal strip fallback
-        // - typing/KeyDown dismisses stuck cards (see KeyDown handler)
+        // - editable focus: skip free-hover (don't block typing)
+        // - terminals: OFF free-hover
+        // - unit: word | sentence (Alt held forces sentence)
+        // - typing/KeyDown dismisses stuck cards
         if !ux.hover_dictionary || crate::selection::mouse_hook::key_pressed_within_ms(1500) {
             hover_still_since = None;
         } else if !left_button_down()
@@ -191,12 +192,17 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                     && last_hover_lookup.elapsed() >= Duration::from_millis(900)
                 {
                     last_hover_lookup = Instant::now();
-                    // Hover OCR only when force pickup on + optional modifier (MTT-style)
+                    // MTT: hide free-hover while caret is in an edit field
+                    if super::hover_pick::is_editable_control_focused() {
+                        hover_still_since = None;
+                        continue;
+                    }
                     let ocr_fb = super::ocr_force_allowed(&ux);
+                    let unit = ux.hover_unit.to_ascii_lowercase();
+                    let alt_sentence = super::modifier_key_satisfied("alt");
+                    let want_sentence = unit == "sentence" || unit == "sent" || alt_sentence;
                     let pick = tokio::task::spawn_blocking(move || {
-                        // Desktop apps: UIA Name/Value under point
-                        // Images/browsers: long strip OCR only if force-pickup (+ modifier)
-                        pick_word_at_cursor_uia().or_else(|| {
+                        super::hover_pick::pick_at_cursor_uia(want_sentence).or_else(|| {
                             if ocr_fb {
                                 pick_word_line_strip_ocr()
                             } else {
@@ -210,12 +216,19 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                     match pick {
                         Some(pick) => {
                             let w = pick.word.trim().to_string();
-                            let ok = dictionary::is_single_word(&w)
-                                && w.chars().count() >= 2
-                                && w.chars().count() <= 28
-                                && !w.contains('\n')
-                                && w.chars().any(|c| c.is_alphanumeric())
-                                && !is_junk_hover_word(&w);
+                            let ok = if want_sentence {
+                                w.chars().count() >= 2
+                                    && w.chars().count() <= 120
+                                    && !is_junk_hover_word(&w)
+                                    && w.chars().any(|c| c.is_alphanumeric())
+                            } else {
+                                dictionary::is_single_word(&w)
+                                    && w.chars().count() >= 2
+                                    && w.chars().count() <= 28
+                                    && !w.contains('\n')
+                                    && w.chars().any(|c| c.is_alphanumeric())
+                                    && !is_junk_hover_word(&w)
+                            };
                             if ok
                                 && !hover_dedupe.should_skip(
                                     &w,
@@ -225,12 +238,18 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                                 )
                             {
                                 tracing::info!(
-                                    "[selection_ux] hover hit: {:?} via {}",
+                                    "[selection_ux] hover hit: {:?} via {} (sentence={})",
                                     w,
-                                    pick.source
+                                    pick.source,
+                                    want_sentence
                                 );
                                 hover_still_since = None;
-                                show_hover_dictionary(&app, &w, pick.x, pick.y).await;
+                                if want_sentence && !dictionary::is_single_word(&w) {
+                                    // Sentence → machine translate (not dict card)
+                                    show_selection_translate_text(&app, &w).await;
+                                } else {
+                                    show_hover_dictionary(&app, &w, pick.x, pick.y).await;
+                                }
                             }
                         },
                         None => {},

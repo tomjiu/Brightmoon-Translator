@@ -8,6 +8,7 @@ const DEFAULT_UX: SelectionUxConfig = {
   triggerMode: 'pop_button',
   hoverDictionary: false,
   hoverDwellMs: 400,
+  hoverUnit: 'word',
   ocrForcePickup: false,
   ocrModifierKey: '',
   autoMinChars: 1,
@@ -183,24 +184,42 @@ export default function SelectionSettings() {
           <Switch checked={ux.hoverDictionary} onChange={(v) => patchUx({ hoverDictionary: v })} />
         </div>
         {ux.hoverDictionary && (
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-text-primary mb-2">
-              停留时长 (毫秒)
-            </label>
-            <input
-              type="number"
-              min={150}
-              max={2000}
-              step={50}
-              value={ux.hoverDwellMs}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                patchUx({
-                  hoverDwellMs: Number.isFinite(n) ? Math.min(2000, Math.max(150, n)) : 400,
-                });
-              }}
-              className="w-28 px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
-            />
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                停留时长 (毫秒)
+              </label>
+              <input
+                type="number"
+                min={150}
+                max={2000}
+                step={50}
+                value={ux.hoverDwellMs}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  patchUx({
+                    hoverDwellMs: Number.isFinite(n) ? Math.min(2000, Math.max(150, n)) : 400,
+                  });
+                }}
+                className="w-28 px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                取词单位（MTT 词/句）
+              </label>
+              <select
+                value={ux.hoverUnit || 'word'}
+                onChange={(e) => patchUx({ hoverUnit: e.target.value })}
+                className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+              >
+                <option value="word">词（词典优先）</option>
+                <option value="sentence">句（机翻）</option>
+              </select>
+              <p className="text-xs text-text-secondary mt-1">
+                按住 Alt 可临时切到「句」。编辑框有焦点时不弹悬停；鼠标离开浮层约 120ms 后关闭。
+              </p>
+            </div>
           </div>
         )}
       </Card>

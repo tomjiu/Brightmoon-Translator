@@ -209,20 +209,137 @@ fn extract_word_candidate_inner(t: &str) -> Option<String> {
     None
 }
 
-/// UIA ElementFromPoint → Name / Value / LegacyIAccessible → word candidate.
-pub fn pick_word_at_cursor_uia() -> Option<HoverPick> {
+/// MTT: prefer sentence around cursor ratio (punctuation / newline bounds).
+pub fn extract_sentence_candidate_with_hint(
+    text: &str,
+    cursor_ratio: Option<f64>,
+) -> Option<String> {
+    let t = text.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let owned: String;
+    let t = if t.chars().count() > 400 {
+        owned = t.chars().take(400).collect();
+        owned.as_str()
+    } else {
+        t
+    };
+    let chars: Vec<char> = t.chars().collect();
+    if chars.is_empty() {
+        return None;
+    }
+    let idx = if let Some(r) = cursor_ratio {
+        ((chars.len() as f64 - 1.0) * r.clamp(0.0, 1.0)).round() as usize
+    } else {
+        chars.len() / 2
+    }
+    .min(chars.len() - 1);
+
+    let is_bound = |c: char| {
+        matches!(
+            c,
+            '.' | '!' | '?' | '。' | '！' | '？' | '\n' | '\r' | ';' | '；'
+        )
+    };
+    let mut start = idx;
+    while start > 0 && !is_bound(chars[start - 1]) {
+        start -= 1;
+    }
+    let mut end = idx + 1;
+    while end < chars.len() && !is_bound(chars[end]) {
+        end += 1;
+    }
+    // include trailing punct
+    if end < chars.len() && is_bound(chars[end]) {
+        end += 1;
+    }
+    let s: String = chars[start..end].iter().collect();
+    let s = s.trim();
+    if s.chars().count() < 2 || s.chars().count() > 120 {
+        return None;
+    }
+    if is_ui_chrome_word(s) {
+        return None;
+    }
+    Some(s.to_string())
+}
+
+/// True when focused control looks like an editable field (MTT: hide hover while typing).
+pub fn is_editable_control_focused() -> bool {
     #[cfg(windows)]
     {
-        pick_word_at_cursor_uia_win()
+        is_editable_control_focused_win()
     }
     #[cfg(not(windows))]
     {
+        false
+    }
+}
+
+#[cfg(windows)]
+fn is_editable_control_focused_win() -> bool {
+    use windows::core::Interface;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Accessibility::{
+        CUIAutomation, IUIAutomation, IUIAutomationValuePattern, UIA_ComboBoxControlTypeId,
+        UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_ValuePatternId,
+    };
+
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL) {
+            Ok(a) => a,
+            Err(_) => return false,
+        };
+        let focused = match automation.GetFocusedElement() {
+            Ok(e) => e,
+            Err(_) => return false,
+        };
+        if let Ok(ct) = focused.CurrentControlType() {
+            let id = ct.0;
+            if id == UIA_EditControlTypeId.0
+                || id == UIA_DocumentControlTypeId.0
+                || id == UIA_ComboBoxControlTypeId.0
+            {
+                return true;
+            }
+        }
+        if let Ok(pat) = focused.GetCurrentPattern(UIA_ValuePatternId) {
+            if let Ok(vp) = pat.cast::<IUIAutomationValuePattern>() {
+                if let Ok(ro) = vp.CurrentIsReadOnly() {
+                    if !ro.as_bool() {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
+/// UIA ElementFromPoint → Name / Value → word or sentence candidate.
+/// `sentence`: true → sentence unit (MTT container-ish); false → word.
+pub fn pick_word_at_cursor_uia() -> Option<HoverPick> {
+    pick_at_cursor_uia(false)
+}
+
+pub fn pick_at_cursor_uia(sentence: bool) -> Option<HoverPick> {
+    #[cfg(windows)]
+    {
+        pick_at_cursor_uia_win(sentence)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = sentence;
         None
     }
 }
 
 #[cfg(windows)]
-fn pick_word_at_cursor_uia_win() -> Option<HoverPick> {
+fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
     use windows::core::Interface;
     use windows::Win32::Foundation::POINT;
     use windows::Win32::System::Com::{
@@ -293,13 +410,20 @@ fn pick_word_at_cursor_uia_win() -> Option<HoverPick> {
                 None
             }
         });
-        let word = extract_word_candidate_with_hint(&raw, ratio)?;
+        let word = if sentence {
+            extract_sentence_candidate_with_hint(&raw, ratio)
+                .or_else(|| extract_word_candidate_with_hint(&raw, ratio))?
+        } else {
+            extract_word_candidate_with_hint(&raw, ratio)?
+        };
         Some(HoverPick {
             word,
             x: cx,
             y: cy,
             bounds,
-            source: if ratio.is_some() {
+            source: if sentence {
+                "uia_sentence"
+            } else if ratio.is_some() {
                 "uia_point_ratio"
             } else {
                 "uia_point"
@@ -529,6 +653,17 @@ mod tests {
             extract_word_candidate_with_hint("one two three", Some(0.5)).as_deref(),
             Some("two")
         );
+    }
+
+    #[test]
+    fn extract_sentence_around_ratio() {
+        let s = extract_sentence_candidate_with_hint(
+            "Hello world. Second sentence here! Third.",
+            Some(0.55),
+        )
+        .unwrap();
+        assert!(s.to_ascii_lowercase().contains("second"));
+        assert!(!s.contains("Third"));
     }
 
     #[test]

@@ -6,11 +6,84 @@
  */
 use crate::error::AppError;
 use crate::hook_inject::{CapturedText, HookManager, HookStatus};
+use crate::selection::hover_pick::is_ui_chrome_word;
 use crate::AppState;
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
+
+/// Recent hook captures for dedup (text + coarse time window).
+struct HookDedup {
+    recent: VecDeque<(String, Instant)>,
+}
+
+impl HookDedup {
+    fn new() -> Self {
+        Self {
+            recent: VecDeque::with_capacity(32),
+        }
+    }
+
+    /// Returns true if this text was seen recently (skip translate).
+    fn is_dup(&mut self, text: &str) -> bool {
+        let now = Instant::now();
+        let key = text.trim().to_string();
+        // Drop older than 8s
+        while let Some((_, t)) = self.recent.front() {
+            if now.duration_since(*t) > Duration::from_secs(8) {
+                self.recent.pop_front();
+            } else {
+                break;
+            }
+        }
+        if self.recent.iter().any(|(s, _)| s == &key) {
+            return true;
+        }
+        self.recent.push_back((key, now));
+        if self.recent.len() > 40 {
+            self.recent.pop_front();
+        }
+        false
+    }
+}
+
+fn hook_text_is_noise(text: &str) -> bool {
+    let t = text.trim();
+    if t.is_empty() || t.chars().count() < 2 {
+        return true;
+    }
+    if t.len() > 4000 {
+        return true;
+    }
+    // Pure digits / punctuation / single glyph spam
+    if t.chars().all(|c| c.is_ascii_digit() || c.is_whitespace()) {
+        return true;
+    }
+    if t.chars().count() == 1 {
+        return true;
+    }
+    if is_ui_chrome_word(t) {
+        return true;
+    }
+    // Common GDI chrome fragments
+    let lower = t.to_ascii_lowercase();
+    if lower == "ok"
+        || lower == "cancel"
+        || lower == "yes"
+        || lower == "no"
+        || lower == "file"
+        || lower == "edit"
+        || lower == "view"
+        || lower == "help"
+        || ((lower.starts_with("http://") || lower.starts_with("https://"))
+            && t.chars().count() < 16)
+    {
+        return true;
+    }
+    false
+}
 
 /// State wrapper for the hook manager + host pump lifecycle.
 pub struct HookState {
@@ -18,6 +91,7 @@ pub struct HookState {
     /// When true, background pump should exit.
     pump_stop: Arc<AtomicBool>,
     pump_running: AtomicBool,
+    dedup: Mutex<HookDedup>,
 }
 
 impl HookState {
@@ -26,6 +100,7 @@ impl HookState {
             manager: Mutex::new(HookManager::new()),
             pump_stop: Arc::new(AtomicBool::new(true)),
             pump_running: AtomicBool::new(false),
+            dedup: Mutex::new(HookDedup::new()),
         }
     }
 
@@ -102,11 +177,14 @@ async fn process_hook_messages_once(
 
     for msg in &messages {
         let text = msg.text.trim();
-        if text.is_empty() || text.chars().count() < 2 {
+        if hook_text_is_noise(text) {
             continue;
         }
-        if text.len() > 4000 {
-            continue;
+        {
+            let mut dedup = hook_state.dedup.lock()?;
+            if dedup.is_dup(text) {
+                continue;
+            }
         }
 
         match app_state

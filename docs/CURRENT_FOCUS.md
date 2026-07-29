@@ -15,8 +15,8 @@
 | Item | Status | Notes |
 |------|--------|--------|
 | Pop / auto / hotkey selection | **Working baseline** | `WH_MOUSE_LL`; min_drag_px; **ocr_modifier_key** gate |
-| Hover dictionary | **Improved** | Free dwell; terminals skip; chrome filter; dict miss→MT; **cursor-ratio word pick** |
-| Overlay card polish | **Partial** | Compact card + theme via `set_overlay_theme`; still improve light/dark feel |
+| Hover dictionary | **Improved** | word/sentence unit; Alt→句; **edit-focus blocks hover**; leave 120ms dismiss |
+| Overlay card polish | **Improved** | mouse-leave debounce 120ms + theme hook; light/dark feel still optional |
 | Dict miss → MT | **Improved** | Hover miss → MT (junk still blocked); selection already falls through |
 | Multi-engine selection text | **Improved** | `TranslateResponse::display_text`; hotkey + auto_watch + OCR-force share join |
 | Manual smoke (browser / notepad / terminal) | **Open** | User still reports terminal OCR junk / short quality |
@@ -29,7 +29,7 @@
 |------|--------|--------|
 | Hook monitor UI | Exists | Experimental |
 | Passive UIA/clipboard monitor | **Production-ish** | `start_hook_monitor` applies active/auto profile |
-| DLL inject → `TranslationService` | **Improved** | multi-module IAT + **host pump** (400ms, no Hook UI required) |
+| DLL inject → `TranslationService` | **Improved** | multi-module IAT + host pump + **dedup/noise filter** |
 | Profiles applied on start | **Done (passive path)** | `hook_cmd::start_hook_monitor` already applies profile |
 | Bundle hook DLL in release | **Improved 2026-07-29** | `tauri.conf.json` resources + richer `find_hook_dll` (exe-dir, CARGO_MANIFEST_DIR, Debug/Release); DLL copied to `src-tauri/bin/` when built |
 
@@ -87,6 +87,8 @@
 | OCR force modifier | `ocr_modifier_key` + `ocr_force_allowed()` |
 | Hook multi-module IAT | `hook-dll/src/hook_text.cpp` EnumProcessModules |
 | Hook host pump | `hook_inject_cmd` start on inject / stop on eject |
+| Hover unit + edit-focus | `hover_unit` + `is_editable_control_focused` |
+| Hook noise/dedup | `hook_text_is_noise` + 8s dedup window |
 | Selection UX sprint | `selection/{mouse_hook,auto_watch,pop_button,process_class,clipboard,hover_pick}` |
 | Selection settings | `SelectionSettings.tsx` |
 | Hotkey live re-register | `hotkey.rs` + `save_config` |

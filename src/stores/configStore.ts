@@ -51,6 +51,7 @@ const INITIAL_CONFIG: AppConfig = {
     triggerMode: 'pop_button',
     hoverDictionary: false,
     hoverDwellMs: 400,
+    hoverUnit: 'word',
     ocrForcePickup: false,
     ocrModifierKey: '',
     autoMinChars: 1,

@@ -366,6 +366,9 @@ pub struct SelectionUxConfig {
     /// Dwell time before hover dictionary (ms)
     #[serde(default = "default_hover_dwell_ms")]
     pub hover_dwell_ms: u32,
+    /// Hover unit: "word" (default) | "sentence" (MTT-style). Alt held can force sentence.
+    #[serde(default = "default_hover_unit")]
+    pub hover_unit: String,
     /// When UIA/clipboard selection is empty, try OCR near cursor (force 取词)
     #[serde(default)]
     pub ocr_force_pickup: bool,
@@ -403,6 +406,10 @@ fn default_ocr_modifier_key() -> String {
     String::new()
 }
 
+fn default_hover_unit() -> String {
+    "word".into()
+}
+
 impl Default for SelectionUxConfig {
     fn default() -> Self {
         Self {
@@ -410,6 +417,7 @@ impl Default for SelectionUxConfig {
             trigger_mode: SelectionTriggerMode::PopButton,
             hover_dictionary: false,
             hover_dwell_ms: default_hover_dwell_ms(),
+            hover_unit: default_hover_unit(),
             ocr_force_pickup: false,
             ocr_modifier_key: default_ocr_modifier_key(),
             auto_min_chars: default_selection_min_chars(),

@@ -89,6 +89,8 @@ export interface SelectionUxConfig {
   /** Mouse dwell → dictionary popup (system-wide; phased) */
   hoverDictionary: boolean;
   hoverDwellMs: number;
+  /** word | sentence — MTT-style unit; Alt held also forces sentence */
+  hoverUnit?: string;
   /** Empty UIA/clipboard → OCR near cursor (phased) */
   ocrForcePickup: boolean;
   /** Modifier for OCR force: '' | none | shift | ctrl | alt (MTT-style) */
