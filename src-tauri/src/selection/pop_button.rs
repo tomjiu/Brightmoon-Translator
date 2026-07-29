@@ -42,14 +42,27 @@ pub fn show(app: &AppHandle, text: String, screen_x: f64, screen_y: f64) -> Resu
     if text.is_empty() {
         return Ok(());
     }
+    // R2: never arm pop for chrome/junk (caller should filter; belt-and-suspenders).
+    if !super::present::accept_for_pop(&text) {
+        tracing::info!(
+            "[pop] show rejected junk preview={:?}",
+            text.chars().take(40).collect::<String>()
+        );
+        return Ok(());
+    }
 
     {
         let mut g = PENDING.lock().map_err(|e| e.to_string())?;
         *g = Some(Pending {
-            text,
+            text: text.clone(),
             shown_at: Instant::now(),
         });
     }
+    tracing::info!(
+        "[pop] armed pending_len={} preview={:?}",
+        text.chars().count(),
+        text.chars().take(40).collect::<String>()
+    );
 
     let (clamped_x, clamped_y) = crate::overlay::positioner::clamp_rect_to_cursor_monitor(
         screen_x + 8.0,

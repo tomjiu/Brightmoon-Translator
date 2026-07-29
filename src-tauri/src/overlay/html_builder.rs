@@ -2,11 +2,11 @@ use super::{OverlayContent, OverlayLevel};
 
 /// Build overlay HTML — single solid card, fills window (no black chrome + white inset).
 pub fn build_html(content: &OverlayContent, level: OverlayLevel, dismiss_ms: u64) -> String {
-    // Hover dictionary cards: distinct badge + phonetic styling (not generic MT card).
+    // Dictionary cards (hover + selection word): badge + phonetic, not generic MT.
     if content
         .source_app
         .as_deref()
-        .is_some_and(|s| s == "hover-dict")
+        .is_some_and(|s| s == "hover-dict" || s == "dict")
     {
         return build_dict_card_html(&content.translated, dismiss_ms.max(3500));
     }
@@ -141,7 +141,43 @@ pub fn build_update_script(
     )
 }
 
+/// Structured dictionary card (preferred; no body re-parse).
+pub fn build_dict_card_structured(
+    card: &crate::selection::present::DictCard,
+    dismiss_ms: u64,
+) -> String {
+    let mut defs_html = String::new();
+    for m in &card.meanings {
+        for d in &m.defs {
+            if m.pos.is_empty() || m.pos.eq_ignore_ascii_case("ecdict") {
+                defs_html.push_str(&format!(
+                    r#"<div class="def">{}</div>"#,
+                    html_escape::encode_text(d)
+                ));
+            } else {
+                defs_html.push_str(&format!(
+                    r#"<div class="def"><span class="pos">{}</span> {}</div>"#,
+                    html_escape::encode_text(&m.pos),
+                    html_escape::encode_text(d)
+                ));
+            }
+        }
+    }
+    let phon_html = card
+        .phonetic
+        .as_ref()
+        .map(|p| {
+            format!(
+                r#"<span class="phon">{}</span>"#,
+                html_escape::encode_text(p)
+            )
+        })
+        .unwrap_or_default();
+    render_dict_card_shell(&card.word, &phon_html, &defs_html, dismiss_ms)
+}
+
 /// Dictionary hover card: headword + phonetic + POS badges (visually distinct from MT).
+/// Legacy path: parses plain-text body from format_dict_body.
 pub fn build_dict_card_html(body: &str, dismiss_ms: u64) -> String {
     let mut lines = body.lines();
     let head = lines.next().unwrap_or("").trim();
@@ -197,6 +233,10 @@ pub fn build_dict_card_html(body: &str, dismiss_ms: u64) -> String {
             )
         })
         .unwrap_or_default();
+    render_dict_card_shell(word, &phon_html, &defs_html, dismiss_ms)
+}
+
+fn render_dict_card_shell(word: &str, phon_html: &str, defs_html: &str, dismiss_ms: u64) -> String {
     let dismiss = if dismiss_ms > 0 {
         format!(
             "setTimeout(function(){{window.__TAURI__&&window.__TAURI__.core&&window.__TAURI__.core.invoke('close_overlay');}},{});",

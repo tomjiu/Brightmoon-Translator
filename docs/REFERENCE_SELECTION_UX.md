@@ -24,13 +24,14 @@
 | 能力 | 有道 | pot | STranslate | Easydict Win | QTranslate | MTT (扩展) | YomiNinja | **Moon 现状** |
 |------|------|-----|------------|--------------|------------|------------|-----------|---------------|
 | 快捷键划词 | ✅ | ✅ | ✅ | ✅ | ✅ Ctrl+Q | — | — | ✅ |
-| 选中后浮钮再译 | ✅ | ❌ | 鼠标钩+直接译 | ✅ **PopButton** | ❌（热键） | 选中 tooltip | — | ❌（可选自动即译） |
-| 拖拽结束再取词 | ✅ | 热键 | ✅ DragFinished | ✅ WH_MOUSE_LL | 热键 | mousemove | — | ⚠️ LMB 轮询 |
-| UIA 优先 / Ctrl+C 回退 | 闭源 | selection crate | Ctrl+C | ✅ **按进程分流** | 未深读 | DOM | — | ⚠️ 有链，无分流 |
-| 终端禁 Ctrl+C | — | — | — | ✅ 名单 | — | — | — | ❌ |
-| 系统悬停词典 | ✅ | ❌ | 文档有「悬停」偏划词 | ❌ | Ctrl+D 词典热键 | ✅ **词/句/块** | 叠字+扩展词典 | ⚠️ UIA Name 粗取 |
+| 选中后浮钮再译 | ✅ | ❌ | 鼠标钩+直接译 | ✅ **PopButton** | ❌（热键） | 选中 tooltip | — | ✅ PopButton + pending-only |
+| 拖拽结束再取词 | ✅ | 热键 | ✅ DragFinished | ✅ WH_MOUSE_LL | 热键 | mousemove | — | ✅ WH_MOUSE_LL |
+| UIA 优先 / Ctrl+C 回退 | 闭源 | selection crate | Ctrl+C | ✅ **按进程分流** | 未深读 | DOM | — | ✅ process_class 分流 |
+| 终端禁 Ctrl+C | — | — | — | ✅ 名单 | — | — | — | ✅ |
+| 系统悬停词典 | ✅ | ❌ | 文档有「悬停」偏划词 | ❌ | Ctrl+D 词典热键 | ✅ **词/句/块** | 叠字+扩展词典 | ✅ TextPattern；miss 不 MT |
 | 悬停图 OCR | ✅ 强力取词 | 截图 | 截图 | 截图 | 框选 OCR | ✅ **Shift+悬停图** | 全屏/区域 OCR | ⚠️ 光标小图 |
-| 词典卡（音标/词性） | ✅ | 弱 | 弱 | Google Dict 等 | Quick Dictionary | Wiktionary 等 | 靠 10ten/Yomitan | ⚠️ 通用 overlay |
+| 词典卡（音标/词性） | ✅ | 弱 | 弱 | Google Dict 等 | Quick Dictionary | Wiktionary 等 | 靠 10ten/Yomitan | ✅ `present` 路由 + 结构化卡 |
+| 词/句分流 | 词典 vs 译 | 弱 | 弱 | Mini 按内容 | **D vs Q** | 词/句/块 | — | ✅ Word→dict / Sentence→MT / Junk reject |
 
 **结论：**  
 - **选中 UX** 第一参考 = **Easydict**（钩子 + 浮钮 + 按应用取词策略）。  

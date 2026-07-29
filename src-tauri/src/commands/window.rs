@@ -631,20 +631,22 @@ pub async fn trigger_dictionary_lookup(
         return Err("No text selected".to_string());
     }
 
-    crate::selection::auto_watch::show_selection_translate_text_public(&app, &text).await;
+    crate::selection::present::present_selection(&app, &text).await;
     Ok(())
 }
 
-/// Pop button clicked → translate pending selection text and show overlay.
+/// Pop button clicked → present pending text (dict card or MT via unified router).
+/// R2: only trust pending captured at pop show — never re-GetSelection.
 #[command]
 pub async fn pop_button_confirm(
     app: tauri::AppHandle,
-    state: tauri::State<'_, crate::AppState>,
+    _state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     let text = crate::selection::pop_button::take_pending()
         .ok_or_else(|| "No pending selection".to_string())?;
     let _ = crate::selection::pop_button::dismiss(&app);
-    translate_selection(app, state, text, None).await
+    crate::selection::present::present_selection(&app, &text).await;
+    Ok(())
 }
 
 /// Hide pop button without translating.

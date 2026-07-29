@@ -5,6 +5,7 @@ pub mod manager;
 #[cfg(windows)]
 pub mod mouse_hook;
 pub mod pop_button;
+pub mod present;
 pub mod process_class;
 pub mod uiautomation;
 #[cfg(windows)]

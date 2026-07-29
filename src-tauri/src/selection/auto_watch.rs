@@ -3,12 +3,11 @@
 //! Hover dictionary (Alt+dwell) remains polled lightly.
 
 use super::hover_pick::{
-    format_dict_body, is_ui_chrome_word, pick_word_line_strip_ocr, pick_word_near_cursor_ocr,
-    HoverDedupe,
+    is_ui_chrome_word, pick_word_line_strip_ocr, pick_word_near_cursor_ocr, HoverDedupe,
 };
+use super::present;
 use crate::config::{SelectionTriggerMode, SelectionUxConfig};
 use crate::dictionary;
-use crate::overlay;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -263,10 +262,10 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                                 );
                                 hover_still_since = None;
                                 if want_sentence && !dictionary::is_single_word(&w) {
-                                    // Sentence → machine translate (not dict card)
-                                    show_selection_translate_text(&app, &w).await;
+                                    present::present_selection(&app, &w).await;
                                 } else {
-                                    show_hover_dictionary(&app, &w, pick.x, pick.y).await;
+                                    present::present_hover_dictionary(&app, &w, pick.x, pick.y)
+                                        .await;
                                 }
                             }
                         },
@@ -294,17 +293,13 @@ async fn handle_hook_event(
         MouseHookEvent::MouseDownOnPop => {
             // Use text already captured at gesture time — do NOT re-read selection
             // (moving to click pop often clears terminal/browser selection).
+            // R2: only trust pending captured at pop show — never re-GetSelection.
             if let Some(text) = super::pop_button::take_pending() {
                 let _ = super::pop_button::dismiss(app);
                 job_gen.fetch_add(1, Ordering::SeqCst); // cancel in-flight fetch jobs
-                tracing::info!(
-                    "[selection_ux] pop confirm ({} chars) text={:?}",
-                    text.chars().count(),
-                    text.chars().take(40).collect::<String>()
-                );
                 let app_c = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    show_selection_translate_text(&app_c, &text).await;
+                    present::present_selection(&app_c, &text).await;
                 });
             } else {
                 tracing::warn!("[selection_ux] pop click but no pending text");
@@ -368,6 +363,15 @@ async fn handle_hook_event(
                             return;
                         }
                         let trimmed = text.trim().to_string();
+                        // R2: junk / chrome never show pop or MT.
+                        if !present::accept_for_pop(&trimmed) {
+                            tracing::info!(
+                                "[pop] pending_len={} preview={:?} route=reject",
+                                trimmed.chars().count(),
+                                trimmed.chars().take(40).collect::<String>()
+                            );
+                            return;
+                        }
                         tracing::info!(
                             "[selection_ux] gesture ok mode={:?} chars={}",
                             mode,
@@ -382,7 +386,7 @@ async fn handle_hook_event(
                                 }
                             },
                             SelectionTriggerMode::AutoOnSelect => {
-                                show_selection_translate_text(&app_c, &trimmed).await;
+                                present::present_selection(&app_c, &trimmed).await;
                             },
                             SelectionTriggerMode::HotkeyOnly => {},
                         }
@@ -397,6 +401,9 @@ async fn handle_hook_event(
                                 .ok()
                                 .flatten()
                         {
+                            if !present::accept_for_pop(&pick.word) {
+                                return;
+                            }
                             match mode {
                                 SelectionTriggerMode::PopButton => {
                                     let _ = super::pop_button::show(
@@ -407,8 +414,7 @@ async fn handle_hook_event(
                                     );
                                 },
                                 _ => {
-                                    show_ocr_force_translate(&app_c, &pick.word, pick.x, pick.y)
-                                        .await;
+                                    present::present_selection(&app_c, &pick.word).await;
                                 },
                             }
                         }
@@ -426,408 +432,9 @@ fn is_junk_hover_word(w: &str) -> bool {
     is_ui_chrome_word(w) || super::hover_pick::looks_like_app_or_process_name(w)
 }
 
-async fn show_hover_dictionary(app: &AppHandle, word: &str, x: f64, y: f64) {
-    let word = word.trim();
-    if word.is_empty() || !dictionary::is_single_word(word) || is_junk_hover_word(word) {
-        return;
-    }
-    if crate::selection::mouse_hook::key_pressed_within_ms(400) {
-        return;
-    }
-
-    let source = {
-        app.try_state::<crate::AppState>()
-            .map(|s| {
-                s.system
-                    .config
-                    .blocking_lock()
-                    .selection_ux
-                    .hover_dict_source
-                    .clone()
-            })
-            .unwrap_or_else(|| "auto".into())
-    };
-    let source = source.to_ascii_lowercase();
-    let use_ecdict = matches!(source.as_str(), "auto" | "ecdict" | "local");
-    let use_youdao = matches!(source.as_str(), "auto" | "youdao" | "online");
-
-    let mut results = Vec::new();
-    // Local ECDICT first for English when enabled
-    if use_ecdict && !dictionary::is_cjk(word) {
-        if let Some(state) = app.try_state::<crate::AppState>() {
-            if let Some(pool) = state.ecdict_pool.as_ref() {
-                if let Ok(body) = lookup_ecdict_overlay(word, pool).await {
-                    if dictionary::has_real_meanings(&body) {
-                        results = body;
-                    }
-                }
-            }
-        }
-    }
-    if results.is_empty() && use_youdao {
-        let dict = dictionary::Dictionary::new();
-        results = if dictionary::is_cjk(word) {
-            let mut found = Vec::new();
-            let chars: Vec<char> = word.chars().collect();
-            if chars.len() > 1 {
-                for len in (1..=chars.len().min(4)).rev() {
-                    for start in 0..=(chars.len() - len) {
-                        let sub: String = chars[start..start + len].iter().collect();
-                        if let Ok(r) = dict.lookup_chinese(&sub).await {
-                            if dictionary::has_real_meanings(&r) {
-                                found = r;
-                                break;
-                            }
-                        }
-                    }
-                    if !found.is_empty() {
-                        break;
-                    }
-                }
-            }
-            if found.is_empty() {
-                dict.lookup_chinese(word).await.unwrap_or_default()
-            } else {
-                found
-            }
-        } else {
-            dict.lookup(word).await.unwrap_or_default()
-        };
-    }
-    // ecdict-only miss: optional youdao already handled; pure miss → silent
-    if results.is_empty() && use_ecdict && !use_youdao && dictionary::is_cjk(word) {
-        // CJK has no ECDICT path — fall back youdao once if source was ecdict-only
-    }
-
-    // Hover = real dictionary hit only (never MT app titles / OCR junk).
-    let Some(body) = format_dict_body(word, &results) else {
-        return;
-    };
-    if crate::selection::mouse_hook::key_pressed_within_ms(400) {
-        return;
-    }
-    let pos = overlay::OverlayPosition::at_cursor(x, y);
-    let line_n = body.lines().count().max(1) as f64;
-    let h = (64.0 + line_n * 22.0).clamp(80.0, 300.0);
-    // CJK ~14–16 CSS px/glyph; ASCII ~8. Mixed text → weight CJK higher.
-    let longest = body
-        .lines()
-        .map(|l| {
-            l.chars()
-                .map(|c| if c >= '\u{3000}' { 15.0_f64 } else { 8.0 })
-                .sum::<f64>()
-        })
-        .fold(0.0_f64, f64::max)
-        .max(96.0);
-    let w = (longest + 56.0).clamp(220.0, 460.0);
-    let content = overlay::OverlayContent {
-        source: String::new(),
-        translated: body,
-        source_app: Some("hover-dict".into()),
-        window_title: None,
-    };
-    let html = overlay::html_builder::build_html(&content, overlay::OverlayLevel::Minimal, 4500);
-    let _ = overlay::window_manager::create_overlay_window_ex(
-        app, &html, pos.x, pos.y, w, h, true, false,
-    );
-}
-
-fn push_ecdict_def(
-    meanings: &mut Vec<crate::models::dictionary::Meaning>,
-    pos: &str,
-    def_text: &str,
-) {
-    use crate::models::dictionary::{Definition, Meaning};
-    let def_text = def_text.trim();
-    if def_text.is_empty() {
-        return;
-    }
-    let pos_key = if pos.is_empty() { "" } else { pos };
-    if let Some(m) = meanings.iter_mut().find(|m| m.part_of_speech == pos_key) {
-        if m.definitions.len() < 6 {
-            m.definitions.push(Definition {
-                definition: def_text.to_string(),
-                example: None,
-                synonyms: vec![],
-                antonyms: vec![],
-            });
-        }
-        return;
-    }
-    if meanings.len() >= 6 {
-        return;
-    }
-    meanings.push(Meaning {
-        part_of_speech: pos_key.to_string(),
-        definitions: vec![Definition {
-            definition: def_text.to_string(),
-            example: None,
-            synonyms: vec![],
-            antonyms: vec![],
-        }],
-    });
-}
-
-/// ECDICT → DictionaryResult for hover overlay.
-async fn lookup_ecdict_overlay(
-    word: &str,
-    pool: &sqlx::SqlitePool,
-) -> Result<Vec<crate::models::dictionary::DictionaryResult>, String> {
-    use crate::models::dictionary::{DictionaryResult, Meaning};
-    use sqlx::Row;
-    let key = word.trim().to_lowercase();
-    // Prefer pos column when present (ECDICT schema); fall back without it.
-    let row = match sqlx::query(
-        "SELECT word, phonetic, definition, translation, pos FROM stardict WHERE word = ?1 COLLATE NOCASE LIMIT 1",
-    )
-    .bind(&key)
-    .fetch_optional(pool)
-    .await
-    {
-        Ok(r) => r,
-        Err(_) => {
-            sqlx::query(
-                "SELECT word, phonetic, definition, translation FROM stardict WHERE word = ?1 COLLATE NOCASE LIMIT 1",
-            )
-            .bind(&key)
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| e.to_string())?
-        },
-    };
-    let Some(row) = row else {
-        return Ok(vec![]);
-    };
-    let head: String = row.try_get("word").unwrap_or_else(|_| word.to_string());
-    let phonetic: Option<String> = row.try_get("phonetic").ok().flatten();
-    let translation: Option<String> = row.try_get("translation").ok().flatten();
-    let definition: Option<String> = row.try_get("definition").ok().flatten();
-    let pos_raw: Option<String> = row.try_get("pos").ok().flatten();
-    let default_pos = pos_raw
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .unwrap_or("")
-        .to_string();
-    let mut meanings: Vec<Meaning> = Vec::new();
-    // ECDICT translation lines often look like "n. 名词" / "v. 动词"
-    if let Some(tr) = translation {
-        for line in tr.split(['\n', '\\']) {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            let (pos, def) = if let Some((p, rest)) = line.split_once('.') {
-                let p = p.trim();
-                if p.len() <= 6 && p.chars().all(|c| c.is_ascii_alphabetic()) {
-                    (p, rest.trim())
-                } else {
-                    (default_pos.as_str(), line)
-                }
-            } else {
-                (default_pos.as_str(), line)
-            };
-            push_ecdict_def(&mut meanings, pos, def);
-        }
-    }
-    if meanings.is_empty() {
-        if let Some(def) = definition {
-            for line in def.split('\n').take(4) {
-                push_ecdict_def(&mut meanings, default_pos.as_str(), line);
-            }
-        }
-    }
-    if meanings.is_empty() {
-        return Ok(vec![]);
-    }
-    Ok(vec![DictionaryResult {
-        word: head,
-        phonetic: phonetic.filter(|p| !p.is_empty()).map(|p| {
-            if p.starts_with('/') || p.starts_with('[') {
-                p
-            } else {
-                format!("/{}/", p)
-            }
-        }),
-        meanings,
-        source_urls: vec![],
-    }])
-}
-
-/// Public entry for dictionary hotkey / external callers (dict-first for single words).
+/// Public entry for dictionary hotkey / external callers (dict vs MT via present router).
 pub async fn show_selection_translate_text_public(app: &AppHandle, text: &str) {
-    show_selection_translate_text(app, text).await;
-}
-
-async fn show_selection_translate_text(app: &AppHandle, text: &str) {
-    let Some(state) = app.try_state::<crate::AppState>() else {
-        return;
-    };
-    let (from, to, _level, dismiss) = {
-        let c = state.system.config.lock().await;
-        (
-            c.default_from.clone(),
-            c.default_to.clone(),
-            c.overlay_level,
-            c.overlay_auto_dismiss_ms,
-        )
-    };
-    let trimmed = text.trim();
-    // Single word: real dict hit only; miss / OCR garbage (e.g. "repare") → machine translate
-    if dictionary::is_single_word(trimmed) && trimmed.chars().count() <= 32 {
-        let dict = dictionary::Dictionary::new();
-        let results = if dictionary::is_cjk(trimmed) {
-            dict.lookup_chinese(trimmed).await.unwrap_or_default()
-        } else {
-            dict.lookup(trimmed).await.unwrap_or_default()
-        };
-        if let Some(body) = format_dict_body(trimmed, &results) {
-            let (cx, cy) = cursor_pos();
-            let pos = overlay::OverlayPosition::at_cursor(cx, cy);
-            let line_n = body.lines().count().max(2) as f64;
-            let h = (56.0 + line_n * 22.0).clamp(80.0, 200.0);
-            let content = overlay::OverlayContent {
-                source: trimmed.to_string(),
-                translated: body,
-                source_app: Some("dict".into()),
-                window_title: None,
-            };
-            let html = overlay::html_builder::build_html(
-                &content,
-                overlay::OverlayLevel::Minimal,
-                dismiss.max(3000),
-            );
-            let _ = overlay::window_manager::create_overlay_window_ex(
-                app, &html, pos.x, pos.y, 300.0, h, true, false,
-            );
-            return;
-        }
-        // no real meanings → fall through to MT below
-    }
-
-    match state
-        .translation
-        .service
-        .run_full(
-            crate::models::translation::TranslateChannel::Selection,
-            text,
-            &from,
-            &to,
-        )
-        .await
-    {
-        Ok(resp) => {
-            let display = {
-                let joined = resp.display_text();
-                if joined.is_empty() {
-                    format!("（无翻译结果）\n{}", text)
-                } else {
-                    joined
-                }
-            };
-            let (cx, cy) = cursor_pos();
-            let pos = overlay::OverlayPosition::at_cursor(cx, cy);
-            let line_n = display.lines().count().max(1) as f64;
-            let h = (56.0 + line_n * 22.0).clamp(72.0, 320.0);
-            let w = (display
-                .lines()
-                .map(|l| l.chars().count())
-                .max()
-                .unwrap_or(16) as f64
-                * 8.0
-                + 48.0)
-                .clamp(200.0, 460.0);
-            let content = overlay::OverlayContent {
-                source: text.to_string(),
-                translated: display,
-                source_app: Some("selection".into()),
-                window_title: None,
-            };
-            let html = overlay::html_builder::build_html(
-                &content,
-                overlay::OverlayLevel::Standard,
-                dismiss.max(5000),
-            );
-            let _ = overlay::window_manager::create_overlay_window_ex(
-                app, &html, pos.x, pos.y, w, h, true, false,
-            );
-        },
-        Err(e) => {
-            tracing::warn!("[selection_ux] translate failed: {e}");
-            let (cx, cy) = cursor_pos();
-            let pos = overlay::OverlayPosition::at_cursor(cx, cy);
-            let content = overlay::OverlayContent {
-                source: text.to_string(),
-                translated: format!("翻译失败：{e}"),
-                source_app: Some("selection".into()),
-                window_title: None,
-            };
-            let html =
-                overlay::html_builder::build_html(&content, overlay::OverlayLevel::Minimal, 4000);
-            let _ = overlay::window_manager::create_overlay_window_ex(
-                app, &html, pos.x, pos.y, 320.0, 120.0, true, false,
-            );
-        },
-    }
-}
-
-async fn show_ocr_force_translate(app: &AppHandle, text: &str, x: f64, y: f64) {
-    let text = text.trim();
-    if text.is_empty() {
-        return;
-    }
-    if dictionary::is_single_word(text) {
-        show_hover_dictionary(app, text, x, y).await;
-        return;
-    }
-    let Some(state) = app.try_state::<crate::AppState>() else {
-        return;
-    };
-    let (from, to) = {
-        let c = state.system.config.lock().await;
-        (c.default_from.clone(), c.default_to.clone())
-    };
-    match state
-        .translation
-        .service
-        .run_full(
-            crate::models::translation::TranslateChannel::Selection,
-            text,
-            &from,
-            &to,
-        )
-        .await
-    {
-        Ok(resp) => {
-            let translated = resp.display_text();
-            if translated.is_empty() {
-                return;
-            }
-            let pos = overlay::OverlayPosition::at_cursor(x, y);
-            let line_n = translated.lines().count().max(1) as f64;
-            let h = (56.0 + line_n * 22.0).clamp(72.0, 320.0);
-            let w = (translated
-                .lines()
-                .map(|l| l.chars().count())
-                .max()
-                .unwrap_or(16) as f64
-                * 8.0
-                + 48.0)
-                .clamp(200.0, 460.0);
-            let content = overlay::OverlayContent {
-                source: text.to_string(),
-                translated,
-                source_app: Some("ocr-force".into()),
-                window_title: None,
-            };
-            let html =
-                overlay::html_builder::build_html(&content, overlay::OverlayLevel::Standard, 5000);
-            let _ = overlay::window_manager::create_overlay_window_ex(
-                app, &html, pos.x, pos.y, w, h, true, false,
-            );
-        },
-        Err(e) => tracing::warn!("[selection_ux] OCR force translate failed: {}", e),
-    }
+    present::present_selection(app, text).await;
 }
 
 fn left_button_down() -> bool {

@@ -81,11 +81,15 @@ export default function SelectionSettings() {
       <div>
         <h1 className="ui-page-title">划词翻译</h1>
         <p className="ui-page-desc">
-          选中文字 → 浮钮/自动翻译；悬停词典；OCR 补取。默认「浮钮再译」
+          选中文字 → 浮钮/自动；悬停=仅词典。单字→词典卡，句/段→翻译卡；junk
+          不机翻。默认「浮钮再译」
         </p>
       </div>
 
-      <Card title="选中文本 → 翻译浮层" description="任意可复制/可 UIA 选中的应用">
+      <Card
+        title="选中文本 → 词典/翻译浮层"
+        description="词→词典卡（ECDICT→有道）；句→机翻；浮钮只确认 show 时 pending"
+      >
         <div className="grid gap-2">
           {TRIGGERS.map((t) => (
             <label
@@ -191,8 +195,8 @@ export default function SelectionSettings() {
           <div className="min-w-0">
             <p className="text-sm font-medium text-text-primary">启用悬停取词</p>
             <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
-              光标稳定后查词（无需 Alt）。终端内自动关闭（避免 PowerShell
-              误识）。打字会立刻关卡。OCR 补取用横向窄条。词典未命中不弹空窗。
+              光标稳定后查词（无需 Alt）。仅词典卡，未命中不弹机翻。终端内自动关闭。打字立刻关卡。
+              与浮钮共用 ECDICT→有道。
             </p>
           </div>
           <Switch checked={ux.hoverDictionary} onChange={(v) => patchUx({ hoverDictionary: v })} />
