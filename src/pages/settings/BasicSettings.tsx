@@ -132,7 +132,10 @@ export default function BasicSettings() {
         </div>
       </Card>
 
-      <Card title="语音合成 (TTS)" description="Edge 默认免 Key；OpenAI 兼容要 Key；有道适合单词">
+      <Card
+        title="语音合成 (TTS)"
+        description="Edge 默认免 Key；Fish s2.1-pro-free 需 Key 但模型免费；OpenAI 兼容要 Key；有道适合单词"
+      >
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">后端</label>
@@ -145,6 +148,7 @@ export default function BasicSettings() {
               className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg outline-none"
             >
               <option value="edge">Edge TTS（默认）</option>
+              <option value="fish">Fish Audio（s2.1-pro-free）</option>
               <option value="openai">OpenAI / 兼容 TTS</option>
               <option value="youdao">有道 dictvoice</option>
             </select>
@@ -164,6 +168,116 @@ export default function BasicSettings() {
                 placeholder="zh-CN-XiaoxiaoNeural"
                 className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-sm"
               />
+            </div>
+          )}
+
+          {(config.ttsProvider || 'edge') === 'fish' && (
+            <div className="space-y-3">
+              <p className="text-xs text-text-secondary">
+                模型 s2.1-pro-free 按 Fish 文档为免费开发档（公平使用、无 SLA）。仍需 API
+                Key；也可设环境变量 FISH_API_KEY。
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-2">API Key</label>
+                <input
+                  type="password"
+                  value={config.fishTts?.apiKey || ''}
+                  onChange={(e) => {
+                    updateConfig((prev) => ({
+                      ...prev,
+                      fishTts: {
+                        apiKey: e.target.value,
+                        model: prev.fishTts?.model || 's2.1-pro-free',
+                        referenceId:
+                          prev.fishTts?.referenceId || '12b8a0bf8e0042c3b11e519d11db8b68',
+                        format: prev.fishTts?.format || 'mp3',
+                        speed: prev.fishTts?.speed ?? 1,
+                      },
+                    }));
+                    void saveConfig();
+                  }}
+                  className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-sm"
+                  placeholder="Fish API Key"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Model</label>
+                  <select
+                    value={config.fishTts?.model || 's2.1-pro-free'}
+                    onChange={(e) => {
+                      updateConfig((prev) => ({
+                        ...prev,
+                        fishTts: {
+                          apiKey: prev.fishTts?.apiKey || '',
+                          model: e.target.value,
+                          referenceId:
+                            prev.fishTts?.referenceId || '12b8a0bf8e0042c3b11e519d11db8b68',
+                          format: prev.fishTts?.format || 'mp3',
+                          speed: prev.fishTts?.speed ?? 1,
+                        },
+                      }));
+                      void saveConfig();
+                    }}
+                    className="w-full px-2 py-1.5 bg-bg-tertiary border border-border rounded text-sm"
+                  >
+                    <option value="s2.1-pro-free">s2.1-pro-free（免费）</option>
+                    <option value="s2.1-pro">s2.1-pro</option>
+                    <option value="s2-pro">s2-pro</option>
+                    <option value="s1">s1</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">语速</label>
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={2}
+                    step={0.1}
+                    value={config.fishTts?.speed ?? 1}
+                    onChange={(e) => {
+                      const speed = Number(e.target.value) || 1;
+                      updateConfig((prev) => ({
+                        ...prev,
+                        fishTts: {
+                          apiKey: prev.fishTts?.apiKey || '',
+                          model: prev.fishTts?.model || 's2.1-pro-free',
+                          referenceId:
+                            prev.fishTts?.referenceId || '12b8a0bf8e0042c3b11e519d11db8b68',
+                          format: prev.fishTts?.format || 'mp3',
+                          speed,
+                        },
+                      }));
+                      void saveConfig();
+                    }}
+                    className="w-full px-2 py-1.5 bg-bg-tertiary border border-border rounded text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-2">
+                  音色 reference_id（Fish 声音库 / 克隆模型 ID）
+                </label>
+                <input
+                  value={config.fishTts?.referenceId || ''}
+                  onChange={(e) => {
+                    updateConfig((prev) => ({
+                      ...prev,
+                      fishTts: {
+                        apiKey: prev.fishTts?.apiKey || '',
+                        model: prev.fishTts?.model || 's2.1-pro-free',
+                        referenceId: e.target.value,
+                        format: prev.fishTts?.format || 'mp3',
+                        speed: prev.fishTts?.speed ?? 1,
+                      },
+                      ttsVoice: e.target.value,
+                    }));
+                    void saveConfig();
+                  }}
+                  className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-sm font-mono"
+                  placeholder="12b8a0bf8e0042c3b11e519d11db8b68"
+                />
+              </div>
             </div>
           )}
 

@@ -192,13 +192,21 @@ export interface AppConfig {
   furiganaEnabled?: boolean;
   ttsAutoPlay?: boolean;
   ttsVoice?: string;
-  /** edge | openai | youdao */
+  /** edge | openai | youdao | fish */
   ttsProvider?: string;
   openaiTts?: {
     apiKey: string;
     baseUrl: string;
     model: string;
     voice: string;
+    speed: number;
+  };
+  /** Fish Audio TTS — free model s2.1-pro-free for dev/test */
+  fishTts?: {
+    apiKey: string;
+    model: string;
+    referenceId: string;
+    format: string;
     speed: number;
   };
   httpTimeoutSecs?: number;

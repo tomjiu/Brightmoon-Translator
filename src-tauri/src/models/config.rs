@@ -595,6 +595,51 @@ impl Default for OpenAiTtsConfig {
     }
 }
 
+/// Fish Audio TTS (https://docs.fish.audio) — free model `s2.1-pro-free` for dev/test.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FishTtsConfig {
+    /// Bearer token; also accepts env `FISH_API_KEY` when empty.
+    #[serde(default)]
+    pub api_key: String,
+    /// Header `model`: s2.1-pro-free | s2.1-pro | s2-pro | s1
+    #[serde(default = "default_fish_tts_model")]
+    pub model: String,
+    /// Voice library / clone model id (`reference_id`)
+    #[serde(default = "default_fish_tts_reference_id")]
+    pub reference_id: String,
+    #[serde(default = "default_fish_tts_format")]
+    pub format: String,
+    #[serde(default = "default_fish_tts_speed")]
+    pub speed: f32,
+}
+
+fn default_fish_tts_model() -> String {
+    "s2.1-pro-free".into()
+}
+fn default_fish_tts_reference_id() -> String {
+    // Docs sample voice model id for quick try
+    "12b8a0bf8e0042c3b11e519d11db8b68".into()
+}
+fn default_fish_tts_format() -> String {
+    "mp3".into()
+}
+fn default_fish_tts_speed() -> f32 {
+    1.0
+}
+
+impl Default for FishTtsConfig {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            model: default_fish_tts_model(),
+            reference_id: default_fish_tts_reference_id(),
+            format: default_fish_tts_format(),
+            speed: default_fish_tts_speed(),
+        }
+    }
+}
+
 fn default_edge_tts_token() -> String {
     "6A5AA1D4EAFF4E9FB37E23D68491D6F4".to_string()
 }
@@ -795,12 +840,15 @@ pub struct AppConfig {
     /// TTS: preferred voice name (empty = auto from language)
     #[serde(default)]
     pub tts_voice: String,
-    /// TTS provider: "edge" | "openai" | "youdao"
+    /// TTS provider: "edge" | "openai" | "youdao" | "fish"
     #[serde(default = "default_tts_provider")]
     pub tts_provider: String,
     /// OpenAI-compatible TTS settings
     #[serde(default)]
     pub openai_tts: OpenAiTtsConfig,
+    /// Fish Audio TTS (s2.1-pro-free etc.)
+    #[serde(default)]
+    pub fish_tts: FishTtsConfig,
     /// HTTP request timeout in seconds (default: 30)
     #[serde(default = "default_http_timeout_secs")]
     pub http_timeout_secs: u64,
@@ -1463,6 +1511,7 @@ impl Default for AppConfig {
             tts_voice: String::new(),
             tts_provider: default_tts_provider(),
             openai_tts: OpenAiTtsConfig::default(),
+            fish_tts: FishTtsConfig::default(),
             http_timeout_secs: default_http_timeout_secs(),
             ocr_timeout_secs: default_ocr_timeout_secs(),
             llm_timeout_secs: default_llm_timeout_secs(),

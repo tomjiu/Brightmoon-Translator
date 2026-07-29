@@ -19,15 +19,23 @@ pub async fn text_to_speech(
     let edge_token = config.edge_tts_token.clone();
     let preferred = config.tts_voice.clone();
     let openai = config.openai_tts.clone();
+    let fish = config.fish_tts.clone();
     drop(config);
 
-    let resolved_voice = voice
-        .filter(|v| !v.trim().is_empty())
+    let voice_arg = voice
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let preferred_trim = preferred.trim().to_string();
+
+    let resolved_voice = voice_arg
+        .clone()
         .or_else(|| {
-            if preferred.trim().is_empty() {
+            if preferred_trim.is_empty() {
                 None
             } else {
-                Some(preferred)
+                Some(preferred_trim.clone())
             }
         })
         .unwrap_or_else(|| tts::get_voice_for_lang(&lang).to_string());
@@ -51,6 +59,28 @@ pub async fn text_to_speech(
             .await
             .map_err(|e| format!("OpenAI TTS failed: {e}"))?
         },
+        "fish" | "fish_audio" | "fishaudio" => {
+            // reference_id: call voice > tts_voice (if not Edge Neural) > fish_tts.reference_id
+            let rid = voice_arg
+                .or_else(|| {
+                    if !preferred_trim.is_empty() && !preferred_trim.contains("Neural") {
+                        Some(preferred_trim)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| fish.reference_id.clone());
+            tts::synthesize_fish(
+                &text,
+                &fish.api_key,
+                &fish.model,
+                &rid,
+                &fish.format,
+                fish.speed,
+            )
+            .await
+            .map_err(|e| format!("Fish Audio TTS failed: {e}"))?
+        },
         "youdao" => tts::synthesize_youdao_dictvoice(&text, &lang)
             .await
             .map_err(|e| format!("Youdao TTS failed: {e}"))?,
@@ -64,6 +94,10 @@ pub async fn text_to_speech(
 }
 
 #[tauri::command]
-pub async fn get_tts_voices() -> Result<Vec<tts::TtsVoice>, String> {
-    Ok(tts::default_voices())
+pub async fn get_tts_voices(provider: Option<String>) -> Result<Vec<tts::TtsVoice>, String> {
+    let p = provider.unwrap_or_default().trim().to_ascii_lowercase();
+    Ok(match p.as_str() {
+        "fish" | "fish_audio" | "fishaudio" => tts::default_fish_voices(),
+        _ => tts::default_voices(),
+    })
 }

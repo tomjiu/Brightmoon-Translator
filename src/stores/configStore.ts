@@ -88,6 +88,13 @@ const INITIAL_CONFIG: AppConfig = {
     voice: 'alloy',
     speed: 1,
   },
+  fishTts: {
+    apiKey: '',
+    model: 's2.1-pro-free',
+    referenceId: '12b8a0bf8e0042c3b11e519d11db8b68',
+    format: 'mp3',
+    speed: 1,
+  },
   httpTimeoutSecs: 30,
   ocrTimeoutSecs: 30,
   llmTimeoutSecs: 120,
@@ -243,6 +250,16 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         model: loadedCfg.openaiTts?.model ?? INITIAL_CONFIG.openaiTts?.model ?? 'tts-1',
         voice: loadedCfg.openaiTts?.voice ?? INITIAL_CONFIG.openaiTts?.voice ?? 'alloy',
         speed: loadedCfg.openaiTts?.speed ?? INITIAL_CONFIG.openaiTts?.speed ?? 1,
+      },
+      fishTts: {
+        apiKey: loadedCfg.fishTts?.apiKey ?? INITIAL_CONFIG.fishTts?.apiKey ?? '',
+        model: loadedCfg.fishTts?.model ?? INITIAL_CONFIG.fishTts?.model ?? 's2.1-pro-free',
+        referenceId:
+          loadedCfg.fishTts?.referenceId ??
+          INITIAL_CONFIG.fishTts?.referenceId ??
+          '12b8a0bf8e0042c3b11e519d11db8b68',
+        format: loadedCfg.fishTts?.format ?? INITIAL_CONFIG.fishTts?.format ?? 'mp3',
+        speed: loadedCfg.fishTts?.speed ?? INITIAL_CONFIG.fishTts?.speed ?? 1,
       },
     };
     set({ config: merged, loaded: true });
