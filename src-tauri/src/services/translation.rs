@@ -242,6 +242,30 @@ impl TranslationService {
         }
     }
 
+    /// Single named engine (BatchConfig.engine override). Empty result on failure.
+    pub async fn translate_named_engine(
+        &self,
+        engine_id: &str,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<String, String> {
+        let prepared = self.prepare(text, from, to).await;
+        let router = self.engine_router.read().await;
+        match router
+            .translate_named(engine_id, &prepared.text, from, to)
+            .await
+        {
+            Ok(raw) => {
+                drop(router);
+                Ok(self
+                    .finalize(&raw, text, from, to, &prepared.blacklist)
+                    .await)
+            },
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
     /// Convenience: batch-mode run (segments as index+text pairs).
     pub async fn run_batch(
         &self,

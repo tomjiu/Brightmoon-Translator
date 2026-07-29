@@ -606,6 +606,35 @@ pub async fn trigger_selection_translate(
     Ok(())
 }
 
+/// Dictionary-first lookup for current selection (QTranslate D).
+/// Single word → dict card when hit; otherwise machine translate overlay.
+#[command]
+pub async fn trigger_dictionary_lookup(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let exclude = {
+        let c = state.system.config.lock().await;
+        c.selection_ux.exclude_processes.clone()
+    };
+    let selection = state
+        .system
+        .selection_manager
+        .get_selection_routed(&exclude)
+        .await;
+    let text = selection
+        .map(|s| s.text)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        return Err("No text selected".to_string());
+    }
+
+    crate::selection::auto_watch::show_selection_translate_text_public(&app, &text).await;
+    Ok(())
+}
+
 /// Pop button clicked → translate pending selection text and show overlay.
 #[command]
 pub async fn pop_button_confirm(

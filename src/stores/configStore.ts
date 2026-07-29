@@ -46,6 +46,7 @@ const INITIAL_CONFIG: AppConfig = {
     translateSelection: '',
     replaceTranslate: '',
     toggleOverlayClickThrough: '',
+    dictionaryLookup: '',
   },
   selectionUx: {
     triggerMode: 'pop_button',

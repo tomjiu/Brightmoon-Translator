@@ -172,4 +172,18 @@ fn register_with_handle(app: &AppHandle, config: &HotkeyConfig) {
                 }
             });
     }
+
+    // Optional dictionary-only (QTranslate Ctrl+D style)
+    if let Some(shortcut) = parse_hotkey(&config.dictionary_lookup) {
+        let app_handle = app.clone();
+        let _ = app
+            .global_shortcut()
+            .on_shortcut(shortcut, move |_app, _s, event| {
+                if event.state == ShortcutState::Released {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.emit("trigger-dictionary-lookup", ());
+                    }
+                }
+            });
+    }
 }

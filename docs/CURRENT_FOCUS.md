@@ -4,7 +4,7 @@
 
 **Do not** change OCR session lifecycle (`ocr_begin/end_session_*`, selector→result baton) or other already-solid OCR code unless fixing a proven regression.
 
-**Git checkpoint:** local master ahead of origin — selection multi-engine overlay + BatchManager→`run_batch`.
+**Git checkpoint:** local master ahead origin (~15+); tip includes leave-dismiss / hover unit / hook pump.
 
 ---
 
@@ -14,12 +14,14 @@
 
 | Item | Status | Notes |
 |------|--------|--------|
-| Pop / auto / hotkey selection | **Working baseline** | `WH_MOUSE_LL`; min_drag_px; **ocr_modifier_key** gate |
-| Hover dictionary | **Improved** | word/sentence unit; Alt→句; **edit-focus blocks hover**; leave 120ms dismiss |
-| Overlay card polish | **Improved** | mouse-leave debounce 120ms + theme hook; light/dark feel still optional |
-| Dict miss → MT | **Improved** | Hover miss → MT (junk still blocked); selection already falls through |
-| Multi-engine selection text | **Improved** | `TranslateResponse::display_text`; hotkey + auto_watch + OCR-force share join |
-| Manual smoke (browser / notepad / terminal) | **Open** | User still reports terminal OCR junk / short quality |
+| Pop / auto / hotkey selection | **Working baseline** | `WH_MOUSE_LL`; min_drag_px; ocr_modifier_key |
+| Hover dictionary | **Improved** | word/sentence; Alt→句; edit-focus block; leave 120ms |
+| UIA TextPattern word-at-point | **Improved** | RangeFromPoint + Word/Paragraph expand; ratio fallback |
+| Multi-monitor clamp (overlay/pop) | **Improved** | `clamp_rect_to_cursor_monitor` work area |
+| Dict-only hotkey (QTranslate D) | **Improved** | Optional `dictionaryLookup` → `trigger_dictionary_lookup` |
+| Overlay light/dark feel | **Partial** | theme hook exists |
+| Multi-engine selection text | **Improved** | `display_text` shared |
+| Manual smoke | **Open** | User acceptance |
 
 **Do not:** rewrite OCR selector/session; do not expand free-hover OCR on terminals.
 
@@ -39,7 +41,8 @@
 |------|--------|--------|
 | Document batch translate | **Improved** | `BatchManager::process` → `run_batch` waves (TM/cache/LLM pack); cancel/pause between waves |
 | Batch pre/glossary/TM/cache | **Improved 2026-07-29** | Non-OCR `translate_batch_core`: prepare + TM + cache hit/set + history; OCR path unchanged |
-| Long-text chunk quality | **Improved** | LLM numbered pack: **TM/cache pre-hit** + pack-fail per-seg fallback (non-OCR) |
+| Long-text chunk quality | **Improved** | LLM numbered pack: TM/cache pre-hit + pack-fail fallback |
+| BatchConfig.engine honor | **Improved** | `translate_named` / `translate_named_engine` per task |
 
 ### D — Other (later)
 
@@ -89,6 +92,10 @@
 | Hook host pump | `hook_inject_cmd` start on inject / stop on eject |
 | Hover unit + edit-focus | `hover_unit` + `is_editable_control_focused` |
 | Hook noise/dedup | `hook_text_is_noise` + 8s dedup window |
+| TextPattern hover word | `try_text_pattern_at_point` |
+| Multi-monitor clamp | `overlay/positioner.rs` |
+| Batch engine override | `BatchConfig.engine` → named engine |
+| Dictionary hotkey | `hotkeys.dictionaryLookup` |
 | Selection UX sprint | `selection/{mouse_hook,auto_watch,pop_button,process_class,clipboard,hover_pick}` |
 | Selection settings | `SelectionSettings.tsx` |
 | Hotkey live re-register | `hotkey.rs` + `save_config` |

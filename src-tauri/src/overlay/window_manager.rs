@@ -47,8 +47,10 @@ pub fn create_overlay_window_ex(
     // Tight bounds — oversized empty window looked like "blank lower half"
     let w = width.clamp(120.0, 480.0);
     let h = height.clamp(48.0, 320.0);
-    let px = x.max(0.0) as i32;
-    let py = y.max(0.0) as i32;
+    // Multi-monitor: keep card on the monitor under the placement point (QTranslate)
+    let (cx, cy) = crate::overlay::positioner::clamp_rect_to_cursor_monitor(x, y, w, h, x, y);
+    let px = cx.max(0.0) as i32;
+    let py = cy.max(0.0) as i32;
 
     // Reuse: hide → move/size → write content → show (no destroy, no corner flash)
     if let Some(window) = app.get_webview_window("overlay") {

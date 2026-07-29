@@ -276,6 +276,31 @@ impl Router {
         self.engines.first().map(|e| e.name())
     }
 
+    /// Translate with a single named engine (case-insensitive id/name match).
+    /// Used by BatchConfig.engine override.
+    pub async fn translate_named(
+        &self,
+        engine_id: &str,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> anyhow::Result<String> {
+        let want = engine_id.trim().to_ascii_lowercase();
+        if want.is_empty() {
+            anyhow::bail!("empty engine id");
+        }
+        for engine in &self.engines {
+            let name = engine.name();
+            if name.eq_ignore_ascii_case(engine_id)
+                || name.to_ascii_lowercase().contains(&want)
+                || want.contains(&name.to_ascii_lowercase())
+            {
+                return engine.translate(text, from, to).await;
+            }
+        }
+        anyhow::bail!("engine not found or disabled: {engine_id}")
+    }
+
     /// Rebuild engines list with new config
     pub fn rebuild(&self, config: &AppConfig) -> Self {
         Self::new(config)

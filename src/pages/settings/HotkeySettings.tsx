@@ -9,12 +9,18 @@ type HotkeyKey =
   | 'showWindow'
   | 'translateSelection'
   | 'replaceTranslate'
-  | 'toggleOverlayClickThrough';
+  | 'toggleOverlayClickThrough'
+  | 'dictionaryLookup';
 
 const FIELDS: Array<{ key: HotkeyKey; label: string; placeholder: string }> = [
   { key: 'ocrTranslate', label: 'OCR 截图翻译', placeholder: 'Ctrl+Shift+T' },
   { key: 'showWindow', label: '显示主窗口', placeholder: 'Ctrl+T' },
   { key: 'translateSelection', label: '选中文本翻译', placeholder: 'Ctrl+Shift+Y' },
+  {
+    key: 'dictionaryLookup',
+    label: '选中词典查询（可空=关闭）',
+    placeholder: 'Ctrl+Shift+D',
+  },
   { key: 'replaceTranslate', label: '替换翻译', placeholder: 'Ctrl+Shift+R' },
   {
     key: 'toggleOverlayClickThrough',

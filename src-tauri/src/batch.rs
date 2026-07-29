@@ -177,13 +177,14 @@ impl BatchManager {
     /// Uses `TranslationService::run_batch` (TM/cache/LLM numbered packs) instead of
     /// per-task `run_full`, with cancel/pause between concurrency-sized waves.
     pub async fn process(&self, service: Arc<TranslationService>) -> Result<(), String> {
-        let (concurrency, continue_on_error, from_lang, to_lang) = {
+        let (concurrency, continue_on_error, from_lang, to_lang, engine_override) = {
             let cfg = self.config.read().await;
             (
                 cfg.concurrency.max(1),
                 cfg.continue_on_error,
                 cfg.from_lang.clone(),
                 cfg.to_lang.clone(),
+                cfg.engine.clone().filter(|s| !s.trim().is_empty()),
             )
         };
 
@@ -221,23 +222,34 @@ impl BatchManager {
                 break;
             }
 
-            // Ui channel batch → primary + TM/cache (not OCR). Scope lines so wave is free after.
-            let by_index: std::collections::HashMap<usize, String> = {
-                let lines: Vec<(usize, &str)> =
-                    wave.iter().map(|t| (t.index, t.text.as_str())).collect();
-                service
-                    .run_batch(
-                        crate::models::translation::TranslateChannel::Ui,
-                        &lines,
-                        &from_lang,
-                        &to_lang,
-                        concurrency,
-                    )
-                    .await
-                    .into_iter()
-                    .map(|r| (r.index, r.translated))
-                    .collect()
-            };
+            // Named engine override → per-task translate_named; else run_batch (TM/cache/LLM).
+            let by_index: std::collections::HashMap<usize, String> =
+                if let Some(ref eng) = engine_override {
+                    let mut map = std::collections::HashMap::new();
+                    for task in &wave {
+                        let t = service
+                            .translate_named_engine(eng, &task.text, &from_lang, &to_lang)
+                            .await
+                            .unwrap_or_default();
+                        map.insert(task.index, t);
+                    }
+                    map
+                } else {
+                    let lines: Vec<(usize, &str)> =
+                        wave.iter().map(|t| (t.index, t.text.as_str())).collect();
+                    service
+                        .run_batch(
+                            crate::models::translation::TranslateChannel::Ui,
+                            &lines,
+                            &from_lang,
+                            &to_lang,
+                            concurrency,
+                        )
+                        .await
+                        .into_iter()
+                        .map(|r| (r.index, r.translated))
+                        .collect()
+                };
 
             let mut stop_job = false;
             for mut task in wave {

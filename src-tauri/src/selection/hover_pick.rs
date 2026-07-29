@@ -362,7 +362,6 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL).ok()?;
 
-        // ElementFromPoint is available on IUIAutomation (Win32 Accessibility).
         let element: IUIAutomationElement = match automation.ElementFromPoint(pt) {
             Ok(e) => e,
             Err(e) => {
@@ -370,6 +369,11 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
                 return None;
             },
         };
+
+        // Prefer TextPattern RangeFromPoint → ExpandToEnclosingUnit (true word/sentence)
+        if let Some(pick) = try_text_pattern_at_point(&element, pt, cx, cy, sentence) {
+            return Some(pick);
+        }
 
         let mut raw = String::new();
         if let Ok(name) = element.CurrentName() {
@@ -391,7 +395,6 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
             }
         }
 
-        // Bounding rectangle if available — used for cursor-relative tokenization
         let bounds = element.CurrentBoundingRectangle().ok().map(|r| {
             let w = (r.right - r.left).max(0) as f64;
             let h = (r.bottom - r.top).max(0) as f64;
@@ -427,6 +430,63 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
                 "uia_point_ratio"
             } else {
                 "uia_point"
+            },
+        })
+    }
+}
+
+/// TextPattern.RangeFromPoint + ExpandToEnclosingUnit(Word|Sentence).
+#[cfg(windows)]
+fn try_text_pattern_at_point(
+    element: &windows::Win32::UI::Accessibility::IUIAutomationElement,
+    pt: windows::Win32::Foundation::POINT,
+    cx: f64,
+    cy: f64,
+    sentence: bool,
+) -> Option<HoverPick> {
+    use windows::core::Interface;
+    use windows::Win32::UI::Accessibility::{
+        IUIAutomationTextPattern, TextUnit_Paragraph, TextUnit_Word, UIA_TextPatternId,
+    };
+
+    unsafe {
+        let pat = element.GetCurrentPattern(UIA_TextPatternId).ok()?;
+        let text_pattern: IUIAutomationTextPattern = pat.cast().ok()?;
+        let range = text_pattern.RangeFromPoint(pt).ok()?;
+        // UIA has no Sentence unit — Paragraph is the closest for "句"
+        let unit = if sentence {
+            TextUnit_Paragraph
+        } else {
+            TextUnit_Word
+        };
+        let _ = range.ExpandToEnclosingUnit(unit);
+        let text = range.GetText(80).ok()?.to_string();
+        let word = text.trim();
+        if word.is_empty() || word.chars().count() > 120 || is_ui_chrome_word(word) {
+            return None;
+        }
+        if !sentence && (!dictionary::is_single_word(word) || word.chars().count() > 40) {
+            // Fall back to ratio path
+            return None;
+        }
+        let bounds = element
+            .CurrentBoundingRectangle()
+            .ok()
+            .map(|r| SelectionBounds {
+                x: r.left as f64,
+                y: r.top as f64,
+                width: (r.right - r.left).max(0) as f64,
+                height: (r.bottom - r.top).max(0) as f64,
+            });
+        Some(HoverPick {
+            word: word.to_string(),
+            x: cx,
+            y: cy,
+            bounds,
+            source: if sentence {
+                "uia_textpattern_sentence"
+            } else {
+                "uia_textpattern_word"
             },
         })
     }

@@ -51,8 +51,16 @@ pub fn show(app: &AppHandle, text: String, screen_x: f64, screen_y: f64) -> Resu
         });
     }
 
-    let x = (screen_x + 8.0).max(0.0) as i32;
-    let y = (screen_y + 8.0).max(0.0) as i32;
+    let (clamped_x, clamped_y) = crate::overlay::positioner::clamp_rect_to_cursor_monitor(
+        screen_x + 8.0,
+        screen_y + 8.0,
+        BTN_W,
+        BTN_H,
+        screen_x,
+        screen_y,
+    );
+    let x = clamped_x.max(0.0) as i32;
+    let y = clamped_y.max(0.0) as i32;
 
     if let Some(w) = app.get_webview_window(LABEL) {
         let _ = w.hide();

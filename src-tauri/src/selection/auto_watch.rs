@@ -447,6 +447,11 @@ async fn show_hover_dictionary(app: &AppHandle, word: &str, x: f64, y: f64) {
     );
 }
 
+/// Public entry for dictionary hotkey / external callers (dict-first for single words).
+pub async fn show_selection_translate_text_public(app: &AppHandle, text: &str) {
+    show_selection_translate_text(app, text).await;
+}
+
 async fn show_selection_translate_text(app: &AppHandle, text: &str) {
     let Some(state) = app.try_state::<crate::AppState>() else {
         return;

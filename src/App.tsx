@@ -176,6 +176,25 @@ function MainApp() {
       }
     });
 
+    // Optional dictionary-first hotkey (QTranslate D)
+    const unlistenDictionaryLookup = listen('trigger-dictionary-lookup', async () => {
+      const [_, err] = await safeInvoke('trigger_dictionary_lookup');
+      if (err) {
+        console.error('Failed dictionary lookup:', err);
+        const msg = err.message;
+        if (msg.includes('No text selected')) {
+          addToast({ type: 'warning', message: t('selection.noSelection'), duration: 3000 });
+        } else {
+          addToast({
+            type: 'error',
+            message: t('selection.translateFailed'),
+            detail: msg,
+            duration: 5000,
+          });
+        }
+      }
+    });
+
     // Listen for auto-copy events
     const unlistenAutoCopy = listen<string>('auto-copy', async (event) => {
       try {
@@ -276,6 +295,7 @@ function MainApp() {
       unlistenNav.then((fn) => fn());
       unlistenOcrScreenshot.then((fn) => fn());
       unlistenTranslateSelection.then((fn) => fn());
+      unlistenDictionaryLookup.then((fn) => fn());
       unlistenAutoCopy.then((fn) => fn());
       unlistenReplaceTranslate.then((fn) => fn());
     };

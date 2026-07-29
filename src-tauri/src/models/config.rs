@@ -338,6 +338,10 @@ pub struct HotkeyConfig {
     pub replace_translate: String,
     #[serde(default = "default_overlay_click_through_hotkey")]
     pub toggle_overlay_click_through: String,
+    /// Optional QTranslate-style dictionary hotkey (empty = disabled).
+    /// Looks up selection as a word; falls through to MT on miss.
+    #[serde(default)]
+    pub dictionary_lookup: String,
 }
 
 /// How selection translation is triggered (Youdao-like UX).
@@ -443,6 +447,8 @@ impl Default for HotkeyConfig {
             translate_selection: "Ctrl+Shift+Y".to_string(),
             replace_translate: "Ctrl+Shift+R".to_string(),
             toggle_overlay_click_through: "Ctrl+Shift+Escape".to_string(),
+            // Empty until user sets (e.g. Ctrl+Shift+D) — optional feature
+            dictionary_lookup: String::new(),
         }
     }
 }

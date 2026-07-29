@@ -508,6 +508,7 @@ pub fn run() {
             commands::window::get_selected_text,
             commands::window::translate_selection,
             commands::window::trigger_selection_translate,
+            commands::window::trigger_dictionary_lookup,
             commands::window::pop_button_confirm,
             commands::window::pop_button_dismiss,
             commands::window::get_cursor_position,

@@ -78,6 +78,8 @@ interface HotkeyConfig {
   translateSelection: string;
   replaceTranslate: string;
   toggleOverlayClickThrough: string;
+  /** Optional dict-first lookup (empty = off). e.g. Ctrl+Shift+D */
+  dictionaryLookup?: string;
 }
 
 /** Desktop 划词 / 取词 (Youdao-inspired) */
