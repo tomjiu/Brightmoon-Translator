@@ -187,15 +187,28 @@ pub fn looks_like_app_or_process_name(w: &str) -> bool {
         return true;
     }
     let t = w.trim();
-    // PascalCase multi-token without spaces often app ids
-    if t.chars().count() >= 6
+    let lower = t.to_ascii_lowercase();
+    if lower.ends_with(".exe")
+        || lower.ends_with(".dll")
+        || lower.ends_with(".app")
+        || lower.contains("powershell")
+        || lower == "cmd"
+        || lower == "pwsh"
+        || lower == "bash"
+        || lower == "zsh"
+    {
+        return true;
+    }
+    // CamelCase product ids (WinStore, TextInput) — not normal dictionary words
+    if t.chars().count() >= 8
+        && !t.contains(' ')
+        && t.chars().all(|c| c.is_ascii_alphanumeric())
         && t.chars().any(|c| c.is_ascii_uppercase())
         && t.chars().any(|c| c.is_ascii_lowercase())
-        && !t.contains(' ')
         && t.chars().filter(|c| c.is_ascii_uppercase()).count() >= 2
+        && t.chars().next().is_some_and(|c| c.is_ascii_uppercase())
     {
-        // e.g. WinStore, TextInput — still allow normal English words via dict later
-        // Only reject if also has no vowels pattern? Skip — dict miss handles.
+        return true;
     }
     false
 }
@@ -629,20 +642,38 @@ fn try_text_pattern_at_point(
         let pat = element.GetCurrentPattern(UIA_TextPatternId).ok()?;
         let text_pattern: IUIAutomationTextPattern = pat.cast().ok()?;
         let range = text_pattern.RangeFromPoint(pt).ok()?;
-        // UIA has no Sentence unit — Paragraph is the closest for "句"
+        // UIA has no Sentence unit — expand Paragraph then trim to one sentence.
         let unit = if sentence {
             TextUnit_Paragraph
         } else {
             TextUnit_Word
         };
         let _ = range.ExpandToEnclosingUnit(unit);
-        let text = range.GetText(80).ok()?.to_string();
-        let word = text.trim();
-        if word.is_empty() || word.chars().count() > 120 || is_ui_chrome_word(word) {
+        let max_chars = if sentence { 400 } else { 80 };
+        let text = range.GetText(max_chars).ok()?.to_string();
+        let raw = text.trim();
+        if raw.is_empty() || is_ui_chrome_word(raw) {
             return None;
         }
-        if !sentence && (!dictionary::is_single_word(word) || word.chars().count() > 40) {
-            // Fall back to ratio path
+        // Estimate cursor ratio from element bounds when available.
+        let cursor_ratio = element.CurrentBoundingRectangle().ok().map(|r| {
+            let w = (r.right - r.left).max(1) as f64;
+            ((cx - r.left as f64) / w).clamp(0.0, 1.0)
+        });
+        let word = if sentence {
+            extract_sentence_candidate_with_hint(raw, cursor_ratio.or(Some(0.45)))
+                .unwrap_or_else(|| raw.chars().take(160).collect::<String>())
+        } else {
+            if !dictionary::is_single_word(raw) || raw.chars().count() > 40 {
+                return None;
+            }
+            raw.to_string()
+        };
+        let word = word.trim();
+        if word.is_empty() || word.chars().count() > 160 || is_ui_chrome_word(word) {
+            return None;
+        }
+        if looks_like_app_or_process_name(word) {
             return None;
         }
         let bounds = element
@@ -865,6 +896,15 @@ mod tests {
         assert!(extract_word_candidate("Administrator: Windows PowerShell").is_none());
         assert!(is_ui_chrome_word("pwsh"));
         assert!(!is_ui_chrome_word("translate"));
+    }
+
+    #[test]
+    fn rejects_app_or_process_like_names() {
+        assert!(looks_like_app_or_process_name("pwsh"));
+        assert!(looks_like_app_or_process_name("notepad.exe"));
+        assert!(looks_like_app_or_process_name("WinStore"));
+        assert!(!looks_like_app_or_process_name("translate"));
+        assert!(!looks_like_app_or_process_name("hello"));
     }
 
     #[test]

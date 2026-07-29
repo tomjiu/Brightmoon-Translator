@@ -15,8 +15,8 @@
 | Item | Status | Notes |
 |------|--------|--------|
 | Pop / auto / hotkey selection | **Working baseline** | `WH_MOUSE_LL`; min_drag_px; ocr_modifier_key |
-| Hover dictionary | **Improved** | word/sentence; Alt→句; edit-focus block; leave 120ms |
-| UIA TextPattern word-at-point | **Improved** | RangeFromPoint + Word/Paragraph expand; ratio fallback |
+| Hover dictionary | **Improved** | word/sentence; Alt→句; edit-focus block; leave 120ms; app-name reject |
+| UIA TextPattern word-at-point | **Improved** | Paragraph→sentence trim; ban Name; Text/Value only |
 | Multi-monitor clamp (overlay/pop) | **Improved** | `clamp_rect_to_cursor_monitor` work area |
 | Dict-only hotkey (QTranslate D) | **Improved** | Optional `dictionaryLookup` → `trigger_dictionary_lookup` |
 | Overlay light/dark feel | **Improved** | elevated card + shadow tokens light/dark |
@@ -59,7 +59,7 @@
 | Item | Status | Notes |
 |------|--------|--------|
 | 单框稳（M0） | **Current gate** | 几何/闪/对齐 smoke；见 OCR_INVARIANTS |
-| 原图/原文/译文切换（M1） | **Scheduled** | 仍单 `ocr-region-frame` |
+| 原图/原文/译文切换（M1） | **Partial** | 3-way toggle in frame; multi-frame still scheduled |
 | 多静态钉图（M2） | **Scheduled** | snow-shot / capcap 贴图 |
 | 多 live 框 + 拖旁屏（M3+） | **Scheduled** | 需 multi-session；**禁**未设计就改 baton |
 | 替换译（M5） | **Optional later** | kivio replace pipeline |

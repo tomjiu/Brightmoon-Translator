@@ -62,32 +62,44 @@ impl SelectionAutoWatch {
 async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: Arc<AtomicBool>) {
     let job_gen = Arc::new(AtomicU64::new(0));
 
-    // --- Easydict: real WH_MOUSE_LL (not GetAsyncKeyState polling) ---
+    // --- Easydict: WH_MOUSE_LL only when gestures/hover need it ---
+    // HotkeyOnly + hover off → skip global LL hooks (less mouse latency).
     #[cfg(windows)]
     let mut async_rx = {
-        {
-            let px = config.lock().await.min_drag_px;
-            super::mouse_hook::set_min_drag_px(px);
-        }
-        let hook_rx = super::mouse_hook::install();
-        if hook_rx.is_some() {
-            tracing::info!("[selection_ux] mouse hook active");
-        } else {
-            tracing::warn!("[selection_ux] mouse hook unavailable — gesture path degraded");
-        }
+        let (need_hook, px) = {
+            let ux = config.lock().await;
+            let need = ux.hover_dictionary
+                || matches!(
+                    ux.trigger_mode,
+                    SelectionTriggerMode::AutoOnSelect | SelectionTriggerMode::PopButton
+                )
+                || ux.ocr_force_pickup;
+            (need, ux.min_drag_px)
+        };
+        super::mouse_hook::set_min_drag_px(px);
         let (async_tx, async_rx) =
             tokio::sync::mpsc::unbounded_channel::<super::mouse_hook::MouseHookEvent>();
-        if let Some(rx) = hook_rx {
-            std::thread::Builder::new()
-                .name("moon-hook-bridge".into())
-                .spawn(move || {
-                    while let Ok(ev) = rx.recv() {
-                        if async_tx.send(ev).is_err() {
-                            break;
+        if need_hook {
+            let hook_rx = super::mouse_hook::install();
+            if let Some(rx) = hook_rx {
+                tracing::info!("[selection_ux] mouse hook active");
+                std::thread::Builder::new()
+                    .name("moon-hook-bridge".into())
+                    .spawn(move || {
+                        while let Ok(ev) = rx.recv() {
+                            if async_tx.send(ev).is_err() {
+                                break;
+                            }
                         }
-                    }
-                })
-                .ok();
+                    })
+                    .ok();
+            } else {
+                tracing::warn!("[selection_ux] mouse hook unavailable — gesture path degraded");
+            }
+        } else {
+            tracing::info!(
+                "[selection_ux] skip WH_MOUSE_LL (hotkey-only / hover off / no ocr-force)"
+            );
         }
         async_rx
     };
@@ -411,7 +423,7 @@ async fn handle_hook_event(
 }
 
 fn is_junk_hover_word(w: &str) -> bool {
-    is_ui_chrome_word(w)
+    is_ui_chrome_word(w) || super::hover_pick::looks_like_app_or_process_name(w)
 }
 
 async fn show_hover_dictionary(app: &AppHandle, word: &str, x: f64, y: f64) {

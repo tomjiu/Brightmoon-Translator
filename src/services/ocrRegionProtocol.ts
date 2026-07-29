@@ -4,23 +4,35 @@
  */
 
 export const OCR_REGION_LABEL = 'ocr-region-frame';
+export const OCR_MAIN_LABEL = 'main';
 
+/** Events emitted toward the region frame window. */
 export const OcrRegionEvents = {
   updateData: 'ocr-region-update-data',
   loading: 'ocr-region-loading',
   error: 'ocr-region-error',
   continuousState: 'ocr-region-continuous-state',
+  followState: 'ocr-region-follow-state',
+  hint: 'ocr-region-hint',
+  pingReady: 'ocr-region-ping-ready',
+  sessionReset: 'ocr-region-session-reset',
+} as const;
+
+/** Events emitted from the region frame toward main. */
+export const OcrMainEvents = {
+  frameReady: 'ocr-region-frame-ready',
+  sessionResetAck: 'ocr-region-session-reset-ack',
   close: 'ocr-region-close',
-  ready: 'ocr-region-ready',
   refresh: 'ocr-region-refresh',
+  continuous: 'ocr-region-continuous',
+  follow: 'ocr-region-follow',
   langChange: 'ocr-region-lang-change',
   engineChange: 'ocr-region-engine-change',
-  followToggle: 'ocr-region-follow-toggle',
-  pinToggle: 'ocr-region-pin-toggle',
-  resize: 'ocr-region-resize',
-  move: 'ocr-region-move',
+  positionChanged: 'ocr-region-position-changed',
+  sizeChanged: 'ocr-region-size-changed',
 } as const;
 
 export type OcrRegionEventName = (typeof OcrRegionEvents)[keyof typeof OcrRegionEvents];
+export type OcrMainEventName = (typeof OcrMainEvents)[keyof typeof OcrMainEvents];
 
 export type OcrDisplayMode = 'translation' | 'source' | 'image';
