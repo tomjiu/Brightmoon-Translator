@@ -145,7 +145,7 @@ pub struct AppState {
 }
 
 /// Resolve ecdict.db for both packaged and dev layouts.
-fn resolve_ecdict_db_path() -> Option<std::path::PathBuf> {
+pub(crate) fn resolve_ecdict_db_path() -> Option<std::path::PathBuf> {
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()));
@@ -749,6 +749,7 @@ pub fn run() {
             commands::dictionary_cmd::fuzzy_search_words,
             commands::dictionary_cmd::import_dictionary_data,
             commands::dictionary_cmd::check_dictionary_imported,
+            commands::dictionary_cmd::ecdict_status,
             commands::learning_plan_cmd::get_exam_wordlists,
             commands::learning_plan_cmd::create_learning_plan,
             commands::learning_plan_cmd::get_learning_plans,

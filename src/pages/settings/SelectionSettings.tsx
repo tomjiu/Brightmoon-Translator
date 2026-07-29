@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react';
 import { useConfigStore } from '../../stores/configStore';
 import type { SelectionTriggerMode, SelectionUxConfig } from '../../types';
 import Card from '../../components/Card';
 import Switch from '../../components/Switch';
 import Badge from '../../components/Badge';
+import { safeInvoke } from '../../services/invoke';
+import { isTauriRuntime } from '../../services/tauriRuntime';
 
 const DEFAULT_UX: SelectionUxConfig = {
   triggerMode: 'pop_button',
@@ -45,6 +48,16 @@ export default function SelectionSettings() {
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
+  const [ecdictLoaded, setEcdictLoaded] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    void safeInvoke<{ loaded: boolean }>('ecdict_status', undefined, { silent: true }).then(
+      ([status]) => {
+        if (status) setEcdictLoaded(status.loaded);
+      },
+    );
+  }, []);
 
   const ux: SelectionUxConfig = {
     ...DEFAULT_UX,
@@ -229,6 +242,15 @@ export default function SelectionSettings() {
                 <option value="ecdict">仅本地 ECDICT</option>
                 <option value="youdao">仅有道在线</option>
               </select>
+              {ecdictLoaded === false && (
+                <p className="text-xs text-warning mt-1">
+                  本地 ECDICT 未加载，选「仅本地」或「自动」时悬停释义可能为空。请将 ecdict.db 放到
+                  dictionaries/ 或安装包 resources 目录。
+                </p>
+              )}
+              {ecdictLoaded === true && (
+                <p className="text-xs text-text-secondary mt-1">本地 ECDICT 已加载。</p>
+              )}
               <p className="text-xs text-text-secondary mt-1">
                 悬停是<strong>非侵入</strong> UIA（不注入进程）。只读 TextPattern/编辑框内容，
                 <strong>不用</strong>窗口标题 Name（避免 PowerShell/Google）。未命中词典不弹机翻。

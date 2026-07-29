@@ -864,8 +864,70 @@ pub struct OcrResultDetailed {
     pub text: String,
 }
 
+/// Synthetic per-line boxes for Rapid/Paddle (sidecars return plain text only).
+/// Splits on newlines and stacks equal-height full-width bands so FE
+/// `width > 0 && height > 0` overlays work better than a single 1×1 box.
+pub fn synthetic_ocr_lines_from_text(text: &str, img_w: f64, img_h: f64) -> OcrResultDetailed {
+    let img_w = img_w.max(1.0);
+    let img_h = img_h.max(1.0);
+    let parts: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    let full = text.trim().to_string();
+    if parts.is_empty() {
+        if full.is_empty() {
+            return OcrResultDetailed {
+                lines: vec![],
+                text: String::new(),
+            };
+        }
+        return OcrResultDetailed {
+            lines: vec![OcrLineResult {
+                text: full.clone(),
+                x: 0.0,
+                y: 0.0,
+                width: img_w,
+                height: img_h,
+                words: vec![],
+            }],
+            text: full,
+        };
+    }
+    let n = parts.len() as f64;
+    let line_h = (img_h / n).max(1.0);
+    let lines: Vec<OcrLineResult> = parts
+        .into_iter()
+        .enumerate()
+        .map(|(i, line)| OcrLineResult {
+            text: line.to_string(),
+            x: 0.0,
+            y: (i as f64) * line_h,
+            width: img_w,
+            height: line_h,
+            words: vec![],
+        })
+        .collect();
+    let joined = lines
+        .iter()
+        .map(|l| l.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    OcrResultDetailed {
+        lines,
+        text: if full.is_empty() { joined } else { full },
+    }
+}
+
+fn png_dimensions(png_bytes: &[u8]) -> (f64, f64) {
+    image::load_from_memory(png_bytes)
+        .map(|img| (img.width() as f64, img.height() as f64))
+        .unwrap_or((1.0, 1.0))
+}
+
 /// Offline Rapid/Paddle sidecar OCR for screenshot path (same as image_translate).
-/// Returns plain text with a single synthetic full-image line box (sidecars lack boxes).
+/// Sidecars lack boxes — synthesize stacked line bands from newlines + image size.
 #[command]
 pub async fn offline_ocr(
     base64_data: String,
@@ -874,6 +936,7 @@ pub async fn offline_ocr(
     lang: Option<String>,
 ) -> Result<OcrResultDetailed, String> {
     let raw = decode_base64_png(&base64_data)?;
+    let (img_w, img_h) = png_dimensions(&raw);
     let cfg = crate::config::AppConfig::load();
     let backend = backend
         .filter(|s| !s.trim().is_empty())
@@ -887,17 +950,7 @@ pub async fn offline_ocr(
     })
     .await
     .map_err(|e| format!("Offline OCR join: {e}"))??;
-    Ok(OcrResultDetailed {
-        lines: vec![OcrLineResult {
-            text: text.clone(),
-            x: 0.0,
-            y: 0.0,
-            width: 1.0,
-            height: 1.0,
-            words: vec![],
-        }],
-        text,
-    })
+    Ok(synthetic_ocr_lines_from_text(&text, img_w, img_h))
 }
 
 /// Run WinRT OCR on raw PNG bytes (for use by other modules).

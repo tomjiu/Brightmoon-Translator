@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { listen, emitTo } from '@tauri-apps/api/event';
+import { listen } from '@tauri-apps/api/event';
 import { safeInvoke, invokeOrThrow } from '../services/invoke';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { isTauriRuntime } from '../services/tauriRuntime';
@@ -16,7 +16,7 @@ import {
 } from '../services/ocr';
 import { alignTranslationToLines } from '../services/ocrLineAlign';
 import { useConfigStore } from '../stores/configStore';
-import type { AppConfig, TranslateResponse, DetectionResult } from '../types';
+import type { AppConfig, TranslateResponse, DetectionResult, DictionaryResult } from '../types';
 import { WindowBindingManager } from '../hooks/ocrWindowBinding';
 import { normalizeOcrText, textSimilarity, OCR_TEXT_SIMILARITY_SKIP } from '../hooks/ocrQuality';
 import {
@@ -25,21 +25,25 @@ import {
   probeDataUrlImageSize,
 } from './ocrRegionGeometry';
 import { OCR_WATCH_INTERVAL_DEFAULT_MS, OCR_WATCH_INTERVAL_MIN_MS } from '../services/ocrConstants';
-import { OCR_REGION_LABEL, OcrRegionEvents, OcrMainEvents } from '../services/ocrRegionProtocol';
+import {
+  OcrRegionEvents,
+  OcrMainEvents,
+  emitToRegion,
+  OCR_FRAME_READY_TIMEOUT_MS,
+  OCR_SESSION_RESET_ACK_TIMEOUT_MS,
+  OCR_SCREENSHOT_READY_TIMEOUT_MS,
+  type OcrRegionRect,
+  type OcrRegionUpdateData,
+  type OcrRegionLangChangePayload,
+  type OcrRegionEngineChangePayload,
+  type OcrRegionPositionPayload,
+} from '../services/ocrRegionProtocol';
 
 interface OcrScreenshotTranslatorProps {
   launchNonce?: number;
 }
 
-interface RegionRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-/** Cold webview create; shortened after instant crop preview (was 2500). */
-const OCR_FRAME_READY_TIMEOUT_MS = 1200;
+type RegionRect = OcrRegionRect;
 
 /** true = frame listeners registered; false = timeout (do not OCR blindly). */
 function waitForOcrRegionFrameReady(timeoutMs: number): Promise<boolean> {
@@ -60,7 +64,7 @@ function waitForOcrRegionFrameReady(timeoutMs: number): Promise<boolean> {
         fn();
         return;
       }
-      void emitTo(OCR_REGION_LABEL, OcrRegionEvents.pingReady, null).catch(() => undefined);
+      void emitToRegion(OcrRegionEvents.pingReady).catch(() => undefined);
     });
   });
 }
@@ -84,7 +88,7 @@ function waitForSessionResetAck(timeoutMs: number): Promise<boolean> {
         fn();
         return;
       }
-      void emitTo(OCR_REGION_LABEL, OcrRegionEvents.sessionReset, null).catch(() => undefined);
+      void emitToRegion(OcrRegionEvents.sessionReset).catch(() => undefined);
     });
   });
 }
@@ -125,6 +129,64 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
       },
     );
   });
+}
+
+/** Mirror Rust `dictionary::is_single_word` for OCR dict-first gate. */
+function isOcrSingleWord(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > 50) return false;
+  const hasCjk = /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/.test(trimmed);
+  if (hasCjk) {
+    let cjkCount = 0;
+    for (const c of trimmed) {
+      if (/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/.test(c)) cjkCount += 1;
+    }
+    return cjkCount >= 1 && cjkCount <= 10;
+  }
+  return !/\s/.test(trimmed);
+}
+
+function hasRealDictionaryMeanings(results: DictionaryResult[]): boolean {
+  return results.some((r) =>
+    r.meanings.some((m) => {
+      if ((m.partOfSpeech || '').includes('未找到')) return false;
+      return m.definitions.some((d) => {
+        const def = d.definition || '';
+        return def.length > 0 && !def.includes('未找到');
+      });
+    }),
+  );
+}
+
+/** Compact dict body for OCR line overlay (word + phonetic + defs). */
+function formatOcrDictBody(word: string, results: DictionaryResult[]): string | null {
+  if (!hasRealDictionaryMeanings(results)) return null;
+  const r0 = results[0];
+  const lines: string[] = [];
+  if (r0.phonetic) {
+    lines.push(`${word}  ${r0.phonetic}`);
+  } else {
+    lines.push(word);
+  }
+  for (const m of r0.meanings.slice(0, 6)) {
+    if ((m.partOfSpeech || '').includes('未找到')) continue;
+    const defs = m.definitions
+      .slice(0, 3)
+      .map((d) => d.definition)
+      .filter((d) => d && !d.includes('未找到'));
+    if (defs.length === 0) continue;
+    for (const d of defs) {
+      const pos = m.partOfSpeech || '';
+      let line = !pos || pos === '基本释义' || pos === '扩展释义' ? d : `[${pos}] ${d}`;
+      if ([...line].length > 120) {
+        line = `${[...line].slice(0, 118).join('')}…`;
+      }
+      lines.push(line);
+      if (lines.length >= 8) break;
+    }
+    if (lines.length >= 8) break;
+  }
+  return lines.length > 1 ? lines.join('\n') : null;
 }
 
 export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreenshotTranslatorProps) {
@@ -214,7 +276,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       /** When true, frame keeps existing error (translate fail after partial update). */
       keepError?: boolean,
     ) => {
-      const payload = {
+      const payload: OcrRegionUpdateData = {
         screenshot,
         sourceText: ocrResult.text,
         translatedText,
@@ -231,7 +293,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
 
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          await emitTo(OCR_REGION_LABEL, OcrRegionEvents.updateData, payload);
+          await emitToRegion(OcrRegionEvents.updateData, payload);
           return;
         } catch (err) {
           console.warn('[OCR] emitTo failed on attempt', attempt + 1, ':', err);
@@ -365,9 +427,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
 
         // Soft loading for manual refresh only — continuous ticks are frequent; spinner would flash.
         if (!preCapturedImage && !continuousRef.current) {
-          void emitTo(OCR_REGION_LABEL, OcrRegionEvents.loading, { loading: true }).catch(
-            () => undefined,
-          );
+          void emitToRegion(OcrRegionEvents.loading, { loading: true }).catch(() => undefined);
         }
 
         // I5 natural size + OCR in parallel (faster first paint).
@@ -388,9 +448,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           const msg =
             ocrErr instanceof Error ? ocrErr.message : tr('ocr.noTextRecognized') || 'OCR 失败';
           await sendToRegionFrame(image, { text: '', lines: [] }, '', [], undefined, imageNatural);
-          await emitTo(OCR_REGION_LABEL, OcrRegionEvents.error, { message: msg }).catch(
-            () => undefined,
-          );
+          await emitToRegion(OcrRegionEvents.error, { message: msg }).catch(() => undefined);
           return;
         }
         if (frameClosedRef.current || sessionId !== sessionIdRef.current) return;
@@ -402,7 +460,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           lastImageFpRef.current = '';
           lastOcrTextRef.current = '';
           await sendToRegionFrame(image, { text: '', lines: [] }, '', [], undefined, imageNatural);
-          await emitTo(OCR_REGION_LABEL, OcrRegionEvents.error, {
+          await emitToRegion(OcrRegionEvents.error, {
             message: tr('ocr.noTextRecognized') || 'OCR 没有识别到文本',
           }).catch(() => undefined);
           return;
@@ -470,7 +528,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           }
 
           if (nonEmptyIdx.length === 0) {
-            await emitTo(OCR_REGION_LABEL, OcrRegionEvents.error, {
+            await emitToRegion(OcrRegionEvents.error, {
               message: tr('ocr.noTextRecognized') || 'OCR 没有识别到文本',
             }).catch(() => undefined);
           } else if (
@@ -480,7 +538,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
             // Same lang: show source as "translation", soft hint (not red error blocking UI).
             translatedText = sourceTextTrimmed;
             lineTranslations = allLines.map((l) => l.text);
-            void emitTo(OCR_REGION_LABEL, OcrRegionEvents.hint, {
+            void emitToRegion(OcrRegionEvents.hint, {
               message:
                 tr('ocr.sameLang') ||
                 `源语言与目标语言相同（${effectiveTargetLang}），请切换目标语`,
@@ -488,9 +546,39 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           } else {
             try {
               const sourcePieces = nonEmptyIdx.map((i) => allLines[i].text);
+              // Dict-first for single word (ECDICT/Youdao via lookup_dictionary) — skip full MT on hit.
+              let dictHit = false;
+              const dictCandidate =
+                sourcePieces.length === 1
+                  ? sourcePieces[0].trim()
+                  : isOcrSingleWord(sourceTextTrimmed)
+                    ? sourceTextTrimmed
+                    : '';
+              if (dictCandidate && isOcrSingleWord(dictCandidate)) {
+                try {
+                  const [dictResults] = await safeInvoke<DictionaryResult[]>(
+                    'lookup_dictionary',
+                    { text: dictCandidate },
+                    { silent: true },
+                  );
+                  const body = dictResults && formatOcrDictBody(dictCandidate, dictResults);
+                  if (body) {
+                    if (frameClosedRef.current || sessionId !== sessionIdRef.current) return;
+                    lineTranslations[nonEmptyIdx[0]] = body;
+                    for (let p = 1; p < nonEmptyIdx.length; p++) {
+                      lineTranslations[nonEmptyIdx[p]] = '';
+                    }
+                    translatedText = body;
+                    dictHit = true;
+                  }
+                } catch {
+                  // miss / error → fall through to MT
+                }
+              }
+
               // Batch path (translate_embedded → run_batch): one IPC, concurrent segments.
               // Avoid N× full translate for ≤5 lines and fragile whole-blob align for many lines.
-              if (sourcePieces.length === 1) {
+              if (!dictHit && sourcePieces.length === 1) {
                 const response = await invokeOrThrow<TranslateResponse>('translate', {
                   request: {
                     text: sourcePieces[0].trim(),
@@ -503,7 +591,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
                 if (frameClosedRef.current || sessionId !== sessionIdRef.current) return;
                 lineTranslations[nonEmptyIdx[0]] = out;
                 translatedText = out;
-              } else {
+              } else if (!dictHit) {
                 interface EmbeddedLine {
                   lineNumber: number;
                   original: string;
@@ -541,7 +629,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
               console.warn('[OCR] Translation failed:', err);
               translateFailed = true;
               translatedText = '';
-              await emitTo(OCR_REGION_LABEL, OcrRegionEvents.error, {
+              await emitToRegion(OcrRegionEvents.error, {
                 message:
                   tr('ocr.translateFailed') || '翻译失败：引擎无结果（请检查密钥/网络/引擎开关）',
               }).catch(() => undefined);
@@ -593,9 +681,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           }
         }
         if (sessionAlive) {
-          void emitTo(OCR_REGION_LABEL, OcrRegionEvents.loading, { loading: false }).catch(
-            () => undefined,
-          );
+          void emitToRegion(OcrRegionEvents.loading, { loading: false }).catch(() => undefined);
         }
         busyRef.current = false;
         const pendingRegion = pendingRegionRef.current;
@@ -643,7 +729,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     // NEVER re-OCR here. NEVER adopt width/height from the frame window: min-width
     // expansion (I3 min frame width) makes getCaptureRegion() wider than the real OCR crop and
     // used to corrupt regionRef → refresh/follow offset drift.
-    void registerListener<RegionRect>(OcrMainEvents.positionChanged, (event) => {
+    void registerListener<OcrRegionPositionPayload>(OcrMainEvents.positionChanged, (event) => {
       const r = event.payload;
       const prev = regionRef.current;
       // Drag: X/Y from frame; keep true crop size (ignore min-width expanded getCaptureRegion).
@@ -661,7 +747,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
 
     // Size changed (user resize) — adopt size after first OCR; debounce re-OCR while dragging corner.
     let resizeOcrTimer: ReturnType<typeof setTimeout> | null = null;
-    void registerListener<RegionRect>(OcrMainEvents.sizeChanged, (event) => {
+    void registerListener<OcrRegionPositionPayload>(OcrMainEvents.sizeChanged, (event) => {
       const r = event.payload;
       const prev = regionRef.current;
       if (!hasOcrRef.current) {
@@ -786,10 +872,10 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           if (!bound) {
             console.warn('[OCR] Failed to bind target window for follow mode');
             followEnabledRef.current = false;
-            void emitTo(OCR_REGION_LABEL, OcrRegionEvents.followState, {
+            void emitToRegion(OcrRegionEvents.followState, {
               enabled: false,
             }).catch(() => undefined);
-            void emitTo(OCR_REGION_LABEL, OcrRegionEvents.hint, {
+            void emitToRegion(OcrRegionEvents.hint, {
               message: '无法跟随目标窗口（请点在内容上再开跟随）',
             }).catch(() => undefined);
           }
@@ -806,70 +892,64 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     });
 
     // Language change from region frame
-    void registerListener<{ sourceLang: string; targetLang: string }>(
-      OcrMainEvents.langChange,
-      (event) => {
-        const p = event.payload;
-        langOverriddenRef.current = true;
-        sourceLangRef.current = p.sourceLang;
-        targetLangRef.current = p.targetLang;
-        lastOcrTextRef.current = '';
-        lastImageFpRef.current = '';
-        if (regionRef.current) {
-          void captureAndTranslate(regionRef.current);
-        }
-      },
-    );
+    void registerListener<OcrRegionLangChangePayload>(OcrMainEvents.langChange, (event) => {
+      const p = event.payload;
+      langOverriddenRef.current = true;
+      sourceLangRef.current = p.sourceLang;
+      targetLangRef.current = p.targetLang;
+      lastOcrTextRef.current = '';
+      lastImageFpRef.current = '';
+      if (regionRef.current) {
+        void captureAndTranslate(regionRef.current);
+      }
+    });
 
     // Engine switch / enable from region frame toolbar
-    void registerListener<{ engineId: string; enabled?: boolean; promote?: boolean }>(
-      OcrMainEvents.engineChange,
-      (event) => {
-        const { engineId, enabled, promote } = event.payload || {};
-        if (!engineId) return;
-        updateConfig((prev) => {
-          const engines = { ...prev.engines } as AppConfig['engines'] &
-            Record<string, { enabled?: boolean }>;
-          const keyMap: Record<string, keyof AppConfig['engines']> = {
-            google: 'google',
-            youdao: 'youdao',
-            baidu: 'baidu',
-            deepl: 'deepl',
-            deeplx: 'deeplx',
-            microsoft: 'microsoft',
-            yandex: 'yandex',
-            offline: 'offline',
-            caiyun: 'caiyun',
-            tatoeba: 'tatoeba',
-            baidu_web: 'baiduWeb',
-            caiyun_web: 'caiyunWeb',
-            volcengine_web: 'volcengineWeb',
-            transmart: 'transmart',
-            papago: 'papago',
-          };
-          // Only known engine keys (llm lives on config.llm, not engines).
-          const cfgKey = keyMap[engineId];
-          if (cfgKey) {
-            const cur = engines[cfgKey] as { enabled?: boolean };
-            engines[cfgKey] = {
-              ...cur,
-              enabled: enabled === undefined ? true : enabled,
-            } as never;
-          }
-          let engineOrder = [...(prev.engineOrder || [])];
-          if (promote) {
-            engineOrder = [engineId, ...engineOrder.filter((id) => id !== engineId)];
-          }
-          return { ...prev, engines, engineOrder };
-        });
-        void saveConfig();
-        lastOcrTextRef.current = '';
-        lastImageFpRef.current = '';
-        if (regionRef.current) {
-          void captureAndTranslate(regionRef.current);
+    void registerListener<OcrRegionEngineChangePayload>(OcrMainEvents.engineChange, (event) => {
+      const { engineId, enabled, promote } = event.payload || {};
+      if (!engineId) return;
+      updateConfig((prev) => {
+        const engines = { ...prev.engines } as AppConfig['engines'] &
+          Record<string, { enabled?: boolean }>;
+        const keyMap: Record<string, keyof AppConfig['engines']> = {
+          google: 'google',
+          youdao: 'youdao',
+          baidu: 'baidu',
+          deepl: 'deepl',
+          deeplx: 'deeplx',
+          microsoft: 'microsoft',
+          yandex: 'yandex',
+          offline: 'offline',
+          caiyun: 'caiyun',
+          tatoeba: 'tatoeba',
+          baidu_web: 'baiduWeb',
+          caiyun_web: 'caiyunWeb',
+          volcengine_web: 'volcengineWeb',
+          transmart: 'transmart',
+          papago: 'papago',
+        };
+        // Only known engine keys (llm lives on config.llm, not engines).
+        const cfgKey = keyMap[engineId];
+        if (cfgKey) {
+          const cur = engines[cfgKey] as { enabled?: boolean };
+          engines[cfgKey] = {
+            ...cur,
+            enabled: enabled === undefined ? true : enabled,
+          } as never;
         }
-      },
-    );
+        let engineOrder = [...(prev.engineOrder || [])];
+        if (promote) {
+          engineOrder = [engineId, ...engineOrder.filter((id) => id !== engineId)];
+        }
+        return { ...prev, engines, engineOrder };
+      });
+      void saveConfig();
+      lastOcrTextRef.current = '';
+      lastImageFpRef.current = '';
+      if (regionRef.current) {
+        void captureAndTranslate(regionRef.current);
+      }
+    });
 
     // Region frame closed → OCR session ends → main may return (lifecycle, not focus fight).
     void registerListener<unknown>(OcrMainEvents.close, async () => {
@@ -931,7 +1011,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           continuousWasOnBeforeMinimizeRef.current = true;
           continuousRef.current = false;
           setContinuous(false);
-          void emitTo(OCR_REGION_LABEL, OcrRegionEvents.continuousState, {
+          void emitToRegion(OcrRegionEvents.continuousState, {
             enabled: false,
           }).catch(() => undefined);
         } else {
@@ -943,7 +1023,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         continuousWasOnBeforeMinimizeRef.current = false;
         continuousRef.current = true;
         setContinuous(true);
-        void emitTo(OCR_REGION_LABEL, OcrRegionEvents.continuousState, {
+        void emitToRegion(OcrRegionEvents.continuousState, {
           enabled: true,
         }).catch(() => undefined);
       },
@@ -1109,7 +1189,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       }
 
       // Instant preview while OCR/translate run.
-      void emitTo(OCR_REGION_LABEL, OcrRegionEvents.updateData, {
+      void emitToRegion(OcrRegionEvents.updateData, {
         screenshot: image,
         sourceText: '',
         translatedText: '',
@@ -1144,14 +1224,12 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           return;
         }
       }
-      void emitTo(OCR_REGION_LABEL, OcrRegionEvents.continuousState, { enabled: false }).catch(
-        () => undefined,
-      );
-      const resetOk = await waitForSessionResetAck(200);
+      void emitToRegion(OcrRegionEvents.continuousState, { enabled: false }).catch(() => undefined);
+      const resetOk = await waitForSessionResetAck(OCR_SESSION_RESET_ACK_TIMEOUT_MS);
       if (!resetOk) {
         console.warn('[OCR] session-reset ack timeout — continuing');
       }
-      void emitTo(OCR_REGION_LABEL, OcrRegionEvents.updateData, {
+      void emitToRegion(OcrRegionEvents.updateData, {
         screenshot: image,
         sourceText: '',
         translatedText: '',
@@ -1169,7 +1247,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       } catch (err) {
         if (cancelled) return;
         console.error('[OCR] captureAndTranslate failed after selection:', err);
-        void emitTo(OCR_REGION_LABEL, OcrRegionEvents.error, {
+        void emitToRegion(OcrRegionEvents.error, {
           message: err instanceof Error ? err.message : String(err),
         }).catch(() => undefined);
       }
@@ -1260,10 +1338,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     try {
       await safeInvoke('set_ocr_region_frame_sampling', { sampling: false }, { silent: true });
       await safeInvoke('set_ocr_region_frame_visible', { visible: false }, { silent: true });
-      void emitTo(OCR_REGION_LABEL, OcrRegionEvents.continuousState, { enabled: false }).catch(
-        () => undefined,
-      );
-      void emitTo(OCR_REGION_LABEL, OcrRegionEvents.sessionReset, null).catch(() => undefined);
+      void emitToRegion(OcrRegionEvents.continuousState, { enabled: false }).catch(() => undefined);
+      void emitToRegion(OcrRegionEvents.sessionReset, null).catch(() => undefined);
       await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
       frameClosedRef.current = true;
 
@@ -1286,7 +1362,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       snapshotInfoRef.current = info;
 
       try {
-        const readyPromise = waitForOcrScreenshotReady(8000);
+        const readyPromise = waitForOcrScreenshotReady(OCR_SCREENSHOT_READY_TIMEOUT_MS);
         await invokeOrThrow('create_ocr_screenshot_selector');
         const ready = await readyPromise;
         if (!ready) {

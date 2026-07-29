@@ -701,6 +701,7 @@ fn try_text_pattern_at_point(
 
 /// Wide horizontal strip around cursor (one text line) — less vertical chrome noise.
 /// Default ~160×28 physical px (half 80×14). MTT-style: small target, not a square blob.
+/// Skips pure chrome under cursor; slightly larger strip when UIA looks image-like.
 pub fn pick_word_near_cursor_ocr(half_w: i32, half_h: i32) -> Option<HoverPick> {
     #[cfg(windows)]
     {
@@ -715,8 +716,90 @@ pub fn pick_word_near_cursor_ocr(half_w: i32, half_h: i32) -> Option<HoverPick> 
 
 /// Force long-rectangle OCR (for hover when UIA fails on image/browser).
 pub fn pick_word_line_strip_ocr() -> Option<HoverPick> {
-    // 180 wide × 28 tall (half 90 × 14)
+    // 180 wide × 28 tall (half 90 × 14); image-like may enlarge inside OCR path
     pick_word_near_cursor_ocr(90, 14)
+}
+
+/// UIA under cursor looks like image content (Image, or Pane/Group without TextPattern).
+/// Editable TextPattern already preferred on the UIA path; this only sizes OCR strip.
+#[cfg(windows)]
+fn element_is_image_like(
+    element: &windows::Win32::UI::Accessibility::IUIAutomationElement,
+) -> bool {
+    use windows::core::Interface;
+    use windows::Win32::UI::Accessibility::{
+        IUIAutomationTextPattern, UIA_GroupControlTypeId, UIA_ImageControlTypeId,
+        UIA_PaneControlTypeId, UIA_TextPatternId,
+    };
+    unsafe {
+        // TextPattern present → not image-like for OCR sizing (text path preferred)
+        if let Ok(pat) = element.GetCurrentPattern(UIA_TextPatternId) {
+            if pat.cast::<IUIAutomationTextPattern>().is_ok() {
+                return false;
+            }
+        }
+        if let Ok(ct) = element.CurrentControlType() {
+            let id = ct.0;
+            if id == UIA_ImageControlTypeId.0 {
+                return true;
+            }
+            // Pane/Group without TextPattern often host bitmaps/canvas text
+            if id == UIA_PaneControlTypeId.0 || id == UIA_GroupControlTypeId.0 {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// Pure chrome for OCR: title bar / menus / tabs / window — do not strip-OCR these.
+/// Pane/Group are not blocked here (may be image-like content).
+#[cfg(windows)]
+fn element_is_ocr_chrome(
+    element: &windows::Win32::UI::Accessibility::IUIAutomationElement,
+) -> bool {
+    use windows::Win32::UI::Accessibility::{
+        UIA_MenuBarControlTypeId, UIA_MenuControlTypeId, UIA_TabControlTypeId,
+        UIA_TabItemControlTypeId, UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId,
+        UIA_WindowControlTypeId,
+    };
+    unsafe {
+        if let Ok(ct) = element.CurrentControlType() {
+            let id = ct.0;
+            return id == UIA_WindowControlTypeId.0
+                || id == UIA_TitleBarControlTypeId.0
+                || id == UIA_MenuBarControlTypeId.0
+                || id == UIA_MenuControlTypeId.0
+                || id == UIA_ToolBarControlTypeId.0
+                || id == UIA_TabControlTypeId.0
+                || id == UIA_TabItemControlTypeId.0;
+        }
+        false
+    }
+}
+
+#[cfg(windows)]
+fn uia_element_at_cursor() -> Option<(
+    windows::Win32::Foundation::POINT,
+    windows::Win32::UI::Accessibility::IUIAutomationElement,
+)> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, IUIAutomationElement};
+    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+
+    unsafe {
+        let mut pt = POINT::default();
+        if GetCursorPos(&mut pt).is_err() {
+            return None;
+        }
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL).ok()?;
+        let element: IUIAutomationElement = automation.ElementFromPoint(pt).ok()?;
+        Some((pt, element))
+    }
 }
 
 #[cfg(windows)]
@@ -724,15 +807,38 @@ fn pick_word_near_cursor_ocr_win(half_w: i32, half_h: i32) -> Option<HoverPick> 
     use windows::Win32::Foundation::POINT;
     use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
+    let mut half_w = half_w;
+    let mut half_h = half_h;
     let mut pt = POINT::default();
-    unsafe {
-        if GetCursorPos(&mut pt).is_err() {
+
+    // Probe UIA under cursor: skip pure chrome; enlarge strip for image-like controls.
+    if let Some((cursor_pt, element)) = uia_element_at_cursor() {
+        pt = cursor_pt;
+        if element_is_ocr_chrome(&element) {
+            tracing::debug!("[hover_pick] OCR strip skipped: chrome control under cursor");
             return None;
         }
+        if element_is_image_like(&element) {
+            // Slightly larger strip over images/canvas (still line-ish, not a square blob)
+            half_w = half_w.max(110);
+            half_h = half_h.max(22);
+            tracing::debug!(
+                "[hover_pick] OCR strip image-like → larger {}x{}",
+                half_w * 2,
+                half_h * 2
+            );
+        }
+    } else {
+        unsafe {
+            if GetCursorPos(&mut pt).is_err() {
+                return None;
+            }
+        }
     }
-    // Prefer wide-and-short (text line). Allow tall only if caller asks.
-    let half_w = half_w.clamp(48, 140);
-    let half_h = half_h.clamp(10, 36);
+
+    // Prefer wide-and-short (text line). Allow tall only if caller asks / image-like bump.
+    let half_w = half_w.clamp(48, 160);
+    let half_h = half_h.clamp(10, 48);
     let left = pt.x - half_w;
     let top = pt.y - half_h;
     let width = (half_w * 2).max(1) as u32;

@@ -583,6 +583,23 @@ pub async fn search_word_suggestions(
         .collect())
 }
 
+/// ECDICT load status for UI feedback (path may exist even if pool failed).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EcdictStatus {
+    pub loaded: bool,
+    pub path: Option<String>,
+}
+
+#[tauri::command]
+pub async fn ecdict_status(state: State<'_, crate::AppState>) -> Result<EcdictStatus, String> {
+    let path = crate::resolve_ecdict_db_path().map(|p| p.display().to_string());
+    Ok(EcdictStatus {
+        loaded: state.ecdict_pool.is_some(),
+        path,
+    })
+}
+
 /// 检查词典数据是否已导入
 #[tauri::command]
 pub async fn check_dictionary_imported(

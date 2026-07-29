@@ -82,6 +82,29 @@ function MainApp() {
     loadConfig();
   }, [isTauri, loadConfig]);
 
+  // ECDICT missing → non-blocking toast (hover dict may be empty)
+  useEffect(() => {
+    if (!isTauri) return;
+    let cancelled = false;
+    void (async () => {
+      const [status] = await safeInvoke<{ loaded: boolean; path?: string | null }>(
+        'ecdict_status',
+        undefined,
+        { silent: true },
+      );
+      if (cancelled || !status || status.loaded) return;
+      addToast({
+        type: 'warning',
+        message: '本地词典未加载，悬停词典可能不可用',
+        detail: status.path ? `路径: ${status.path}` : undefined,
+        duration: 6000,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isTauri, addToast]);
+
   // Persist MainTranslator clipboard toggle into config.clipboardMonitor
   useEffect(() => {
     if (!isTauri) return;
