@@ -332,6 +332,11 @@ async fn handle_hook_event(
             let exclude = ux.exclude_processes.clone();
             // Capture modifier at gesture time (before 150ms delay) so user can release after
             let ocr_force = super::ocr_force_allowed(&ux);
+            // Same gate as free-hover: never OCR-force on terminal/browser chrome.
+            let ocr_force_ok = ocr_force
+                && super::process_class::foreground_process()
+                    .map(|p| !p.is_terminal && !p.is_browser)
+                    .unwrap_or(true);
             let release_x = pt.x as f64;
             let release_y = pt.y as f64;
 
@@ -370,7 +375,7 @@ async fn handle_hook_event(
                             SelectionTriggerMode::HotkeyOnly => {},
                         }
                     },
-                    _ if ocr_force => {
+                    _ if ocr_force_ok => {
                         if job_gen_c.load(Ordering::SeqCst) != gen {
                             return;
                         }
@@ -491,9 +496,18 @@ async fn show_hover_dictionary(app: &AppHandle, word: &str, x: f64, y: f64) {
     }
     let pos = overlay::OverlayPosition::at_cursor(x, y);
     let line_n = body.lines().count().max(1) as f64;
-    let h = (56.0 + line_n * 22.0).clamp(72.0, 280.0);
-    let longest = body.lines().map(|l| l.chars().count()).max().unwrap_or(12) as f64;
-    let w = (longest * 8.0 + 48.0).clamp(200.0, 420.0);
+    let h = (64.0 + line_n * 22.0).clamp(80.0, 300.0);
+    // CJK ~14–16 CSS px/glyph; ASCII ~8. Mixed text → weight CJK higher.
+    let longest = body
+        .lines()
+        .map(|l| {
+            l.chars()
+                .map(|c| if c >= '\u{3000}' { 15.0_f64 } else { 8.0 })
+                .sum::<f64>()
+        })
+        .fold(0.0_f64, f64::max)
+        .max(96.0);
+    let w = (longest + 56.0).clamp(220.0, 460.0);
     let content = overlay::OverlayContent {
         source: String::new(),
         translated: body,
@@ -506,21 +520,69 @@ async fn show_hover_dictionary(app: &AppHandle, word: &str, x: f64, y: f64) {
     );
 }
 
+fn push_ecdict_def(
+    meanings: &mut Vec<crate::models::dictionary::Meaning>,
+    pos: &str,
+    def_text: &str,
+) {
+    use crate::models::dictionary::{Definition, Meaning};
+    let def_text = def_text.trim();
+    if def_text.is_empty() {
+        return;
+    }
+    let pos_key = if pos.is_empty() { "" } else { pos };
+    if let Some(m) = meanings.iter_mut().find(|m| m.part_of_speech == pos_key) {
+        if m.definitions.len() < 6 {
+            m.definitions.push(Definition {
+                definition: def_text.to_string(),
+                example: None,
+                synonyms: vec![],
+                antonyms: vec![],
+            });
+        }
+        return;
+    }
+    if meanings.len() >= 6 {
+        return;
+    }
+    meanings.push(Meaning {
+        part_of_speech: pos_key.to_string(),
+        definitions: vec![Definition {
+            definition: def_text.to_string(),
+            example: None,
+            synonyms: vec![],
+            antonyms: vec![],
+        }],
+    });
+}
+
 /// ECDICT → DictionaryResult for hover overlay.
 async fn lookup_ecdict_overlay(
     word: &str,
     pool: &sqlx::SqlitePool,
 ) -> Result<Vec<crate::models::dictionary::DictionaryResult>, String> {
-    use crate::models::dictionary::{Definition, DictionaryResult, Meaning};
+    use crate::models::dictionary::{DictionaryResult, Meaning};
     use sqlx::Row;
     let key = word.trim().to_lowercase();
-    let row = sqlx::query(
-        "SELECT word, phonetic, definition, translation FROM stardict WHERE word = ?1 COLLATE NOCASE LIMIT 1",
+    // Prefer pos column when present (ECDICT schema); fall back without it.
+    let row = match sqlx::query(
+        "SELECT word, phonetic, definition, translation, pos FROM stardict WHERE word = ?1 COLLATE NOCASE LIMIT 1",
     )
     .bind(&key)
     .fetch_optional(pool)
     .await
-    .map_err(|e| e.to_string())?;
+    {
+        Ok(r) => r,
+        Err(_) => {
+            sqlx::query(
+                "SELECT word, phonetic, definition, translation FROM stardict WHERE word = ?1 COLLATE NOCASE LIMIT 1",
+            )
+            .bind(&key)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?
+        },
+    };
     let Some(row) = row else {
         return Ok(vec![]);
     };
@@ -528,40 +590,42 @@ async fn lookup_ecdict_overlay(
     let phonetic: Option<String> = row.try_get("phonetic").ok().flatten();
     let translation: Option<String> = row.try_get("translation").ok().flatten();
     let definition: Option<String> = row.try_get("definition").ok().flatten();
-    let mut defs: Vec<Definition> = Vec::new();
+    let pos_raw: Option<String> = row.try_get("pos").ok().flatten();
+    let default_pos = pos_raw
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("")
+        .to_string();
+    let mut meanings: Vec<Meaning> = Vec::new();
+    // ECDICT translation lines often look like "n. 名词" / "v. 动词"
     if let Some(tr) = translation {
         for line in tr.split(['\n', '\\']) {
             let line = line.trim();
             if line.is_empty() {
                 continue;
             }
-            defs.push(Definition {
-                definition: line.to_string(),
-                example: None,
-                synonyms: vec![],
-                antonyms: vec![],
-            });
-            if defs.len() >= 6 {
-                break;
-            }
+            let (pos, def) = if let Some((p, rest)) = line.split_once('.') {
+                let p = p.trim();
+                if p.len() <= 6 && p.chars().all(|c| c.is_ascii_alphabetic()) {
+                    (p, rest.trim())
+                } else {
+                    (default_pos.as_str(), line)
+                }
+            } else {
+                (default_pos.as_str(), line)
+            };
+            push_ecdict_def(&mut meanings, pos, def);
         }
     }
-    if defs.is_empty() {
+    if meanings.is_empty() {
         if let Some(def) = definition {
             for line in def.split('\n').take(4) {
-                let line = line.trim();
-                if !line.is_empty() {
-                    defs.push(Definition {
-                        definition: line.to_string(),
-                        example: None,
-                        synonyms: vec![],
-                        antonyms: vec![],
-                    });
-                }
+                push_ecdict_def(&mut meanings, default_pos.as_str(), line);
             }
         }
     }
-    if defs.is_empty() {
+    if meanings.is_empty() {
         return Ok(vec![]);
     }
     Ok(vec![DictionaryResult {
@@ -573,10 +637,7 @@ async fn lookup_ecdict_overlay(
                 format!("/{}/", p)
             }
         }),
-        meanings: vec![Meaning {
-            part_of_speech: "ECDICT".into(),
-            definitions: defs,
-        }],
+        meanings,
         source_urls: vec![],
     }])
 }

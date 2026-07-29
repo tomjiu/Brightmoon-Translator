@@ -864,6 +864,42 @@ pub struct OcrResultDetailed {
     pub text: String,
 }
 
+/// Offline Rapid/Paddle sidecar OCR for screenshot path (same as image_translate).
+/// Returns plain text with a single synthetic full-image line box (sidecars lack boxes).
+#[command]
+pub async fn offline_ocr(
+    base64_data: String,
+    backend: Option<String>,
+    plugin_dir: Option<String>,
+    lang: Option<String>,
+) -> Result<OcrResultDetailed, String> {
+    let raw = decode_base64_png(&base64_data)?;
+    let cfg = crate::config::AppConfig::load();
+    let backend = backend
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| cfg.offline_ocr.backend.clone());
+    let plugin_dir = plugin_dir
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| cfg.offline_ocr.plugin_dir.clone());
+    let lang_owned = lang;
+    let text = tokio::task::spawn_blocking(move || {
+        crate::ocr_offline::run_offline_ocr(&raw, &backend, &plugin_dir, lang_owned.as_deref())
+    })
+    .await
+    .map_err(|e| format!("Offline OCR join: {e}"))??;
+    Ok(OcrResultDetailed {
+        lines: vec![OcrLineResult {
+            text: text.clone(),
+            x: 0.0,
+            y: 0.0,
+            width: 1.0,
+            height: 1.0,
+            words: vec![],
+        }],
+        text,
+    })
+}
+
 /// Run WinRT OCR on raw PNG bytes (for use by other modules).
 pub async fn run_winrt_ocr_detailed_from_bytes(
     png_bytes: &[u8],

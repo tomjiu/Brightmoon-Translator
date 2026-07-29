@@ -46,7 +46,7 @@ interface OcrRegionData {
   keepError?: boolean;
 }
 
-type DisplayMode = 'translation' | 'source';
+type DisplayMode = 'translation' | 'source' | 'image';
 
 // Use engine codes (zh not zh-CN) so translate/detect match Rust config defaults
 const SUPPORTED_LANGS = ['auto', 'zh', 'en', 'ja', 'ko', 'fr', 'de', 'ru', 'es'];
@@ -821,7 +821,9 @@ export default function OcrRegionFrame() {
         const d = dataRef.current;
         if (!d) return;
         const text =
-          displayModeRef.current === 'source' ? d.sourceText : d.translatedText || d.sourceText;
+          displayModeRef.current === 'source' || displayModeRef.current === 'image'
+            ? d.sourceText
+            : d.translatedText || d.sourceText;
         void copyToClipboard(text);
         return;
       }
@@ -1006,10 +1008,18 @@ export default function OcrRegionFrame() {
                 ? 'bg-white/15 text-white'
                 : 'text-white/55 hover:text-white hover:bg-white/10'
           }`}
-          onClick={() => setDisplayMode(displayMode === 'translation' ? 'source' : 'translation')}
-          title={tf('ocrRegion.toggleDisplay', '切换原文/译文显示')}
+          onClick={() =>
+            setDisplayMode(
+              displayMode === 'translation'
+                ? 'source'
+                : displayMode === 'source'
+                  ? 'image'
+                  : 'translation',
+            )
+          }
+          title={tf('ocrRegion.toggleDisplay', '切换原图/原文/译文')}
         >
-          {displayMode === 'translation' ? '译' : '原'}
+          {displayMode === 'translation' ? '译' : displayMode === 'source' ? '原' : '图'}
         </button>
 
         <span className="w-px h-3 bg-white/15 flex-shrink-0" />
@@ -1313,7 +1323,7 @@ export default function OcrRegionFrame() {
               src={screenshotUrlRef.current || ''}
               className="absolute pointer-events-none select-none"
               style={{
-                opacity: 0.18,
+                opacity: displayMode === 'image' ? 1 : 0.18,
                 left: painted.x,
                 top: painted.y,
                 // Same contain + horizontal center as ocrLineToCssRect.

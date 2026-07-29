@@ -42,7 +42,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "bin/moon_hook.dll": "moon_hook.dll"
+      "bin/moon_hook.dll": "moon_hook.dll",
+      "../dictionaries/ecdict.db": "dictionaries/ecdict.db"
     }
   }
 }

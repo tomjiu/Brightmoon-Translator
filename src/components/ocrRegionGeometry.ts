@@ -6,9 +6,9 @@ export interface RegionRect {
 }
 
 /**
- * Single source for OCR frame geometry (CSS logical px).
- * Rust `commands/window.rs` must use the same numeric values
- * (OCR_TOOLBAR_CSS_PX / OCR_MIN_FRAME_CSS_W). Changing either without the other = I2/I3 bug.
+ * Single source for OCR frame geometry (CSS logical px) on the FE.
+ * Rust source of truth: `src-tauri/src/ocr_region_consts.rs`
+ * (OCR_TOOLBAR_CSS_PX / OCR_MIN_FRAME_CSS_W). Keep values identical (I2/I3).
  */
 export const OCR_TOOLBAR_HEIGHT_CSS = 32;
 /** Min frame width = full toolbar (icons + language). Keep TS+Rust in sync (I3). */

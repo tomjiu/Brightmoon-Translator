@@ -809,6 +809,16 @@
     "unfollow": "Stop following",
     "resize": "Drag to resize",
     "refreshing": "Refreshing…",
-    "needOcr": "Available after recognition"
+    "needOcr": "Available after recognition",
+    "engineSwitched": "Engine switched",
+    "engineOn": "Engine enabled",
+    "engineOff": "Engine disabled",
+    "engine": "Translation engine",
+    "enableEngine": "Enable current engine",
+    "disableEngine": "Disable current engine",
+    "toggleDisplayImage": "Show original image only",
+    "displayImage": "Image",
+    "displaySource": "Source",
+    "displayTranslation": "Translation"
   }
 }

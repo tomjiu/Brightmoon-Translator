@@ -33,6 +33,7 @@ pub mod metrics;
 pub mod models;
 pub mod ocr_engine;
 pub mod ocr_offline;
+pub mod ocr_region_consts;
 pub mod overlay;
 pub mod pdf;
 pub mod post_process;
@@ -143,6 +144,31 @@ pub struct AppState {
     pub event_store: Option<EventStore>,
 }
 
+/// Resolve ecdict.db for both packaged and dev layouts.
+fn resolve_ecdict_db_path() -> Option<std::path::PathBuf> {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(ref dir) = exe_dir {
+        candidates.push(dir.join("dictionaries").join("ecdict.db"));
+        candidates.push(dir.join("resources").join("dictionaries").join("ecdict.db"));
+        candidates.push(dir.join("ecdict.db"));
+        candidates.push(dir.join("resources").join("ecdict.db"));
+    }
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    candidates.push(manifest.join("..").join("dictionaries").join("ecdict.db"));
+    candidates.push(manifest.join("dictionaries").join("ecdict.db"));
+    candidates.push(std::path::PathBuf::from("dictionaries").join("ecdict.db"));
+    candidates.push(std::path::PathBuf::from("ecdict.db"));
+    for c in candidates {
+        if c.is_file() {
+            return Some(c.canonicalize().unwrap_or(c));
+        }
+    }
+    None
+}
+
 pub fn run() {
     let ctx = tokio::runtime::Runtime::new()
         .expect("Failed to create tokio runtime")
@@ -152,23 +178,18 @@ pub fn run() {
     let (ecdict_pool, event_store) = tokio::runtime::Runtime::new()
         .expect("Failed to create tokio runtime")
         .block_on(async {
-            // Connect to ECDICT database for dictionary lookups
-            let ecdict_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("..")
-                .join("dictionaries")
-                .join("ecdict.db");
-            let ecdict_pool = if ecdict_path.exists() {
-                let conn_str = format!(
-                    "sqlite:{}",
-                    ecdict_path.display().to_string().replace('\\', "/")
-                );
+            // Connect to ECDICT — try release/portable paths first, then dev tree.
+            // CARGO_MANIFEST_DIR alone fails for packaged installs (HEALTH_AUDIT B5).
+            let ecdict_path = resolve_ecdict_db_path();
+            let ecdict_pool = if let Some(ref path) = ecdict_path {
+                let conn_str = format!("sqlite:{}", path.display().to_string().replace('\\', "/"));
                 match sqlx::sqlite::SqlitePoolOptions::new()
                     .max_connections(2)
                     .connect(&conn_str)
                     .await
                 {
                     Ok(pool) => {
-                        tracing::info!("ECDICT database connected: {}", ecdict_path.display());
+                        tracing::info!("ECDICT database connected: {}", path.display());
                         Some(pool)
                     },
                     Err(e) => {
@@ -177,7 +198,9 @@ pub fn run() {
                     },
                 }
             } else {
-                tracing::warn!("ECDICT database not found: {}", ecdict_path.display());
+                tracing::warn!(
+                    "ECDICT database not found (searched exe-dir, resources, repo dictionaries/)"
+                );
                 None
             };
 
@@ -558,6 +581,7 @@ pub fn run() {
             commands::capture::system_ocr,
             commands::capture::system_ocr_detailed,
             commands::capture::youdao_ocr,
+            commands::capture::offline_ocr,
             commands::capture::prepare_screenshot_snapshot,
             commands::capture::load_screenshot_snapshot,
             commands::capture::crop_screenshot_snapshot,

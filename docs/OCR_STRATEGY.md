@@ -182,13 +182,13 @@ Smart features map cleanly if Capture/Present stay pure:
 | GDI fail: retry then soft snapshot | Done |
 | ready: register all listeners then emit | Done |
 | Selector multi-mon pin from snapshot.info | Done |
-| Line align token pack (not raw char slice) | Done (`ocrLineAlign.ts`) |
+| Line align token pack (not raw char slice) | Done (wired in `OcrScreenshotTranslator` via `ocrLineAlign.ts`) |
 | WinRT empty → Ok empty (I4) | Done |
 | OCR throw → ocr-region-error | Done |
 | WinRT/Youdao empty → Ok empty | Done |
 | DPR re-read on resize | Done |
 | Resize ignore min-width false widen | Done |
-| mergeOcrPreferBoxes safer mismatch | Done |
+| mergeOcrPreferBoxes safer mismatch | Not implemented (name was aspirational; no such helper) |
 | Session cancel mid OCR/translate | Done |
 | Hide settle 32ms (DWM) | Done |
 | Save region PNG (dialog) | Done (`write_file_base64`) |
@@ -216,7 +216,7 @@ Smart features map cleanly if Capture/Present stay pure:
 | Soft loading only on manual refresh | Done |
 | Per-line translate when ≤5 lines (batch 3) | Done |
 | Clear sampling on close / new shot | Done |
-| mergeOcr redistribute text on box lines | Done |
+| mergeOcr redistribute text on box lines | Partial — batch mismatch uses `alignTranslationToLines` |
 | Continuous adaptive interval on skips | Done |
 | getCaptureRegion uses win.scaleFactor() | Done |
 | Loading veil keeps old overlays | Done |

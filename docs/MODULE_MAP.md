@@ -45,7 +45,7 @@ MainTranslator / tray
 | Same intent, different quality | replace→primary; OCR/hook→full; UI→stream/embedded; docs→batch |
 | Pipeline uneven | ~~batch skip TM/cache~~ **mitigated 2026-07-29** (`translate_batch_core` non-OCR: prepare + TM + cache + finalize); compare multi still multi-result |
 | Config drift | Rust default google+youdao ON; TS INITIAL all off; extension own defaults |
-| Dead types | `TranslationJob` unused; `OcrTranslation` trait no impl |
+| Dead types | `TranslationJob` unused; `OcrTranslation` trait removed |
 | FE store drift | product uses `translateStore`; clipboard/stream stores mostly dead |
 
 **Façade direction:** one `TranslateRequest { channel, mode, text|segments, options }` → `TranslationService` always; presenters/sources separate. Adapters only for selection/OCR/hook/HTTP/extension.

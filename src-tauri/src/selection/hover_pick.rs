@@ -451,15 +451,11 @@ pub fn pick_at_cursor_uia(sentence: bool) -> Option<HoverPick> {
 
 #[cfg(windows)]
 fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
-    use windows::core::Interface;
     use windows::Win32::Foundation::POINT;
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
-    use windows::Win32::UI::Accessibility::{
-        CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationValuePattern,
-        UIA_ValuePatternId,
-    };
+    use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, IUIAutomationElement};
     use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
     unsafe {

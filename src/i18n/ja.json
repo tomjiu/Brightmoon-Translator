@@ -798,6 +798,16 @@
     "unfollow": "追従停止",
     "resize": "サイズ変更",
     "refreshing": "更新中…",
-    "needOcr": "認識後に利用可能"
+    "needOcr": "認識後に利用可能",
+    "engineSwitched": "エンジン切替",
+    "engineOn": "エンジン有効",
+    "engineOff": "エンジン無効",
+    "engine": "翻訳エンジン",
+    "enableEngine": "エンジンを有効化",
+    "disableEngine": "エンジンを無効化",
+    "toggleDisplayImage": "原画像のみ表示",
+    "displayImage": "画像",
+    "displaySource": "原文",
+    "displayTranslation": "訳文"
   }
 }

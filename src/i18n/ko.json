@@ -798,6 +798,16 @@
     "unfollow": "따라가기 중지",
     "resize": "크기 조절",
     "refreshing": "새로고침 중…",
-    "needOcr": "인식 후 사용 가능"
+    "needOcr": "인식 후 사용 가능",
+    "engineSwitched": "엔진 전환됨",
+    "engineOn": "엔진 사용",
+    "engineOff": "엔진 중지",
+    "engine": "번역 엔진",
+    "enableEngine": "엔진 사용",
+    "disableEngine": "엔진 중지",
+    "toggleDisplayImage": "원본 이미지만 표시",
+    "displayImage": "이미지",
+    "displaySource": "원문",
+    "displayTranslation": "번역"
   }
 }

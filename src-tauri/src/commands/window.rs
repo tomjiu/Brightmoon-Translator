@@ -879,9 +879,7 @@ pub async fn create_ocr_region_frame(
 ) -> Result<(), String> {
     let scale_factor = monitor_scale_for_physical_rect(&app, x, y, width, height);
     // Keep in sync with src/components/ocrRegionGeometry.ts (I2/I3).
-    const OCR_TOOLBAR_CSS_PX: f64 = 32.0;
-    // Keep in sync with ocrRegionGeometry.ts OCR_MIN_FRAME_WIDTH_CSS (I3).
-    const OCR_MIN_FRAME_CSS_W: f64 = 460.0;
+    use crate::ocr_region_consts::{OCR_MIN_FRAME_CSS_W, OCR_TOOLBAR_CSS_PX};
     let toolbar_h_physical = OCR_TOOLBAR_CSS_PX * scale_factor;
     let min_w_physical = (OCR_MIN_FRAME_CSS_W * scale_factor).max(200.0);
     let min_h_physical = toolbar_h_physical + (48.0 * scale_factor);
@@ -1387,10 +1385,7 @@ pub async fn move_ocr_region_frame(
 
     let scale_factor = monitor_scale_for_physical_rect(&app, x, y, width, height);
     // Same constants as create_ocr_region_frame / OcrRegionFrame.tsx (I2/I3)
-    // Keep in sync with src/components/ocrRegionGeometry.ts
-    // OCR_TOOLBAR_HEIGHT_CSS / OCR_MIN_FRAME_WIDTH_CSS (I2/I3).
-    const OCR_TOOLBAR_CSS_PX: f64 = 32.0;
-    const OCR_MIN_FRAME_CSS_W: f64 = 460.0;
+    use crate::ocr_region_consts::{OCR_MIN_FRAME_CSS_W, OCR_TOOLBAR_CSS_PX};
     let toolbar_h_physical = OCR_TOOLBAR_CSS_PX * scale_factor;
     let min_w_physical = (OCR_MIN_FRAME_CSS_W * scale_factor).max(200.0);
     let min_h_physical = toolbar_h_physical + (48.0 * scale_factor);

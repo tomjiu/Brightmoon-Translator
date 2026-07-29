@@ -809,6 +809,16 @@
     "unfollow": "停止跟随窗口",
     "resize": "拖动调整大小",
     "refreshing": "刷新中…",
-    "needOcr": "识别完成后可用"
+    "needOcr": "识别完成后可用",
+    "engineSwitched": "已切换引擎",
+    "engineOn": "引擎已启用",
+    "engineOff": "引擎已关闭",
+    "engine": "翻译引擎",
+    "enableEngine": "启用当前引擎",
+    "disableEngine": "关闭当前引擎",
+    "toggleDisplayImage": "仅显示原图",
+    "displayImage": "原图",
+    "displaySource": "原文",
+    "displayTranslation": "译文"
   }
 }

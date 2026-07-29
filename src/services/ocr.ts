@@ -1,8 +1,33 @@
 import { invokeOrThrow } from './invoke';
+import { useConfigStore } from '../stores/configStore';
 
 /** Minimal interface for the tesseract.js worker — only the methods we use. */
+interface TesseractBbox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+interface TesseractWord {
+  text: string;
+  bbox: TesseractBbox;
+}
+
+interface TesseractLine {
+  text: string;
+  bbox: TesseractBbox;
+  words?: TesseractWord[];
+}
+
+interface TesseractPage {
+  text: string;
+  lines?: TesseractLine[];
+  words?: TesseractWord[];
+}
+
 interface TesseractWorker {
-  recognize(image: string): Promise<{ data: { text: string } }>;
+  recognize(image: string): Promise<{ data: TesseractPage }>;
 }
 
 let worker: TesseractWorker | null = null;
@@ -96,11 +121,8 @@ export async function imageDataUrlFingerprint(dataUrl: string): Promise<string> 
 }
 
 export async function ocrImage(imageDataUrl: string): Promise<string> {
-  const w = await getWorker();
-  const {
-    data: { text },
-  } = await w.recognize(imageDataUrl);
-  return text.trim();
+  const result = await ocrImageTesseractDetailed(imageDataUrl);
+  return result.text;
 }
 
 // ── Detailed OCR with per-line bounding boxes ──────────────────────────────
@@ -125,6 +147,68 @@ export interface OcrLineResult {
 export interface OcrResultDetailed {
   lines: OcrLineResult[];
   text: string;
+}
+
+function bboxToRect(b: TesseractBbox): { x: number; y: number; width: number; height: number } {
+  const x = b.x0;
+  const y = b.y0;
+  const width = Math.max(1, b.x1 - b.x0);
+  const height = Math.max(1, b.y1 - b.y0);
+  return { x, y, width, height };
+}
+
+/** Tesseract with real line/word boxes (not zero-size placeholders). */
+export async function ocrImageTesseractDetailed(imageDataUrl: string): Promise<OcrResultDetailed> {
+  const w = await getWorker();
+  const { data } = await w.recognize(imageDataUrl);
+  const text = (data.text || '').trim();
+  const rawLines = data.lines?.length
+    ? data.lines
+    : data.words?.length
+      ? [
+          {
+            text,
+            bbox: data.words.reduce(
+              (acc, word) => ({
+                x0: Math.min(acc.x0, word.bbox.x0),
+                y0: Math.min(acc.y0, word.bbox.y0),
+                x1: Math.max(acc.x1, word.bbox.x1),
+                y1: Math.max(acc.y1, word.bbox.y1),
+              }),
+              {
+                x0: data.words[0].bbox.x0,
+                y0: data.words[0].bbox.y0,
+                x1: data.words[0].bbox.x1,
+                y1: data.words[0].bbox.y1,
+              },
+            ),
+            words: data.words,
+          } as TesseractLine,
+        ]
+      : [];
+
+  const lines: OcrLineResult[] = rawLines
+    .map((line) => {
+      const rect = bboxToRect(line.bbox);
+      const words: OcrWordResult[] = (line.words || []).map((word) => {
+        const wr = bboxToRect(word.bbox);
+        return { text: word.text, ...wr };
+      });
+      return {
+        text: (line.text || '').trim(),
+        ...rect,
+        words,
+      };
+    })
+    .filter((line) => line.text.length > 0);
+
+  if (lines.length === 0 && text) {
+    return {
+      text,
+      lines: [{ text, x: 0, y: 0, width: 1, height: 1, words: [] }],
+    };
+  }
+  return { text: text || lines.map((l) => l.text).join('\n'), lines };
 }
 
 /** Run WinRT OCR and return detailed per-line results with bounding boxes. */
@@ -153,6 +237,22 @@ export async function youdaoOcrDetailed(
   });
 }
 
+/** Rapid/Paddle offline sidecar via Rust command. */
+export async function offlineOcrDetailed(
+  imageDataUrl: string,
+  backend: 'rapid' | 'paddle',
+  pluginDir?: string,
+  lang = 'auto',
+): Promise<OcrResultDetailed> {
+  const cfg = useConfigStore.getState().config;
+  return await invokeOrThrow<OcrResultDetailed>('offline_ocr', {
+    base64Data: imageDataUrl,
+    backend,
+    pluginDir: pluginDir ?? cfg.offlineOcr?.pluginDir ?? '',
+    lang,
+  });
+}
+
 /** Prefer WinRT (accurate boxes), then Youdao, then tesseract — sequential (not parallel).
  *  Parallel double-billed every refresh/watch tick and inflated latency. */
 export async function ocrImagePreferNativeDetailed(
@@ -174,18 +274,14 @@ export async function ocrImagePreferNativeDetailed(
   }
 
   try {
-    const text = await ocrImage(imageDataUrl);
-    const lines: OcrLineResult[] = text
-      ? [{ text, x: 0, y: 0, width: 0, height: 0, words: [] }]
-      : [];
-    return { text: text || '', lines };
+    return await ocrImageTesseractDetailed(imageDataUrl);
   } catch {
     return { text: '', lines: [] };
   }
 }
 
 /** OCR with configurable engine preference.
- *  engine: "auto" | "winrt" | "youdao" | "tesseract"
+ *  engine: "auto" | "winrt" | "youdao" | "tesseract" | "rapid" | "paddle"
  */
 export async function ocrWithEngine(
   imageDataUrl: string,
@@ -199,13 +295,12 @@ export async function ocrWithEngine(
     case 'youdao':
       return await youdaoOcrDetailed(imageDataUrl, lang);
 
-    case 'tesseract': {
-      const text = await ocrImage(imageDataUrl);
-      const lines: OcrLineResult[] = text
-        ? [{ text, x: 0, y: 0, width: 0, height: 0, words: [] }]
-        : [];
-      return { text, lines };
-    }
+    case 'tesseract':
+      return await ocrImageTesseractDetailed(imageDataUrl);
+
+    case 'rapid':
+    case 'paddle':
+      return await offlineOcrDetailed(imageDataUrl, engine, undefined, lang);
 
     case 'auto':
     default:

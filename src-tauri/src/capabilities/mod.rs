@@ -4,7 +4,6 @@ pub mod document_translation;
 pub mod hook_monitor;
 pub mod input_replacement;
 pub mod input_replacement_impl;
-pub mod ocr_translation;
 pub mod platform;
 pub mod selection_translation;
 pub mod selection_translation_impl;

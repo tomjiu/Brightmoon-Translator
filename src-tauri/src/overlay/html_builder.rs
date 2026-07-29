@@ -2,6 +2,14 @@ use super::{OverlayContent, OverlayLevel};
 
 /// Build overlay HTML — single solid card, fills window (no black chrome + white inset).
 pub fn build_html(content: &OverlayContent, level: OverlayLevel, dismiss_ms: u64) -> String {
+    // Hover dictionary cards: distinct badge + phonetic styling (not generic MT card).
+    if content
+        .source_app
+        .as_deref()
+        .is_some_and(|s| s == "hover-dict")
+    {
+        return build_dict_card_html(&content.translated, dismiss_ms.max(3500));
+    }
     match level {
         OverlayLevel::Minimal => {
             build_card_html(None, &content.translated, dismiss_ms.max(2000), true)
@@ -130,6 +138,129 @@ pub fn build_update_script(
         escape_js(translated),
         level as u8,
         dismiss_ms
+    )
+}
+
+/// Dictionary hover card: headword + phonetic + POS badges (visually distinct from MT).
+pub fn build_dict_card_html(body: &str, dismiss_ms: u64) -> String {
+    let mut lines = body.lines();
+    let head = lines.next().unwrap_or("").trim();
+    let (word, phonetic) = if let Some((w, rest)) = head.split_once("  /") {
+        (w.trim(), Some(format!("/{}", rest.trim())))
+    } else if let Some((w, rest)) = head.split_once("  [") {
+        (w.trim(), Some(format!("[{}", rest.trim())))
+    } else if let Some((w, rest)) = head.split_once("  ") {
+        let rest = rest.trim();
+        if rest.starts_with('/') || rest.starts_with('[') {
+            (w.trim(), Some(rest.to_string()))
+        } else {
+            (head, None)
+        }
+    } else {
+        (head, None)
+    };
+    let mut defs_html = String::new();
+    for line in lines {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix('[') {
+            if let Some((pos, def)) = rest.split_once(']') {
+                let pos = pos.trim();
+                let def = def.trim();
+                if pos.eq_ignore_ascii_case("ecdict") || pos.is_empty() {
+                    defs_html.push_str(&format!(
+                        r#"<div class="def">{}</div>"#,
+                        html_escape::encode_text(def)
+                    ));
+                } else {
+                    defs_html.push_str(&format!(
+                        r#"<div class="def"><span class="pos">{}</span> {}</div>"#,
+                        html_escape::encode_text(pos),
+                        html_escape::encode_text(def)
+                    ));
+                }
+                continue;
+            }
+        }
+        defs_html.push_str(&format!(
+            r#"<div class="def">{}</div>"#,
+            html_escape::encode_text(line)
+        ));
+    }
+    let phon_html = phonetic
+        .map(|p| {
+            format!(
+                r#"<span class="phon">{}</span>"#,
+                html_escape::encode_text(&p)
+            )
+        })
+        .unwrap_or_default();
+    let dismiss = if dismiss_ms > 0 {
+        format!(
+            "setTimeout(function(){{window.__TAURI__&&window.__TAURI__.core&&window.__TAURI__.core.invoke('close_overlay');}},{});",
+            dismiss_ms
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+{theme}
+html, body {{
+  width:100%; height:100%; margin:0;
+  background: var(--bg) !important;
+  font-family: "Segoe UI","Microsoft YaHei",sans-serif;
+  overflow: hidden;
+}}
+.card {{
+  width: 100%; height: 100%;
+  background: var(--bg-elev); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 11px 13px; font-size: 13px; line-height: 1.5;
+  user-select: text;
+}}
+.badge {{
+  display:inline-block; font-size:10px; font-weight:600;
+  color: var(--accent); border: 1px solid var(--accent);
+  border-radius: 4px; padding: 0 5px; margin-bottom: 6px; opacity: 0.9;
+}}
+.head {{ font-size: 15px; font-weight: 600; margin-bottom: 4px; }}
+.phon {{ color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }}
+.pos {{
+  display:inline-block; font-size:10px; color: var(--bg);
+  background: var(--accent); border-radius: 3px; padding: 0 4px;
+  margin-right: 4px; vertical-align: middle;
+}}
+.def {{ margin-top: 4px; word-break: break-word; }}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="badge">词典</div>
+  <div class="head">{word}{phon}</div>
+  {defs}
+</div>
+<script>
+{dismiss}
+document.addEventListener('keydown', function(e) {{
+  if (e.key === 'Escape') window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke('close_overlay');
+}});
+</script>
+</body>
+</html>"#,
+        theme = theme_css(),
+        word = html_escape::encode_text(word),
+        phon = phon_html,
+        defs = defs_html,
+        dismiss = dismiss,
     )
 }
 

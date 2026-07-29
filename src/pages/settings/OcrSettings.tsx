@@ -64,7 +64,7 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
     {
       id: 'tesseract',
       name: 'Tesseract',
-      description: '本地离线识别，速度较慢但完全本地化',
+      description: '浏览器端 tesseract.js；首次需下载语言模型，非纯离线',
       icon: Cpu,
       status: 'available',
       badges: [
