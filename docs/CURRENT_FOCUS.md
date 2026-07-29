@@ -29,7 +29,7 @@
 |------|--------|--------|
 | Hook monitor UI | Exists | Experimental |
 | Passive UIA/clipboard monitor | **Production-ish** | `start_hook_monitor` applies active/auto profile |
-| DLL inject → `TranslationService` | **Improved 2026-07-29** | `hook_process_messages` translates + emits `hook-text-translated`; IAT/DLL quality still weak |
+| DLL inject → `TranslationService` | **Improved** | translate bridge + **multi-module IAT** (patch app modules, not gdi32 self) |
 | Profiles applied on start | **Done (passive path)** | `hook_cmd::start_hook_monitor` already applies profile |
 | Bundle hook DLL in release | **Improved 2026-07-29** | `tauri.conf.json` resources + richer `find_hook_dll` (exe-dir, CARGO_MANIFEST_DIR, Debug/Release); DLL copied to `src-tauri/bin/` when built |
 
@@ -85,6 +85,7 @@
 | Hover cursor-ratio word | `extract_word_candidate_with_hint` + UIA bounds |
 | LLM batch TM/cache + fallback | `translate_batch_core` numbered path |
 | OCR force modifier | `ocr_modifier_key` + `ocr_force_allowed()` |
+| Hook multi-module IAT | `hook-dll/src/hook_text.cpp` EnumProcessModules |
 | Selection UX sprint | `selection/{mouse_hook,auto_watch,pop_button,process_class,clipboard,hover_pick}` |
 | Selection settings | `SelectionSettings.tsx` |
 | Hotkey live re-register | `hotkey.rs` + `save_config` |

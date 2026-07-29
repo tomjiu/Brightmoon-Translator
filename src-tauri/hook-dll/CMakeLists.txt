@@ -21,6 +21,7 @@ target_link_libraries(moon_hook PRIVATE
     kernel32
     user32
     gdi32
+    psapi
 )
 
 # Install to src-tauri/bin for Tauri bundling
