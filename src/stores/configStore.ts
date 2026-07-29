@@ -84,6 +84,7 @@ const INITIAL_CONFIG: AppConfig = {
   ttsAutoPlay: false,
   ttsVoice: '',
   ttsProvider: 'edge',
+  batchPreferredEngine: '',
   openaiTts: {
     apiKey: '',
     baseUrl: 'https://api.openai.com/v1',

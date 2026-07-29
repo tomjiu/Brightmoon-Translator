@@ -27,20 +27,26 @@ fn theme_css() -> String {
     if light {
         r#"
 :root {
-  --bg: #ffffff;
-  --fg: #111827;
-  --muted: #6b7280;
-  --border: rgba(0,0,0,0.12);
+  --bg: #fafbfc;
+  --bg-elev: #ffffff;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --border: rgba(15, 23, 42, 0.10);
+  --shadow: 0 10px 30px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.06);
+  --accent: #2563eb;
 }
 "#
         .to_string()
     } else {
         r#"
 :root {
-  --bg: #1a1a1e;
-  --fg: #f3f4f6;
-  --muted: #9ca3af;
-  --border: rgba(255,255,255,0.12);
+  --bg: #14151a;
+  --bg-elev: #1c1e26;
+  --fg: #f1f5f9;
+  --muted: #94a3b8;
+  --border: rgba(255, 255, 255, 0.10);
+  --shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --accent: #60a5fa;
 }
 "#
         .to_string()
@@ -64,11 +70,15 @@ html,body {{
 }}
 .card {{
   width:100%; height:100%;
-  background: var(--bg); color: var(--fg);
-  border: 1px solid var(--border); border-radius: 10px;
-  padding: 10px 12px; font-size: 13px; line-height: 1.45;
+  background: var(--bg-elev); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 11px 13px; font-size: 13px; line-height: 1.5;
 }}
-.source {{ color: var(--muted); font-size: 12px; margin-bottom: 4px; }}
+.source {{
+  color: var(--muted); font-size: 12px; margin-bottom: 6px;
+  padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}}
 .translated {{ color: var(--fg); white-space: pre-wrap; word-break: break-word; }}
 </style>
 </head>
@@ -158,20 +168,23 @@ html, body {{
 .card {{
   width: 100%;
   height: 100%;
-  background: var(--bg);
+  background: var(--bg-elev);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 11px 13px;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
   user-select: text;
 }}
 .source {{
   color: var(--muted);
   font-size: 12px;
-  margin-bottom: 4px;
-  max-height: 2.6em;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  max-height: 2.8em;
   overflow: hidden;
 }}
 .translated {{

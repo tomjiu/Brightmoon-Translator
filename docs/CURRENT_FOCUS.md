@@ -19,7 +19,7 @@
 | UIA TextPattern word-at-point | **Improved** | RangeFromPoint + Word/Paragraph expand; ratio fallback |
 | Multi-monitor clamp (overlay/pop) | **Improved** | `clamp_rect_to_cursor_monitor` work area |
 | Dict-only hotkey (QTranslate D) | **Improved** | Optional `dictionaryLookup` → `trigger_dictionary_lookup` |
-| Overlay light/dark feel | **Partial** | theme hook exists |
+| Overlay light/dark feel | **Improved** | elevated card + shadow tokens light/dark |
 | Multi-engine selection text | **Improved** | `display_text` shared |
 | Manual smoke | **Open** | User acceptance |
 
@@ -42,7 +42,9 @@
 | Document batch translate | **Improved** | `BatchManager::process` → `run_batch` waves (TM/cache/LLM pack); cancel/pause between waves |
 | Batch pre/glossary/TM/cache | **Improved 2026-07-29** | Non-OCR `translate_batch_core`: prepare + TM + cache hit/set + history; OCR path unchanged |
 | Long-text chunk quality | **Improved** | LLM numbered pack: TM/cache pre-hit + pack-fail fallback |
-| BatchConfig.engine honor | **Improved** | `translate_named` / `translate_named_engine` per task |
+| BatchConfig.engine honor | **Improved** | named engine + settings `batchPreferredEngine` |
+| Sentence split quality | **Improved** | abbrev/decimal-aware punct bounds |
+| **Code-side ready for user smoke** | **Yes** | Manual checklist open for owner |
 
 ### D — Other (later)
 

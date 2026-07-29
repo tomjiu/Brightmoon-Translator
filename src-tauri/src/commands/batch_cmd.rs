@@ -17,7 +17,25 @@ pub async fn batch_submit(
     config: Option<BatchConfig>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let batch_config = config.unwrap_or_default();
+    let mut batch_config = config.unwrap_or_default();
+    // Fill engine from app settings when caller omitted it
+    if batch_config
+        .engine
+        .as_ref()
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
+    {
+        let preferred = state
+            .system
+            .config
+            .lock()
+            .await
+            .batch_preferred_engine
+            .clone();
+        if !preferred.trim().is_empty() {
+            batch_config.engine = Some(preferred);
+        }
+    }
     let job_id = state.batch.submit(texts, batch_config).await?;
 
     // Start processing in background

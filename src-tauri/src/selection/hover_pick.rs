@@ -236,31 +236,89 @@ pub fn extract_sentence_candidate_with_hint(
     }
     .min(chars.len() - 1);
 
-    let is_bound = |c: char| {
-        matches!(
-            c,
-            '.' | '!' | '?' | '。' | '！' | '？' | '\n' | '\r' | ';' | '；'
-        )
+    let is_hard_bound = |c: char| matches!(c, '!' | '?' | '。' | '！' | '？' | '\n' | '\r' | '…');
+    // `.` / `;` only if not mid-abbreviation / decimal
+    let is_dot_bound = |i: usize| -> bool {
+        let c = chars[i];
+        if c == '…' {
+            return true;
+        }
+        if c != '.' && c != ';' && c != '；' {
+            return false;
+        }
+        if c == '.' {
+            // decimal: digit.digit
+            let prev_digit = i > 0 && chars[i - 1].is_ascii_digit();
+            let next_digit = i + 1 < chars.len() && chars[i + 1].is_ascii_digit();
+            if prev_digit && next_digit {
+                return false;
+            }
+            // ellipsis ...
+            if i + 2 < chars.len() && chars[i + 1] == '.' && chars[i + 2] == '.' {
+                return true;
+            }
+            // common English abbreviations (Mr. Dr. etc.) — letter before dot, letter after space+letter
+            if i > 0 && chars[i - 1].is_ascii_alphabetic() {
+                let ab: String = chars[i.saturating_sub(3)..i]
+                    .iter()
+                    .collect::<String>()
+                    .to_ascii_lowercase();
+                if ab.ends_with("mr")
+                    || ab.ends_with("ms")
+                    || ab.ends_with("dr")
+                    || ab.ends_with("st")
+                    || ab.ends_with("jr")
+                    || ab.ends_with("sr")
+                    || ab.ends_with("vs")
+                    || ab == "etc"
+                    || ab.ends_with("e.g")
+                    || ab.ends_with("i.e")
+                {
+                    return false;
+                }
+            }
+        }
+        true
     };
+    let is_bound_at = |i: usize| is_hard_bound(chars[i]) || is_dot_bound(i);
+
     let mut start = idx;
-    while start > 0 && !is_bound(chars[start - 1]) {
+    while start > 0 && !is_bound_at(start - 1) {
         start -= 1;
     }
-    let mut end = idx + 1;
-    while end < chars.len() && !is_bound(chars[end]) {
+    // skip leading whitespace after previous bound
+    while start < chars.len() && chars[start].is_whitespace() {
+        start += 1;
+    }
+    let mut end = idx.max(start) + 1;
+    end = end.min(chars.len());
+    while end < chars.len() && !is_bound_at(end) {
         end += 1;
     }
-    // include trailing punct
-    if end < chars.len() && is_bound(chars[end]) {
-        end += 1;
+    // include trailing sentence punct / ellipsis
+    if end < chars.len() && is_bound_at(end) {
+        if chars[end] == '.'
+            && end + 2 < chars.len()
+            && chars[end + 1] == '.'
+            && chars[end + 2] == '.'
+        {
+            end += 3;
+        } else {
+            end += 1;
+        }
     }
-    let s: String = chars[start..end].iter().collect();
+    let s: String = chars[start..end.min(chars.len())].iter().collect();
     let s = s.trim();
-    if s.chars().count() < 2 || s.chars().count() > 120 {
+    let n = s.chars().count();
+    if n < 2 || n > 160 {
         return None;
     }
     if is_ui_chrome_word(s) {
         return None;
+    }
+    // Prefer not returning a lone title-case chrome token as "sentence"
+    if n <= 4 && !s.chars().any(|c| c.is_whitespace()) && dictionary::is_single_word(s) {
+        // still ok for short CJK / short English clause without space
     }
     Some(s.to_string())
 }
@@ -724,6 +782,17 @@ mod tests {
         .unwrap();
         assert!(s.to_ascii_lowercase().contains("second"));
         assert!(!s.contains("Third"));
+    }
+
+    #[test]
+    fn extract_sentence_keeps_abbrev_and_decimal() {
+        let s = extract_sentence_candidate_with_hint(
+            "See Dr. Smith at 3.14 pm. Next line starts here.",
+            Some(0.2),
+        )
+        .unwrap();
+        assert!(s.contains("Dr. Smith") || s.contains("3.14"));
+        assert!(!s.contains("Next line"));
     }
 
     #[test]

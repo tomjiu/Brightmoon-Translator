@@ -16,6 +16,29 @@ export default function BasicSettings() {
         <p className="ui-page-desc">默认语言与翻译行为</p>
       </div>
 
+      <Card
+        title="批量 / 长文本"
+        description="BatchManager 队列默认引擎（文档 translate 仍走主引擎顺序，除非走 batch_submit）"
+      >
+        <div>
+          <label className="block text-sm font-medium text-text-primary mb-2">
+            首选引擎 ID（空=主引擎/批量默认路径）
+          </label>
+          <input
+            value={config.batchPreferredEngine || ''}
+            onChange={(e) => {
+              updateConfig((prev) => ({ ...prev, batchPreferredEngine: e.target.value.trim() }));
+              void saveConfig();
+            }}
+            placeholder="例如 google / deepl / youdao"
+            className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm font-mono"
+          />
+          <p className="text-xs text-text-secondary mt-1">
+            对应后端 BatchConfig.engine；须为已启用引擎名称的一部分。
+          </p>
+        </div>
+      </Card>
+
       <Card title="默认语言" description="设置翻译的默认源语言和目标语言">
         <div className="space-y-4">
           <div>

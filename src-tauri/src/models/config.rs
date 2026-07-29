@@ -868,6 +868,9 @@ pub struct AppConfig {
     /// TTS provider: "edge" | "openai" | "youdao" | "fish"
     #[serde(default = "default_tts_provider")]
     pub tts_provider: String,
+    /// Preferred engine id for BatchManager when BatchConfig.engine is unset (e.g. "google").
+    #[serde(default)]
+    pub batch_preferred_engine: String,
     /// OpenAI-compatible TTS settings
     #[serde(default)]
     pub openai_tts: OpenAiTtsConfig,
@@ -1535,6 +1538,7 @@ impl Default for AppConfig {
             tts_auto_play: false,
             tts_voice: String::new(),
             tts_provider: default_tts_provider(),
+            batch_preferred_engine: String::new(),
             openai_tts: OpenAiTtsConfig::default(),
             fish_tts: FishTtsConfig::default(),
             http_timeout_secs: default_http_timeout_secs(),

@@ -200,6 +200,8 @@ export interface AppConfig {
   ttsVoice?: string;
   /** edge | openai | youdao | fish */
   ttsProvider?: string;
+  /** Preferred engine for batch queue when call omits engine (e.g. google) */
+  batchPreferredEngine?: string;
   openaiTts?: {
     apiKey: string;
     baseUrl: string;
