@@ -14,10 +14,10 @@
 
 | Item | Status | Notes |
 |------|--------|--------|
-| Pop / auto / hotkey selection | **Working baseline** | Easydict-style `WH_MOUSE_LL`, process class, ClipWait |
-| Hover dictionary | **Partial** | Free dwell; **terminals skip**; typing dismisses card; junk-word filter + unit tests for chrome rejection |
+| Pop / auto / hotkey selection | **Working baseline** | `WH_MOUSE_LL`; **`min_drag_px` wired** to drag detector |
+| Hover dictionary | **Partial** | Free dwell; terminals skip; typing dismiss; chrome filter; **dict miss → MT** |
 | Overlay card polish | **Partial** | Compact card + theme via `set_overlay_theme`; still improve light/dark feel |
-| Dict miss → MT | **Partial** | Real dict only on hover; selection falls through to MT |
+| Dict miss → MT | **Improved** | Hover miss → MT (junk still blocked); selection already falls through |
 | Multi-engine selection text | **Improved** | `TranslateResponse::display_text`; hotkey + auto_watch + OCR-force share join |
 | Manual smoke (browser / notepad / terminal) | **Open** | User still reports terminal OCR junk / short quality |
 
@@ -81,6 +81,7 @@
 |-------|--------|
 | Multi-engine selection overlay | `TranslateResponse::display_text`; hotkey path + auto_watch |
 | BatchManager → run_batch | `batch.rs` wave process (not per-task run_full) |
+| min_drag_px + hover dict→MT | `mouse_hook::set_min_drag_px`; hover miss falls through |
 | Selection UX sprint | `selection/{mouse_hook,auto_watch,pop_button,process_class,clipboard,hover_pick}` |
 | Selection settings | `SelectionSettings.tsx` |
 | Hotkey live re-register | `hotkey.rs` + `save_config` |

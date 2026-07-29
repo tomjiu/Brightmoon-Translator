@@ -21,7 +21,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// Match clipboard synthetic marker — keyboard hook ignores our Ctrl+C.
 pub const MOON_SYNTHETIC_KEY: usize = 0x4D4F_4F4E; // "MOON"
 
-const MIN_DRAG_DISTANCE: i32 = 10;
+/// Default matches Easydict MinDragDistance; live value from `SelectionUxConfig.min_drag_px`.
+static MIN_DRAG_PX: AtomicU32 = AtomicU32::new(10);
 const MAX_CLICK_DISTANCE: i32 = 4;
 
 #[derive(Debug, Clone, Copy)]
@@ -85,7 +86,7 @@ impl DragDetector {
         }
         let dx = (pt.x as i64) - (self.start.x as i64);
         let dy = (pt.y as i64) - (self.start.y as i64);
-        let min = MIN_DRAG_DISTANCE as i64;
+        let min = MIN_DRAG_PX.load(Ordering::SeqCst).max(1) as i64;
         if dx * dx + dy * dy >= min * min {
             self.dragging = true;
         }
@@ -356,6 +357,15 @@ pub fn key_pressed_within_ms(ms: u64) -> bool {
         .map(|d| d.as_millis() as u32)
         .unwrap_or(0);
     now.saturating_sub(last) < ms as u32
+}
+
+/// Update min drag distance used by WH_MOUSE_LL drag detector (settings hot-reload).
+pub fn set_min_drag_px(px: u32) {
+    MIN_DRAG_PX.store(px.max(1).min(200), Ordering::SeqCst);
+}
+
+pub fn min_drag_px() -> u32 {
+    MIN_DRAG_PX.load(Ordering::SeqCst)
 }
 
 pub fn install() -> Option<Receiver<MouseHookEvent>> {

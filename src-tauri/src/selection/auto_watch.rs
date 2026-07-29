@@ -31,6 +31,8 @@ impl SelectionAutoWatch {
     }
 
     pub async fn update_config(&self, config: SelectionUxConfig) {
+        #[cfg(windows)]
+        super::mouse_hook::set_min_drag_px(config.min_drag_px);
         *self.config.lock().await = config;
     }
 
@@ -63,6 +65,10 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
     // --- Easydict: real WH_MOUSE_LL (not GetAsyncKeyState polling) ---
     #[cfg(windows)]
     let mut async_rx = {
+        {
+            let px = config.lock().await.min_drag_px;
+            super::mouse_hook::set_min_drag_px(px);
+        }
         let hook_rx = super::mouse_hook::install();
         if hook_rx.is_some() {
             tracing::info!("[selection_ux] mouse hook active");
@@ -391,8 +397,13 @@ async fn show_hover_dictionary(app: &AppHandle, word: &str, x: f64, y: f64) {
     } else {
         dict.lookup(word).await.unwrap_or_default()
     };
-    // Hover = dictionary only (QTranslate D). No bare MT of chrome junk.
+    // Dict hit → card; miss on a real word → MT (parity with selection single-word path).
+    // Junk chrome words already returned above — never bare-MT those.
     let Some(body) = format_dict_body(word, &results) else {
+        if crate::selection::mouse_hook::key_pressed_within_ms(400) {
+            return;
+        }
+        show_selection_translate_text(app, word).await;
         return;
     };
     if crate::selection::mouse_hook::key_pressed_within_ms(400) {
