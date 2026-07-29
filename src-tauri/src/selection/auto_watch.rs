@@ -474,24 +474,11 @@ async fn show_selection_translate_text(app: &AppHandle, text: &str) {
     {
         Ok(resp) => {
             let display = {
-                let parts: Vec<String> = resp
-                    .results
-                    .iter()
-                    .filter_map(|r| {
-                        let t = r.text.trim();
-                        if t.is_empty() {
-                            None
-                        } else if resp.results.len() > 1 {
-                            Some(format!("[{}] {}", r.engine, t))
-                        } else {
-                            Some(t.to_string())
-                        }
-                    })
-                    .collect();
-                if parts.is_empty() {
+                let joined = resp.display_text();
+                if joined.is_empty() {
                     format!("（无翻译结果）\n{}", text)
                 } else {
-                    parts.join("\n")
+                    joined
                 }
             };
             let (cx, cy) = cursor_pos();
@@ -568,15 +555,21 @@ async fn show_ocr_force_translate(app: &AppHandle, text: &str, x: f64, y: f64) {
         .await
     {
         Ok(resp) => {
-            let translated = resp
-                .results
-                .first()
-                .map(|r| r.text.clone())
-                .unwrap_or_default();
+            let translated = resp.display_text();
             if translated.is_empty() {
                 return;
             }
             let pos = overlay::OverlayPosition::at_cursor(x, y);
+            let line_n = translated.lines().count().max(1) as f64;
+            let h = (56.0 + line_n * 22.0).clamp(72.0, 320.0);
+            let w = (translated
+                .lines()
+                .map(|l| l.chars().count())
+                .max()
+                .unwrap_or(16) as f64
+                * 8.0
+                + 48.0)
+                .clamp(200.0, 460.0);
             let content = overlay::OverlayContent {
                 source: text.to_string(),
                 translated,
@@ -586,7 +579,7 @@ async fn show_ocr_force_translate(app: &AppHandle, text: &str, x: f64, y: f64) {
             let html =
                 overlay::html_builder::build_html(&content, overlay::OverlayLevel::Standard, 5000);
             let _ = overlay::window_manager::create_overlay_window_ex(
-                app, &html, pos.x, pos.y, pos.width, pos.height, true, false,
+                app, &html, pos.x, pos.y, w, h, true, false,
             );
         },
         Err(e) => tracing::warn!("[selection_ux] OCR force translate failed: {}", e),

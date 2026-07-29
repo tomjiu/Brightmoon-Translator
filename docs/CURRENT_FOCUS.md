@@ -4,7 +4,7 @@
 
 **Do not** change OCR session lifecycle (`ocr_begin/end_session_*`, selector→result baton) or other already-solid OCR code unless fixing a proven regression.
 
-**Git checkpoint:** `4313d99` (ahead of origin) — selection UX + batch TM/cache + hook_process_messages + DLL search.
+**Git checkpoint:** local master ahead of origin — selection multi-engine overlay + BatchManager→`run_batch`.
 
 ---
 
@@ -18,7 +18,7 @@
 | Hover dictionary | **Partial** | Free dwell; **terminals skip**; typing dismisses card; junk-word filter + unit tests for chrome rejection |
 | Overlay card polish | **Partial** | Compact card + theme via `set_overlay_theme`; still improve light/dark feel |
 | Dict miss → MT | **Partial** | Real dict only on hover; selection falls through to MT |
-| Multi-engine selection text | **Partial** | Show multiple engines when router returns >1 result |
+| Multi-engine selection text | **Improved** | `TranslateResponse::display_text`; hotkey + auto_watch + OCR-force share join |
 | Manual smoke (browser / notepad / terminal) | **Open** | User still reports terminal OCR junk / short quality |
 
 **Do not:** rewrite OCR selector/session; do not expand free-hover OCR on terminals.
@@ -37,7 +37,7 @@
 
 | Item | Status | Notes |
 |------|--------|--------|
-| Document batch translate | Exists | `BatchManager` → `run_full` per task |
+| Document batch translate | **Improved** | `BatchManager::process` → `run_batch` waves (TM/cache/LLM pack); cancel/pause between waves |
 | Batch pre/glossary/TM/cache | **Improved 2026-07-29** | Non-OCR `translate_batch_core`: prepare + TM + cache hit/set + history; OCR path unchanged |
 | Long-text chunk quality | **Open** | Numbered LLM batch parse exists; extend carefully |
 
@@ -79,6 +79,8 @@
 
 | Slice | Where |
 |-------|--------|
+| Multi-engine selection overlay | `TranslateResponse::display_text`; hotkey path + auto_watch |
+| BatchManager → run_batch | `batch.rs` wave process (not per-task run_full) |
 | Selection UX sprint | `selection/{mouse_hook,auto_watch,pop_button,process_class,clipboard,hover_pick}` |
 | Selection settings | `SelectionSettings.tsx` |
 | Hotkey live re-register | `hotkey.rs` + `save_config` |

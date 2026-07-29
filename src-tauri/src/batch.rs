@@ -173,138 +173,152 @@ impl BatchManager {
         Ok(job_id)
     }
 
-    /// Start processing the batch queue
+    /// Start processing the batch queue.
+    /// Uses `TranslationService::run_batch` (TM/cache/LLM numbered packs) instead of
+    /// per-task `run_full`, with cancel/pause between concurrency-sized waves.
     pub async fn process(&self, service: Arc<TranslationService>) -> Result<(), String> {
-        let (concurrency, continue_on_error) = {
+        let (concurrency, continue_on_error, from_lang, to_lang) = {
             let cfg = self.config.read().await;
-            (cfg.concurrency.max(1), cfg.continue_on_error)
+            (
+                cfg.concurrency.max(1),
+                cfg.continue_on_error,
+                cfg.from_lang.clone(),
+                cfg.to_lang.clone(),
+            )
         };
 
-        let mut handles = Vec::new();
+        loop {
+            if self.cancel_flag.load(Ordering::SeqCst) {
+                tracing::info!("[Batch] cancelled before next wave");
+                break;
+            }
 
-        for worker_id in 0..concurrency {
-            let tasks = self.tasks.clone();
-            let results = self.results.clone();
-            let service = service.clone();
-            let cancel_flag = self.cancel_flag.clone();
-            let pause_flag = self.pause_flag.clone();
-            let completed_count = self.completed_count.clone();
-            let failed_count = self.failed_count.clone();
-            let total_count = self.total_count.clone();
-            let app_handle = self.app_handle.clone();
-            let job_id = self.job_id.clone();
-            let status = self.status.clone();
+            while self.pause_flag.load(Ordering::SeqCst) {
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                if self.cancel_flag.load(Ordering::SeqCst) {
+                    tracing::info!("[Batch] cancelled while paused");
+                    return Ok(());
+                }
+            }
 
-            let handle = tokio::spawn(async move {
-                loop {
-                    // Check cancellation
-                    if cancel_flag.load(Ordering::SeqCst) {
-                        tracing::info!("[Batch] Worker {} cancelled", worker_id);
-                        break;
-                    }
-
-                    // Check pause - wait while paused
-                    while pause_flag.load(Ordering::SeqCst) {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                        // Check cancellation while paused
-                        if cancel_flag.load(Ordering::SeqCst) {
-                            tracing::info!("[Batch] Worker {} cancelled while paused", worker_id);
-                            return;
-                        }
-                    }
-
-                    // Get next task
-                    let task = {
-                        let mut queue = tasks.lock().await;
-                        queue.pop_front()
-                    };
-
-                    let mut task = match task {
-                        Some(t) => t,
-                        None => break, // Queue empty
-                    };
-
-                    // Mark as running
-                    task.status = BatchTaskStatus::Running;
-
-                    // Translate via façade (channel=ui batch queue)
-                    match service
-                        .run_full(
-                            crate::models::translation::TranslateChannel::Ui,
-                            &task.text,
-                            &task.from_lang,
-                            &task.to_lang,
-                        )
-                        .await
-                    {
-                        Ok(response) => {
-                            let translated = response
-                                .results
-                                .first()
-                                .map(|r| r.text.clone())
-                                .unwrap_or_default();
-                            task.status = BatchTaskStatus::Completed;
-                            task.result = Some(translated);
-                            completed_count.fetch_add(1, Ordering::SeqCst);
+            // Drain one concurrency-sized wave (owned texts for run_batch)
+            let wave: Vec<BatchTask> = {
+                let mut queue = self.tasks.lock().await;
+                let mut taken = Vec::with_capacity(concurrency);
+                for _ in 0..concurrency {
+                    match queue.pop_front() {
+                        Some(mut t) => {
+                            t.status = BatchTaskStatus::Running;
+                            taken.push(t);
                         },
-                        Err(e) => {
-                            task.status = BatchTaskStatus::Failed;
-                            task.error = Some(e.to_string());
-                            failed_count.fetch_add(1, Ordering::SeqCst);
-
-                            if !continue_on_error {
-                                tracing::error!("[Batch] Stopping due to error: {}", e);
-                                let mut s = status.write().await;
-                                *s = BatchJobStatus::Failed;
-                                break;
-                            }
-                        },
-                    }
-
-                    // Store result and emit progress
-                    let task_index = task.index;
-                    let current_job_id = job_id.read().await.clone();
-                    let mut all_done = false;
-                    if let Some(jid) = current_job_id {
-                        let handle_guard = app_handle.read().await;
-                        if let Some(handle) = handle_guard.as_ref() {
-                            let completed = completed_count.load(Ordering::SeqCst);
-                            let failed = failed_count.load(Ordering::SeqCst);
-                            let total = total_count.load(Ordering::SeqCst);
-                            all_done = completed + failed >= total;
-
-                            let progress = BatchProgress {
-                                job_id: jid.clone(),
-                                total,
-                                completed,
-                                failed,
-                                current_index: Some(task_index),
-                                status: if all_done {
-                                    BatchJobStatus::Completed
-                                } else {
-                                    BatchJobStatus::Running
-                                },
-                            };
-
-                            let _ = handle.emit("batch-progress", &progress);
-                            let _ = handle.emit("batch-task-complete", &task);
-                        }
-                    }
-                    results.lock().await.push(task); // move instead of clone
-
-                    if all_done {
-                        let mut s = status.write().await;
-                        *s = BatchJobStatus::Completed;
+                        None => break,
                     }
                 }
-            });
+                taken
+            };
 
-            handles.push(handle);
+            if wave.is_empty() {
+                break;
+            }
+
+            // Ui channel batch → primary + TM/cache (not OCR). Scope lines so wave is free after.
+            let by_index: std::collections::HashMap<usize, String> = {
+                let lines: Vec<(usize, &str)> =
+                    wave.iter().map(|t| (t.index, t.text.as_str())).collect();
+                service
+                    .run_batch(
+                        crate::models::translation::TranslateChannel::Ui,
+                        &lines,
+                        &from_lang,
+                        &to_lang,
+                        concurrency,
+                    )
+                    .await
+                    .into_iter()
+                    .map(|r| (r.index, r.translated))
+                    .collect()
+            };
+
+            let mut stop_job = false;
+            for mut task in wave {
+                let translated = by_index.get(&task.index).cloned().unwrap_or_default();
+                let source_empty = task.text.trim().is_empty();
+                if !source_empty && translated.trim().is_empty() {
+                    task.status = BatchTaskStatus::Failed;
+                    task.error = Some("empty translation".to_string());
+                    task.result = None;
+                    self.failed_count.fetch_add(1, Ordering::SeqCst);
+                    if !continue_on_error {
+                        tracing::error!(
+                            "[Batch] Stopping due to empty translation at {}",
+                            task.index
+                        );
+                        *self.status.write().await = BatchJobStatus::Failed;
+                        stop_job = true;
+                    }
+                } else {
+                    task.status = BatchTaskStatus::Completed;
+                    task.result = Some(translated);
+                    task.error = None;
+                    self.completed_count.fetch_add(1, Ordering::SeqCst);
+                }
+
+                let task_index = task.index;
+                let current_job_id = self.job_id.read().await.clone();
+                let completed = self.completed_count.load(Ordering::SeqCst);
+                let failed = self.failed_count.load(Ordering::SeqCst);
+                let total = self.total_count.load(Ordering::SeqCst);
+                let all_done = completed + failed >= total;
+
+                if let Some(jid) = current_job_id {
+                    let handle_guard = self.app_handle.read().await;
+                    if let Some(handle) = handle_guard.as_ref() {
+                        let progress = BatchProgress {
+                            job_id: jid,
+                            total,
+                            completed,
+                            failed,
+                            current_index: Some(task_index),
+                            status: if all_done && !stop_job {
+                                BatchJobStatus::Completed
+                            } else if stop_job {
+                                BatchJobStatus::Failed
+                            } else {
+                                BatchJobStatus::Running
+                            },
+                        };
+                        let _ = handle.emit("batch-progress", &progress);
+                        let _ = handle.emit("batch-task-complete", &task);
+                    }
+                }
+
+                self.results.lock().await.push(task);
+
+                if all_done && !stop_job {
+                    *self.status.write().await = BatchJobStatus::Completed;
+                }
+                if stop_job {
+                    // Leave remaining queue tasks for cancel/reset; mark job failed
+                    break;
+                }
+            }
+
+            if stop_job {
+                break;
+            }
         }
 
-        // Wait for all workers to complete
-        for handle in handles {
-            let _ = handle.await;
+        // If queue drained cleanly and not cancelled/failed, ensure Completed
+        if !self.cancel_flag.load(Ordering::SeqCst) {
+            let st = self.status.read().await.clone();
+            if st == BatchJobStatus::Running {
+                let completed = self.completed_count.load(Ordering::SeqCst);
+                let failed = self.failed_count.load(Ordering::SeqCst);
+                let total = self.total_count.load(Ordering::SeqCst);
+                if completed + failed >= total {
+                    *self.status.write().await = BatchJobStatus::Completed;
+                }
+            }
         }
 
         Ok(())

@@ -75,14 +75,25 @@ impl DefaultSelectionTranslation {
             source_app: Some(source_app.to_string()),
             window_title: Some(window_title.to_string()),
         };
+        let line_n = translated_text.lines().count().max(1) as f64;
+        let h = (56.0 + line_n * 22.0).clamp(72.0, 320.0);
+        let w = (translated_text
+            .lines()
+            .map(|l| l.chars().count())
+            .max()
+            .unwrap_or(16) as f64
+            * 8.0
+            + 48.0)
+            .clamp(200.0, 460.0)
+            .max(pos.width.min(460.0));
         let html = overlay::html_builder::build_html(&content, level, dismiss_ms);
         overlay::window_manager::create_overlay_window(
             &self.app_handle,
             &html,
             pos.x,
             pos.y,
-            pos.width,
-            pos.height,
+            w,
+            h,
             true,
         )?;
 
@@ -201,9 +212,10 @@ impl SelectionTranslation for DefaultSelectionTranslation {
             )
             .await?;
 
-        // Step 3: Show overlay with app-context-aware presentation
+        // Step 3: Show overlay — multi-engine join when router returns >1 (parity with auto_watch)
         if options.show_overlay {
-            if let Some(first) = response.results.first() {
+            let display = response.display_text();
+            if !display.is_empty() {
                 let source_app = app_ctx
                     .as_ref()
                     .map(|ctx| ctx.app_name.clone())
@@ -216,7 +228,7 @@ impl SelectionTranslation for DefaultSelectionTranslation {
 
                 let _ = self.show_overlay(
                     &selection.text,
-                    &first.text,
+                    &display,
                     &source_app,
                     &window_title,
                     selection.bounds.as_ref(),
@@ -271,11 +283,12 @@ impl SelectionTranslation for DefaultSelectionTranslation {
             )
             .await?;
 
-        // Show overlay if requested (no bounds info for direct text)
+        // Show overlay if requested (no bounds; multi-engine join like translate_selection)
         if options.show_overlay {
-            if let Some(first) = response.results.first() {
+            let display = response.display_text();
+            if !display.is_empty() {
                 let _ =
-                    self.show_overlay(text, &first.text, "direct", "", None, options.overlay_level);
+                    self.show_overlay(text, &display, "direct", "", None, options.overlay_level);
             }
         }
 
