@@ -15,6 +15,8 @@
 
 已有对照（本机早已有）：`tmp/reference/oss/{pot-desktop,STranslate,LunaTranslator}`、`tmp/reference/youdao-dict`（闭源 UX 镜像）。
 
+**截图 / OCR / 钉图补充（2026-07-29）：** `tmp/reference/oss/{snow-shot,capcap,kivio}` — 见 [REFERENCE_OCR_CAPTURE.md](./REFERENCE_OCR_CAPTURE.md)。
+
 ---
 
 ## 0. 能力矩阵（相对有道 UX）

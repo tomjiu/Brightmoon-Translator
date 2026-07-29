@@ -117,4 +117,4 @@ New work = first-party module + one command/settings key + CI green.
 
 ## References
 
-- [MODULE_MAP.md](./MODULE_MAP.md) · [REFERENCE_STUDY.md](./REFERENCE_STUDY.md) · [REFERENCE_SELECTION_UX.md](./REFERENCE_SELECTION_UX.md) · [FEATURES.md](./FEATURES.md) · [OCR_SMOKE.md](./OCR_SMOKE.md)
+- [MODULE_MAP.md](./MODULE_MAP.md) · [REFERENCE_STUDY.md](./REFERENCE_STUDY.md) · [REFERENCE_SELECTION_UX.md](./REFERENCE_SELECTION_UX.md) · [REFERENCE_OCR_CAPTURE.md](./REFERENCE_OCR_CAPTURE.md) · [FEATURES.md](./FEATURES.md) · [OCR_SMOKE.md](./OCR_SMOKE.md)
