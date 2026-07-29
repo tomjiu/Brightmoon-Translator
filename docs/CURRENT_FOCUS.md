@@ -15,7 +15,7 @@
 | Item | Status | Notes |
 |------|--------|--------|
 | Pop / auto / hotkey selection | **Working baseline** | `WH_MOUSE_LL`; **`min_drag_px` wired** to drag detector |
-| Hover dictionary | **Partial** | Free dwell; terminals skip; typing dismiss; chrome filter; **dict miss → MT** |
+| Hover dictionary | **Improved** | Free dwell; terminals skip; chrome filter; dict miss→MT; **cursor-ratio word pick** |
 | Overlay card polish | **Partial** | Compact card + theme via `set_overlay_theme`; still improve light/dark feel |
 | Dict miss → MT | **Improved** | Hover miss → MT (junk still blocked); selection already falls through |
 | Multi-engine selection text | **Improved** | `TranslateResponse::display_text`; hotkey + auto_watch + OCR-force share join |
@@ -39,7 +39,7 @@
 |------|--------|--------|
 | Document batch translate | **Improved** | `BatchManager::process` → `run_batch` waves (TM/cache/LLM pack); cancel/pause between waves |
 | Batch pre/glossary/TM/cache | **Improved 2026-07-29** | Non-OCR `translate_batch_core`: prepare + TM + cache hit/set + history; OCR path unchanged |
-| Long-text chunk quality | **Open** | Numbered LLM batch parse exists; extend carefully |
+| Long-text chunk quality | **Improved** | LLM numbered pack: **TM/cache pre-hit** + pack-fail per-seg fallback (non-OCR) |
 
 ### D — Other (later)
 
@@ -82,6 +82,8 @@
 | Multi-engine selection overlay | `TranslateResponse::display_text`; hotkey path + auto_watch |
 | BatchManager → run_batch | `batch.rs` wave process (not per-task run_full) |
 | min_drag_px + hover dict→MT | `mouse_hook::set_min_drag_px`; hover miss falls through |
+| Hover cursor-ratio word | `extract_word_candidate_with_hint` + UIA bounds |
+| LLM batch TM/cache + fallback | `translate_batch_core` numbered path |
 | Selection UX sprint | `selection/{mouse_hook,auto_watch,pop_button,process_class,clipboard,hover_pick}` |
 | Selection settings | `SelectionSettings.tsx` |
 | Hotkey live re-register | `hotkey.rs` + `save_config` |

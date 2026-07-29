@@ -819,15 +819,83 @@ impl TranslationService {
             };
 
             if use_llm_numbered {
-                // Prepare all segments, then pack numbered LLM calls in concurrency-sized chunks
-                let mut prepared_rows: Vec<(usize, String, PreparedText)> =
-                    Vec::with_capacity(total);
+                // Prepare all segments; non-OCR: resolve TM/cache first, pack only remaining.
+                let (tm_enabled, tm_threshold) = {
+                    let config = self.config.lock().await;
+                    (config.tm_enabled, config.tm_threshold)
+                };
+                let mut need_llm: Vec<(usize, String, PreparedText)> = Vec::with_capacity(total);
                 for &(idx, text) in lines {
                     let prepared = self.prepare(text, from, to).await;
-                    prepared_rows.push((idx, text.to_string(), prepared));
+                    let original = text.to_string();
+
+                    if !ocr_fallback {
+                        if tm_enabled {
+                            let history = self.history.lock().await;
+                            if let Some(tm_match) =
+                                history.fuzzy_match(&prepared.text, from, to, tm_threshold)
+                            {
+                                let translated = self
+                                    .finalize(
+                                        &tm_match.translated_text,
+                                        &original,
+                                        from,
+                                        to,
+                                        &prepared.blacklist,
+                                    )
+                                    .await;
+                                drop(history);
+                                context.push_back(TranslationContext {
+                                    source: original.clone(),
+                                    translation: translated.clone(),
+                                });
+                                while context.len() > 5 {
+                                    context.pop_front();
+                                }
+                                results.push(BatchTranslationResult {
+                                    index: idx,
+                                    original,
+                                    translated,
+                                });
+                                completed += 1;
+                                on_progress(completed, total);
+                                continue;
+                            }
+                        }
+                        if let Some(cached) = self.cache.get(&prepared.text, from, to).await {
+                            if let Some((_, cached_text)) = cached.results.first() {
+                                let translated = self
+                                    .finalize(
+                                        cached_text,
+                                        &original,
+                                        from,
+                                        to,
+                                        &prepared.blacklist,
+                                    )
+                                    .await;
+                                context.push_back(TranslationContext {
+                                    source: original.clone(),
+                                    translation: translated.clone(),
+                                });
+                                while context.len() > 5 {
+                                    context.pop_front();
+                                }
+                                results.push(BatchTranslationResult {
+                                    index: idx,
+                                    original,
+                                    translated,
+                                });
+                                completed += 1;
+                                on_progress(completed, total);
+                                continue;
+                            }
+                        }
+                    }
+
+                    need_llm.push((idx, original, prepared));
                 }
 
-                for chunk in prepared_rows.chunks(concurrency) {
+                for chunk in need_llm.chunks(concurrency) {
                     let segs: Vec<&str> = chunk.iter().map(|(_, _, p)| p.text.as_str()).collect();
                     let raws = {
                         let router = self.engine_router.read().await;
@@ -841,22 +909,38 @@ impl TranslationService {
                                     "[translate_batch] LLM numbered batch failed: {}",
                                     e
                                 );
-                                if ocr_fallback {
-                                    // Per-seg ordered fallback when LLM pack fails
-                                    let mut fallbacks = Vec::with_capacity(segs.len());
-                                    for seg in &segs {
-                                        match router
+                                // Per-seg fallback for all channels (OCR: ordered fallback;
+                                // long-text: primary-with-context then empty)
+                                let mut fallbacks = Vec::with_capacity(segs.len());
+                                for (i, seg) in segs.iter().enumerate() {
+                                    let t = if ocr_fallback {
+                                        router
                                             .translate_fallback_string(seg, from, to)
                                             .await
+                                            .unwrap_or_default()
+                                    } else {
+                                        let ctx: Vec<TranslationContext> =
+                                            context.iter().cloned().collect();
+                                        match router
+                                            .translate_primary_with_context(seg, from, to, &ctx)
+                                            .await
                                         {
-                                            Ok(t) => fallbacks.push(t),
-                                            Err(_) => fallbacks.push(String::new()),
+                                            Ok(s) => s,
+                                            Err(_) => router
+                                                .translate_fallback_string(seg, from, to)
+                                                .await
+                                                .unwrap_or_default(),
                                         }
+                                    };
+                                    if t.is_empty() {
+                                        tracing::debug!(
+                                            "[translate_batch] pack-fail fallback empty at chunk[{}]",
+                                            i
+                                        );
                                     }
-                                    fallbacks
-                                } else {
-                                    vec![String::new(); segs.len()]
+                                    fallbacks.push(t);
                                 }
+                                fallbacks
                             },
                         }
                     };

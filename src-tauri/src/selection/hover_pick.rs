@@ -20,19 +20,95 @@ pub struct HoverPick {
 /// MTT-inspired unitization: prefer mid-token (under cursor feel), then first token,
 /// then short CJK window — not the whole Name/Value dump.
 pub fn extract_word_candidate(text: &str) -> Option<String> {
+    extract_word_candidate_with_hint(text, None)
+}
+
+/// Prefer the token under an estimated horizontal position inside the control.
+/// `cursor_ratio` is 0.0..=1.0 across the element width (from left).
+pub fn extract_word_candidate_with_hint(text: &str, cursor_ratio: Option<f64>) -> Option<String> {
     let t = text.trim();
     if t.is_empty() {
         return None;
     }
     // Cap huge dumps (full document Name) before scanning
+    let owned: String;
     let t = if t.chars().count() > 200 {
-        let s: String = t.chars().take(200).collect();
-        // keep owned for rest
-        return extract_word_candidate_inner(&s);
+        owned = t.chars().take(200).collect();
+        owned.as_str()
     } else {
         t
     };
+    if let Some(r) = cursor_ratio {
+        if let Some(w) = extract_word_at_ratio(t, r.clamp(0.0, 1.0)) {
+            return Some(w);
+        }
+    }
     extract_word_candidate_inner(t)
+}
+
+/// Map horizontal ratio → char index → surrounding alphanumeric / CJK token.
+fn extract_word_at_ratio(t: &str, ratio: f64) -> Option<String> {
+    let chars: Vec<char> = t.chars().collect();
+    if chars.is_empty() {
+        return None;
+    }
+    let idx = ((chars.len() as f64 - 1.0) * ratio).round() as usize;
+    let idx = idx.min(chars.len() - 1);
+
+    // Expand to Latin/digit word or short CJK window around idx
+    let c = chars[idx];
+    if c.is_alphanumeric() || c == '\'' || c == '-' || c == '\u{2019}' {
+        let mut start = idx;
+        while start > 0 {
+            let prev = chars[start - 1];
+            if prev.is_alphanumeric() || prev == '\'' || prev == '-' || prev == '\u{2019}' {
+                start -= 1;
+            } else {
+                break;
+            }
+        }
+        let mut end = idx + 1;
+        while end < chars.len() {
+            let next = chars[end];
+            if next.is_alphanumeric() || next == '\'' || next == '-' || next == '\u{2019}' {
+                end += 1;
+            } else {
+                break;
+            }
+        }
+        let word: String = chars[start..end].iter().collect();
+        let word = word.trim_matches(|ch: char| !ch.is_alphanumeric());
+        if !word.is_empty()
+            && word.chars().count() <= 40
+            && dictionary::is_single_word(word)
+            && !is_ui_chrome_word(word)
+        {
+            return Some(word.to_string());
+        }
+    }
+
+    if matches!(
+        c,
+        '\u{4e00}'..='\u{9fff}' | '\u{3400}'..='\u{4dbf}' | '\u{f900}'..='\u{faff}'
+    ) {
+        let start = idx.saturating_sub(1);
+        let end = (idx + 3).min(chars.len());
+        let cjk: String = chars[start..end]
+            .iter()
+            .copied()
+            .filter(|ch| {
+                matches!(
+                    ch,
+                    '\u{4e00}'..='\u{9fff}' | '\u{3400}'..='\u{4dbf}' | '\u{f900}'..='\u{faff}'
+                )
+            })
+            .take(4)
+            .collect();
+        if !cjk.is_empty() && dictionary::is_single_word(&cjk) {
+            return Some(cjk);
+        }
+    }
+    None
 }
 
 /// UI chrome / process names that UIA Name often returns instead of real text.
@@ -198,7 +274,7 @@ fn pick_word_at_cursor_uia_win() -> Option<HoverPick> {
             }
         }
 
-        // Bounding rectangle if available
+        // Bounding rectangle if available — used for cursor-relative tokenization
         let bounds = element.CurrentBoundingRectangle().ok().map(|r| {
             let w = (r.right - r.left).max(0) as f64;
             let h = (r.bottom - r.top).max(0) as f64;
@@ -210,13 +286,24 @@ fn pick_word_at_cursor_uia_win() -> Option<HoverPick> {
             }
         });
 
-        let word = extract_word_candidate(&raw)?;
+        let ratio = bounds.as_ref().and_then(|b| {
+            if b.width > 2.0 {
+                Some(((cx - b.x) / b.width).clamp(0.0, 1.0))
+            } else {
+                None
+            }
+        });
+        let word = extract_word_candidate_with_hint(&raw, ratio)?;
         Some(HoverPick {
             word,
             x: cx,
             y: cy,
             bounds,
-            source: "uia_point",
+            source: if ratio.is_some() {
+                "uia_point_ratio"
+            } else {
+                "uia_point"
+            },
         })
     }
 }
@@ -425,6 +512,23 @@ mod tests {
         let w = extract_word_candidate("你好世界测试").unwrap();
         assert!(w.chars().count() <= 4);
         assert!(!w.is_empty());
+    }
+
+    #[test]
+    fn extract_word_at_cursor_ratio_prefers_under_point() {
+        // Left side → first token; right side → last token
+        assert_eq!(
+            extract_word_candidate_with_hint("alpha beta gamma", Some(0.05)).as_deref(),
+            Some("alpha")
+        );
+        assert_eq!(
+            extract_word_candidate_with_hint("alpha beta gamma", Some(0.95)).as_deref(),
+            Some("gamma")
+        );
+        assert_eq!(
+            extract_word_candidate_with_hint("one two three", Some(0.5)).as_deref(),
+            Some("two")
+        );
     }
 
     #[test]
