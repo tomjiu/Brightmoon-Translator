@@ -9,6 +9,7 @@ const DEFAULT_UX: SelectionUxConfig = {
   hoverDictionary: false,
   hoverDwellMs: 400,
   hoverUnit: 'word',
+  hoverDictSource: 'auto',
   ocrForcePickup: false,
   ocrModifierKey: '',
   autoMinChars: 1,
@@ -213,11 +214,25 @@ export default function SelectionSettings() {
                 onChange={(e) => patchUx({ hoverUnit: e.target.value })}
                 className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
               >
-                <option value="word">词（词典优先）</option>
+                <option value="word">词（仅真词典命中）</option>
                 <option value="sentence">句（机翻）</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">词典来源</label>
+              <select
+                value={ux.hoverDictSource || 'auto'}
+                onChange={(e) => patchUx({ hoverDictSource: e.target.value })}
+                className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+              >
+                <option value="auto">自动（本地 ECDICT → 有道）</option>
+                <option value="ecdict">仅本地 ECDICT</option>
+                <option value="youdao">仅有道在线</option>
+              </select>
               <p className="text-xs text-text-secondary mt-1">
-                按住 Alt 可临时切到「句」。编辑框有焦点时不弹悬停；鼠标离开浮层约 120ms 后关闭。
+                悬停是<strong>非侵入</strong> UIA（不注入进程）。只读 TextPattern/编辑框内容，
+                <strong>不用</strong>窗口标题 Name（避免 PowerShell/Google）。未命中词典不弹机翻。
+                终端默认关闭悬停；浏览器页内文字依赖控件是否暴露 TextPattern。
               </p>
             </div>
           </div>

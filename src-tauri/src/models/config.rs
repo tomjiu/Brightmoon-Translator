@@ -373,6 +373,10 @@ pub struct SelectionUxConfig {
     /// Hover unit: "word" (default) | "sentence" (MTT-style). Alt held can force sentence.
     #[serde(default = "default_hover_unit")]
     pub hover_unit: String,
+    /// Hover dictionary backend: auto | ecdict | youdao
+    /// auto = ECDICT first (EN) then Youdao; ecdict = local only; youdao = online only
+    #[serde(default = "default_hover_dict_source")]
+    pub hover_dict_source: String,
     /// When UIA/clipboard selection is empty, try OCR near cursor (force 取词)
     #[serde(default)]
     pub ocr_force_pickup: bool,
@@ -414,6 +418,10 @@ fn default_hover_unit() -> String {
     "word".into()
 }
 
+fn default_hover_dict_source() -> String {
+    "auto".into()
+}
+
 impl Default for SelectionUxConfig {
     fn default() -> Self {
         Self {
@@ -422,6 +430,7 @@ impl Default for SelectionUxConfig {
             hover_dictionary: false,
             hover_dwell_ms: default_hover_dwell_ms(),
             hover_unit: default_hover_unit(),
+            hover_dict_source: default_hover_dict_source(),
             ocr_force_pickup: false,
             ocr_modifier_key: default_ocr_modifier_key(),
             auto_min_chars: default_selection_min_chars(),

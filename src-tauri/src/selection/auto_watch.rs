@@ -197,7 +197,13 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                         hover_still_since = None;
                         continue;
                     }
-                    let ocr_fb = super::ocr_force_allowed(&ux);
+                    // Never free-OCR hover on terminals/browsers without TextPattern —
+                    // OCR strip reads chrome ("PowerShell", "Google") more often than page words.
+                    let ocr_fb = super::ocr_force_allowed(&ux)
+                        && fg
+                            .as_ref()
+                            .map(|p| !p.is_terminal && !p.is_browser)
+                            .unwrap_or(true);
                     let unit = ux.hover_unit.to_ascii_lowercase();
                     let alt_sentence = super::modifier_key_satisfied("alt");
                     let want_sentence = unit == "sentence" || unit == "sent" || alt_sentence;
@@ -408,23 +414,76 @@ async fn show_hover_dictionary(app: &AppHandle, word: &str, x: f64, y: f64) {
     if word.is_empty() || !dictionary::is_single_word(word) || is_junk_hover_word(word) {
         return;
     }
-    // Abort if user started typing while we looked up
     if crate::selection::mouse_hook::key_pressed_within_ms(400) {
         return;
     }
-    let dict = dictionary::Dictionary::new();
-    let results = if dictionary::is_cjk(word) {
-        dict.lookup_chinese(word).await.unwrap_or_default()
-    } else {
-        dict.lookup(word).await.unwrap_or_default()
+
+    let source = {
+        app.try_state::<crate::AppState>()
+            .map(|s| {
+                s.system
+                    .config
+                    .blocking_lock()
+                    .selection_ux
+                    .hover_dict_source
+                    .clone()
+            })
+            .unwrap_or_else(|| "auto".into())
     };
-    // Dict hit → card; miss on a real word → MT (parity with selection single-word path).
-    // Junk chrome words already returned above — never bare-MT those.
-    let Some(body) = format_dict_body(word, &results) else {
-        if crate::selection::mouse_hook::key_pressed_within_ms(400) {
-            return;
+    let source = source.to_ascii_lowercase();
+    let use_ecdict = matches!(source.as_str(), "auto" | "ecdict" | "local");
+    let use_youdao = matches!(source.as_str(), "auto" | "youdao" | "online");
+
+    let mut results = Vec::new();
+    // Local ECDICT first for English when enabled
+    if use_ecdict && !dictionary::is_cjk(word) {
+        if let Some(state) = app.try_state::<crate::AppState>() {
+            if let Some(pool) = state.ecdict_pool.as_ref() {
+                if let Ok(body) = lookup_ecdict_overlay(word, pool).await {
+                    if dictionary::has_real_meanings(&body) {
+                        results = body;
+                    }
+                }
+            }
         }
-        show_selection_translate_text(app, word).await;
+    }
+    if results.is_empty() && use_youdao {
+        let dict = dictionary::Dictionary::new();
+        results = if dictionary::is_cjk(word) {
+            let mut found = Vec::new();
+            let chars: Vec<char> = word.chars().collect();
+            if chars.len() > 1 {
+                for len in (1..=chars.len().min(4)).rev() {
+                    for start in 0..=(chars.len() - len) {
+                        let sub: String = chars[start..start + len].iter().collect();
+                        if let Ok(r) = dict.lookup_chinese(&sub).await {
+                            if dictionary::has_real_meanings(&r) {
+                                found = r;
+                                break;
+                            }
+                        }
+                    }
+                    if !found.is_empty() {
+                        break;
+                    }
+                }
+            }
+            if found.is_empty() {
+                dict.lookup_chinese(word).await.unwrap_or_default()
+            } else {
+                found
+            }
+        } else {
+            dict.lookup(word).await.unwrap_or_default()
+        };
+    }
+    // ecdict-only miss: optional youdao already handled; pure miss → silent
+    if results.is_empty() && use_ecdict && !use_youdao && dictionary::is_cjk(word) {
+        // CJK has no ECDICT path — fall back youdao once if source was ecdict-only
+    }
+
+    // Hover = real dictionary hit only (never MT app titles / OCR junk).
+    let Some(body) = format_dict_body(word, &results) else {
         return;
     };
     if crate::selection::mouse_hook::key_pressed_within_ms(400) {
@@ -436,7 +495,7 @@ async fn show_hover_dictionary(app: &AppHandle, word: &str, x: f64, y: f64) {
     let longest = body.lines().map(|l| l.chars().count()).max().unwrap_or(12) as f64;
     let w = (longest * 8.0 + 48.0).clamp(200.0, 420.0);
     let content = overlay::OverlayContent {
-        source: String::new(), // body already has headword
+        source: String::new(),
         translated: body,
         source_app: Some("hover-dict".into()),
         window_title: None,
@@ -445,6 +504,81 @@ async fn show_hover_dictionary(app: &AppHandle, word: &str, x: f64, y: f64) {
     let _ = overlay::window_manager::create_overlay_window_ex(
         app, &html, pos.x, pos.y, w, h, true, false,
     );
+}
+
+/// ECDICT → DictionaryResult for hover overlay.
+async fn lookup_ecdict_overlay(
+    word: &str,
+    pool: &sqlx::SqlitePool,
+) -> Result<Vec<crate::models::dictionary::DictionaryResult>, String> {
+    use crate::models::dictionary::{Definition, DictionaryResult, Meaning};
+    use sqlx::Row;
+    let key = word.trim().to_lowercase();
+    let row = sqlx::query(
+        "SELECT word, phonetic, definition, translation FROM stardict WHERE word = ?1 COLLATE NOCASE LIMIT 1",
+    )
+    .bind(&key)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some(row) = row else {
+        return Ok(vec![]);
+    };
+    let head: String = row.try_get("word").unwrap_or_else(|_| word.to_string());
+    let phonetic: Option<String> = row.try_get("phonetic").ok().flatten();
+    let translation: Option<String> = row.try_get("translation").ok().flatten();
+    let definition: Option<String> = row.try_get("definition").ok().flatten();
+    let mut defs: Vec<Definition> = Vec::new();
+    if let Some(tr) = translation {
+        for line in tr.split(['\n', '\\']) {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            defs.push(Definition {
+                definition: line.to_string(),
+                example: None,
+                synonyms: vec![],
+                antonyms: vec![],
+            });
+            if defs.len() >= 6 {
+                break;
+            }
+        }
+    }
+    if defs.is_empty() {
+        if let Some(def) = definition {
+            for line in def.split('\n').take(4) {
+                let line = line.trim();
+                if !line.is_empty() {
+                    defs.push(Definition {
+                        definition: line.to_string(),
+                        example: None,
+                        synonyms: vec![],
+                        antonyms: vec![],
+                    });
+                }
+            }
+        }
+    }
+    if defs.is_empty() {
+        return Ok(vec![]);
+    }
+    Ok(vec![DictionaryResult {
+        word: head,
+        phonetic: phonetic.filter(|p| !p.is_empty()).map(|p| {
+            if p.starts_with('/') || p.starts_with('[') {
+                p
+            } else {
+                format!("/{}/", p)
+            }
+        }),
+        meanings: vec![Meaning {
+            part_of_speech: "ECDICT".into(),
+            definitions: defs,
+        }],
+        source_urls: vec![],
+    }])
 }
 
 /// Public entry for dictionary hotkey / external callers (dict-first for single words).

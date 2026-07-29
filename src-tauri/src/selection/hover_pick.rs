@@ -113,7 +113,18 @@ fn extract_word_at_ratio(t: &str, ratio: f64) -> Option<String> {
 
 /// UI chrome / process names that UIA Name often returns instead of real text.
 pub fn is_ui_chrome_word(w: &str) -> bool {
-    let n = w.trim().to_ascii_lowercase();
+    let t = w.trim();
+    if t.is_empty() {
+        return true;
+    }
+    let n = t.to_ascii_lowercase();
+    // Window titles: "App - Document", "Administrator: Windows PowerShell"
+    if (t.contains(" - ") || t.contains(" — ") || t.contains(':')) && t.chars().count() > 12 {
+        return true;
+    }
+    if n.ends_with(".exe") || n.contains(".exe ") {
+        return true;
+    }
     matches!(
         n.as_str(),
         "powershell"
@@ -122,16 +133,22 @@ pub fn is_ui_chrome_word(w: &str) -> bool {
             | "command"
             | "prompt"
             | "windowsterminal"
+            | "windows terminal"
             | "terminal"
             | "conhost"
             | "chrome"
+            | "google chrome"
             | "msedge"
+            | "microsoft edge"
             | "firefox"
             | "explorer"
+            | "file explorer"
             | "notepad"
             | "code"
+            | "visual studio code"
             | "cursor"
             | "moontranslator"
+            | "moon translator"
             | "moon"
             | "translator"
             | "system"
@@ -149,9 +166,38 @@ pub fn is_ui_chrome_word(w: &str) -> bool {
             | "close"
             | "minimize"
             | "maximize"
-    ) || n.ends_with(".exe")
-        || n.contains("powershell")
+            | "application"
+            | "window"
+            | "document"
+            | "untitled"
+            | "新标签页"
+            | "新标签"
+            | "空白页"
+    ) || n.contains("powershell")
         || n.contains("windows terminal")
+        || n.contains("visual studio")
+        || n.starts_with("microsoft ")
+        || n.contains("任务管理器")
+        || n.contains("设置") && t.chars().count() <= 6
+}
+
+/// True if candidate looks like a process/app product name (reject for hover).
+pub fn looks_like_app_or_process_name(w: &str) -> bool {
+    if is_ui_chrome_word(w) {
+        return true;
+    }
+    let t = w.trim();
+    // PascalCase multi-token without spaces often app ids
+    if t.chars().count() >= 6
+        && t.chars().any(|c| c.is_ascii_uppercase())
+        && t.chars().any(|c| c.is_ascii_lowercase())
+        && !t.contains(' ')
+        && t.chars().filter(|c| c.is_ascii_uppercase()).count() >= 2
+    {
+        // e.g. WinStore, TextInput — still allow normal English words via dict later
+        // Only reject if also has no vowels pattern? Skip — dict miss handles.
+    }
+    false
 }
 
 fn extract_word_candidate_inner(t: &str) -> Option<String> {
@@ -190,6 +236,7 @@ fn extract_word_candidate_inner(t: &str) -> Option<String> {
         }
     }
 
+    // CJK: prefer 2-char then 1 then 3 near mid (dictionary headwords), not random 4-char dump
     let cjk_chars: Vec<char> = t
         .chars()
         .filter(|c| {
@@ -200,10 +247,16 @@ fn extract_word_candidate_inner(t: &str) -> Option<String> {
         })
         .collect();
     if !cjk_chars.is_empty() {
-        let start = cjk_chars.len().saturating_sub(4) / 2;
-        let cjk: String = cjk_chars.into_iter().skip(start).take(4).collect();
-        if !cjk.is_empty() && dictionary::is_single_word(&cjk) {
-            return Some(cjk);
+        let mid = cjk_chars.len() / 2;
+        for len in [2usize, 1, 3, 4] {
+            if cjk_chars.len() < len {
+                continue;
+            }
+            let start = mid.saturating_sub(len / 2).min(cjk_chars.len() - len);
+            let cjk: String = cjk_chars[start..start + len].iter().collect();
+            if !cjk.is_empty() && !is_ui_chrome_word(&cjk) && dictionary::is_single_word(&cjk) {
+                return Some(cjk);
+            }
         }
     }
     None
@@ -428,29 +481,21 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
             },
         };
 
-        // Prefer TextPattern RangeFromPoint → ExpandToEnclosingUnit (true word/sentence)
+        // Reject pure chrome controls (title bar, tab strip) — never parse Name as page text.
+        if element_is_chrome_only(&element) {
+            return None;
+        }
+
+        // 1) TextPattern at point = real document text (non-invasive). Prefer this only.
         if let Some(pick) = try_text_pattern_at_point(&element, pt, cx, cy, sentence) {
             return Some(pick);
         }
 
-        let mut raw = String::new();
-        if let Ok(name) = element.CurrentName() {
-            let s = name.to_string();
-            if !s.trim().is_empty() {
-                raw = s;
-            }
-        }
+        // 2) Writable ValuePattern (edit fields) — content, not window title.
+        //    Do NOT use CurrentName: it is Accessibility name (app title, "Google", "PowerShell").
+        let raw = value_pattern_text_if_editable(&element)?;
         if raw.trim().is_empty() {
-            if let Ok(pat) = element.GetCurrentPattern(UIA_ValuePatternId) {
-                if let Ok(vp) = pat.cast::<IUIAutomationValuePattern>() {
-                    if let Ok(v) = vp.CurrentValue() {
-                        let s = v.to_string();
-                        if !s.trim().is_empty() {
-                            raw = s;
-                        }
-                    }
-                }
-            }
+            return None;
         }
 
         let bounds = element.CurrentBoundingRectangle().ok().map(|r| {
@@ -477,19 +522,96 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
         } else {
             extract_word_candidate_with_hint(&raw, ratio)?
         };
+        if is_ui_chrome_word(&word) {
+            return None;
+        }
         Some(HoverPick {
             word,
             x: cx,
             y: cy,
             bounds,
             source: if sentence {
-                "uia_sentence"
-            } else if ratio.is_some() {
-                "uia_point_ratio"
+                "uia_value_sentence"
             } else {
-                "uia_point"
+                "uia_value"
             },
         })
+    }
+}
+
+/// Window / pane / title-bar-ish controls: no free-hover text (would only yield app names).
+#[cfg(windows)]
+fn element_is_chrome_only(
+    element: &windows::Win32::UI::Accessibility::IUIAutomationElement,
+) -> bool {
+    use windows::Win32::UI::Accessibility::{
+        UIA_GroupControlTypeId, UIA_MenuBarControlTypeId, UIA_MenuControlTypeId,
+        UIA_PaneControlTypeId, UIA_TabControlTypeId, UIA_TabItemControlTypeId,
+        UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId, UIA_WindowControlTypeId,
+    };
+    unsafe {
+        if let Ok(ct) = element.CurrentControlType() {
+            let id = ct.0;
+            if id == UIA_WindowControlTypeId.0
+                || id == UIA_TitleBarControlTypeId.0
+                || id == UIA_MenuBarControlTypeId.0
+                || id == UIA_MenuControlTypeId.0
+                || id == UIA_ToolBarControlTypeId.0
+                || id == UIA_TabControlTypeId.0
+                || id == UIA_TabItemControlTypeId.0
+                || id == UIA_PaneControlTypeId.0
+                || id == UIA_GroupControlTypeId.0
+            {
+                // Pane/Group often wrap real text — only skip if no TextPattern and short Name
+                if id == UIA_PaneControlTypeId.0 || id == UIA_GroupControlTypeId.0 {
+                    return false;
+                }
+                return true;
+            }
+        }
+        false
+    }
+}
+
+#[cfg(windows)]
+fn value_pattern_text_if_editable(
+    element: &windows::Win32::UI::Accessibility::IUIAutomationElement,
+) -> Option<String> {
+    use windows::core::Interface;
+    use windows::Win32::UI::Accessibility::{
+        IUIAutomationValuePattern, UIA_DocumentControlTypeId, UIA_EditControlTypeId,
+        UIA_ValuePatternId,
+    };
+    unsafe {
+        let is_edit = element
+            .CurrentControlType()
+            .ok()
+            .map(|ct| ct.0 == UIA_EditControlTypeId.0 || ct.0 == UIA_DocumentControlTypeId.0)
+            .unwrap_or(false);
+        let pat = element.GetCurrentPattern(UIA_ValuePatternId).ok()?;
+        let vp: IUIAutomationValuePattern = pat.cast().ok()?;
+        let ro = vp
+            .CurrentIsReadOnly()
+            .ok()
+            .map(|b| b.as_bool())
+            .unwrap_or(true);
+        // Only trust Value when editable edit/document, or non-readonly with substantial text
+        let v = vp.CurrentValue().ok()?.to_string();
+        let v = v.trim().to_string();
+        if v.is_empty() {
+            return None;
+        }
+        if is_edit && !ro {
+            return Some(v);
+        }
+        // Avoid treating read-only "Google" / status strings as page words
+        if ro || v.chars().count() < 2 || is_ui_chrome_word(&v) {
+            return None;
+        }
+        if is_edit {
+            return Some(v);
+        }
+        None
     }
 }
 

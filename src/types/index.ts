@@ -93,6 +93,8 @@ export interface SelectionUxConfig {
   hoverDwellMs: number;
   /** word | sentence — MTT-style unit; Alt held also forces sentence */
   hoverUnit?: string;
+  /** auto | ecdict | youdao — hover dictionary backend */
+  hoverDictSource?: string;
   /** Empty UIA/clipboard → OCR near cursor (phased) */
   ocrForcePickup: boolean;
   /** Modifier for OCR force: '' | none | shift | ctrl | alt (MTT-style) */

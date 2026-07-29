@@ -53,6 +53,7 @@ const INITIAL_CONFIG: AppConfig = {
     hoverDictionary: false,
     hoverDwellMs: 400,
     hoverUnit: 'word',
+    hoverDictSource: 'auto',
     ocrForcePickup: false,
     ocrModifierKey: '',
     autoMinChars: 1,
