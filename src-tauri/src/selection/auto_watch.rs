@@ -191,10 +191,11 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                     && last_hover_lookup.elapsed() >= Duration::from_millis(900)
                 {
                     last_hover_lookup = Instant::now();
-                    let ocr_fb = ux.ocr_force_pickup;
+                    // Hover OCR only when force pickup on + optional modifier (MTT-style)
+                    let ocr_fb = super::ocr_force_allowed(&ux);
                     let pick = tokio::task::spawn_blocking(move || {
                         // Desktop apps: UIA Name/Value under point
-                        // Images/browsers: long strip OCR only if force-pickup
+                        // Images/browsers: long strip OCR only if force-pickup (+ modifier)
                         pick_word_at_cursor_uia().or_else(|| {
                             if ocr_fb {
                                 pick_word_line_strip_ocr()
@@ -304,7 +305,8 @@ async fn handle_hook_event(
             let mode = ux.trigger_mode.clone();
             let min_chars = ux.auto_min_chars.max(1) as usize;
             let exclude = ux.exclude_processes.clone();
-            let ocr_force = ux.ocr_force_pickup;
+            // Capture modifier at gesture time (before 150ms delay) so user can release after
+            let ocr_force = super::ocr_force_allowed(&ux);
             let release_x = pt.x as f64;
             let release_y = pt.y as f64;
 

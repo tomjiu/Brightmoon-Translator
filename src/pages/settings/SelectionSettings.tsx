@@ -9,6 +9,7 @@ const DEFAULT_UX: SelectionUxConfig = {
   hoverDictionary: false,
   hoverDwellMs: 400,
   ocrForcePickup: false,
+  ocrModifierKey: '',
   autoMinChars: 1,
   minDragPx: 10,
   excludeProcesses: [],
@@ -205,17 +206,40 @@ export default function SelectionSettings() {
       </Card>
 
       <Card title="OCR 强力取词" description="不是「截图翻译」，是划词失败时的补救">
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-text-primary">选区为空时 OCR 补取光标附近文字</p>
-            <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
-              仅在这些情况生效：① 拖选/双击后 UIA+剪贴板都取不到字；②
-              按划词热键时没有选区。补取用光标旁横向窄条（约 180×28）WinRT
-              OCR，减少标题栏误识。图片/游戏里「选不中」的字才有感；终端默认不做悬停
-              OCR。整页/框选仍用工具栏「OCR 截图翻译」。
-            </p>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-text-primary">
+                选区为空时 OCR 补取光标附近文字
+              </p>
+              <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
+                仅在这些情况生效：① 拖选/双击后 UIA+剪贴板都取不到字；②
+                按划词热键时没有选区。补取用光标旁横向窄条（约 180×28）WinRT
+                OCR。整页/框选仍用工具栏「OCR 截图翻译」。
+              </p>
+            </div>
+            <Switch checked={ux.ocrForcePickup} onChange={(v) => patchUx({ ocrForcePickup: v })} />
           </div>
-          <Switch checked={ux.ocrForcePickup} onChange={(v) => patchUx({ ocrForcePickup: v })} />
+          {ux.ocrForcePickup && (
+            <div>
+              <label className="block text-sm font-medium text-text-primary mb-2">
+                修饰键（MTT 风格，减少误触）
+              </label>
+              <select
+                value={ux.ocrModifierKey || ''}
+                onChange={(e) => patchUx({ ocrModifierKey: e.target.value })}
+                className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+              >
+                <option value="">无（只要开关开就 OCR）</option>
+                <option value="shift">按住 Shift</option>
+                <option value="ctrl">按住 Ctrl</option>
+                <option value="alt">按住 Alt</option>
+              </select>
+              <p className="text-xs text-text-secondary mt-1">
+                悬停图文 / 空选区补取时需同时按住；推荐 Shift 对齐 Mouse Tooltip Translator。
+              </p>
+            </div>
+          )}
         </div>
       </Card>
 

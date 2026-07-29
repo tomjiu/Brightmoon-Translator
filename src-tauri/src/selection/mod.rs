@@ -16,6 +16,40 @@ pub use process_class::{foreground_process, SelectionStrategy};
 
 use serde::{Deserialize, Serialize};
 
+/// OCR force pickup allowed: switch on + optional modifier held.
+pub fn ocr_force_allowed(ux: &crate::config::SelectionUxConfig) -> bool {
+    ux.ocr_force_pickup && modifier_key_satisfied(&ux.ocr_modifier_key)
+}
+
+/// Whether OCR-force modifier is satisfied (`""`/`none` = always ok).
+/// Keys: shift | ctrl | alt (either left/right).
+pub fn modifier_key_satisfied(key: &str) -> bool {
+    let k = key.trim().to_ascii_lowercase();
+    if k.is_empty() || k == "none" || k == "off" {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            GetAsyncKeyState, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_RCONTROL, VK_RMENU, VK_RSHIFT,
+        };
+        let down = |vk: i32| unsafe { GetAsyncKeyState(vk) as u16 & 0x8000 != 0 };
+        match k.as_str() {
+            "shift" | "lshift" | "rshift" => down(VK_LSHIFT.0 as i32) || down(VK_RSHIFT.0 as i32),
+            "ctrl" | "control" | "lctrl" | "rctrl" => {
+                down(VK_LCONTROL.0 as i32) || down(VK_RCONTROL.0 as i32)
+            },
+            "alt" | "menu" | "lalt" | "ralt" => down(VK_LMENU.0 as i32) || down(VK_RMENU.0 as i32),
+            _ => true, // unknown → don't hard-block
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = k;
+        true
+    }
+}
+
 /// Bounding rectangle for a selection or element on screen
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectionBounds {

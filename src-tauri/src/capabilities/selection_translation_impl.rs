@@ -138,11 +138,11 @@ impl SelectionTranslation for DefaultSelectionTranslation {
         let app_ctx = self.app_detector.detect().await;
 
         // Step 2: Process-routed selection (Easydict: Electron→clipboard, terminal→UIA only).
-        // If empty and OCR force pickup is on, OCR a small region around the cursor.
+        // If empty and OCR force pickup is on (+ optional modifier), OCR near cursor.
         let (ocr_force, exclude) = {
             let c = self.config.lock().await;
             (
-                c.selection_ux.ocr_force_pickup,
+                crate::selection::ocr_force_allowed(&c.selection_ux),
                 c.selection_ux.exclude_processes.clone(),
             )
         };

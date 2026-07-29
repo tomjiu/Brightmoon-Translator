@@ -52,6 +52,7 @@ const INITIAL_CONFIG: AppConfig = {
     hoverDictionary: false,
     hoverDwellMs: 400,
     ocrForcePickup: false,
+    ocrModifierKey: '',
     autoMinChars: 1,
     minDragPx: 10,
     excludeProcesses: [],

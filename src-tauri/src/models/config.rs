@@ -369,6 +369,10 @@ pub struct SelectionUxConfig {
     /// When UIA/clipboard selection is empty, try OCR near cursor (force 取词)
     #[serde(default)]
     pub ocr_force_pickup: bool,
+    /// Modifier required for OCR force pickup (MTT-style). Empty/`none` = no gate.
+    /// Values: "" | "none" | "shift" | "ctrl" | "alt"
+    #[serde(default = "default_ocr_modifier_key")]
+    pub ocr_modifier_key: String,
     /// Min selection length for auto-on-select (chars)
     #[serde(default = "default_selection_min_chars")]
     pub auto_min_chars: u32,
@@ -393,6 +397,12 @@ fn default_min_drag_px() -> u32 {
     10
 }
 
+fn default_ocr_modifier_key() -> String {
+    // Default none: only ocr_force_pickup switch gates OCR (backward compatible).
+    // Recommend "shift" in settings when force pickup is noisy.
+    String::new()
+}
+
 impl Default for SelectionUxConfig {
     fn default() -> Self {
         Self {
@@ -401,6 +411,7 @@ impl Default for SelectionUxConfig {
             hover_dictionary: false,
             hover_dwell_ms: default_hover_dwell_ms(),
             ocr_force_pickup: false,
+            ocr_modifier_key: default_ocr_modifier_key(),
             auto_min_chars: default_selection_min_chars(),
             min_drag_px: default_min_drag_px(),
             exclude_processes: Vec::new(),

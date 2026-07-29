@@ -14,7 +14,7 @@
 
 | Item | Status | Notes |
 |------|--------|--------|
-| Pop / auto / hotkey selection | **Working baseline** | `WH_MOUSE_LL`; **`min_drag_px` wired** to drag detector |
+| Pop / auto / hotkey selection | **Working baseline** | `WH_MOUSE_LL`; min_drag_px; **ocr_modifier_key** gate |
 | Hover dictionary | **Improved** | Free dwell; terminals skip; chrome filter; dict miss→MT; **cursor-ratio word pick** |
 | Overlay card polish | **Partial** | Compact card + theme via `set_overlay_theme`; still improve light/dark feel |
 | Dict miss → MT | **Improved** | Hover miss → MT (junk still blocked); selection already falls through |
@@ -84,6 +84,7 @@
 | min_drag_px + hover dict→MT | `mouse_hook::set_min_drag_px`; hover miss falls through |
 | Hover cursor-ratio word | `extract_word_candidate_with_hint` + UIA bounds |
 | LLM batch TM/cache + fallback | `translate_batch_core` numbered path |
+| OCR force modifier | `ocr_modifier_key` + `ocr_force_allowed()` |
 | Selection UX sprint | `selection/{mouse_hook,auto_watch,pop_button,process_class,clipboard,hover_pick}` |
 | Selection settings | `SelectionSettings.tsx` |
 | Hotkey live re-register | `hotkey.rs` + `save_config` |

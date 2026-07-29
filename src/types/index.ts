@@ -91,6 +91,8 @@ export interface SelectionUxConfig {
   hoverDwellMs: number;
   /** Empty UIA/clipboard → OCR near cursor (phased) */
   ocrForcePickup: boolean;
+  /** Modifier for OCR force: '' | none | shift | ctrl | alt (MTT-style) */
+  ocrModifierKey?: string;
   /** Min selection length for auto-on-select */
   autoMinChars: number;
   /** Min drag pixels before auto-on-select (Easydict-style) */
