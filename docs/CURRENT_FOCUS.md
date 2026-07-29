@@ -29,7 +29,7 @@
 |------|--------|--------|
 | Hook monitor UI | Exists | Experimental |
 | Passive UIA/clipboard monitor | **Production-ish** | `start_hook_monitor` applies active/auto profile |
-| DLL inject → `TranslationService` | **Improved** | translate bridge + **multi-module IAT** (patch app modules, not gdi32 self) |
+| DLL inject → `TranslationService` | **Improved** | multi-module IAT + **host pump** (400ms, no Hook UI required) |
 | Profiles applied on start | **Done (passive path)** | `hook_cmd::start_hook_monitor` already applies profile |
 | Bundle hook DLL in release | **Improved 2026-07-29** | `tauri.conf.json` resources + richer `find_hook_dll` (exe-dir, CARGO_MANIFEST_DIR, Debug/Release); DLL copied to `src-tauri/bin/` when built |
 
@@ -86,6 +86,7 @@
 | LLM batch TM/cache + fallback | `translate_batch_core` numbered path |
 | OCR force modifier | `ocr_modifier_key` + `ocr_force_allowed()` |
 | Hook multi-module IAT | `hook-dll/src/hook_text.cpp` EnumProcessModules |
+| Hook host pump | `hook_inject_cmd` start on inject / stop on eject |
 | Selection UX sprint | `selection/{mouse_hook,auto_watch,pop_button,process_class,clipboard,hover_pick}` |
 | Selection settings | `SelectionSettings.tsx` |
 | Hotkey live re-register | `hotkey.rs` + `save_config` |
