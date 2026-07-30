@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from './invoke';
 
 export type PolishStyle = 'natural' | 'formal' | 'casual' | 'technical' | 'literary';
 
@@ -66,26 +66,26 @@ export interface MultiRoundResult {
  * Polish translation with AI enhancement
  */
 export async function aiPolishTranslation(request: PolishRequest): Promise<string> {
-  return invoke<string>('ai_polish_translation', { request });
+  return invokeOrThrow<string>('ai_polish_translation', { request });
 }
 
 /**
  * Extract terms from translation pairs
  */
 export async function aiExtractTerms(request: ExtractTermsRequest): Promise<AiTermEntry[]> {
-  return invoke<AiTermEntry[]>('ai_extract_terms', { request });
+  return invokeOrThrow<AiTermEntry[]>('ai_extract_terms', { request });
 }
 
 /**
  * Learn translation style from history
  */
 export async function aiLearnStyle(request: LearnStyleRequest): Promise<TranslationStyle> {
-  return invoke<TranslationStyle>('ai_learn_style', { request });
+  return invokeOrThrow<TranslationStyle>('ai_learn_style', { request });
 }
 
 /**
  * Multi-round translation optimization
  */
 export async function aiMultiRoundTranslate(request: MultiRoundRequest): Promise<MultiRoundResult> {
-  return invoke<MultiRoundResult>('ai_multi_round_translate', { request });
+  return invokeOrThrow<MultiRoundResult>('ai_multi_round_translate', { request });
 }

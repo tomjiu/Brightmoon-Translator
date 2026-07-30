@@ -1,6 +1,6 @@
 // Learning Mode Service - 多样化学习模式 API
 
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from './invoke';
 import type { CardInfo } from './vocabulary';
 
 export interface ChoiceQuestion {
@@ -29,30 +29,30 @@ export async function generateChoiceQuestions(
   planId: string | null,
   count: number,
 ): Promise<ChoiceQuestion[]> {
-  return invoke('generate_choice_questions', { planId, count });
+  return invokeOrThrow('generate_choice_questions', { planId, count });
 }
 
 export async function generateSpellingQuestions(
   planId: string | null,
   count: number,
 ): Promise<SpellingQuestion[]> {
-  return invoke('generate_spelling_questions', { planId, count });
+  return invokeOrThrow('generate_spelling_questions', { planId, count });
 }
 
 export async function generateClozeQuestions(
   planId: string | null,
   count: number,
 ): Promise<ClozeQuestion[]> {
-  return invoke('generate_cloze_questions', { planId, count });
+  return invokeOrThrow('generate_cloze_questions', { planId, count });
 }
 
 export async function getSwipeCards(count: number): Promise<CardInfo[]> {
-  return invoke('get_swipe_cards', { count });
+  return invokeOrThrow('get_swipe_cards', { count });
 }
 
 export async function submitSwipeRating(
   cardId: string,
   rating: 'Again' | 'Hard' | 'Good' | 'Easy',
 ): Promise<void> {
-  return invoke('submit_swipe_rating', { cardId, rating: rating.toLowerCase() });
+  return invokeOrThrow('submit_swipe_rating', { cardId, rating: rating.toLowerCase() });
 }

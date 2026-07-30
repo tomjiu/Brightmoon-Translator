@@ -11,9 +11,14 @@ const MetricsDashboard = lazy(() => import('./pages/MetricsDashboard'));
 const TmManager = lazy(() => import('./pages/TmManager'));
 const HookMonitor = lazy(() => import('./components/HookMonitor'));
 import ErrorBoundary from './components/ErrorBoundary';
-import OcrScreenshotSelector from './components/OcrScreenshotSelector';
-import OcrRegionFrame from './components/OcrRegionFrame';
-import OcrScreenshotTranslator from './components/OcrScreenshotTranslator';
+// S3-13: OCR components lazy-loaded to keep the main window bundle lean.
+// The selector and region-frame render in separate Tauri windows (routed by
+// ?window= query param); the translator mounts in the main window only when
+// the user triggers OCR. Eager-importing all three bloated the initial bundle
+// with OCR-specific code most users don't need on startup.
+const OcrScreenshotSelector = lazy(() => import('./components/OcrScreenshotSelector'));
+const OcrRegionFrame = lazy(() => import('./components/OcrRegionFrame'));
+const OcrScreenshotTranslator = lazy(() => import('./components/OcrScreenshotTranslator'));
 import TitleBar from './components/TitleBar';
 import { AIGenerationProgress } from './components/vocabulary';
 import { useThemeStore } from './stores/themeStore';
@@ -50,12 +55,20 @@ const regionIdParam = new URLSearchParams(window.location.search).get('regionId'
 
 function App() {
   if (windowMode === 'ocr-screenshot') {
-    return <OcrScreenshotSelector />;
+    return (
+      <Suspense fallback={null}>
+        <OcrScreenshotSelector />
+      </Suspense>
+    );
   }
   if (windowMode === 'ocr-region-frame') {
     // M3: `?window=ocr-region-frame&regionId={id}` → per-region frame.
     // No regionId param → legacy default single-frame behavior.
-    return <OcrRegionFrame regionId={regionIdParam ?? undefined} />;
+    return (
+      <Suspense fallback={null}>
+        <OcrRegionFrame regionId={regionIdParam ?? undefined} />
+      </Suspense>
+    );
   }
 
   return <MainApp />;
@@ -119,8 +132,8 @@ function MainApp() {
       if (cancelled || !status || status.loaded) return;
       addToast({
         type: 'warning',
-        message: '本地词典未加载，悬停词典可能不可用',
-        detail: status.path ? `路径: ${status.path}` : undefined,
+        message: t('app.dictNotLoadedWarning'),
+        detail: status.path ? t('app.dictNotLoadedPath', { path: status.path }) : undefined,
         duration: 6000,
       });
     })();
@@ -450,7 +463,9 @@ function MainApp() {
         </main>
       </div>
 
-      <OcrScreenshotTranslator launchNonce={ocrLaunchNonce} />
+      <Suspense fallback={null}>
+        <OcrScreenshotTranslator launchNonce={ocrLaunchNonce} />
+      </Suspense>
       <AIGenerationProgress />
       <ToastContainer />
     </div>

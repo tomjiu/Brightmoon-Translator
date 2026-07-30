@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { useI18n } from '../i18n';
 import { saveAndCollect, summarizeReport } from '../hooks/useCollectionPush';
 import PageHeader from '../components/PageHeader';
 
@@ -67,6 +68,13 @@ interface SuggestionItem {
   preview?: string;
 }
 
+interface DictionaryHistoryItem {
+  word: string;
+  lookupCount: number;
+  firstLookedUp: number;
+  lastLookedUp: number;
+}
+
 function DictionarySearch() {
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
@@ -104,7 +112,31 @@ function DictionarySearch() {
     };
     void checkAndImport();
   }, []);
-  const [history, setHistory] = useState<string[]>([]);
+  const [history, setHistory] = useState<DictionaryHistoryItem[]>([]);
+  const loadHistory = useCallback(async () => {
+    try {
+      const items = await invoke<DictionaryHistoryItem[]>('get_dictionary_history', {
+        limit: 50,
+      });
+      setHistory(items);
+    } catch {
+      // 数据库未初始化或首次使用 — 静默
+    }
+  }, []);
+
+  // 加载持久化查词历史
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
+
+  const handleClearHistory = async () => {
+    try {
+      await invoke('clear_dictionary_history');
+      setHistory([]);
+    } catch (err) {
+      console.error('清空历史失败:', err);
+    }
+  };
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -156,11 +188,8 @@ function DictionarySearch() {
       });
       setResult(data);
       setSearchQuery(data.word);
-      // 添加到搜索历史（去重，最新在前）
-      setHistory((prev) => {
-        const filtered = prev.filter((w) => w.toLowerCase() !== data.word.toLowerCase());
-        return [data.word, ...filtered].slice(0, 20);
-      });
+      // 刷新持久化历史（后端 UPSERT 已更新次数与时间）
+      void loadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : '查询失败');
       setResult(null);
@@ -313,18 +342,29 @@ function DictionarySearch() {
           {history.length > 0 && (
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className="text-xs text-text-tertiary">最近：</span>
-              {history.slice(0, 8).map((w) => (
+              {history.slice(0, 12).map((item) => (
                 <button
-                  key={w}
+                  key={item.word}
                   onClick={() => {
-                    setSearchQuery(w);
-                    void handleLookup(w);
+                    setSearchQuery(item.word);
+                    void handleLookup(item.word);
                   }}
-                  className="text-xs px-2 py-0.5 bg-bg-tertiary text-text-secondary rounded hover:text-primary hover:bg-bg-primary border border-border"
+                  className="text-xs px-2 py-0.5 bg-bg-tertiary text-text-secondary rounded hover:text-primary hover:bg-bg-primary border border-border flex items-center gap-1"
+                  title={`查询 ${item.lookupCount} 次`}
                 >
-                  {w}
+                  {item.word}
+                  {item.lookupCount > 1 && (
+                    <span className="text-[10px] text-text-tertiary">×{item.lookupCount}</span>
+                  )}
                 </button>
               ))}
+              <button
+                onClick={() => void handleClearHistory()}
+                className="text-xs px-2 py-0.5 text-text-tertiary hover:text-red-500 transition-colors"
+                title="清空历史"
+              >
+                清除
+              </button>
             </div>
           )}
         </div>
@@ -359,6 +399,7 @@ function ResultCard({
   result: ComprehensiveEntry;
   onPlayAudio: (url: string) => void;
 }) {
+  const { t } = useI18n();
   const primaryPhonetic = result.phonetics.find((p) => p.text);
   const [collected, setCollected] = useState(false);
   const [collectMsg, setCollectMsg] = useState<string | null>(null);
@@ -427,9 +468,9 @@ function ResultCard({
                   ? 'bg-bg-tertiary text-primary border border-primary'
                   : 'bg-bg-tertiary text-text-secondary hover:text-primary border border-border'
               }`}
-              title={collected ? '已收藏（含外送）' : '收藏到生词本（含外送）'}
+              title={collected ? t('translator.collectedWithExport') : t('translator.collectToWordbook')}
             >
-              {collected ? '已收藏' : '收藏'}
+              {collected ? t('translator.collected') : t('translator.collect')}
             </button>
             <button
               onClick={() => navigator.clipboard.writeText(result.word)}

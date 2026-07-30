@@ -1,6 +1,6 @@
 // Dictionary Optimization Service
 
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from './invoke';
 
 export interface DictStats {
   totalWords: number;
@@ -30,16 +30,16 @@ export interface ExportResult {
 }
 
 export async function getDictStats(): Promise<DictStats> {
-  return invoke('get_dict_stats');
+  return invokeOrThrow('get_dict_stats');
 }
 
 export async function exportCompressedDict(
   outputPath: string,
   maxRank: number,
 ): Promise<ExportResult> {
-  return invoke('export_compressed_dict', { outputPath, maxRank });
+  return invokeOrThrow('export_compressed_dict', { outputPath, maxRank });
 }
 
 export async function exportDictShards(outputDir: string): Promise<Manifest> {
-  return invoke('export_dict_shards', { outputDir });
+  return invokeOrThrow('export_dict_shards', { outputDir });
 }

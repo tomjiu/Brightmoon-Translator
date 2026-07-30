@@ -721,10 +721,10 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
                               : 'bg-bg-tertiary text-text-secondary hover:bg-primary hover:text-primary-fg hover:border-primary'
                           }`}
                           onClick={() => void handleCollect(r.text, i)}
-                          title="收藏到生词本（含外送）"
+                          title={t('translator.collectToWordbook')}
                         >
                           <Bookmark size={12} />
-                          {collectedIndex === i ? '已收藏' : '收藏'}
+                          {collectedIndex === i ? t('translator.collected') : t('translator.collect')}
                         </button>
                         <button
                           className="bg-bg-tertiary border border-border text-text-secondary rounded-md px-2 py-1 text-xs hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1"

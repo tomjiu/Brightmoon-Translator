@@ -1,6 +1,6 @@
 // Vocabulary Service - 词汇学习服务层
 
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from './invoke';
 
 // ============================================
 // 类型定义
@@ -149,7 +149,7 @@ export interface LearningStats {
  * 获取核心词库列表（分页）
  */
 export async function getCoreVocabulary(offset = 0, limit = 50): Promise<CoreVocabEntry[]> {
-  return await invoke<CoreVocabEntry[]>('get_core_vocabulary', {
+  return await invokeOrThrow<CoreVocabEntry[]>('get_core_vocabulary', {
     offset,
     limit,
   });
@@ -159,7 +159,7 @@ export async function getCoreVocabulary(offset = 0, limit = 50): Promise<CoreVoc
  * 搜索核心词库
  */
 export async function searchCoreVocabulary(query: string, limit = 20): Promise<CoreVocabEntry[]> {
-  return await invoke<CoreVocabEntry[]>('search_core_vocabulary', {
+  return await invokeOrThrow<CoreVocabEntry[]>('search_core_vocabulary', {
     query,
     limit,
   });
@@ -169,42 +169,42 @@ export async function searchCoreVocabulary(query: string, limit = 20): Promise<C
  * 创建新卡牌
  */
 export async function createCard(word: string): Promise<string> {
-  return await invoke<string>('create_card', { word });
+  return await invokeOrThrow<string>('create_card', { word });
 }
 
 /**
  * 获取卡牌详情
  */
 export async function getCard(cardId: string): Promise<WordCard> {
-  return await invoke<WordCard>('get_card', { cardId });
+  return await invokeOrThrow<WordCard>('get_card', { cardId });
 }
 
 /**
  * 获取待复习卡牌列表
  */
 export async function getDueCards(): Promise<CardInfo[]> {
-  return await invoke<CardInfo[]>('get_due_cards');
+  return await invokeOrThrow<CardInfo[]>('get_due_cards');
 }
 
 /**
  * AI 生成卡牌内容
  */
 export async function generateCardContent(cardId: string): Promise<AiContent> {
-  return await invoke<AiContent>('generate_card_content', { cardId });
+  return await invokeOrThrow<AiContent>('generate_card_content', { cardId });
 }
 
 /**
  * 提交复习结果
  */
 export async function submitReview(cardId: string, rating: Rating): Promise<undefined> {
-  return await invoke('submit_review', { cardId, rating });
+  return await invokeOrThrow('submit_review', { cardId, rating });
 }
 
 /**
  * 获取学习统计
  */
 export async function getLearningStats(): Promise<LearningStats> {
-  return await invoke<LearningStats>('get_learning_stats');
+  return await invokeOrThrow<LearningStats>('get_learning_stats');
 }
 
 // ============================================

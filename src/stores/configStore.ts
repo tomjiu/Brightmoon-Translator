@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { safeInvoke, invokeOrDefault } from '../services/invoke';
+import { useI18n } from '../i18n';
 import type { AppConfig } from '../types';
 
 /**
@@ -141,14 +142,14 @@ interface EngineCacheStats {
 }
 
 interface CacheStats {
-  total_entries: number;
-  memory_entries: number;
-  memory_capacity: number;
-  disk_entries: number;
-  hit_rate: number;
-  total_hits: number;
-  total_misses: number;
-  engine_stats: EngineCacheStats[];
+  // S3-1: aligned with Rust `cache::CacheStats` (camelCase via rename_all).
+  // Previously this interface declared 5 phantom fields (memory_entries,
+  // memory_capacity, disk_entries, hit_rate, total_misses) that the Rust
+  // `cache_stats` command never returned — they were always undefined at
+  // runtime. Removed to match the actual backend payload.
+  totalEntries: number;
+  totalHits: number;
+  engineStats: EngineCacheStats[];
 }
 
 interface ConfigState {
@@ -218,8 +219,6 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         ...INITIAL_CONFIG.engines,
         ...(loadedCfg.engines ?? {}),
         caiyun: {
-          enabled: false,
-          apiToken: '',
           ...INITIAL_CONFIG.engines.caiyun,
           ...loadedCfg.engines?.caiyun,
         },
@@ -316,7 +315,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       const { useToastStore } = await import('./toastStore');
       useToastStore.getState().addToast({
         type: 'error',
-        message: `配置保存失败: ${error.message}`,
+        message: useI18n.getState().t('settings.configSaveFailed', { message: error.message }),
         duration: 4000,
       });
       return;

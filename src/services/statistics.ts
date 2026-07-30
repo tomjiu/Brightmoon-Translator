@@ -1,6 +1,6 @@
 // Statistics Service - 学习统计 API
 
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from './invoke';
 
 export interface LearningStatistics {
   totalCards: number;
@@ -37,17 +37,17 @@ export interface WeakWord {
 }
 
 export async function getLearningStatistics(): Promise<LearningStatistics> {
-  return invoke('get_learning_statistics');
+  return invokeOrThrow('get_learning_statistics');
 }
 
 export async function getDailyActivity(days: number): Promise<DailyActivity[]> {
-  return invoke('get_daily_activity', { days });
+  return invokeOrThrow('get_daily_activity', { days });
 }
 
 export async function getHeatmapData(year: number): Promise<HeatmapData[]> {
-  return invoke('get_heatmap_data', { year });
+  return invokeOrThrow('get_heatmap_data', { year });
 }
 
 export async function getWeakWords(limit: number): Promise<WeakWord[]> {
-  return invoke('get_weak_words', { limit });
+  return invokeOrThrow('get_weak_words', { limit });
 }

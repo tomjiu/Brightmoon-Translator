@@ -53,6 +53,23 @@
   --shadow-elevated: 0 8px 30px rgba(0, 0, 0, 0.45);
   --ring: 0 0 0 2px rgba(245, 245, 245, 0.25);
   color-scheme: dark;
+
+  /* OCR region frame overlay (semi-transparent, sits over screenshot) */
+  --ocr-overlay-bg: rgba(12, 12, 14, 0.42);
+  --ocr-overlay-bg-strong: rgba(12, 12, 14, 0.72);
+  --ocr-overlay-bg-solid: rgba(12, 12, 14, 0.92);
+  --ocr-overlay-bg-toolbar: rgba(12, 12, 14, 0.55);
+  --ocr-overlay-border: rgba(200, 200, 205, 0.28);
+  --ocr-overlay-border-soft: rgba(255, 255, 255, 0.10);
+  --ocr-overlay-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  --ocr-overlay-text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  --ocr-overlay-hint-bg: rgba(0, 0, 0, 0.85);
+  --ocr-overlay-text: rgba(255, 255, 255, 0.95);
+  --ocr-overlay-text-soft: rgba(255, 255, 255, 0.8);
+  --ocr-overlay-text-muted: rgba(255, 255, 255, 0.4);
+  --ocr-overlay-btn-bg: rgba(255, 255, 255, 0.15);
+  --ocr-overlay-btn-bg-hover: rgba(255, 255, 255, 0.1);
+  --ocr-overlay-input-bg: rgba(0, 0, 0, 0.4);
 }
 
 .light {
@@ -90,6 +107,23 @@
   --shadow-elevated: 0 8px 30px rgba(0, 0, 0, 0.08);
   --ring: 0 0 0 2px rgba(10, 10, 10, 0.15);
   color-scheme: light;
+
+  /* OCR region frame overlay (semi-transparent, sits over screenshot) */
+  --ocr-overlay-bg: rgba(255, 255, 255, 0.55);
+  --ocr-overlay-bg-strong: rgba(255, 255, 255, 0.82);
+  --ocr-overlay-bg-solid: rgba(245, 245, 245, 0.95);
+  --ocr-overlay-bg-toolbar: rgba(255, 255, 255, 0.7);
+  --ocr-overlay-border: rgba(0, 0, 0, 0.18);
+  --ocr-overlay-border-soft: rgba(0, 0, 0, 0.08);
+  --ocr-overlay-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  --ocr-overlay-text-shadow: 0 1px 2px rgba(255, 255, 255, 0.85);
+  --ocr-overlay-hint-bg: rgba(245, 245, 245, 0.9);
+  --ocr-overlay-text: rgba(10, 10, 10, 0.92);
+  --ocr-overlay-text-soft: rgba(10, 10, 10, 0.75);
+  --ocr-overlay-text-muted: rgba(10, 10, 10, 0.45);
+  --ocr-overlay-btn-bg: rgba(0, 0, 0, 0.08);
+  --ocr-overlay-btn-bg-hover: rgba(0, 0, 0, 0.06);
+  --ocr-overlay-input-bg: rgba(255, 255, 255, 0.6);
 }
 
 * {

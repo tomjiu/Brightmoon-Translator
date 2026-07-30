@@ -1,6 +1,6 @@
 // Model Provider Service - 模型提供商管理（openai / anthropic / gemini）
 
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from './invoke';
 
 export type LlmApiFormat = 'openai' | 'anthropic' | 'gemini';
 
@@ -19,8 +19,8 @@ export interface LlmProviderEntry {
   priority: number;
   enabled: boolean;
   models: string[];
-  /** Wire format for chat + model list */
-  apiFormat?: LlmApiFormat;
+  /** Wire format for chat + model list. Mirrors Rust `api_format` (non-optional, defaults to "openai"). */
+  apiFormat: LlmApiFormat;
 }
 
 export interface ProviderPreset {
@@ -137,7 +137,7 @@ export async function fetchAvailableModels(
   apiKey: string,
   apiFormat?: LlmApiFormat,
 ): Promise<ModelInfo[]> {
-  return invoke('fetch_available_models', {
+  return invokeOrThrow('fetch_available_models', {
     baseUrl,
     apiKey,
     apiFormat: apiFormat || 'openai',
@@ -150,7 +150,7 @@ export async function testLlmConnection(
   model: string,
   apiFormat?: LlmApiFormat,
 ): Promise<string> {
-  return invoke('test_llm_connection', {
+  return invokeOrThrow('test_llm_connection', {
     baseUrl,
     apiKey,
     model,

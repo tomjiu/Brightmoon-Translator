@@ -15,6 +15,7 @@ import {
   Download,
 } from 'lucide-react';
 import type { OcrLineResult } from '../services/ocr';
+import { safeInvoke } from '../services/invoke';
 import { useI18n } from '../i18n';
 import { useConfigStore } from '../stores/configStore';
 import {
@@ -130,19 +131,20 @@ const TranslationLine = memo(
           className="absolute inset-0 rounded-md"
           style={{
             minWidth: width,
-            background: 'rgba(12, 12, 14, 0.72)',
+            background: 'var(--ocr-overlay-bg-strong)',
             backdropFilter: 'blur(6px)',
             WebkitBackdropFilter: 'blur(6px)',
             boxShadow: '0 1px 6px rgba(0,0,0,0.35)',
           }}
         />
         <div
-          className="relative text-white/95 font-medium whitespace-pre-wrap break-words px-1.5 py-0.5 select-text cursor-text"
+          className="relative font-medium whitespace-pre-wrap break-words px-1.5 py-0.5 select-text cursor-text"
           style={{
             minWidth: rect.width,
             fontSize: `${fontSize}px`,
             lineHeight: `${Math.max(height, fontSize + 2)}px`,
-            textShadow: '0 1px 2px rgba(0,0,0,0.85)',
+            color: 'var(--ocr-overlay-text)',
+            textShadow: 'var(--ocr-overlay-text-shadow)',
             userSelect: 'text',
             WebkitUserSelect: 'text',
           }}
@@ -889,11 +891,16 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
         flashHint(tf('ocrRegion.saveCancelled', '已取消保存'));
         return;
       }
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('write_file_base64', {
-        filePath: path,
-        base64Data: data.screenshot,
-      });
+      const [, saveErr] = await safeInvoke(
+        'write_file_base64',
+        { filePath: path, base64Data: data.screenshot },
+        { silent: true },
+      );
+      if (saveErr) {
+        console.warn('[OcrRegionFrame] save screenshot failed', saveErr);
+        flashHint(tf('ocrRegion.saveFailed', '保存失败'), true);
+        return;
+      }
       flashHint(tf('ocrRegion.savedImage', '已保存'));
     } catch (e) {
       console.warn('[OcrRegionFrame] save screenshot failed', e);
@@ -983,8 +990,9 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
   const canRefresh = !loading;
   const btnBase =
     'flex items-center justify-center w-5 h-5 rounded transition-colors flex-shrink-0 shrink-0';
-  const btnIdle = 'text-white/55 hover:text-white hover:bg-white/10';
-  const btnOff = 'text-white/25 cursor-not-allowed';
+  const btnIdle =
+    'text-[var(--ocr-overlay-text-soft)] hover:text-[var(--ocr-overlay-text)] hover:bg-[var(--ocr-overlay-btn-bg-hover)]';
+  const btnOff = 'text-[var(--ocr-overlay-text-muted)] cursor-not-allowed';
 
   return (
     <div
@@ -993,11 +1001,11 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
       style={{
         // Do NOT use overflow:hidden on the root — it clips toolbar icons on narrow frames.
         minWidth: MIN_FRAME_LOGICAL_W,
-        background: 'rgba(12, 12, 14, 0.42)',
+        background: 'var(--ocr-overlay-bg)',
         // Neutral gray border only — never sky/accent blue
-        border: '1px solid rgba(200, 200, 205, 0.28)',
+        border: '1px solid var(--ocr-overlay-border)',
         borderRadius: 10,
-        boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
+        boxShadow: 'var(--ocr-overlay-shadow)',
         outline: 'none',
         WebkitTapHighlightColor: 'transparent',
       }}
@@ -1012,10 +1020,10 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
           minHeight: `${TOOLBAR_HEIGHT}px`,
           maxHeight: `${TOOLBAR_HEIGHT}px`,
           minWidth: MIN_FRAME_LOGICAL_W,
-          background: 'rgba(12, 12, 14, 0.92)',
+          background: 'var(--ocr-overlay-bg-solid)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.10)',
+          borderBottom: '1px solid var(--ocr-overlay-border-soft)',
           borderTopLeftRadius: 10,
           borderTopRightRadius: 10,
         }}
@@ -1028,8 +1036,8 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
             !canToggleDisplay
               ? btnOff
               : displayMode === 'translation'
-                ? 'bg-white/15 text-white'
-                : 'text-white/55 hover:text-white hover:bg-white/10'
+                ? 'bg-[var(--ocr-overlay-btn-bg)] text-[var(--ocr-overlay-text)]'
+                : 'text-[var(--ocr-overlay-text-soft)] hover:text-[var(--ocr-overlay-text)] hover:bg-[var(--ocr-overlay-btn-bg-hover)]'
           }`}
           onClick={() =>
             setDisplayMode(
@@ -1045,7 +1053,7 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
           {displayMode === 'translation' ? '译' : displayMode === 'source' ? '原' : '图'}
         </button>
 
-        <span className="w-px h-3 bg-white/15 flex-shrink-0" />
+        <span className="w-px h-3 bg-[var(--ocr-overlay-border-soft)] flex-shrink-0" />
 
         {/* Copy buttons - icon only */}
         <button
@@ -1066,7 +1074,7 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
         <button
           type="button"
           disabled={!canCopyTarget}
-          className={`${btnBase} ${canCopyTarget ? 'text-white/70 hover:text-white hover:bg-white/10' : btnOff}`}
+          className={`${btnBase} ${canCopyTarget ? 'text-[var(--ocr-overlay-text)] hover:text-[var(--ocr-overlay-text)] hover:bg-[var(--ocr-overlay-btn-bg-hover)]' : btnOff}`}
           onClick={() =>
             canCopyTarget && data && copyToClipboard(data.translatedText || data.sourceText)
           }
@@ -1113,12 +1121,12 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
           <Download size={11} />
         </button>
 
-        <span className="w-px h-3 bg-white/15 flex-shrink-0" />
+        <span className="w-px h-3 bg-[var(--ocr-overlay-border-soft)] flex-shrink-0" />
 
         {/* Language always shown — window min-width fits full toolbar (no hide-on-narrow). */}
-        <Languages size={10} className="text-white/40 flex-shrink-0" />
+        <Languages size={10} className="text-[var(--ocr-overlay-text-muted)] flex-shrink-0" />
         <select
-          className="bg-black/40 text-white/80 rounded border border-white/10 pl-1 pr-4 py-0.5 text-[10px] cursor-pointer flex-shrink-0 shrink-0 appearance-auto"
+          className="bg-[var(--ocr-overlay-input-bg)] text-[var(--ocr-overlay-text)] rounded border border-[var(--ocr-overlay-border-soft)] pl-1 pr-4 py-0.5 text-[10px] cursor-pointer flex-shrink-0 shrink-0 appearance-auto"
           style={{
             width: '4.5rem',
             minWidth: '4.5rem',
@@ -1137,9 +1145,9 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
             </option>
           ))}
         </select>
-        <span className="text-white/40 text-[10px] flex-shrink-0">→</span>
+        <span className="text-[var(--ocr-overlay-text-muted)] text-[10px] flex-shrink-0">→</span>
         <select
-          className="bg-black/40 text-white/80 rounded border border-white/10 pl-1 pr-4 py-0.5 text-[10px] cursor-pointer flex-shrink-0 shrink-0 appearance-auto"
+          className="bg-[var(--ocr-overlay-input-bg)] text-[var(--ocr-overlay-text)] rounded border border-[var(--ocr-overlay-border-soft)] pl-1 pr-4 py-0.5 text-[10px] cursor-pointer flex-shrink-0 shrink-0 appearance-auto"
           style={{
             width: '4rem',
             minWidth: '4rem',
@@ -1157,11 +1165,11 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
             </option>
           ))}
         </select>
-        <span className="w-px h-3 bg-white/15 flex-shrink-0" />
+        <span className="w-px h-3 bg-[var(--ocr-overlay-border-soft)] flex-shrink-0" />
 
         {/* Engine switch + enable (primary order) */}
         <select
-          className="bg-black/40 text-white/80 rounded border border-white/10 pl-1 pr-4 py-0.5 text-[10px] cursor-pointer flex-shrink-0 shrink-0 appearance-auto"
+          className="bg-[var(--ocr-overlay-input-bg)] text-[var(--ocr-overlay-text)] rounded border border-[var(--ocr-overlay-border-soft)] pl-1 pr-4 py-0.5 text-[10px] cursor-pointer flex-shrink-0 shrink-0 appearance-auto"
           style={{
             width: '5.2rem',
             minWidth: '5.2rem',
@@ -1220,7 +1228,7 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
         >
           <span className="text-[9px] font-semibold leading-none">机</span>
         </button>
-        <span className="w-px h-3 bg-white/15 flex-shrink-0" />
+        <span className="w-px h-3 bg-[var(--ocr-overlay-border-soft)] flex-shrink-0" />
 
         {/* Pin always-on-top */}
         <button
@@ -1249,7 +1257,7 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
         {/* Auto refresh toggle - icon only */}
         <button
           type="button"
-          className={`${btnBase} ${continuous ? 'text-white bg-white/15' : btnIdle}`}
+          className={`${btnBase} ${continuous ? 'text-[var(--ocr-overlay-text)] bg-[var(--ocr-overlay-btn-bg)]' : btnIdle}`}
           onClick={handleToggleContinuous}
           title={
             continuous
@@ -1282,7 +1290,7 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
         {/* Close — always available */}
         <button
           type="button"
-          className={`${btnBase} text-white/55 hover:text-red-300 hover:bg-red-400/15`}
+          className={`${btnBase} text-[var(--ocr-overlay-text-soft)] hover:text-red-300 hover:bg-red-400/15`}
           onClick={handleClose}
           title={tf('common.close', '关闭')}
         >
@@ -1314,7 +1322,7 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
         {/* Loading: keep previous overlays visible under a light veil (manual refresh). */}
         {loading && !error && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20 bg-black/25">
-            <div className="text-white/80 text-xs animate-pulse px-2 py-1 rounded bg-black/50">
+            <div className="text-[var(--ocr-overlay-text)] text-xs animate-pulse px-2 py-1 rounded bg-[var(--ocr-overlay-input-bg)]">
               {tf('ocrRegion.recognizing', '正在识别文本...')}
             </div>
           </div>
@@ -1325,7 +1333,7 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-auto z-30 bg-black/40">
             <div className="text-red-200 text-sm px-3 text-center max-w-[90%]">{error}</div>
             <button
-              className="px-3 py-1.5 bg-white/15 text-white/90 rounded text-xs hover:bg-white/25 transition-colors"
+              className="px-3 py-1.5 bg-[var(--ocr-overlay-btn-bg)] text-[var(--ocr-overlay-text)] rounded text-xs hover:bg-[var(--ocr-overlay-btn-bg-hover)] transition-colors"
               onClick={() => {
                 setError(null);
                 setLoading(true);
@@ -1412,12 +1420,15 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
               <div
                 className="rounded-md px-2 py-1"
                 style={{
-                  background: 'rgba(12, 12, 14, 0.72)',
+                  background: 'var(--ocr-overlay-bg-strong)',
                   backdropFilter: 'blur(6px)',
                   WebkitBackdropFilter: 'blur(6px)',
                 }}
               >
-                <div className="text-xs leading-normal text-white font-medium select-text cursor-text">
+                <div
+                  className="text-xs leading-normal font-medium select-text cursor-text"
+                  style={{ color: 'var(--ocr-overlay-text)' }}
+                >
                   {data.translatedText}
                 </div>
               </div>
@@ -1440,12 +1451,13 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
               return (
                 <div
                   key={`${line.x}-${line.y}-${line.width}-${line.height}-${i}`}
-                  className="absolute rounded px-1 text-xs leading-tight text-white/80 whitespace-nowrap select-text cursor-text"
+                  className="absolute rounded px-1 text-xs leading-tight whitespace-nowrap select-text cursor-text"
                   style={{
                     left: r.x,
                     top: r.y - 2,
                     maxWidth: r.width + 4,
-                    background: 'rgba(12, 12, 14, 0.55)',
+                    background: 'var(--ocr-overlay-bg-toolbar)',
+                    color: 'var(--ocr-overlay-text-soft)',
                   }}
                 >
                   {line.text}
@@ -1464,7 +1476,7 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
           aria-label={tf('ocrRegion.resize', '拖动调整大小')}
         >
           <svg
-            className="absolute bottom-0.5 right-0.5 text-white/45"
+            className="absolute bottom-0.5 right-0.5 text-[var(--ocr-overlay-text-muted)]"
             width="12"
             height="12"
             viewBox="0 0 12 12"
