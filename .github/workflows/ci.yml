@@ -55,6 +55,16 @@ jobs:
         run: pnpm run build
 
       # lib + bins only — stale examples/integration demos live in dev_archive/
+      # Stub resource files declared in tauri.conf.json (hook DLL, dictionary) so
+      # cargo check passes even though the real files aren't built in CI.
+      - name: Stub resource files
+        working-directory: src-tauri
+        run: |
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          New-Item -ItemType File -Force -Path bin/moon_hook.dll -Value "stub" | Out-Null
+          New-Item -ItemType Directory -Force -Path ../dictionaries | Out-Null
+          New-Item -ItemType File -Force -Path ../dictionaries/ecdict.db -Value "stub" | Out-Null
+
       - name: Cargo check
         working-directory: src-tauri
         run: cargo check
