@@ -31,6 +31,14 @@ interface TranslatedEpub {
   totalChapters: number;
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function EpubViewer() {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
@@ -114,9 +122,61 @@ function EpubViewer() {
     }
   };
 
-  const exportTranslatedEpub = () => {
-    if (!translatedEpub) return;
+  const exportTranslatedEpub = async (format: 'epub' | 'html' | 'txt' = 'epub') => {
+    if (!translatedEpub || !filePath) return;
 
+    if (format === 'epub') {
+      // Save as proper bilingual EPUB via backend
+      try {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const savePath = await save({
+          defaultPath: `${fileName.replace(/\.epub$/i, '')}_bilingual.epub`,
+          filters: [{ name: 'EPUB', extensions: ['epub'] }],
+        });
+        if (!savePath) return;
+
+        await invokeOrThrow('save_bilingual_epub', {
+          originalPath: filePath,
+          outputPath: savePath,
+          translatedChapters: translatedEpub.chapters,
+        });
+      } catch (err) {
+        console.error('Failed to save bilingual EPUB:', err);
+      }
+      return;
+    }
+
+    if (format === 'html') {
+      const body = translatedEpub.chapters
+        .map((ch) => {
+          const orig = escapeHtml(ch.originalText).replace(/\n/g, '<br/>');
+          const tr = escapeHtml(ch.translatedText).replace(/\n/g, '<br/>');
+          return `<section class="chapter"><h2>${escapeHtml(ch.title)}</h2>
+<article class="bilingual"><div class="orig"><h3>Original</h3><p>${orig}</p></div>
+<div class="tr"><h3>Translation</h3><p>${tr}</p></div></article></section>`;
+        })
+        .join('\n');
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escapeHtml(translatedEpub.title)}</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:900px;margin:2rem auto;line-height:1.6;color:#111}
+.chapter{margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid #ddd}
+.bilingual{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media print{.bilingual{grid-template-columns:1fr}}
+h2{font-size:1.15rem} h3{font-size:.9rem;color:#555}
+</style></head><body>
+<h1>${escapeHtml(translatedEpub.title)}</h1>
+${body}</body></html>`;
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${fileName.replace(/\.epub$/i, '')}_translated.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    // Plain text export
     let content = `# ${translatedEpub.title}\n\n`;
     for (const chapter of translatedEpub.chapters) {
       content += `## ${chapter.title}\n\n`;
@@ -129,7 +189,7 @@ function EpubViewer() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${fileName.replace('.epub', '')}_translated.txt`;
+    a.download = `${fileName.replace(/\.epub$/i, '')}_translated.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -199,11 +259,28 @@ function EpubViewer() {
                   {t('epub.bilingual')}
                 </button>
                 <button
-                  className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
-                  onClick={exportTranslatedEpub}
+                  className="bg-accent text-white border border-accent rounded-lg px-4 py-2 text-sm hover:bg-accent/80 transition-colors flex items-center gap-1.5"
+                  onClick={() => exportTranslatedEpub('epub')}
+                  title="Save as bilingual EPUB (preserves formatting)"
                 >
                   <Download size={14} />
-                  {t('epub.export')}
+                  EPUB
+                </button>
+                <button
+                  className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
+                  onClick={() => exportTranslatedEpub('html')}
+                  title="HTML bilingual export"
+                >
+                  <Download size={14} />
+                  HTML
+                </button>
+                <button
+                  className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
+                  onClick={() => exportTranslatedEpub('txt')}
+                  title="Plain text export"
+                >
+                  <Download size={14} />
+                  TXT
                 </button>
               </>
             )}

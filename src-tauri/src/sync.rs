@@ -38,6 +38,9 @@ pub struct SyncStatus {
     pub synced_at: i64,
     pub uploaded: Vec<String>,
     pub downloaded: Vec<String>,
+    /// Remote config.json body when downloaded (caller applies / merges).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub downloaded_config: Option<String>,
 }
 
 /// Get or create a stable device ID for this installation.
@@ -63,6 +66,65 @@ fn generate_device_id() -> String {
 /// Compute MD5 hex checksum of bytes.
 fn checksum(data: &[u8]) -> String {
     format!("{:x}", md5::compute(data))
+}
+
+/// Magic header for encrypted sync blobs (AES-256-GCM wire format).
+const SYNC_ENC_MAGIC: &[u8] = b"MTS1";
+
+/// Derive 32-byte key: SHA256(device_id ‖ password ‖ "moontranslator-sync-v1").
+/// Password from WebDAV enables multi-device; empty password = device-local only.
+fn derive_sync_key(password: &str) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(device_id().as_bytes());
+    hasher.update(password.as_bytes());
+    hasher.update(b"moontranslator-sync-v1");
+    let hash = hasher.finalize();
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&hash);
+    key
+}
+
+fn encrypt_sync_payload(plaintext: &[u8], password: &str) -> Result<Vec<u8>, AppError> {
+    use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+    use rand::RngCore;
+
+    let key_bytes = derive_sync_key(password);
+    let key = aes_gcm::Key::<Aes256Gcm>::from_slice(&key_bytes);
+    let cipher = Aes256Gcm::new(key);
+    let mut nonce_bytes = [0u8; 12];
+    rand::thread_rng().fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext)
+        .map_err(|e| AppError::Internal(format!("sync encrypt: {e}")))?;
+
+    let mut out = Vec::with_capacity(SYNC_ENC_MAGIC.len() + 12 + ciphertext.len());
+    out.extend_from_slice(SYNC_ENC_MAGIC);
+    out.extend_from_slice(&nonce_bytes);
+    out.extend_from_slice(&ciphertext);
+    Ok(out)
+}
+
+/// Decrypt if magic present; otherwise treat as legacy plaintext JSON.
+fn decrypt_sync_payload(data: &[u8], password: &str) -> Result<Vec<u8>, AppError> {
+    if data.len() >= SYNC_ENC_MAGIC.len() && data.starts_with(SYNC_ENC_MAGIC) {
+        use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+        let body = &data[SYNC_ENC_MAGIC.len()..];
+        if body.len() < 12 + 16 {
+            return Err(AppError::Internal("sync ciphertext too short".into()));
+        }
+        let key_bytes = derive_sync_key(password);
+        let key = aes_gcm::Key::<Aes256Gcm>::from_slice(&key_bytes);
+        let cipher = Aes256Gcm::new(key);
+        let (nonce_bytes, ciphertext) = body.split_at(12);
+        let nonce = Nonce::from_slice(nonce_bytes);
+        return cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|e| AppError::Internal(format!("sync decrypt failed (wrong password/device?): {e}")));
+    }
+    // Legacy plaintext
+    Ok(data.to_vec())
 }
 
 /// Build a reqwest client with optional proxy from config.
@@ -188,6 +250,8 @@ pub async fn sync_all(
     let now = chrono::Utc::now().timestamp_millis();
     let mut uploaded = Vec::new();
     let mut downloaded = Vec::new();
+    let mut downloaded_config: Option<String> = None;
+    let sync_pw = config.sync.password.as_str();
 
     // Try to download existing manifest
     let remote_manifest = match download_file(&client, config, "manifest.json").await {
@@ -210,34 +274,32 @@ pub async fn sync_all(
 
         match (local_entry, remote_entry) {
             (Some(local), Some(remote)) if local.updated_at > remote.updated_at => {
-                // Upload local config
                 let config_data = serialize_config_for_sync(config)?;
                 upload_file(&client, config, "config.json", config_data.into_bytes()).await?;
                 uploaded.push("config.json".to_string());
             },
             (Some(_), Some(_remote)) => {
-                // Download remote config
                 let data = download_file(&client, config, "config.json").await?;
                 let json = String::from_utf8_lossy(&data).to_string();
-                // Store downloaded config for the caller to apply
-                downloaded.push(format!("config.json:{}", json.len()));
+                downloaded.push("config.json".to_string());
+                downloaded_config = Some(json);
             },
             (Some(_local), None) => {
-                // Upload local (no remote exists)
                 let config_data = serialize_config_for_sync(config)?;
                 upload_file(&client, config, "config.json", config_data.into_bytes()).await?;
                 uploaded.push("config.json".to_string());
             },
             (None, Some(_)) => {
-                // Download remote (no local equivalent in manifest)
                 let data = download_file(&client, config, "config.json").await?;
-                downloaded.push(format!("config.json:{}", data.len()));
+                let json = String::from_utf8_lossy(&data).to_string();
+                downloaded.push("config.json".to_string());
+                downloaded_config = Some(json);
             },
             _ => {},
         }
     }
 
-    // === Sync Glossary ===
+    // === Sync Glossary (AES-GCM) ===
     if config.sync.sync_glossary {
         let local_entry = local_manifest
             .files
@@ -257,16 +319,17 @@ pub async fn sync_all(
             let glossary = glossary.lock().await;
             let data = serde_json::to_string_pretty(glossary.get_all_entries())
                 .map_err(|e| AppError::Internal(e.to_string()))?;
-            upload_file(&client, config, "glossary.json", data.into_bytes()).await?;
+            let enc = encrypt_sync_payload(data.as_bytes(), sync_pw)?;
+            upload_file(&client, config, "glossary.json", enc).await?;
             uploaded.push("glossary.json".to_string());
         } else if remote_entry.is_some() {
-            let data = download_file(&client, config, "glossary.json").await?;
+            let raw = download_file(&client, config, "glossary.json").await?;
+            let data = decrypt_sync_payload(&raw, sync_pw)?;
             let entries: std::collections::HashMap<
                 String,
                 Vec<crate::models::glossary::GlossaryEntry>,
             > = serde_json::from_slice(&data).unwrap_or_default();
             let mut g = glossary.lock().await;
-            // Merge remote entries into local
             for (lang_pair, remote_entries) in entries {
                 for entry in remote_entries {
                     let local_entries = g.get_entries(&lang_pair);
@@ -280,7 +343,7 @@ pub async fn sync_all(
         }
     }
 
-    // === Sync History (Translation Memory) ===
+    // === Sync History (Translation Memory, AES-GCM) ===
     if config.sync.sync_history {
         let local_entry = local_manifest
             .files
@@ -301,10 +364,12 @@ pub async fn sync_all(
             let export = history.export_tm(None, None);
             let data =
                 serde_json::to_string(&export).map_err(|e| AppError::Internal(e.to_string()))?;
-            upload_file(&client, config, "tm_export.json", data.into_bytes()).await?;
+            let enc = encrypt_sync_payload(data.as_bytes(), sync_pw)?;
+            upload_file(&client, config, "tm_export.json", enc).await?;
             uploaded.push("tm_export.json".to_string());
         } else if remote_entry.is_some() {
-            let data = download_file(&client, config, "tm_export.json").await?;
+            let raw = download_file(&client, config, "tm_export.json").await?;
+            let data = decrypt_sync_payload(&raw, sync_pw)?;
             let export: TmExportData =
                 serde_json::from_slice(&data).map_err(|e| AppError::Internal(e.to_string()))?;
             let h = history.lock().await;
@@ -313,7 +378,7 @@ pub async fn sync_all(
         }
     }
 
-    // === Sync Wordbook ===
+    // === Sync Wordbook (AES-GCM) ===
     if config.sync.sync_wordbook {
         let local_entry = local_manifest
             .files
@@ -334,10 +399,12 @@ pub async fn sync_all(
             let items = wb.get_all();
             let data = serde_json::to_string_pretty(&items)
                 .map_err(|e| AppError::Internal(e.to_string()))?;
-            upload_file(&client, config, "wordbook.json", data.into_bytes()).await?;
+            let enc = encrypt_sync_payload(data.as_bytes(), sync_pw)?;
+            upload_file(&client, config, "wordbook.json", enc).await?;
             uploaded.push("wordbook.json".to_string());
         } else if remote_entry.is_some() {
-            let data = download_file(&client, config, "wordbook.json").await?;
+            let raw = download_file(&client, config, "wordbook.json").await?;
+            let data = decrypt_sync_payload(&raw, sync_pw)?;
             let items: Vec<crate::memory::WordBookItem> =
                 serde_json::from_slice(&data).map_err(|e| AppError::Internal(e.to_string()))?;
             let wb = wordbook.lock().await;
@@ -383,7 +450,36 @@ pub async fn sync_all(
         synced_at: now,
         uploaded,
         downloaded,
+        downloaded_config,
     })
+}
+
+#[cfg(test)]
+mod crypto_tests {
+    use super::*;
+
+    #[test]
+    fn sync_payload_roundtrip() {
+        let plain = br#"{"en-zh":[{"source":"hello","target":"nihao"}]}"#;
+        let enc = encrypt_sync_payload(plain, "test-password").unwrap();
+        assert!(enc.starts_with(SYNC_ENC_MAGIC));
+        assert_ne!(enc, plain);
+        let dec = decrypt_sync_payload(&enc, "test-password").unwrap();
+        assert_eq!(dec, plain);
+    }
+
+    #[test]
+    fn legacy_plaintext_still_loads() {
+        let plain = b"{\"ok\":true}";
+        let dec = decrypt_sync_payload(plain, "any").unwrap();
+        assert_eq!(dec, plain);
+    }
+
+    #[test]
+    fn wrong_password_fails() {
+        let enc = encrypt_sync_payload(b"secret-data-here", "pw-a").unwrap();
+        assert!(decrypt_sync_payload(&enc, "pw-b").is_err());
+    }
 }
 
 /// Build a local manifest from current data state.

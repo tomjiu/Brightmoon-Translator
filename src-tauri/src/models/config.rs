@@ -338,6 +338,106 @@ pub struct HotkeyConfig {
     pub replace_translate: String,
     #[serde(default = "default_overlay_click_through_hotkey")]
     pub toggle_overlay_click_through: String,
+    /// Optional QTranslate-style dictionary hotkey (empty = disabled).
+    /// Looks up selection as a word; falls through to MT on miss.
+    #[serde(default)]
+    pub dictionary_lookup: String,
+}
+
+/// How selection translation is triggered (Youdao-like UX).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SelectionTriggerMode {
+    /// Only global hotkey / tray / HTTP
+    HotkeyOnly,
+    /// After mouse button release, if there is a selection → translate + overlay
+    AutoOnSelect,
+    /// After drag-select → floating pop button; click to translate (Easydict default)
+    #[default]
+    PopButton,
+}
+
+/// Desktop 划词 / 取词 UX (Youdao-inspired).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionUxConfig {
+    /// Select text → popup: hotkey only vs auto on mouse-up
+    #[serde(default)]
+    pub trigger_mode: SelectionTriggerMode,
+    /// Mouse dwell → word dictionary popup (system-wide)
+    #[serde(default)]
+    pub hover_dictionary: bool,
+    /// Dwell time before hover dictionary (ms)
+    #[serde(default = "default_hover_dwell_ms")]
+    pub hover_dwell_ms: u32,
+    /// Hover unit: "word" (default) | "sentence" (MTT-style). Alt held can force sentence.
+    #[serde(default = "default_hover_unit")]
+    pub hover_unit: String,
+    /// Hover dictionary backend: auto | ecdict | youdao
+    /// auto = ECDICT first (EN) then Youdao; ecdict = local only; youdao = online only
+    #[serde(default = "default_hover_dict_source")]
+    pub hover_dict_source: String,
+    /// When UIA/clipboard selection is empty, try OCR near cursor (force 取词)
+    #[serde(default)]
+    pub ocr_force_pickup: bool,
+    /// Modifier required for OCR force pickup (MTT-style). Empty/`none` = no gate.
+    /// Values: "" | "none" | "shift" | "ctrl" | "alt"
+    #[serde(default = "default_ocr_modifier_key")]
+    pub ocr_modifier_key: String,
+    /// Min selection length for auto-on-select (chars)
+    #[serde(default = "default_selection_min_chars")]
+    pub auto_min_chars: u32,
+    /// Min mouse drag distance (px) before auto-on-select fires (Easydict MinDragDistance)
+    #[serde(default = "default_min_drag_px")]
+    pub min_drag_px: u32,
+    /// Process names (no .exe) to never auto/hover-select, e.g. "potplayer"
+    #[serde(default)]
+    pub exclude_processes: Vec<String>,
+}
+
+fn default_hover_dwell_ms() -> u32 {
+    400
+}
+
+fn default_selection_min_chars() -> u32 {
+    1
+}
+
+fn default_min_drag_px() -> u32 {
+    // Easydict MinDragDistance = 10; double-click (0 drag) still accepted if text exists
+    10
+}
+
+fn default_ocr_modifier_key() -> String {
+    // Default none: only ocr_force_pickup switch gates OCR (backward compatible).
+    // Recommend "shift" in settings when force pickup is noisy.
+    String::new()
+}
+
+fn default_hover_unit() -> String {
+    "word".into()
+}
+
+fn default_hover_dict_source() -> String {
+    "auto".into()
+}
+
+impl Default for SelectionUxConfig {
+    fn default() -> Self {
+        Self {
+            // Match UI + Easydict: pop button by default
+            trigger_mode: SelectionTriggerMode::PopButton,
+            hover_dictionary: false,
+            hover_dwell_ms: default_hover_dwell_ms(),
+            hover_unit: default_hover_unit(),
+            hover_dict_source: default_hover_dict_source(),
+            ocr_force_pickup: false,
+            ocr_modifier_key: default_ocr_modifier_key(),
+            auto_min_chars: default_selection_min_chars(),
+            min_drag_px: default_min_drag_px(),
+            exclude_processes: Vec::new(),
+        }
+    }
 }
 
 fn default_overlay_click_through_hotkey() -> String {
@@ -356,6 +456,8 @@ impl Default for HotkeyConfig {
             translate_selection: "Ctrl+Shift+Y".to_string(),
             replace_translate: "Ctrl+Shift+R".to_string(),
             toggle_overlay_click_through: "Ctrl+Shift+Escape".to_string(),
+            // Empty until user sets (e.g. Ctrl+Shift+D) — optional feature
+            dictionary_lookup: String::new(),
         }
     }
 }
@@ -442,6 +544,10 @@ fn default_ocr_engine() -> String {
     "winrt".to_string() // Changed from "auto" - WinRT is fast and reliable on Windows
 }
 
+fn default_pdf_extraction_engine() -> String {
+    "pdf-extract".into()
+}
+
 /// Offline OCR sidecar (Rapid / Paddle) — models external.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -465,6 +571,18 @@ impl Default for OfflineOcrConfig {
             plugin_dir: String::new(),
         }
     }
+}
+
+/// External PDF text extractors (MinerU / Marker / OCRmyPDF). Empty = bare command on PATH.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PdfExtractionSidecarConfig {
+    #[serde(default)]
+    pub mineru_cmd: String,
+    #[serde(default)]
+    pub marker_cmd: String,
+    #[serde(default)]
+    pub ocrmypdf_cmd: String,
 }
 
 fn default_llm_timeout_secs() -> u64 {
@@ -523,6 +641,51 @@ impl Default for OpenAiTtsConfig {
             model: default_openai_tts_model(),
             voice: default_openai_tts_voice(),
             speed: default_openai_tts_speed(),
+        }
+    }
+}
+
+/// Fish Audio TTS (https://docs.fish.audio) — free model `s2.1-pro-free` for dev/test.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FishTtsConfig {
+    /// Bearer token; also accepts env `FISH_API_KEY` when empty.
+    #[serde(default)]
+    pub api_key: String,
+    /// Header `model`: s2.1-pro-free | s2.1-pro | s2-pro | s1
+    #[serde(default = "default_fish_tts_model")]
+    pub model: String,
+    /// Voice library / clone model id (`reference_id`)
+    #[serde(default = "default_fish_tts_reference_id")]
+    pub reference_id: String,
+    #[serde(default = "default_fish_tts_format")]
+    pub format: String,
+    #[serde(default = "default_fish_tts_speed")]
+    pub speed: f32,
+}
+
+fn default_fish_tts_model() -> String {
+    "s2.1-pro-free".into()
+}
+fn default_fish_tts_reference_id() -> String {
+    // Docs sample voice model id for quick try
+    "12b8a0bf8e0042c3b11e519d11db8b68".into()
+}
+fn default_fish_tts_format() -> String {
+    "mp3".into()
+}
+fn default_fish_tts_speed() -> f32 {
+    1.0
+}
+
+impl Default for FishTtsConfig {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            model: default_fish_tts_model(),
+            reference_id: default_fish_tts_reference_id(),
+            format: default_fish_tts_format(),
+            speed: default_fish_tts_speed(),
         }
     }
 }
@@ -664,6 +827,9 @@ pub struct AppConfig {
     pub api_server_token: String,
     #[serde(default)]
     pub hotkeys: HotkeyConfig,
+    /// 划词 / 悬停词典 / OCR 强力取词
+    #[serde(default)]
+    pub selection_ux: SelectionUxConfig,
     #[serde(default)]
     pub proxy: ProxyConfig,
     #[serde(default)]
@@ -689,6 +855,12 @@ pub struct AppConfig {
     /// Offline OCR sidecar paths (when ocr_engine is rapid/paddle).
     #[serde(default)]
     pub offline_ocr: OfflineOcrConfig,
+    /// PDF text extraction: "pdf-extract" | "ocr" | "mineru" | "marker" | "ocrmypdf"
+    #[serde(default = "default_pdf_extraction_engine")]
+    pub pdf_extraction_engine: String,
+    /// Optional CLI paths for mineru/marker/ocrmypdf.
+    #[serde(default)]
+    pub pdf_extraction_sidecar: PdfExtractionSidecarConfig,
     #[serde(default = "default_overlay_level")]
     pub overlay_level: u8,
     #[serde(default = "default_overlay_auto_dismiss_ms")]
@@ -724,12 +896,18 @@ pub struct AppConfig {
     /// TTS: preferred voice name (empty = auto from language)
     #[serde(default)]
     pub tts_voice: String,
-    /// TTS provider: "edge" | "openai" | "youdao"
+    /// TTS provider: "edge" | "openai" | "youdao" | "fish"
     #[serde(default = "default_tts_provider")]
     pub tts_provider: String,
+    /// Preferred engine id for BatchManager when BatchConfig.engine is unset (e.g. "google").
+    #[serde(default)]
+    pub batch_preferred_engine: String,
     /// OpenAI-compatible TTS settings
     #[serde(default)]
     pub openai_tts: OpenAiTtsConfig,
+    /// Fish Audio TTS (s2.1-pro-free etc.)
+    #[serde(default)]
+    pub fish_tts: FishTtsConfig,
     /// HTTP request timeout in seconds (default: 30)
     #[serde(default = "default_http_timeout_secs")]
     pub http_timeout_secs: u64,
@@ -1366,6 +1544,7 @@ impl Default for AppConfig {
             api_server_port: 60828,
             api_server_token: String::new(),
             hotkeys: HotkeyConfig::default(),
+            selection_ux: SelectionUxConfig::default(),
             proxy: ProxyConfig::default(),
             window_x: None,
             window_y: None,
@@ -1377,6 +1556,8 @@ impl Default for AppConfig {
             engine_order: Vec::new(),
             ocr_engine: default_ocr_engine(),
             offline_ocr: OfflineOcrConfig::default(),
+            pdf_extraction_engine: default_pdf_extraction_engine(),
+            pdf_extraction_sidecar: PdfExtractionSidecarConfig::default(),
             overlay_level: 2,
             overlay_auto_dismiss_ms: 3000,
             overlay_follow_mode: "none".to_string(),
@@ -1390,7 +1571,9 @@ impl Default for AppConfig {
             tts_auto_play: false,
             tts_voice: String::new(),
             tts_provider: default_tts_provider(),
+            batch_preferred_engine: String::new(),
             openai_tts: OpenAiTtsConfig::default(),
+            fish_tts: FishTtsConfig::default(),
             http_timeout_secs: default_http_timeout_secs(),
             ocr_timeout_secs: default_ocr_timeout_secs(),
             llm_timeout_secs: default_llm_timeout_secs(),

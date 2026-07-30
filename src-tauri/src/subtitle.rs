@@ -16,6 +16,9 @@ pub struct SubtitleDocument {
     pub entries: Vec<SubtitleEntry>,
     pub total_entries: usize,
     pub format: String,
+    /// Original file text (needed for ASS/SSA export that rewrites Dialogue lines).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_content: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -291,6 +294,7 @@ pub fn extract_text_from_subtitle(file_path: &str) -> Result<SubtitleDocument, S
         entries,
         total_entries,
         format,
+        raw_content: Some(content),
     })
 }
 
@@ -420,6 +424,14 @@ pub fn export_subtitle(document: &SubtitleDocument, bilingual: bool) -> String {
         "srt" => generate_srt(&document.entries, bilingual),
         "vtt" => generate_vtt(&document.entries, bilingual),
         "lrc" => generate_lrc(&document.entries, bilingual),
+        "ass" | "ssa" => {
+            if let Some(raw) = document.raw_content.as_deref().filter(|s| !s.is_empty()) {
+                generate_ass_bilingual(raw, &document.entries)
+            } else {
+                // No raw ASS skeleton — emit SRT rather than lying about format structure
+                generate_srt(&document.entries, bilingual)
+            }
+        }
         _ => generate_srt(&document.entries, bilingual),
     }
 }
@@ -444,6 +456,7 @@ mod tests {
             entries: vec![sample_entry(1, "Hello", "你好")],
             total_entries: 1,
             format: "srt".into(),
+            raw_content: None,
         };
         let out = export_subtitle(&doc, false);
         assert!(
@@ -459,9 +472,27 @@ mod tests {
             entries: vec![sample_entry(1, "Hello", "你好")],
             total_entries: 1,
             format: "srt".into(),
+            raw_content: None,
         };
         let out = export_subtitle(&doc, true);
         assert!(out.contains("Hello"));
         assert!(out.contains("你好"));
+    }
+
+    #[test]
+    fn export_ass_uses_ass_generator() {
+        let raw = "[Script Info]\nTitle: test\n\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello\n";
+        let doc = SubtitleDocument {
+            entries: vec![sample_entry(1, "Hello", "你好")],
+            total_entries: 1,
+            format: "ass".into(),
+            raw_content: Some(raw.into()),
+        };
+        let out = export_subtitle(&doc, true);
+        assert!(out.contains("Dialogue:"), "expected ASS dialogue line: {out}");
+        assert!(
+            out.contains("你好") || out.contains(r"\N"),
+            "expected translation in ASS: {out}"
+        );
     }
 }

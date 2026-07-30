@@ -82,6 +82,29 @@ function MainApp() {
     loadConfig();
   }, [isTauri, loadConfig]);
 
+  // ECDICT missing → non-blocking toast (hover dict may be empty)
+  useEffect(() => {
+    if (!isTauri) return;
+    let cancelled = false;
+    void (async () => {
+      const [status] = await safeInvoke<{ loaded: boolean; path?: string | null }>(
+        'ecdict_status',
+        undefined,
+        { silent: true },
+      );
+      if (cancelled || !status || status.loaded) return;
+      addToast({
+        type: 'warning',
+        message: '本地词典未加载，悬停词典可能不可用',
+        detail: status.path ? `路径: ${status.path}` : undefined,
+        duration: 6000,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isTauri, addToast]);
+
   // Persist MainTranslator clipboard toggle into config.clipboardMonitor
   useEffect(() => {
     if (!isTauri) return;
@@ -162,6 +185,25 @@ function MainApp() {
       const [_, err] = await safeInvoke('trigger_selection_translate');
       if (err) {
         console.error('Failed to translate selection:', err);
+        const msg = err.message;
+        if (msg.includes('No text selected')) {
+          addToast({ type: 'warning', message: t('selection.noSelection'), duration: 3000 });
+        } else {
+          addToast({
+            type: 'error',
+            message: t('selection.translateFailed'),
+            detail: msg,
+            duration: 5000,
+          });
+        }
+      }
+    });
+
+    // Optional dictionary-first hotkey (QTranslate D)
+    const unlistenDictionaryLookup = listen('trigger-dictionary-lookup', async () => {
+      const [_, err] = await safeInvoke('trigger_dictionary_lookup');
+      if (err) {
+        console.error('Failed dictionary lookup:', err);
         const msg = err.message;
         if (msg.includes('No text selected')) {
           addToast({ type: 'warning', message: t('selection.noSelection'), duration: 3000 });
@@ -276,6 +318,7 @@ function MainApp() {
       unlistenNav.then((fn) => fn());
       unlistenOcrScreenshot.then((fn) => fn());
       unlistenTranslateSelection.then((fn) => fn());
+      unlistenDictionaryLookup.then((fn) => fn());
       unlistenAutoCopy.then((fn) => fn());
       unlistenReplaceTranslate.then((fn) => fn());
     };

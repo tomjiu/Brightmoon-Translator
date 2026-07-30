@@ -1,3 +1,4 @@
+use super::process_class::{foreground_process, SelectionStrategy};
 use super::{SelectionProvider, SelectionResult};
 use std::sync::Arc;
 
@@ -26,84 +27,100 @@ impl SelectionProviderManager {
         Self { providers }
     }
 
-    /// Get the current selection by trying providers in priority order.
-    /// Returns the first successful result, or None if all providers fail.
-    pub async fn get_selection(&self) -> Option<SelectionResult> {
-        let mut tried: Vec<&str> = Vec::new();
-        for provider in &self.providers {
-            let name = provider.name();
-            tried.push(name);
-            tracing::debug!(
-                "[selection_manager] Trying provider '{}' (priority {})",
-                name,
-                provider.priority()
+    /// Get selection with optional process-name exclude list (from settings).
+    pub async fn get_selection_routed(
+        &self,
+        exclude_processes: &[String],
+    ) -> Option<SelectionResult> {
+        let fg = foreground_process();
+        let strategy = fg
+            .as_ref()
+            .map(|p| p.strategy(exclude_processes))
+            .unwrap_or(SelectionStrategy::UiaThenClipboard);
+
+        if let Some(ref p) = fg {
+            tracing::info!(
+                "[selection_manager] fg='{}' pid={} electron={} browser={} terminal={} strategy={:?}",
+                p.process_name,
+                p.process_id,
+                p.is_electron,
+                p.is_browser,
+                p.is_terminal,
+                strategy
             );
-            match provider.get_selection().await {
-                Some(result) => {
-                    if !result.text.trim().is_empty() {
-                        tracing::info!(
-                            "[selection_manager] Provider '{}' succeeded: {} chars from '{}'",
-                            name,
-                            result.text.len(),
-                            result.source_app
-                        );
-                        return Some(result);
-                    } else {
-                        tracing::debug!(
-                            "[selection_manager] Provider '{}' returned empty text",
-                            name
-                        );
-                    }
-                },
-                None => {
-                    tracing::debug!("[selection_manager] Provider '{}' returned None", name);
-                },
-            }
         }
-        tracing::warn!(
-            "[selection_manager] All providers failed. Tried: {:?}",
-            tried
-        );
-        None
+
+        // Easydict: non-text clipboard spam → suppress full selection for process (5 min)
+        let suppressed = fg
+            .as_ref()
+            .map(|p| super::clipboard::is_process_clipboard_suppressed(&p.process_name))
+            .unwrap_or(false);
+        if suppressed {
+            tracing::debug!(
+                "[selection_manager] Skip — process clipboard suppressed (non-text history)"
+            );
+            return None;
+        }
+
+        // Process name for Easydict RecordOutcome(Success) when UIA succeeds — rehabilitates
+        // a process that previously accumulated non-text clipboard failures.
+        let fg_name = fg.as_ref().map(|p| p.process_name.as_str());
+
+        match strategy {
+            SelectionStrategy::Skip => {
+                tracing::debug!("[selection_manager] Skip (self or excluded process)");
+                None
+            },
+            SelectionStrategy::UiaOnly => {
+                self.try_providers_in_order(&["uiautomation"], fg_name).await
+            },
+            SelectionStrategy::ClipboardThenUia => {
+                self.try_providers_in_order(&["clipboard", "uiautomation"], fg_name)
+                    .await
+            },
+            SelectionStrategy::UiaThenClipboard => {
+                self.try_providers_in_order(&["uiautomation", "clipboard"], fg_name)
+                    .await
+            },
+        }
     }
 
-    /// Get the current selection, skipping providers whose names are in `exclude`.
-    /// Used for strategy dispatch: e.g., skip UIA for embedded apps where it won't work.
-    pub async fn get_selection_excluding(&self, exclude: &[&str]) -> Option<SelectionResult> {
+    async fn try_providers_in_order(
+        &self,
+        order: &[&str],
+        fg_name: Option<&str>,
+    ) -> Option<SelectionResult> {
         let mut tried: Vec<&str> = Vec::new();
-        let mut skipped: Vec<&str> = Vec::new();
-        for provider in &self.providers {
-            let name = provider.name();
-            if exclude.contains(&name) {
-                skipped.push(name);
-                tracing::debug!(
-                    "[selection_manager] Skipping provider '{}' (excluded)",
-                    name
-                );
+        for want in order {
+            let Some(provider) = self.providers.iter().find(|p| p.name() == *want) else {
                 continue;
-            }
+            };
+            let name = provider.name();
             tried.push(name);
-            tracing::debug!(
-                "[selection_manager] Trying provider '{}' (priority {})",
-                name,
-                provider.priority()
-            );
+            tracing::debug!("[selection_manager] Trying provider '{}' (routed)", name);
             match provider.get_selection().await {
-                Some(result) => {
-                    if !result.text.trim().is_empty() {
-                        tracing::info!(
-                            "[selection_manager] Provider '{}' succeeded: {} chars from '{}'",
-                            name,
-                            result.text.len(),
-                            result.source_app
-                        );
-                        return Some(result);
-                    } else {
-                        tracing::debug!(
-                            "[selection_manager] Provider '{}' returned empty text",
-                            name
-                        );
+                Some(result) if !result.text.trim().is_empty() => {
+                    // Easydict RecordOutcome(Success): a successful UIA pick rehabilitates
+                    // a process with prior non-text clipboard failures (resets the counter so
+                    // the next single non-text doesn't immediately trip the 5min suppress).
+                    if name == "uiautomation" {
+                        if let Some(pn) = fg_name {
+                            super::clipboard::record_selection_success(pn);
+                        }
                     }
+                    tracing::info!(
+                        "[selection_manager] Provider '{}' succeeded: {} chars from '{}'",
+                        name,
+                        result.text.len(),
+                        result.source_app
+                    );
+                    return Some(result);
+                },
+                Some(_) => {
+                    tracing::debug!(
+                        "[selection_manager] Provider '{}' returned empty text",
+                        name
+                    );
                 },
                 None => {
                     tracing::debug!("[selection_manager] Provider '{}' returned None", name);
@@ -111,9 +128,8 @@ impl SelectionProviderManager {
             }
         }
         tracing::warn!(
-            "[selection_manager] All providers failed. Tried: {:?}, Skipped: {:?}",
-            tried,
-            skipped
+            "[selection_manager] All routed providers failed. Tried: {:?}",
+            tried
         );
         None
     }

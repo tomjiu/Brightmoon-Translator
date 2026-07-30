@@ -16,6 +16,9 @@ export interface IncrementalEntry {
   timestamp: number;
 }
 
+/** Bumps on each translate / stream / clear so late results cannot overwrite newer requests. */
+let translateRequestSeq = 0;
+
 interface HistoryEntry {
   sourceText: string;
   results: TranslationResult[];
@@ -139,6 +142,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       return;
     }
 
+    const mySeq = ++translateRequestSeq;
     set({ loading: true, error: null });
 
     const [response, error] = await safeInvoke<TranslateResponse>('translate', {
@@ -146,8 +150,11 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
         text: sourceText.trim(),
         from: fromLang,
         to: toLang,
+        channel: 'ui',
       },
     });
+
+    if (mySeq !== translateRequestSeq) return;
 
     if (error || !response) {
       set({
@@ -157,11 +164,11 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       return;
     }
 
-    // PrimaryOnly / all-engine failure often returns 200 with empty results — surface it
+    // All engines failed / empty payload — surface it
     if (!response.results.length || !response.results.some((r) => r.text.trim())) {
       set({
         results: response.results || [],
-        error: '翻译无结果：请检查引擎是否启用、密钥/网络，或切换路由策略为失败回退',
+        error: '翻译无结果：请检查已启用引擎、密钥与网络',
         loading: false,
         detectedLang: response.detectedLanguage || '',
       });
@@ -224,11 +231,13 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       return;
     }
 
+    const mySeq = ++translateRequestSeq;
     set({ loading: true, error: null, isStreaming: true, streamingText: '' });
 
     // Listen for streaming chunks
     let fullText = '';
     const unlisten = await listen<{ chunk: string; done: boolean }>('stream-chunk', (event) => {
+      if (mySeq !== translateRequestSeq) return;
       if (event.payload.done) {
         // Streaming complete
         const newResults = [{ engine: 'LLM', text: fullText }];
@@ -282,6 +291,11 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
         to: toLang,
       },
     });
+
+    if (mySeq !== translateRequestSeq) {
+      unlisten();
+      return;
+    }
 
     if (error) {
       set({
@@ -388,7 +402,8 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     set({ detectedLang: result.name });
   },
 
-  clear: () =>
+  clear: () => {
+    translateRequestSeq++;
     set({
       sourceText: '',
       results: [],
@@ -397,7 +412,10 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
       error: null,
       detectedLang: '',
       streamingText: '',
-    }),
+      loading: false,
+      isStreaming: false,
+    });
+  },
 
   clearIncremental: () =>
     set({

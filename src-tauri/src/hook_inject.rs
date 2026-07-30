@@ -6,9 +6,9 @@
  */
 use serde::Serialize;
 use windows::core::{PCWSTR, PSTR};
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Foundation::{CloseHandle, FreeLibrary, HANDLE};
 use windows::Win32::System::Diagnostics::Debug::WriteProcessMemory;
-use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW};
 use windows::Win32::System::Memory::{
     MapViewOfFile, OpenFileMappingW, UnmapViewOfFile, VirtualAllocEx, VirtualFreeEx,
     FILE_MAP_ALL_ACCESS, MEMORY_MAPPED_VIEW_ADDRESS, MEM_COMMIT, MEM_RELEASE, PAGE_READWRITE,
@@ -18,10 +18,13 @@ use windows::Win32::System::Threading::{
     PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE,
 };
 
-// Shared memory constants (must match DLL)
-const SHARED_MEMORY_NAME: &str = "MoonTranslatorHookSharedMem";
+// Shared memory constants (must match DLL; name is PID-scoped)
 const SHARED_MEMORY_SIZE: usize = 1024 * 1024; // 1MB
 const SHARED_MEMORY_MAGIC: u32 = 0x4D4F4F4E; // "MOON"
+
+fn shared_memory_name(pid: u32) -> String {
+    format!("MoonTranslatorHookSharedMem_PID{}", pid)
+}
 
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
@@ -73,6 +76,8 @@ pub struct HookManager {
     shared_view: MEMORY_MAPPED_VIEW_ADDRESS,
     shared_data: *mut SharedMemoryHeader,
     target_pid: u32,
+    /// Remote HMODULE from LoadLibraryW exit code (for HookUninstall)
+    remote_module: usize,
     injected: bool,
     messages_read: u64,
     last_sequence: u32,
@@ -95,6 +100,7 @@ impl HookManager {
             shared_view: MEMORY_MAPPED_VIEW_ADDRESS::default(),
             shared_data: std::ptr::null_mut(),
             target_pid: 0,
+            remote_module: 0,
             injected: false,
             messages_read: 0,
             last_sequence: 0,
@@ -190,9 +196,30 @@ impl HookManager {
                 return Err("DLL injection failed (LoadLibraryW returned NULL)".to_string());
             }
 
-            // Open shared memory
-            self.open_shared_memory()?;
+            self.remote_module = exit_code as usize;
             self.target_pid = pid;
+
+            // Open PID-scoped shared memory (DLL creates on attach)
+            // Brief retry: DLL may still be initializing mapping
+            let mut last_err = String::new();
+            for _ in 0..20 {
+                match self.open_shared_memory(pid) {
+                    Ok(()) => {
+                        last_err.clear();
+                        break;
+                    }
+                    Err(e) => {
+                        last_err = e;
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                }
+            }
+            if !last_err.is_empty() {
+                self.remote_module = 0;
+                self.target_pid = 0;
+                return Err(last_err);
+            }
+
             self.injected = true;
             self.messages_read = 0;
             self.last_sequence = 0;
@@ -202,18 +229,83 @@ impl HookManager {
         }
     }
 
-    /// Eject the DLL (cleanup shared memory)
+    /// Eject the DLL: remote HookUninstall (IAT restore + FreeLibrary) then unmap local view
     pub fn eject(&mut self) -> Result<(), String> {
         if !self.injected {
             return Ok(());
         }
 
+        let pid = self.target_pid;
+        let remote_module = self.remote_module;
+
+        if pid != 0 && remote_module != 0 {
+            if let Err(e) = self.remote_uninstall(pid, remote_module) {
+                tracing::warn!("[HookManager] remote HookUninstall failed: {}", e);
+            }
+        }
+
         self.cleanup_shared_memory();
         self.injected = false;
         self.target_pid = 0;
+        self.remote_module = 0;
+        self.last_sequence = 0;
 
         tracing::info!("[HookManager] Ejected");
         Ok(())
+    }
+
+    /// CreateRemoteThread(HookUninstall) in target process.
+    fn remote_uninstall(&self, pid: u32, remote_module: usize) -> Result<(), String> {
+        unsafe {
+            let process = OpenProcess(
+                PROCESS_CREATE_THREAD
+                    | PROCESS_QUERY_INFORMATION
+                    | PROCESS_VM_OPERATION
+                    | PROCESS_VM_READ
+                    | PROCESS_VM_WRITE,
+                false,
+                pid,
+            )
+            .map_err(|e| format!("OpenProcess for eject failed: {}", e))?;
+
+            // Resolve HookUninstall in *local* moon_hook.dll, then rebase to remote HMODULE.
+            // Same image layout → RVA is stable across load addresses.
+            let local_dll = self.find_hook_dll()?;
+            let local_mod =
+                LoadLibraryW(PCWSTR(to_wide(&local_dll).as_ptr()))
+                    .map_err(|e| format!("LoadLibraryW local hook dll failed: {}", e))?;
+
+            let local_proc = GetProcAddress(local_mod, PSTR(b"HookUninstall\0".as_ptr() as *mut _))
+                .ok_or_else(|| {
+                    let _ = FreeLibrary(local_mod);
+                    "GetProcAddress HookUninstall failed".to_string()
+                })?;
+
+            let local_base = local_mod.0 as usize;
+            let rva = (local_proc as usize).wrapping_sub(local_base);
+            let remote_fn = remote_module.wrapping_add(rva);
+
+            let _ = FreeLibrary(local_mod);
+
+            let thread = CreateRemoteThread(
+                process,
+                None,
+                0,
+                Some(std::mem::transmute(remote_fn)),
+                None,
+                0,
+                None,
+            )
+            .map_err(|e| {
+                let _ = CloseHandle(process);
+                format!("CreateRemoteThread HookUninstall failed: {}", e)
+            })?;
+
+            let _ = WaitForSingleObject(thread, 5000);
+            let _ = CloseHandle(thread);
+            let _ = CloseHandle(process);
+            Ok(())
+        }
     }
 
     /// Read new text messages from shared memory
@@ -320,21 +412,47 @@ impl HookManager {
     }
 
     fn find_hook_dll(&self) -> Result<String, String> {
-        // Look for moon_hook.dll in several locations
+        // Look for moon_hook.dll next to the exe (release bundle), then dev build outputs.
         let exe_dir = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|p| p.to_path_buf()))
             .unwrap_or_default();
 
-        let candidates = vec![
+        let mut candidates = vec![
+            // Release / portable: DLL next to moontranslator.exe
             exe_dir.join("moon_hook.dll"),
+            exe_dir.join("resources").join("moon_hook.dll"),
+            exe_dir.join("bin").join("moon_hook.dll"),
+            // Relative to exe when running from target/debug
+            exe_dir.join("..\\..\\hook-dll\\build\\Release\\moon_hook.dll"),
+            exe_dir.join("..\\..\\bin\\moon_hook.dll"),
             exe_dir.join("..\\..\\src-tauri\\bin\\moon_hook.dll"),
-            // Dev build output (CMake Release) — primary location in this repo
             exe_dir.join("..\\..\\src-tauri\\hook-dll\\build\\Release\\moon_hook.dll"),
+            // CWD-relative (cargo run from repo root or src-tauri)
+            std::path::PathBuf::from("moon_hook.dll"),
+            std::path::PathBuf::from("bin\\moon_hook.dll"),
             std::path::PathBuf::from("src-tauri\\bin\\moon_hook.dll"),
             std::path::PathBuf::from("src-tauri\\hook-dll\\build\\Release\\moon_hook.dll"),
             std::path::PathBuf::from("hook-dll\\build\\Release\\moon_hook.dll"),
         ];
+
+        // Compile-time crate dir → always find repo hook-dll in dev
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        candidates.push(manifest_dir.join("bin").join("moon_hook.dll"));
+        candidates.push(
+            manifest_dir
+                .join("hook-dll")
+                .join("build")
+                .join("Release")
+                .join("moon_hook.dll"),
+        );
+        candidates.push(
+            manifest_dir
+                .join("hook-dll")
+                .join("build")
+                .join("Debug")
+                .join("moon_hook.dll"),
+        );
 
         for candidate in &candidates {
             if candidate.exists() {
@@ -342,14 +460,14 @@ impl HookManager {
                     .canonicalize()
                     .unwrap_or_else(|_| candidate.clone())
                     .to_str()
-                    .ok_or("Invalid path".to_string())
+                    .ok_or_else(|| "Invalid path".to_string())
                     .map(|s| s.to_string());
             }
         }
 
         Err(format!(
-            "moon_hook.dll not found. Searched: {:?}",
-            candidates
+            "moon_hook.dll not found. Place it next to the app or under src-tauri/hook-dll/build/Release/. Searched {} paths.",
+            candidates.len()
         ))
     }
 
@@ -357,15 +475,16 @@ impl HookManager {
     /// SAFETY: Opens a named file mapping and maps it into our address space.
     /// - Magic number is validated to ensure shared memory is valid
     /// - On failure, resources are cleaned up immediately
-    fn open_shared_memory(&mut self) -> Result<(), String> {
+    fn open_shared_memory(&mut self, pid: u32) -> Result<(), String> {
         unsafe {
-            let name_wide = to_wide(SHARED_MEMORY_NAME);
+            let name = shared_memory_name(pid);
+            let name_wide = to_wide(&name);
             let handle = OpenFileMappingW(
                 FILE_MAP_ALL_ACCESS.0 as u32,
                 false,
                 PCWSTR(name_wide.as_ptr()),
             )
-            .map_err(|e| format!("OpenFileMappingW failed: {}", e))?;
+            .map_err(|e| format!("OpenFileMappingW({}) failed: {}", name, e))?;
 
             let view = MapViewOfFile(handle, FILE_MAP_ALL_ACCESS, 0, 0, SHARED_MEMORY_SIZE);
 

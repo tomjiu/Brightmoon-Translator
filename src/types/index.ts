@@ -78,6 +78,33 @@ interface HotkeyConfig {
   translateSelection: string;
   replaceTranslate: string;
   toggleOverlayClickThrough: string;
+  /** Optional dict-first lookup (empty = off). e.g. Ctrl+Shift+D */
+  dictionaryLookup?: string;
+}
+
+/** Desktop 划词 / 取词 (Youdao-inspired) */
+export type SelectionTriggerMode = 'hotkey_only' | 'auto_on_select' | 'pop_button';
+
+export interface SelectionUxConfig {
+  /** Select → popup: hotkey only vs auto after mouse-up */
+  triggerMode: SelectionTriggerMode;
+  /** Mouse dwell → dictionary popup (system-wide; phased) */
+  hoverDictionary: boolean;
+  hoverDwellMs: number;
+  /** word | sentence — MTT-style unit; Alt held also forces sentence */
+  hoverUnit?: string;
+  /** auto | ecdict | youdao — hover dictionary backend */
+  hoverDictSource?: string;
+  /** Empty UIA/clipboard → OCR near cursor (phased) */
+  ocrForcePickup: boolean;
+  /** Modifier for OCR force: '' | none | shift | ctrl | alt (MTT-style) */
+  ocrModifierKey?: string;
+  /** Min selection length for auto-on-select */
+  autoMinChars: number;
+  /** Min drag pixels before auto-on-select (Easydict-style) */
+  minDragPx?: number;
+  /** Process names to skip (no .exe), e.g. potplayer */
+  excludeProcesses?: string[];
 }
 
 interface ProxyConfig {
@@ -147,6 +174,7 @@ export interface AppConfig {
   /** Local HTTP bridge token (Bearer). Required when API is enabled. */
   apiServerToken: string;
   hotkeys: HotkeyConfig;
+  selectionUx?: SelectionUxConfig;
   proxy: ProxyConfig;
   windowX?: number;
   windowY?: number;
@@ -159,6 +187,13 @@ export interface AppConfig {
   ocrEngine: OcrEngine;
   /** Rapid/Paddle sidecar path when ocrEngine is rapid|paddle */
   offlineOcr?: { backend: string; pluginDir: string };
+  /** PDF text extraction: pdf-extract | ocr | mineru | marker | ocrmypdf */
+  pdfExtractionEngine?: string;
+  pdfExtractionSidecar?: {
+    mineruCmd?: string;
+    markerCmd?: string;
+    ocrmypdfCmd?: string;
+  };
   overlayLevel?: number;
   overlayAutoDismissMs?: number;
   overlayFollowMode?: 'none' | 'cursor' | 'target_bounds';
@@ -172,13 +207,23 @@ export interface AppConfig {
   furiganaEnabled?: boolean;
   ttsAutoPlay?: boolean;
   ttsVoice?: string;
-  /** edge | openai | youdao */
+  /** edge | openai | youdao | fish */
   ttsProvider?: string;
+  /** Preferred engine for batch queue when call omits engine (e.g. google) */
+  batchPreferredEngine?: string;
   openaiTts?: {
     apiKey: string;
     baseUrl: string;
     model: string;
     voice: string;
+    speed: number;
+  };
+  /** Fish Audio TTS — free model s2.1-pro-free for dev/test */
+  fishTts?: {
+    apiKey: string;
+    model: string;
+    referenceId: string;
+    format: string;
     speed: number;
   };
   httpTimeoutSecs?: number;

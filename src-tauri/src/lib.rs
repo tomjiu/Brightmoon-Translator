@@ -33,12 +33,12 @@ pub mod metrics;
 pub mod models;
 pub mod ocr_engine;
 pub mod ocr_offline;
+pub mod ocr_region_consts;
 pub mod overlay;
 pub mod pdf;
 pub mod post_process;
 pub mod pptx;
 pub mod pre_process;
-pub mod project;
 pub mod quality;
 pub mod response_check;
 pub mod security;
@@ -128,6 +128,8 @@ pub struct AppState {
     // Capability cells (initialized in setup() after AppHandle is available)
     pub selection_translation: TokioOnceCell<Arc<dyn SelectionTranslation>>,
     pub input_replacement: TokioOnceCell<Arc<dyn InputReplacement>>,
+    /// Auto-on-select mouseup watcher (Youdao-like)
+    pub selection_auto_watch: TokioOnceCell<Arc<selection::SelectionAutoWatch>>,
 
     // Batch translation manager
     pub batch: Arc<BatchManager>,
@@ -141,6 +143,31 @@ pub struct AppState {
     pub event_store: Option<EventStore>,
 }
 
+/// Resolve ecdict.db for both packaged and dev layouts.
+pub(crate) fn resolve_ecdict_db_path() -> Option<std::path::PathBuf> {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(ref dir) = exe_dir {
+        candidates.push(dir.join("dictionaries").join("ecdict.db"));
+        candidates.push(dir.join("resources").join("dictionaries").join("ecdict.db"));
+        candidates.push(dir.join("ecdict.db"));
+        candidates.push(dir.join("resources").join("ecdict.db"));
+    }
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    candidates.push(manifest.join("..").join("dictionaries").join("ecdict.db"));
+    candidates.push(manifest.join("dictionaries").join("ecdict.db"));
+    candidates.push(std::path::PathBuf::from("dictionaries").join("ecdict.db"));
+    candidates.push(std::path::PathBuf::from("ecdict.db"));
+    for c in candidates {
+        if c.is_file() {
+            return Some(c.canonicalize().unwrap_or(c));
+        }
+    }
+    None
+}
+
 pub fn run() {
     let ctx = tokio::runtime::Runtime::new()
         .expect("Failed to create tokio runtime")
@@ -150,23 +177,18 @@ pub fn run() {
     let (ecdict_pool, event_store) = tokio::runtime::Runtime::new()
         .expect("Failed to create tokio runtime")
         .block_on(async {
-            // Connect to ECDICT database for dictionary lookups
-            let ecdict_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("..")
-                .join("dictionaries")
-                .join("ecdict.db");
-            let ecdict_pool = if ecdict_path.exists() {
-                let conn_str = format!(
-                    "sqlite:{}",
-                    ecdict_path.display().to_string().replace('\\', "/")
-                );
+            // Connect to ECDICT — try release/portable paths first, then dev tree.
+            // CARGO_MANIFEST_DIR alone fails for packaged installs (HEALTH_AUDIT B5).
+            let ecdict_path = resolve_ecdict_db_path();
+            let ecdict_pool = if let Some(ref path) = ecdict_path {
+                let conn_str = format!("sqlite:{}", path.display().to_string().replace('\\', "/"));
                 match sqlx::sqlite::SqlitePoolOptions::new()
                     .max_connections(2)
                     .connect(&conn_str)
                     .await
                 {
                     Ok(pool) => {
-                        tracing::info!("ECDICT database connected: {}", ecdict_path.display());
+                        tracing::info!("ECDICT database connected: {}", path.display());
                         Some(pool)
                     },
                     Err(e) => {
@@ -175,7 +197,9 @@ pub fn run() {
                     },
                 }
             } else {
-                tracing::warn!("ECDICT database not found: {}", ecdict_path.display());
+                tracing::warn!(
+                    "ECDICT database not found (searched exe-dir, resources, repo dictionaries/)"
+                );
                 None
             };
 
@@ -236,6 +260,7 @@ pub fn run() {
         system: ctx.system,
         selection_translation: TokioOnceCell::new(),
         input_replacement: TokioOnceCell::new(),
+        selection_auto_watch: TokioOnceCell::new(),
         batch: Arc::new(BatchManager::new()),
         speech_state: Arc::new(Mutex::new(SpeechState::new())),
         ecdict_pool,
@@ -327,9 +352,15 @@ pub fn run() {
                     Arc::new(DefaultInputReplacement::new(
                         app_state.system.selection_manager.clone(),
                         app_state.translation.service.clone(),
+                        app_state.system.config.clone(),
                     ));
                 let _ = app_state.selection_translation.set(sel_translation);
                 let _ = app_state.input_replacement.set(inp_replacement);
+
+                let ux = app_state.system.config.blocking_lock().selection_ux.clone();
+                let watch = Arc::new(selection::SelectionAutoWatch::new(ux));
+                watch.start(app.handle().clone());
+                let _ = app_state.selection_auto_watch.set(watch);
             }
 
             // Create system tray menu (pot-aligned: show / selection / replace / OCR / clipboard / settings / quit)
@@ -475,6 +506,64 @@ pub fn run() {
                 });
             }
 
+            // Background WebDAV sync loop (interval_mins; 0 = manual only)
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    // Delay first poll so startup is quiet
+                    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+                    let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(60));
+                    loop {
+                        ticker.tick().await;
+                        let state = app_handle.state::<AppState>();
+                        let (enabled, mins, last_at, sync_cfg, glossary, history, wordbook) = {
+                            let c = state.system.config.lock().await;
+                            (
+                                c.sync.enabled,
+                                c.sync.interval_mins,
+                                c.sync.last_sync_at,
+                                c.clone(),
+                                state.translation.glossary.clone(),
+                                state.document.history.clone(),
+                                state.document.wordbook.clone(),
+                            )
+                        };
+                        if !enabled || mins == 0 {
+                            continue;
+                        }
+                        let now = chrono::Utc::now().timestamp_millis();
+                        let elapsed_mins = if last_at > 0 {
+                            ((now - last_at) / 60_000).max(0) as u64
+                        } else {
+                            mins // force first run
+                        };
+                        if elapsed_mins < mins {
+                            continue;
+                        }
+                        tracing::info!("[Sync] auto interval tick ({} min)", mins);
+                        match sync::sync_all(&sync_cfg, glossary, history, wordbook).await {
+                            Ok(result) => {
+                                let mut c = state.system.config.lock().await;
+                                c.sync.last_sync_at = result.synced_at;
+                                c.sync.last_sync_status = result.message.clone();
+                                c.save();
+                                if result.downloaded_config.is_some() {
+                                    tracing::info!(
+                                        "[Sync] auto sync downloaded config — open Sync settings or sync_now to apply via IPC path"
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("[Sync] auto sync failed: {}", e);
+                                let mut c = state.system.config.lock().await;
+                                c.sync.last_sync_status = format!("Auto sync failed: {e}");
+                                c.save();
+                            }
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -497,14 +586,14 @@ pub fn run() {
             commands::window::hide_main_window,
             commands::window::show_main_window,
             commands::window::set_window_exclude_from_capture,
-            commands::window::get_selected_text,
-            commands::window::translate_selection,
             commands::window::trigger_selection_translate,
+            commands::window::trigger_dictionary_lookup,
             commands::window::get_cursor_position,
             commands::window::toggle_always_on_top,
             commands::window::get_always_on_top,
             commands::window::move_window_to_cursor,
             commands::window::set_overlay_click_through,
+            commands::window::set_overlay_theme,
             commands::window::pin_overlay,
             commands::window::move_overlay,
             commands::window::resize_overlay,
@@ -546,6 +635,7 @@ pub fn run() {
             commands::capture::system_ocr,
             commands::capture::system_ocr_detailed,
             commands::capture::youdao_ocr,
+            commands::capture::offline_ocr,
             commands::capture::prepare_screenshot_snapshot,
             commands::capture::load_screenshot_snapshot,
             commands::capture::crop_screenshot_snapshot,
@@ -562,6 +652,7 @@ pub fn run() {
             commands::hook_inject_cmd::hook_dll_available,
             commands::hook_inject_cmd::hook_dll_path,
             commands::hook_inject_cmd::hook_read_messages,
+            commands::hook_inject_cmd::hook_process_messages,
             commands::process_list::get_process_list,
             commands::glossary_cmd::get_glossary,
             commands::glossary_cmd::get_all_glossary,
@@ -591,6 +682,7 @@ pub fn run() {
             commands::pdf_cmd::ocr_scanned_pdf,
             commands::epub_cmd::open_epub,
             commands::epub_cmd::translate_epub,
+            commands::epub_cmd::save_bilingual_epub,
             commands::subtitle_cmd::open_subtitle,
             commands::subtitle_cmd::translate_subtitle,
             commands::subtitle_cmd::export_subtitle_file,
@@ -632,15 +724,6 @@ pub fn run() {
             commands::furigana_cmd::add_furigana,
             commands::furigana_cmd::add_furigana_html,
             commands::furigana_cmd::add_furigana_text,
-            commands::batch_cmd::batch_submit,
-            commands::batch_cmd::batch_cancel,
-            commands::batch_cmd::batch_pause,
-            commands::batch_cmd::batch_resume,
-            commands::batch_cmd::batch_retry_failed,
-            commands::batch_cmd::batch_get_progress,
-            commands::batch_cmd::batch_get_results,
-            commands::batch_cmd::batch_get_status,
-            commands::batch_cmd::batch_reset,
             commands::batch_cmd::tm_export,
             commands::batch_cmd::tm_import,
             commands::batch_cmd::tm_get_stats,
@@ -668,20 +751,6 @@ pub fn run() {
             commands::offline_cmd::update_offline_settings,
             commands::offline_cmd::generate_sample_offline_models,
             commands::offline_cmd::get_offline_status,
-            commands::project_cmd::create_project,
-            commands::project_cmd::get_project,
-            commands::project_cmd::get_all_projects,
-            commands::project_cmd::update_project,
-            commands::project_cmd::delete_project,
-            commands::project_cmd::add_file_to_project,
-            commands::project_cmd::get_project_files,
-            commands::project_cmd::delete_file,
-            commands::project_cmd::update_file_status,
-            commands::project_cmd::add_segments,
-            commands::project_cmd::get_file_segments,
-            commands::project_cmd::update_segment,
-            commands::project_cmd::export_project,
-            commands::project_cmd::export_project_json,
             commands::sync_cmd::test_webdav_connection,
             commands::sync_cmd::sync_now,
             commands::sync_cmd::get_sync_config,
@@ -710,8 +779,10 @@ pub fn run() {
             commands::dictionary_cmd::lookup_word_detail,
             commands::dictionary_cmd::lookup_word_multi_source,
             commands::dictionary_cmd::fuzzy_search_words,
+            commands::dictionary_cmd::lookup_japanese,
             commands::dictionary_cmd::import_dictionary_data,
             commands::dictionary_cmd::check_dictionary_imported,
+            commands::dictionary_cmd::ecdict_status,
             commands::learning_plan_cmd::get_exam_wordlists,
             commands::learning_plan_cmd::create_learning_plan,
             commands::learning_plan_cmd::get_learning_plans,

@@ -19,6 +19,28 @@ pub struct TranslateResponse {
     pub detected_language: Option<String>,
 }
 
+impl TranslateResponse {
+    /// Overlay / selection card text: single engine plain; multi-engine `[name] text` lines.
+    pub fn display_text(&self) -> String {
+        let non_empty: Vec<&TranslationResult> = self
+            .results
+            .iter()
+            .filter(|r| !r.text.trim().is_empty())
+            .collect();
+        if non_empty.is_empty() {
+            return String::new();
+        }
+        if non_empty.len() == 1 {
+            return non_empty[0].text.trim().to_string();
+        }
+        non_empty
+            .iter()
+            .map(|r| format!("[{}] {}", r.engine, r.text.trim()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
 /// Engine routing strategy
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -260,6 +282,47 @@ mod tests {
 
         assert_eq!(json["detectedLanguage"], "en");
         assert!(json.get("detected_language").is_none());
+    }
+
+    #[test]
+    fn display_text_single_and_multi_engine() {
+        let single = TranslateResponse {
+            results: vec![TranslationResult {
+                engine: "google".into(),
+                text: "  你好  ".into(),
+                latency_ms: None,
+            }],
+            detected_language: None,
+        };
+        assert_eq!(single.display_text(), "你好");
+
+        let multi = TranslateResponse {
+            results: vec![
+                TranslationResult {
+                    engine: "google".into(),
+                    text: "你好".into(),
+                    latency_ms: None,
+                },
+                TranslationResult {
+                    engine: "deepl".into(),
+                    text: "您好".into(),
+                    latency_ms: None,
+                },
+                TranslationResult {
+                    engine: "empty".into(),
+                    text: "  ".into(),
+                    latency_ms: None,
+                },
+            ],
+            detected_language: None,
+        };
+        assert_eq!(multi.display_text(), "[google] 你好\n[deepl] 您好");
+        assert!(TranslateResponse {
+            results: vec![],
+            detected_language: None,
+        }
+        .display_text()
+        .is_empty());
     }
 
     #[test]

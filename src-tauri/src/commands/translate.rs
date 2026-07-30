@@ -492,24 +492,153 @@ pub async fn detect_language(text: String) -> Result<DetectionResult, AppError> 
 }
 
 #[tauri::command]
-pub async fn lookup_dictionary(text: String) -> Result<Vec<DictionaryResult>, AppError> {
+pub async fn lookup_dictionary(
+    text: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<DictionaryResult>, AppError> {
     let trimmed = text.trim();
     if !dictionary::is_single_word(trimmed) {
         return Ok(vec![]);
     }
 
-    let dict = dictionary::Dictionary::new();
-
-    // Use Chinese dictionary for CJK text
-    if dictionary::is_cjk(trimmed) {
-        dict.lookup_chinese(trimmed)
+    // English: local ECDICT first (same source as hover dict), then Youdao.
+    if !dictionary::is_cjk(trimmed) {
+        if let Some(pool) = state.ecdict_pool.as_ref() {
+            if let Ok(body) = lookup_ecdict_for_dictionary(trimmed, pool).await {
+                if dictionary::has_real_meanings(&body) {
+                    return Ok(body);
+                }
+            }
+        }
+        let dict = dictionary::Dictionary::new();
+        return dict
+            .lookup(trimmed)
             .await
-            .map_err(|e| AppError::Internal(format!("Dictionary lookup failed: {}", e)))
-    } else {
-        dict.lookup(trimmed)
-            .await
-            .map_err(|e| AppError::Internal(format!("Dictionary lookup failed: {}", e)))
+            .map_err(|e| AppError::Internal(format!("Dictionary lookup failed: {}", e)));
     }
+
+    // CJK: Youdao CE when available (no ECDICT path).
+    let dict = dictionary::Dictionary::new();
+    dict.lookup_chinese(trimmed)
+        .await
+        .map_err(|e| AppError::Internal(format!("Dictionary lookup failed: {}", e)))
+}
+
+/// ECDICT → DictionaryResult (shared shape with hover overlay).
+async fn lookup_ecdict_for_dictionary(
+    word: &str,
+    pool: &sqlx::SqlitePool,
+) -> Result<Vec<DictionaryResult>, String> {
+    use crate::models::dictionary::{Definition, Meaning};
+    use sqlx::Row;
+
+    let key = word.trim().to_lowercase();
+    let row = match sqlx::query(
+        "SELECT word, phonetic, definition, translation, pos FROM stardict WHERE word = ?1 COLLATE NOCASE LIMIT 1",
+    )
+    .bind(&key)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(r) => r,
+        Err(_) => sqlx::query(
+            "SELECT word, phonetic, definition, translation FROM stardict WHERE word = ?1 COLLATE NOCASE LIMIT 1",
+        )
+        .bind(&key)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?,
+    };
+    let Some(row) = row else {
+        return Ok(vec![]);
+    };
+
+    let head: String = row.try_get("word").unwrap_or_else(|_| word.to_string());
+    let phonetic: Option<String> = row.try_get("phonetic").ok().flatten();
+    let translation: Option<String> = row.try_get("translation").ok().flatten();
+    let definition: Option<String> = row.try_get("definition").ok().flatten();
+    let pos_raw: Option<String> = row.try_get("pos").ok().flatten();
+    let default_pos = pos_raw
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("")
+        .to_string();
+
+    let mut meanings: Vec<Meaning> = Vec::new();
+    let push_def = |meanings: &mut Vec<Meaning>, pos: &str, def_text: &str| {
+        let def_text = def_text.trim();
+        if def_text.is_empty() {
+            return;
+        }
+        let pos_key = if pos.is_empty() { "" } else { pos };
+        if let Some(m) = meanings.iter_mut().find(|m| m.part_of_speech == pos_key) {
+            if m.definitions.len() < 6 {
+                m.definitions.push(Definition {
+                    definition: def_text.to_string(),
+                    example: None,
+                    synonyms: vec![],
+                    antonyms: vec![],
+                });
+            }
+            return;
+        }
+        if meanings.len() >= 6 {
+            return;
+        }
+        meanings.push(Meaning {
+            part_of_speech: pos_key.to_string(),
+            definitions: vec![Definition {
+                definition: def_text.to_string(),
+                example: None,
+                synonyms: vec![],
+                antonyms: vec![],
+            }],
+        });
+    };
+
+    if let Some(tr) = translation {
+        for line in tr.split(['\n', '\\']) {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let (pos, def) = if let Some((p, rest)) = line.split_once('.') {
+                let p = p.trim();
+                if p.len() <= 6 && p.chars().all(|c| c.is_ascii_alphabetic()) {
+                    (p, rest.trim())
+                } else {
+                    (default_pos.as_str(), line)
+                }
+            } else {
+                (default_pos.as_str(), line)
+            };
+            push_def(&mut meanings, pos, def);
+        }
+    }
+    if meanings.is_empty() {
+        if let Some(def) = definition {
+            for line in def.split('\n').take(4) {
+                push_def(&mut meanings, default_pos.as_str(), line);
+            }
+        }
+    }
+    if meanings.is_empty() {
+        return Ok(vec![]);
+    }
+
+    Ok(vec![DictionaryResult {
+        word: head,
+        phonetic: phonetic.filter(|p| !p.is_empty()).map(|p| {
+            if p.starts_with('/') || p.starts_with('[') {
+                p
+            } else {
+                format!("/{}/", p)
+            }
+        }),
+        meanings,
+        source_urls: vec![],
+    }])
 }
 
 // We need to make AppState cloneable for the clipboard monitor
@@ -545,6 +674,7 @@ impl Clone for AppState {
             // OnceCell fields: create new empty cells for clones
             selection_translation: tokio::sync::OnceCell::new(),
             input_replacement: tokio::sync::OnceCell::new(),
+            selection_auto_watch: tokio::sync::OnceCell::new(),
             // Batch manager: share the same Arc
             batch: self.batch.clone(),
             // Speech recognition state

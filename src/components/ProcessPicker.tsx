@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { invokeOrThrow } from '../services/invoke';
 import { X, Search, Monitor } from 'lucide-react';
+import { useI18n } from '../i18n';
 
 interface ProcessInfo {
   pid: number;
@@ -15,6 +16,7 @@ interface ProcessPickerProps {
 }
 
 export default function ProcessPicker({ isOpen, onClose, onSelect }: ProcessPickerProps) {
+  const { t } = useI18n();
   const [processes, setProcesses] = useState<ProcessInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,7 +24,7 @@ export default function ProcessPicker({ isOpen, onClose, onSelect }: ProcessPick
 
   useEffect(() => {
     if (isOpen) {
-      loadProcesses();
+      void loadProcesses();
     }
   }, [isOpen]);
 
@@ -61,11 +63,10 @@ export default function ProcessPicker({ isOpen, onClose, onSelect }: ProcessPick
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-bg-primary border border-border rounded-xl shadow-lg w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="text-lg font-semibold text-text-primary flex items-center gap-2">
             <Monitor size={20} className="text-primary" />
-            选择进程
+            {t('hook.processPicker.title')}
           </h3>
           <button
             onClick={onClose}
@@ -75,7 +76,6 @@ export default function ProcessPicker({ isOpen, onClose, onSelect }: ProcessPick
           </button>
         </div>
 
-        {/* Search */}
         <div className="p-4 border-b border-border">
           <div className="relative">
             <Search
@@ -86,22 +86,21 @@ export default function ProcessPicker({ isOpen, onClose, onSelect }: ProcessPick
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索进程名称、PID 或路径..."
+              placeholder={t('hook.processPicker.search')}
               className="w-full bg-bg-secondary border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text-primary outline-none focus:border-primary"
               autoFocus
             />
           </div>
         </div>
 
-        {/* Process List */}
         <div className="flex-1 overflow-y-auto p-2">
           {loading ? (
             <div className="flex items-center justify-center py-12 text-text-secondary">
-              加载进程列表...
+              {t('hook.processPicker.loading')}
             </div>
           ) : filteredProcesses.length === 0 ? (
             <div className="flex items-center justify-center py-12 text-text-secondary">
-              {searchQuery ? '未找到匹配的进程' : '没有可用进程'}
+              {searchQuery ? t('hook.processPicker.noMatch') : t('hook.processPicker.empty')}
             </div>
           ) : (
             <div className="space-y-1">
@@ -141,25 +140,24 @@ export default function ProcessPicker({ isOpen, onClose, onSelect }: ProcessPick
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between p-4 border-t border-border">
           <div className="text-xs text-text-secondary">
-            {filteredProcesses.length} 个进程
-            {searchQuery && ` (搜索结果)`}
+            {t('hook.processPicker.count', { count: filteredProcesses.length })}
+            {searchQuery ? ` ${t('hook.processPicker.searchResults')}` : ''}
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm font-medium text-text-secondary hover:bg-bg-tertiary transition-colors"
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleSelect}
               disabled={selectedPid === null}
               className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-fg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              确定
+              {t('common.ok')}
             </button>
           </div>
         </div>

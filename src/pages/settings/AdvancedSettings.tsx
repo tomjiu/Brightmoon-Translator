@@ -3,8 +3,10 @@ import Card from '../../components/Card';
 import Badge from '../../components/Badge';
 import { isTauriRuntime } from '../../services/tauriRuntime';
 import { ExternalLink, CheckCircle, AlertCircle } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 export default function AdvancedSettings() {
+  const { t } = useI18n();
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
@@ -13,12 +15,12 @@ export default function AdvancedSettings() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="ui-page-title">高级设置</h1>
-        <p className="ui-page-desc">配置高级功能和选项</p>
+        <h1 className="ui-page-title">{t('settings.advanced.pageTitle')}</h1>
+        <p className="ui-page-desc">{t('settings.advanced.pageDesc')}</p>
       </div>
 
       {isTauri && (
-        <Card title="浏览器扩展" description="连接浏览器扩展实现跨平台翻译">
+        <Card title={t('settings.advanced.extTitle')} description={t('settings.advanced.extDesc')}>
           <div className="space-y-4">
             <label className="flex items-center gap-3">
               <input
@@ -31,8 +33,10 @@ export default function AdvancedSettings() {
                 className="rounded"
               />
               <div>
-                <p className="text-sm font-medium text-text-primary">启用 API 服务器（桌面桥接）</p>
-                <p className="ui-caption">开启后本机扩展可连接桌面端翻译（修改后需重启应用）</p>
+                <p className="text-sm font-medium text-text-primary">
+                  {t('settings.advanced.apiEnable')}
+                </p>
+                <p className="ui-caption">{t('settings.advanced.apiEnableHint')}</p>
               </div>
             </label>
 
@@ -40,7 +44,7 @@ export default function AdvancedSettings() {
               <>
                 <div>
                   <label className="block text-sm font-medium text-text-primary mb-2">
-                    桥接端口
+                    {t('settings.advanced.apiPort')}
                   </label>
                   <input
                     type="number"
@@ -57,13 +61,15 @@ export default function AdvancedSettings() {
                     className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary outline-none"
                   />
                   <p className="text-xs text-text-secondary mt-1">
-                    扩展将连接到 http://127.0.0.1:{config.apiServerPort || 60828}
+                    {t('settings.advanced.apiPortHint', {
+                      port: config.apiServerPort || 60828,
+                    })}
                   </p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-text-primary mb-2">
-                    API 令牌（Bearer）
+                    {t('settings.advanced.apiToken')}
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -76,7 +82,7 @@ export default function AdvancedSettings() {
                         }));
                       }}
                       onBlur={() => void saveConfig()}
-                      placeholder="启用后若为空会自动生成"
+                      placeholder={t('settings.advanced.apiTokenPh')}
                       className="flex-1 px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary outline-none font-mono text-xs"
                     />
                     <button
@@ -91,7 +97,7 @@ export default function AdvancedSettings() {
                         void saveConfig();
                       }}
                     >
-                      重新生成
+                      {t('settings.advanced.regen')}
                     </button>
                     <button
                       type="button"
@@ -101,24 +107,24 @@ export default function AdvancedSettings() {
                         if (t) void navigator.clipboard.writeText(t);
                       }}
                     >
-                      复制
+                      {t('settings.advanced.copy')}
                     </button>
                   </div>
-                  <p className="ui-caption mt-1">
-                    在浏览器扩展设置中填入相同令牌即可连接。请勿把令牌发给他人。
-                  </p>
+                  <p className="ui-caption mt-1">{t('settings.advanced.tokenHint2')}</p>
                 </div>
 
                 <div className="p-3 bg-bg-secondary rounded-lg border border-border">
                   <div className="flex items-center gap-2 mb-2">
                     <CheckCircle size={16} className="text-success" />
                     <span className="text-sm font-medium text-text-primary">
-                      桥接已启用（需重启应用后监听生效）
+                      {t('settings.advanced.bridgeOn')}
                     </span>
-                    <Badge variant="success">鉴权</Badge>
+                    <Badge variant="success">{t('settings.advanced.auth')}</Badge>
                   </div>
                   <p className="ui-caption">
-                    本地端口 {config.apiServerPort || 60828}；扩展连接时需携带令牌。
+                    {t('settings.advanced.bridgePortNote', {
+                      port: config.apiServerPort || 60828,
+                    })}
                   </p>
                 </div>
               </>
@@ -129,18 +135,18 @@ export default function AdvancedSettings() {
                 <div className="flex items-center gap-2 mb-1">
                   <AlertCircle size={16} className="text-yellow-600 dark:text-yellow-400" />
                   <span className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
-                    桥接服务未启用
+                    {t('settings.advanced.bridgeOff')}
                   </span>
                 </div>
-                <p className="text-xs text-text-secondary">
-                  扩展将使用本地模式，功能受限（无桌面引擎、无本地OCR、无术语表同步）
-                </p>
+                <p className="text-xs text-text-secondary">{t('settings.advanced.bridgeOffHint')}</p>
               </div>
             )}
 
             {/* Download Links */}
             <div className="border-t border-border pt-4">
-              <p className="text-sm font-medium text-text-primary mb-3">下载浏览器扩展</p>
+              <p className="text-sm font-medium text-text-primary mb-3">
+                {t('settings.advanced.downloadExt')}
+              </p>
               <div className="space-y-2">
                 <a
                   href="https://chrome.google.com/webstore"
@@ -153,8 +159,12 @@ export default function AdvancedSettings() {
                       Cr
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-text-primary">Chrome / Edge 扩展</p>
-                      <p className="text-xs text-text-secondary">适用于 Chromium 内核浏览器</p>
+                      <p className="text-sm font-medium text-text-primary">
+                        {t('settings.advanced.chrome')}
+                      </p>
+                      <p className="text-xs text-text-secondary">
+                        {t('settings.advanced.chromeHint')}
+                      </p>
                     </div>
                   </div>
                   <ExternalLink size={16} className="text-text-secondary" />
@@ -171,8 +181,12 @@ export default function AdvancedSettings() {
                       Fx
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-text-primary">Firefox 扩展</p>
-                      <p className="text-xs text-text-secondary">适用于 Firefox 浏览器</p>
+                      <p className="text-sm font-medium text-text-primary">
+                        {t('settings.advanced.firefox')}
+                      </p>
+                      <p className="text-xs text-text-secondary">
+                        {t('settings.advanced.firefoxHint')}
+                      </p>
                     </div>
                   </div>
                   <ExternalLink size={16} className="text-text-secondary" />
@@ -180,7 +194,7 @@ export default function AdvancedSettings() {
               </div>
 
               <p className="text-xs text-text-secondary mt-3">
-                安装扩展后，它会自动尝试连接到桌面应用。确保桌面应用正在运行且桥接服务已启用。
+                {t('settings.advanced.extInstallHint')}
               </p>
             </div>
           </div>
@@ -188,14 +202,11 @@ export default function AdvancedSettings() {
       )}
 
       <Card
-        title="代理设置"
-        description="主要用于大模型等需代理的接口；Google 会先直连，失败再走代理"
+        title={t('settings.advanced.proxyTitle')}
+        description={t('settings.advanced.proxyDesc')}
       >
         <div className="space-y-4">
-          <p className="ui-caption">
-            多数官方引擎可直连。Google 翻译会自动：先尝试直连，不通时再用下方代理。大模型 API
-            若在海外，请按需开启代理。
-          </p>
+          <p className="ui-caption">{t('settings.advanced.proxyNote')}</p>
           <label className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -210,8 +221,10 @@ export default function AdvancedSettings() {
               className="rounded"
             />
             <div>
-              <p className="text-sm font-medium text-text-primary">启用代理</p>
-              <p className="ui-caption">应用到支持代理的网络请求（含 LLM、Google 回退等）</p>
+              <p className="text-sm font-medium text-text-primary">
+                {t('settings.advanced.proxyEnable')}
+              </p>
+              <p className="ui-caption">{t('settings.advanced.proxyEnableHint')}</p>
             </div>
           </label>
 
@@ -219,7 +232,9 @@ export default function AdvancedSettings() {
             <div className="space-y-3 pl-8">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">主机</label>
+                  <label className="block text-sm font-medium text-text-primary mb-2">
+                    {t('settings.advanced.proxyHost')}
+                  </label>
                   <input
                     type="text"
                     value={config.proxy.host || ''}
@@ -236,7 +251,9 @@ export default function AdvancedSettings() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-text-primary mb-2">端口</label>
+                  <label className="block text-sm font-medium text-text-primary mb-2">
+                    {t('settings.advanced.proxyPort')}
+                  </label>
                   <input
                     type="number"
                     min="1"

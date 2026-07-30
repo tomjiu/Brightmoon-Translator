@@ -38,6 +38,12 @@ function applyTheme(theme: Theme) {
   const root = document.documentElement;
   root.classList.remove('dark', 'light');
   root.classList.add(theme);
+  // Keep selection/hover overlay cards in sync (native webview, not DOM)
+  void import('../services/invoke')
+    .then(({ safeInvoke }) => safeInvoke('set_overlay_theme', { theme }))
+    .catch((err: unknown) => {
+      console.debug('set_overlay_theme skipped', err);
+    });
 }
 
 // Apply theme on load

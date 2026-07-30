@@ -2,8 +2,10 @@ import { useConfigStore } from '../../stores/configStore';
 import { useTranslateStore } from '../../stores/translateStore';
 import Card from '../../components/Card';
 import { LANGUAGES } from '../../types';
+import { useI18n } from '../../i18n';
 
 export default function BasicSettings() {
+  const { t } = useI18n();
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
@@ -12,14 +14,37 @@ export default function BasicSettings() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="ui-page-title">基础设置</h1>
-        <p className="ui-page-desc">默认语言与翻译行为</p>
+        <h1 className="ui-page-title">{t('settings.basic.title')}</h1>
+        <p className="ui-page-desc">{t('settings.basic.desc')}</p>
       </div>
 
-      <Card title="默认语言" description="设置翻译的默认源语言和目标语言">
+      <Card title={t('settings.basic.batchTitle')} description={t('settings.basic.batchDesc')}>
+        <div>
+          <label className="block text-sm font-medium text-text-primary mb-2">
+            {t('settings.basic.batchEngine')}
+          </label>
+          <input
+            value={config.batchPreferredEngine || ''}
+            onChange={(e) => {
+              updateConfig((prev) => ({ ...prev, batchPreferredEngine: e.target.value.trim() }));
+              void saveConfig();
+            }}
+            placeholder={t('settings.basic.batchEnginePh')}
+            className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm font-mono"
+          />
+          <p className="text-xs text-text-secondary mt-1">{t('settings.basic.batchEngineHint')}</p>
+        </div>
+      </Card>
+
+      <Card
+        title={t('settings.basic.defaultLangTitle')}
+        description={t('settings.basic.defaultLangDesc')}
+      >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">源语言</label>
+            <label className="block text-sm font-medium text-text-primary mb-2">
+              {t('settings.basic.sourceLang')}
+            </label>
             <select
               value={config.defaultFrom}
               onChange={(e) => {
@@ -28,7 +53,7 @@ export default function BasicSettings() {
               }}
               className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
             >
-              <option value="auto">自动检测</option>
+              <option value="auto">{t('settings.basic.autoDetect')}</option>
               {LANGUAGES.map((lang) => (
                 <option key={lang.code} value={lang.code}>
                   {lang.name}
@@ -38,7 +63,9 @@ export default function BasicSettings() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">目标语言</label>
+            <label className="block text-sm font-medium text-text-primary mb-2">
+              {t('settings.basic.targetLang')}
+            </label>
             <select
               value={config.defaultTo}
               onChange={(e) => {
@@ -57,7 +84,7 @@ export default function BasicSettings() {
         </div>
       </Card>
 
-      <Card title="翻译选项" description="配置翻译行为">
+      <Card title={t('settings.basic.optionsTitle')} description={t('settings.basic.optionsDesc')}>
         <div className="space-y-3">
           <label className="flex items-center gap-3">
             <input
@@ -73,9 +100,11 @@ export default function BasicSettings() {
               className="rounded"
             />
             <div>
-              <p className="text-sm font-medium text-text-primary">剪贴板监听</p>
+              <p className="text-sm font-medium text-text-primary">
+                {t('settings.basic.clipboardMonitor')}
+              </p>
               <p className="text-xs text-text-secondary">
-                监听剪贴板变化并自动翻译（Windows 事件驱动；与主界面剪贴板按钮同步）
+                {t('settings.basic.clipboardMonitorHint')}
               </p>
             </div>
           </label>
@@ -91,8 +120,8 @@ export default function BasicSettings() {
               className="rounded"
             />
             <div>
-              <p className="text-sm font-medium text-text-primary">自动复制结果</p>
-              <p className="text-xs text-text-secondary">翻译完成后自动复制到剪贴板</p>
+              <p className="text-sm font-medium text-text-primary">{t('settings.basic.autoCopy')}</p>
+              <p className="text-xs text-text-secondary">{t('settings.basic.autoCopyHint')}</p>
             </div>
           </label>
 
@@ -107,10 +136,10 @@ export default function BasicSettings() {
               className="rounded"
             />
             <div>
-              <p className="text-sm font-medium text-text-primary">替换用剪贴板粘贴</p>
-              <p className="text-xs text-text-secondary">
-                开启：Ctrl+V 粘贴（默认，兼容性好）。关闭：Unicode 模拟键入（不改剪贴板）
+              <p className="text-sm font-medium text-text-primary">
+                {t('settings.basic.clipboardPaste')}
               </p>
+              <p className="text-xs text-text-secondary">{t('settings.basic.clipboardPasteHint')}</p>
             </div>
           </label>
 
@@ -125,17 +154,19 @@ export default function BasicSettings() {
               className="rounded"
             />
             <div>
-              <p className="text-sm font-medium text-text-primary">翻译后自动朗读</p>
-              <p className="text-xs text-text-secondary">结果出来后用下方 TTS 后端播放</p>
+              <p className="text-sm font-medium text-text-primary">{t('settings.basic.ttsAuto')}</p>
+              <p className="text-xs text-text-secondary">{t('settings.basic.ttsAutoHint')}</p>
             </div>
           </label>
         </div>
       </Card>
 
-      <Card title="语音合成 (TTS)" description="Edge 默认免 Key；OpenAI 兼容要 Key；有道适合单词">
+      <Card title={t('settings.basic.ttsTitle')} description={t('settings.basic.ttsDesc')}>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">后端</label>
+            <label className="block text-sm font-medium text-text-primary mb-2">
+              {t('settings.basic.ttsBackend')}
+            </label>
             <select
               value={config.ttsProvider || 'edge'}
               onChange={(e) => {
@@ -144,16 +175,17 @@ export default function BasicSettings() {
               }}
               className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg outline-none"
             >
-              <option value="edge">Edge TTS（默认）</option>
-              <option value="openai">OpenAI / 兼容 TTS</option>
-              <option value="youdao">有道 dictvoice</option>
+              <option value="edge">{t('settings.basic.ttsEdge')}</option>
+              <option value="fish">{t('settings.basic.ttsFish')}</option>
+              <option value="openai">{t('settings.basic.ttsOpenai')}</option>
+              <option value="youdao">{t('settings.basic.ttsYoudao')}</option>
             </select>
           </div>
 
           {(config.ttsProvider || 'edge') === 'edge' && (
             <div>
               <label className="block text-sm font-medium text-text-primary mb-2">
-                音色（空=按语言）
+                {t('settings.basic.ttsVoice')}
               </label>
               <input
                 value={config.ttsVoice || ''}
@@ -164,6 +196,115 @@ export default function BasicSettings() {
                 placeholder="zh-CN-XiaoxiaoNeural"
                 className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-sm"
               />
+            </div>
+          )}
+
+          {(config.ttsProvider || 'edge') === 'fish' && (
+            <div className="space-y-3">
+              <p className="text-xs text-text-secondary">{t('settings.basic.fishHint')}</p>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-2">API Key</label>
+                <input
+                  type="password"
+                  value={config.fishTts?.apiKey || ''}
+                  onChange={(e) => {
+                    updateConfig((prev) => ({
+                      ...prev,
+                      fishTts: {
+                        apiKey: e.target.value,
+                        model: prev.fishTts?.model || 's2.1-pro-free',
+                        referenceId:
+                          prev.fishTts?.referenceId || '12b8a0bf8e0042c3b11e519d11db8b68',
+                        format: prev.fishTts?.format || 'mp3',
+                        speed: prev.fishTts?.speed ?? 1,
+                      },
+                    }));
+                    void saveConfig();
+                  }}
+                  className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-sm"
+                  placeholder="Fish API Key"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">Model</label>
+                  <select
+                    value={config.fishTts?.model || 's2.1-pro-free'}
+                    onChange={(e) => {
+                      updateConfig((prev) => ({
+                        ...prev,
+                        fishTts: {
+                          apiKey: prev.fishTts?.apiKey || '',
+                          model: e.target.value,
+                          referenceId:
+                            prev.fishTts?.referenceId || '12b8a0bf8e0042c3b11e519d11db8b68',
+                          format: prev.fishTts?.format || 'mp3',
+                          speed: prev.fishTts?.speed ?? 1,
+                        },
+                      }));
+                      void saveConfig();
+                    }}
+                    className="w-full px-2 py-1.5 bg-bg-tertiary border border-border rounded text-sm"
+                  >
+                    <option value="s2.1-pro-free">{t('settings.basic.fishFree')}</option>
+                    <option value="s2.1-pro">s2.1-pro</option>
+                    <option value="s2-pro">s2-pro</option>
+                    <option value="s1">s1</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-text-secondary mb-1">
+                    {t('settings.basic.speed')}
+                  </label>
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={2}
+                    step={0.1}
+                    value={config.fishTts?.speed ?? 1}
+                    onChange={(e) => {
+                      const speed = Number(e.target.value) || 1;
+                      updateConfig((prev) => ({
+                        ...prev,
+                        fishTts: {
+                          apiKey: prev.fishTts?.apiKey || '',
+                          model: prev.fishTts?.model || 's2.1-pro-free',
+                          referenceId:
+                            prev.fishTts?.referenceId || '12b8a0bf8e0042c3b11e519d11db8b68',
+                          format: prev.fishTts?.format || 'mp3',
+                          speed,
+                        },
+                      }));
+                      void saveConfig();
+                    }}
+                    className="w-full px-2 py-1.5 bg-bg-tertiary border border-border rounded text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-2">
+                  {t('settings.basic.fishRef')}
+                </label>
+                <input
+                  value={config.fishTts?.referenceId || ''}
+                  onChange={(e) => {
+                    updateConfig((prev) => ({
+                      ...prev,
+                      fishTts: {
+                        apiKey: prev.fishTts?.apiKey || '',
+                        model: prev.fishTts?.model || 's2.1-pro-free',
+                        referenceId: e.target.value,
+                        format: prev.fishTts?.format || 'mp3',
+                        speed: prev.fishTts?.speed ?? 1,
+                      },
+                      ttsVoice: e.target.value,
+                    }));
+                    void saveConfig();
+                  }}
+                  className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-sm font-mono"
+                  placeholder="12b8a0bf8e0042c3b11e519d11db8b68"
+                />
+              </div>
             </div>
           )}
 

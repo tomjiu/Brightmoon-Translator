@@ -1,8 +1,10 @@
 use async_trait::async_trait;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use super::input_replacement::{InputReplacement, ReplacementResult};
+use crate::config::AppConfig;
 use crate::models::error::TranslationError;
 use crate::selection::SelectionProviderManager;
 use crate::services::TranslationService;
@@ -15,18 +17,22 @@ pub struct DefaultInputReplacement {
     in_flight: AtomicBool,
     /// Shared cancel flag (also passed into type-SendInput loop).
     cancel: Arc<AtomicBool>,
+    /// Config for dynamic exclude_processes (same pattern as DefaultSelectionTranslation).
+    config: Arc<Mutex<AppConfig>>,
 }
 
 impl DefaultInputReplacement {
     pub fn new(
         selection_manager: Arc<SelectionProviderManager>,
         translation_service: Arc<TranslationService>,
+        config: Arc<Mutex<AppConfig>>,
     ) -> Self {
         Self {
             selection_manager,
             translation_service,
             in_flight: AtomicBool::new(false),
             cancel: Arc::new(AtomicBool::new(false)),
+            config,
         }
     }
 
@@ -54,9 +60,13 @@ impl DefaultInputReplacement {
 #[async_trait]
 impl InputReplacement for DefaultInputReplacement {
     async fn get_selected_text(&self) -> Result<String, TranslationError> {
+        let exclude = {
+            let c = self.config.lock().await;
+            c.selection_ux.exclude_processes.clone()
+        };
         let selection =
             self.selection_manager
-                .get_selection()
+                .get_selection_routed(&exclude)
                 .await
                 .ok_or(TranslationError::InvalidInput(
                     "No text selected".to_string(),

@@ -20,6 +20,7 @@ const INITIAL_CONFIG: AppConfig = {
     offline: { enabled: false, autoSwitch: true, downloadedModels: [], modelDir: '' },
     tatoeba: { enabled: false },
     baiduWeb: { enabled: false },
+    caiyun: { enabled: false, apiToken: '' },
     caiyunWeb: { enabled: false },
     volcengineWeb: { enabled: false },
     transmart: { enabled: false },
@@ -46,6 +47,19 @@ const INITIAL_CONFIG: AppConfig = {
     translateSelection: '',
     replaceTranslate: '',
     toggleOverlayClickThrough: '',
+    dictionaryLookup: '',
+  },
+  selectionUx: {
+    triggerMode: 'pop_button',
+    hoverDictionary: false,
+    hoverDwellMs: 400,
+    hoverUnit: 'word',
+    hoverDictSource: 'auto',
+    ocrForcePickup: false,
+    ocrModifierKey: '',
+    autoMinChars: 1,
+    minDragPx: 10,
+    excludeProcesses: [],
   },
   proxy: { enabled: false, proxyType: 'http', host: '', port: 7890, username: '', password: '' },
   windowFollowMode: 'none',
@@ -53,6 +67,8 @@ const INITIAL_CONFIG: AppConfig = {
   routingStrategy: null,
   ocrEngine: 'winrt',
   offlineOcr: { backend: 'rapid', pluginDir: '' },
+  pdfExtractionEngine: 'pdf-extract',
+  pdfExtractionSidecar: { mineruCmd: '', markerCmd: '', ocrmypdfCmd: '' },
   /** Screenshot OCR continuous refresh (ms). Distinct from hook.ocrIntervalMs. */
   ocrInterval: 2000,
   overlayLevel: 2,
@@ -72,11 +88,19 @@ const INITIAL_CONFIG: AppConfig = {
   ttsAutoPlay: false,
   ttsVoice: '',
   ttsProvider: 'edge',
+  batchPreferredEngine: '',
   openaiTts: {
     apiKey: '',
     baseUrl: 'https://api.openai.com/v1',
     model: 'tts-1',
     voice: 'alloy',
+    speed: 1,
+  },
+  fishTts: {
+    apiKey: '',
+    model: 's2.1-pro-free',
+    referenceId: '12b8a0bf8e0042c3b11e519d11db8b68',
+    format: 'mp3',
     speed: 1,
   },
   httpTimeoutSecs: 30,
@@ -183,7 +207,95 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       }
       return;
     }
-    set({ config: loadedCfg, loaded: true });
+    // Merge with INITIAL so missing nested fields never crash settings UI (.length on undefined)
+    const merged: AppConfig = {
+      ...INITIAL_CONFIG,
+      ...loadedCfg,
+      llm: { ...INITIAL_CONFIG.llm, ...(loadedCfg.llm ?? {}) },
+      engines: {
+        ...INITIAL_CONFIG.engines,
+        ...(loadedCfg.engines ?? {}),
+        caiyun: {
+          enabled: false,
+          apiToken: '',
+          ...INITIAL_CONFIG.engines.caiyun,
+          ...loadedCfg.engines?.caiyun,
+        },
+      } as AppConfig['engines'],
+      hotkeys: { ...INITIAL_CONFIG.hotkeys, ...(loadedCfg.hotkeys ?? {}) },
+      selectionUx: {
+        ...INITIAL_CONFIG.selectionUx!,
+        ...(loadedCfg.selectionUx ?? {}),
+      } as AppConfig['selectionUx'],
+      proxy: { ...INITIAL_CONFIG.proxy, ...(loadedCfg.proxy ?? {}) },
+      hook: { ...INITIAL_CONFIG.hook!, ...(loadedCfg.hook ?? {}) },
+      sync: { ...INITIAL_CONFIG.sync!, ...(loadedCfg.sync ?? {}) },
+      collection: {
+        ...INITIAL_CONFIG.collection!,
+        ...(loadedCfg.collection ?? {}),
+        eudic: {
+          ...INITIAL_CONFIG.collection!.eudic,
+          ...(loadedCfg.collection?.eudic ?? {}),
+        },
+        anki: {
+          ...INITIAL_CONFIG.collection!.anki,
+          ...(loadedCfg.collection?.anki ?? {}),
+        },
+        shanbay: {
+          ...INITIAL_CONFIG.collection!.shanbay,
+          ...(loadedCfg.collection?.shanbay ?? {}),
+        },
+        youdao: {
+          ...INITIAL_CONFIG.collection!.youdao,
+          ...(loadedCfg.collection?.youdao ?? {}),
+        },
+        maimemo: {
+          ...INITIAL_CONFIG.collection!.maimemo,
+          ...(loadedCfg.collection?.maimemo ?? {}),
+        },
+      },
+      offlineOcr: {
+        backend: loadedCfg.offlineOcr?.backend ?? INITIAL_CONFIG.offlineOcr?.backend ?? 'rapid',
+        pluginDir: loadedCfg.offlineOcr?.pluginDir ?? INITIAL_CONFIG.offlineOcr?.pluginDir ?? '',
+      },
+      pdfExtractionEngine:
+        loadedCfg.pdfExtractionEngine ?? INITIAL_CONFIG.pdfExtractionEngine ?? 'pdf-extract',
+      pdfExtractionSidecar: {
+        mineruCmd:
+          loadedCfg.pdfExtractionSidecar?.mineruCmd ??
+          INITIAL_CONFIG.pdfExtractionSidecar?.mineruCmd ??
+          '',
+        markerCmd:
+          loadedCfg.pdfExtractionSidecar?.markerCmd ??
+          INITIAL_CONFIG.pdfExtractionSidecar?.markerCmd ??
+          '',
+        ocrmypdfCmd:
+          loadedCfg.pdfExtractionSidecar?.ocrmypdfCmd ??
+          INITIAL_CONFIG.pdfExtractionSidecar?.ocrmypdfCmd ??
+          '',
+      },
+      openaiTts: {
+        apiKey: loadedCfg.openaiTts?.apiKey ?? INITIAL_CONFIG.openaiTts?.apiKey ?? '',
+        baseUrl:
+          loadedCfg.openaiTts?.baseUrl ??
+          INITIAL_CONFIG.openaiTts?.baseUrl ??
+          'https://api.openai.com/v1',
+        model: loadedCfg.openaiTts?.model ?? INITIAL_CONFIG.openaiTts?.model ?? 'tts-1',
+        voice: loadedCfg.openaiTts?.voice ?? INITIAL_CONFIG.openaiTts?.voice ?? 'alloy',
+        speed: loadedCfg.openaiTts?.speed ?? INITIAL_CONFIG.openaiTts?.speed ?? 1,
+      },
+      fishTts: {
+        apiKey: loadedCfg.fishTts?.apiKey ?? INITIAL_CONFIG.fishTts?.apiKey ?? '',
+        model: loadedCfg.fishTts?.model ?? INITIAL_CONFIG.fishTts?.model ?? 's2.1-pro-free',
+        referenceId:
+          loadedCfg.fishTts?.referenceId ??
+          INITIAL_CONFIG.fishTts?.referenceId ??
+          '12b8a0bf8e0042c3b11e519d11db8b68',
+        format: loadedCfg.fishTts?.format ?? INITIAL_CONFIG.fishTts?.format ?? 'mp3',
+        speed: loadedCfg.fishTts?.speed ?? INITIAL_CONFIG.fishTts?.speed ?? 1,
+      },
+    };
+    set({ config: merged, loaded: true });
   },
 
   saveConfig: async () => {
@@ -192,9 +304,17 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       console.error('Refusing saveConfig: config not loaded yet (would clobber disk)');
       return;
     }
+    const prev = structuredClone(config);
     const [, error] = await safeInvoke('save_config', { config });
     if (error) {
       console.error('Failed to save config:', error);
+      set({ config: prev, saved: false });
+      const { useToastStore } = await import('./toastStore');
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: `配置保存失败: ${error.message}`,
+        duration: 4000,
+      });
       return;
     }
     set({ saved: true });

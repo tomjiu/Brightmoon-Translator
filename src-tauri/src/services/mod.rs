@@ -1,6 +1,8 @@
+pub mod japanese_dictionary;
 pub mod multi_dictionary;
 pub mod translation;
 
+pub use japanese_dictionary::{JapaneseDictionary, JapaneseEntry, JapaneseMeaning};
 pub use multi_dictionary::{DictionaryEntry, MultiSourceDictionary};
 pub use translation::TranslationService;
 

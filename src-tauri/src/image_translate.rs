@@ -586,6 +586,8 @@ async fn run_image_ocr(
             };
             let png = png_bytes.clone();
             let lang_for_ocr = lang_owned.clone();
+            let img_w = img.width() as f64;
+            let img_h = img.height() as f64;
             let text = tokio::task::spawn_blocking(move || {
                 crate::ocr_offline::run_offline_ocr(
                     &png,
@@ -596,18 +598,10 @@ async fn run_image_ocr(
             })
             .await
             .map_err(|e| format!("Offline OCR join: {e}"))??;
-            // Sidecar returns plain text; synthesize one full-image line box.
-            Ok(crate::commands::capture::OcrResultDetailed {
-                lines: vec![crate::commands::capture::OcrLineResult {
-                    text: text.clone(),
-                    x: 0.0,
-                    y: 0.0,
-                    width: 1.0,
-                    height: 1.0,
-                    words: vec![],
-                }],
-                text,
-            })
+            // Sidecar returns plain text; stack synthetic line boxes by newline.
+            Ok(crate::commands::capture::synthetic_ocr_lines_from_text(
+                &text, img_w, img_h,
+            ))
         },
         _ => {
             // Default to WinRT OCR

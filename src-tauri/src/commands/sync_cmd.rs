@@ -35,9 +35,10 @@ fn validate_sync_inputs(
         ));
     }
 
-    if interval_mins == 0 || interval_mins > 24 * 60 {
+    // 0 = manual only (matches UI); max 24h
+    if interval_mins > 24 * 60 {
         return Err(AppError::Config(
-            "Sync interval must be between 1 and 1440 minutes".to_string(),
+            "Sync interval must be between 0 and 1440 minutes (0 = manual only)".to_string(),
         ));
     }
 
@@ -67,6 +68,14 @@ pub async fn sync_now(state: State<'_, AppState>) -> Result<SyncStatus, AppError
 
     let result = sync::sync_all(&sync_config, glossary, history, wordbook).await?;
 
+    // Apply downloaded config (non-secret prefs); keep local secrets when remote is masked
+    if let Some(ref json) = result.downloaded_config {
+        match apply_downloaded_config(&state, json).await {
+            Ok(()) => tracing::info!("[Sync] applied downloaded config.json"),
+            Err(e) => tracing::warn!("[Sync] failed to apply downloaded config: {}", e),
+        }
+    }
+
     // Update last sync status in config
     let mut config = state.system.config.lock().await;
     config.sync.last_sync_at = result.synced_at;
@@ -78,6 +87,46 @@ pub async fn sync_now(state: State<'_, AppState>) -> Result<SyncStatus, AppError
     config.save();
 
     Ok(result)
+}
+
+/// Merge remote masked config into local: take non-secret fields, preserve local API keys.
+async fn apply_downloaded_config(state: &AppState, json: &str) -> Result<(), AppError> {
+    use crate::config::AppConfig;
+    use crate::engine::Router;
+
+    let remote: AppConfig =
+        serde_json::from_str(json).map_err(|e| AppError::Config(format!("bad remote config: {e}")))?;
+
+    let mut local = state.system.config.lock().await;
+    // Preserve secrets / machine-local fields
+    let keep_llm = local.llm.clone();
+    let keep_engines = local.engines.clone();
+    let keep_sync_pw = local.sync.password.clone();
+    let keep_openai_tts = local.openai_tts.clone();
+    let keep_fish_tts = local.fish_tts.clone();
+    let keep_edge_token = local.edge_tts_token.clone();
+    let keep_api_token = local.api_server_token.clone();
+    let keep_last_sync = (local.sync.last_sync_at, local.sync.last_sync_status.clone());
+
+    let mut merged = remote;
+    merged.llm = keep_llm;
+    merged.engines = keep_engines;
+    merged.sync.password = keep_sync_pw;
+    merged.openai_tts = keep_openai_tts;
+    merged.fish_tts = keep_fish_tts;
+    merged.edge_tts_token = keep_edge_token;
+    merged.api_server_token = keep_api_token;
+    merged.sync.last_sync_at = keep_last_sync.0;
+    merged.sync.last_sync_status = keep_last_sync.1;
+
+    merged.save();
+    *local = merged.clone();
+    drop(local);
+
+    let new_router = Router::new(&merged);
+    let mut router = state.translation.engine_router.write().await;
+    *router = new_router;
+    Ok(())
 }
 
 /// Get current sync configuration.
@@ -160,9 +209,14 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_sync_inputs_allows_manual_interval_zero() {
+        assert!(validate_sync_inputs("https://dav.example.com/dav", "moontranslator", 0).is_ok());
+    }
+
+    #[test]
     fn test_validate_sync_inputs_rejects_extreme_interval() {
         let err =
-            validate_sync_inputs("https://dav.example.com/dav", "moontranslator", 0).unwrap_err();
+            validate_sync_inputs("https://dav.example.com/dav", "moontranslator", 99999).unwrap_err();
 
         assert!(err.to_string().contains("interval"));
     }

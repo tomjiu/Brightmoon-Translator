@@ -169,6 +169,89 @@ pub async fn synthesize_openai(
     Ok(resp.bytes().await?.to_vec())
 }
 
+/// Fish Audio OpenAPI TTS (`POST https://api.fish.audio/v1/tts`).
+/// Free tier model: `s2.1-pro-free` (same quality as s2.1-pro, fair-use, no SLA).
+/// `voice` / config `reference_id` is a Fish voice model id from the library or your clone.
+pub async fn synthesize_fish(
+    text: &str,
+    api_key: &str,
+    model: &str,
+    reference_id: &str,
+    format: &str,
+    speed: f32,
+) -> anyhow::Result<Vec<u8>> {
+    let key = api_key.trim();
+    let key = if key.is_empty() {
+        std::env::var("FISH_API_KEY").unwrap_or_default()
+    } else {
+        key.to_string()
+    };
+    if key.trim().is_empty() {
+        anyhow::bail!("Fish Audio API key is empty (set fishTts.apiKey or FISH_API_KEY)");
+    }
+
+    let model = if model.trim().is_empty() {
+        "s2.1-pro-free"
+    } else {
+        model.trim()
+    };
+    let format = if format.trim().is_empty() {
+        "mp3"
+    } else {
+        format.trim()
+    };
+    let speed = if speed <= 0.0 {
+        1.0
+    } else {
+        speed.clamp(0.5, 2.0)
+    };
+
+    let mut body = serde_json::json!({
+        "text": text,
+        "format": format,
+        "normalize": true,
+        "latency": "normal",
+        "prosody": {
+            "speed": speed,
+            "volume": 0,
+            "normalize_loudness": true
+        }
+    });
+    let rid = reference_id.trim();
+    if !rid.is_empty() {
+        body["reference_id"] = serde_json::Value::String(rid.to_string());
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("https://api.fish.audio/v1/tts")
+        .bearer_auth(key.trim())
+        .header("Content-Type", "application/json")
+        .header("model", model)
+        .json(&body)
+        .send()
+        .await?;
+    let status = resp.status();
+    if !status.is_success() {
+        let err_body = resp.text().await.unwrap_or_default();
+        anyhow::bail!(
+            "Fish Audio TTS HTTP {}: {}",
+            status,
+            err_body.chars().take(240).collect::<String>()
+        );
+    }
+    Ok(resp.bytes().await?.to_vec())
+}
+
+/// Sample Fish voice model ids (`reference_id`). Paste any id from fish.audio library.
+pub fn default_fish_voices() -> Vec<TtsVoice> {
+    vec![TtsVoice {
+        name: "12b8a0bf8e0042c3b11e519d11db8b68".to_string(),
+        locale: "en".to_string(),
+        gender: "Demo".to_string(),
+    }]
+}
+
 /// Youdao dictvoice (good for words; weak for long text).
 pub async fn synthesize_youdao_dictvoice(text: &str, lang: &str) -> anyhow::Result<Vec<u8>> {
     // type=1 UK, type=2 US; default US for en, type=2 otherwise

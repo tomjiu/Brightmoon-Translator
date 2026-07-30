@@ -338,37 +338,40 @@ function HookMonitor() {
       });
   }, [isTauri]);
 
-  // H-Code: Poll for messages when injected
+  // H-Code: host pump translates in Rust after inject — only refresh status + raw captures via events
   useEffect(() => {
-    if (hcodeStatus?.injected) {
-      hcodePollRef.current = setInterval(async () => {
-        try {
-          const [msgs] = await safeInvoke<CapturedText[]>('hook_read_messages', undefined, {
-            silent: true,
-          });
-          if (msgs && msgs.length > 0) {
-            setHcodeMessages((prev) => {
-              const next = [...prev, ...msgs];
-              return next.length > 500 ? next.slice(-500) : next;
-            });
-            // Update status
-            const [status] = await safeInvoke<HookStatus>('hook_status', undefined, {
-              silent: true,
-            });
-            if (status) setHcodeStatus(status);
-          }
-        } catch (e) {
-          console.error('H-Code message polling error:', e);
-        }
-      }, 200);
-    }
+    if (!isTauri || !hcodeStatus?.injected) return;
+
+    hcodePollRef.current = setInterval(async () => {
+      const [status] = await safeInvoke<HookStatus>('hook_status', undefined, { silent: true });
+      if (status) setHcodeStatus(status);
+    }, 2000);
+
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    void listen<{
+      messages?: CapturedText[];
+    }>('hook-text-captured', (event) => {
+      const msgs = event.payload.messages;
+      if (!msgs?.length) return;
+      setHcodeMessages((prev) => {
+        const next = [...prev, ...msgs];
+        return next.length > 500 ? next.slice(-500) : next;
+      });
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+
     return () => {
+      cancelled = true;
       if (hcodePollRef.current) {
         clearInterval(hcodePollRef.current);
         hcodePollRef.current = null;
       }
+      if (unlisten) unlisten();
     };
-  }, [hcodeStatus?.injected]);
+  }, [hcodeStatus?.injected, isTauri]);
 
   // Detect manual scroll to disable auto-scroll
   const handleScroll = useCallback(() => {

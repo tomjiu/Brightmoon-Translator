@@ -75,14 +75,16 @@ impl DefaultSelectionTranslation {
             source_app: Some(source_app.to_string()),
             window_title: Some(window_title.to_string()),
         };
+        let (mut w, h) = overlay::window_manager::estimate_mt_card_size(&translated_text);
+        w = w.max(pos.width.min(460.0));
         let html = overlay::html_builder::build_html(&content, level, dismiss_ms);
         overlay::window_manager::create_overlay_window(
             &self.app_handle,
             &html,
             pos.x,
             pos.y,
-            pos.width,
-            pos.height,
+            w,
+            h,
             true,
         )?;
 
@@ -126,13 +128,52 @@ impl SelectionTranslation for DefaultSelectionTranslation {
         // Step 1: Detect foreground app for strategy dispatch
         let app_ctx = self.app_detector.detect().await;
 
-        // Step 2: Get selection using the full provider chain (UIA → clipboard)
-        // All apps, including embedded (Electron/WebView2/CEF), go through the same chain.
-        let selection = self.selection_manager.get_selection().await;
-
-        let selection = selection.ok_or(TranslationError::InvalidInput(
-            "No text selected".to_string(),
-        ))?;
+        // Step 2: Process-routed selection (Easydict: Electron→clipboard, terminal→UIA only).
+        // If empty and OCR force pickup is on (+ optional modifier), OCR near cursor.
+        let (ocr_force, exclude) = {
+            let c = self.config.lock().await;
+            (
+                crate::selection::ocr_force_allowed(&c.selection_ux),
+                c.selection_ux.exclude_processes.clone(),
+            )
+        };
+        let selection = self.selection_manager.get_selection_routed(&exclude).await;
+        let selection = match selection {
+            Some(s) if !s.text.trim().is_empty() => s,
+            _ => {
+                if ocr_force {
+                    let pick = tokio::task::spawn_blocking(|| {
+                        crate::selection::hover_pick::pick_word_near_cursor_ocr(100, 40)
+                    })
+                    .await
+                    .ok()
+                    .flatten();
+                    if let Some(p) = pick {
+                        tracing::info!(
+                            "[selection_translate] OCR force pickup: {} chars via {}",
+                            p.word.len(),
+                            p.source
+                        );
+                        crate::selection::SelectionResult {
+                            text: p.word,
+                            source_app: "ocr-force".into(),
+                            window_title: String::new(),
+                            bounds: p.bounds,
+                            confidence: 0.55,
+                            provider: "ocr_force",
+                        }
+                    } else {
+                        return Err(TranslationError::InvalidInput(
+                            "No text selected".to_string(),
+                        ));
+                    }
+                } else {
+                    return Err(TranslationError::InvalidInput(
+                        "No text selected".to_string(),
+                    ));
+                }
+            },
+        };
 
         tracing::info!(
             "[selection_translate] Got selection via '{}': {} chars, app='{}'",
@@ -162,9 +203,10 @@ impl SelectionTranslation for DefaultSelectionTranslation {
             )
             .await?;
 
-        // Step 3: Show overlay with app-context-aware presentation
+        // Step 3: Show overlay — multi-engine join when router returns >1 (parity with auto_watch)
         if options.show_overlay {
-            if let Some(first) = response.results.first() {
+            let display = response.display_text();
+            if !display.is_empty() {
                 let source_app = app_ctx
                     .as_ref()
                     .map(|ctx| ctx.app_name.clone())
@@ -177,7 +219,7 @@ impl SelectionTranslation for DefaultSelectionTranslation {
 
                 let _ = self.show_overlay(
                     &selection.text,
-                    &first.text,
+                    &display,
                     &source_app,
                     &window_title,
                     selection.bounds.as_ref(),
@@ -232,11 +274,12 @@ impl SelectionTranslation for DefaultSelectionTranslation {
             )
             .await?;
 
-        // Show overlay if requested (no bounds info for direct text)
+        // Show overlay if requested (no bounds; multi-engine join like translate_selection)
         if options.show_overlay {
-            if let Some(first) = response.results.first() {
+            let display = response.display_text();
+            if !display.is_empty() {
                 let _ =
-                    self.show_overlay(text, &first.text, "direct", "", None, options.overlay_level);
+                    self.show_overlay(text, &display, "direct", "", None, options.overlay_level);
             }
         }
 

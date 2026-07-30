@@ -1,8 +1,9 @@
-// HookProfileSettings - Hook 配置文件管理（Phase 3.1）
+// HookProfileSettings - Hook profile management (Phase 3.1)
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Trash2, Check, Monitor, Clock, Edit3 } from 'lucide-react';
+import { Plus, Trash2, Check, Monitor, Clock, Edit3, X } from 'lucide-react';
 import Card from '../../components/Card';
+import { useI18n } from '../../i18n';
 
 interface HookConfig {
   enabledSources: string[];
@@ -36,6 +37,24 @@ interface HookProfileUpdate {
   notes?: string;
 }
 
+interface HookProfileFormData {
+  name: string;
+  processName: string;
+  windowTitle: string;
+  sourceLang: string;
+  targetLang: string;
+  notes: string;
+}
+
+const EMPTY_FORM: HookProfileFormData = {
+  name: '',
+  processName: '',
+  windowTitle: '',
+  sourceLang: '',
+  targetLang: '',
+  notes: '',
+};
+
 const DEFAULT_HOOK_CONFIG: HookConfig = {
   enabledSources: ['uia'],
   showOverlay: true,
@@ -45,19 +64,146 @@ const DEFAULT_HOOK_CONFIG: HookConfig = {
   ocrIntervalMs: 5000,
 };
 
+const LANG_OPTIONS = [
+  { value: '', label: 'Auto' },
+  { value: 'en', label: 'English' },
+  { value: 'zh', label: '中文' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko', label: '한국어' },
+  { value: 'fr', label: 'Français' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'es', label: 'Español' },
+  { value: 'ru', label: 'Русский' },
+];
+
+// ── Reusable profile form (create & edit) ──
+
+function HookProfileForm({
+  initial,
+  onSave,
+  onCancel,
+  saveLabel,
+}: {
+  initial: HookProfileFormData;
+  onSave: (data: HookProfileFormData) => void;
+  onCancel: () => void;
+  saveLabel: string;
+}) {
+  const { t } = useI18n();
+  const [form, setForm] = useState<HookProfileFormData>(initial);
+
+  return (
+    <div className="p-4 border border-primary/30 rounded-lg bg-bg-primary space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">
+            {t('settings.hookProfile.name')} *
+          </label>
+          <input
+            type="text"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="如: 星露谷物语"
+            className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">
+            {t('settings.hookProfile.process')}
+          </label>
+          <input
+            type="text"
+            value={form.processName}
+            onChange={(e) => setForm({ ...form, processName: e.target.value })}
+            placeholder="如: game.exe"
+            className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs text-text-secondary mb-1">
+          {t('settings.hookProfile.window')}
+        </label>
+        <input
+          type="text"
+          value={form.windowTitle}
+          onChange={(e) => setForm({ ...form, windowTitle: e.target.value })}
+          placeholder="Stardew Valley"
+          className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">
+            {t('settings.hookProfile.sourceLang')}
+          </label>
+          <select
+            value={form.sourceLang}
+            onChange={(e) => setForm({ ...form, sourceLang: e.target.value })}
+            className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none cursor-pointer"
+          >
+            {LANG_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">
+            {t('settings.hookProfile.targetLang')}
+          </label>
+          <select
+            value={form.targetLang}
+            onChange={(e) => setForm({ ...form, targetLang: e.target.value })}
+            className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none cursor-pointer"
+          >
+            {LANG_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs text-text-secondary mb-1">
+          {t('settings.hookProfile.notes')}
+        </label>
+        <input
+          type="text"
+          value={form.notes}
+          onChange={(e) => setForm({ ...form, notes: e.target.value })}
+          className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={onCancel}
+          className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary flex items-center gap-1"
+        >
+          <X size={14} />
+          {t('settings.hookProfile.cancel')}
+        </button>
+        <button
+          onClick={() => onSave(form)}
+          disabled={!form.name.trim()}
+          className="px-4 py-1.5 text-sm bg-primary text-primary-fg rounded hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1"
+        >
+          <Check size={14} />
+          {saveLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function HookProfileSettings() {
+  const { t } = useI18n();
   const [profiles, setProfiles] = useState<HookProfile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-
-  // Create form
-  const [newName, setNewName] = useState('');
-  const [newProcessName, setNewProcessName] = useState('');
-  const [newWindowTitle, setNewWindowTitle] = useState('');
-  const [newNotes, setNewNotes] = useState('');
-  const [newSourceLang, setNewSourceLang] = useState('');
-  const [newTargetLang, setNewTargetLang] = useState('');
 
   const loadProfiles = useCallback(async () => {
     try {
@@ -76,28 +222,26 @@ export default function HookProfileSettings() {
     void loadProfiles();
   }, [loadProfiles]);
 
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
+  const handleCreate = async (data: HookProfileFormData) => {
     try {
       await invoke('create_hook_profile', {
-        name: newName.trim(),
+        name: data.name.trim(),
         hookConfig: DEFAULT_HOOK_CONFIG,
       });
-      // Update optional fields
       const allProfiles = await invoke<HookProfile[]>('get_hook_profiles');
       const created = allProfiles[allProfiles.length - 1];
       if (created) {
         const updates: HookProfileUpdate = {};
-        if (newProcessName) updates.processName = newProcessName;
-        if (newWindowTitle) updates.windowTitlePattern = newWindowTitle;
-        if (newNotes) updates.notes = newNotes;
-        if (newSourceLang) updates.sourceLang = newSourceLang;
-        if (newTargetLang) updates.targetLang = newTargetLang;
+        if (data.processName) updates.processName = data.processName;
+        if (data.windowTitle) updates.windowTitlePattern = data.windowTitle;
+        if (data.notes) updates.notes = data.notes;
+        if (data.sourceLang) updates.sourceLang = data.sourceLang;
+        if (data.targetLang) updates.targetLang = data.targetLang;
         if (Object.keys(updates).length > 0) {
           await invoke('update_hook_profile', { id: created.id, updates });
         }
       }
-      resetForm();
+      setShowCreateForm(false);
       await loadProfiles();
     } catch (err) {
       console.error('Failed to create profile:', err);
@@ -122,9 +266,19 @@ export default function HookProfileSettings() {
     }
   };
 
-  const handleUpdate = async (id: string, updates: HookProfileUpdate) => {
+  const handleUpdate = async (id: string, data: HookProfileFormData) => {
     try {
-      await invoke('update_hook_profile', { id, updates });
+      await invoke('update_hook_profile', {
+        id,
+        updates: {
+          name: data.name,
+          processName: data.processName || undefined,
+          windowTitlePattern: data.windowTitle || undefined,
+          notes: data.notes,
+          sourceLang: data.sourceLang || undefined,
+          targetLang: data.targetLang || undefined,
+        },
+      });
       setEditingId(null);
       await loadProfiles();
     } catch (err) {
@@ -132,26 +286,16 @@ export default function HookProfileSettings() {
     }
   };
 
-  const resetForm = () => {
-    setNewName('');
-    setNewProcessName('');
-    setNewWindowTitle('');
-    setNewNotes('');
-    setNewSourceLang('');
-    setNewTargetLang('');
-    setShowCreateForm(false);
-  };
-
   const formatTime = (ts?: number) => {
-    if (!ts) return '从未';
+    if (!ts) return t('settings.hookProfile.never');
     return new Date(ts * 1000).toLocaleString('zh-CN');
   };
 
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="ui-page-title">Hook 配置文件</h1>
-        <p className="ui-page-desc">为不同游戏/应用保存独立的钩取和翻译配置（Phase 3.1）</p>
+        <h1 className="ui-page-title">{t('settings.hookProfile.pageTitle')}</h1>
+        <p className="ui-page-desc">{t('settings.hookProfile.pageDesc')}</p>
       </div>
 
       {/* Active Profile Indicator */}
@@ -159,19 +303,21 @@ export default function HookProfileSettings() {
         <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-lg">
           <Check size={16} className="text-primary" />
           <span className="text-sm text-primary font-medium">
-            当前激活: {profiles.find((p) => p.id === activeId)?.name ?? '未知'}
+            {t('settings.hookProfile.activeLabel', {
+              name: profiles.find((p) => p.id === activeId)?.name ?? t('settings.hookProfile.unknown'),
+            })}
           </span>
           <button
             onClick={() => void handleActivate(null)}
             className="ml-auto text-xs text-text-secondary hover:text-text-primary"
           >
-            取消激活
+            {t('settings.hookProfile.deactivate')}
           </button>
         </div>
       )}
 
       {/* Profile List */}
-      <Card title={`配置文件 (${profiles.length})`}>
+      <Card title={t('settings.hookProfile.listTitle', { count: profiles.length })}>
         <div className="space-y-3">
           {profiles.map((profile) => (
             <ProfileCard
@@ -183,129 +329,44 @@ export default function HookProfileSettings() {
               onDelete={() => void handleDelete(profile.id)}
               onStartEdit={() => setEditingId(profile.id)}
               onCancelEdit={() => setEditingId(null)}
-              onSaveEdit={(updates) => void handleUpdate(profile.id, updates)}
+              onSaveEdit={(data) => void handleUpdate(profile.id, data)}
               formatTime={formatTime}
             />
           ))}
 
           {profiles.length === 0 && (
             <p className="text-sm text-text-tertiary text-center py-6">
-              暂无配置文件。为不同游戏创建独立配置，切换时自动应用。
+              {t('settings.hookProfile.empty')}
             </p>
           )}
 
           {/* Create Form */}
           {showCreateForm ? (
-            <div className="p-4 border border-primary/30 rounded-lg bg-bg-primary space-y-3">
-              <h4 className="text-sm font-medium text-text-primary">新建配置文件</h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1">名称 *</label>
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="如: 星露谷物语"
-                    className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1">进程名</label>
-                  <input
-                    type="text"
-                    value={newProcessName}
-                    onChange={(e) => setNewProcessName(e.target.value)}
-                    placeholder="如: game.exe"
-                    className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">窗口标题关键词</label>
-                <input
-                  type="text"
-                  value={newWindowTitle}
-                  onChange={(e) => setNewWindowTitle(e.target.value)}
-                  placeholder="如: Stardew Valley"
-                  className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1">源语言</label>
-                  <input
-                    type="text"
-                    value={newSourceLang}
-                    onChange={(e) => setNewSourceLang(e.target.value)}
-                    placeholder="如: ja"
-                    className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1">目标语言</label>
-                  <input
-                    type="text"
-                    value={newTargetLang}
-                    onChange={(e) => setNewTargetLang(e.target.value)}
-                    placeholder="如: zh"
-                    className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">备注</label>
-                <input
-                  type="text"
-                  value={newNotes}
-                  onChange={(e) => setNewNotes(e.target.value)}
-                  placeholder="可选备注..."
-                  className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={resetForm}
-                  className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={() => void handleCreate()}
-                  disabled={!newName.trim()}
-                  className="px-4 py-1.5 text-sm bg-primary text-primary-fg rounded hover:bg-primary/90 disabled:opacity-50"
-                >
-                  创建
-                </button>
-              </div>
-            </div>
+            <HookProfileForm
+              initial={EMPTY_FORM}
+              onSave={handleCreate}
+              onCancel={() => setShowCreateForm(false)}
+              saveLabel={t('settings.hookProfile.createBtn')}
+            />
           ) : (
             <button
               onClick={() => setShowCreateForm(true)}
               className="w-full flex items-center justify-center gap-2 py-2.5 border border-dashed border-border rounded-lg text-text-secondary hover:text-primary hover:border-primary transition-colors"
             >
               <Plus size={16} />
-              <span className="text-sm">新建配置文件</span>
+              <span className="text-sm">{t('settings.hookProfile.create')}</span>
             </button>
           )}
         </div>
       </Card>
 
       {/* Usage Tips */}
-      <Card title="使用说明">
+      <Card title={t('settings.hookProfile.tipsTitle')}>
         <div className="text-xs text-text-secondary space-y-1.5">
-          <p>
-            • 创建配置文件后，点击 <strong>激活</strong> 使其生效
-          </p>
-          <p>
-            • 设置 <strong>进程名</strong> 或 <strong>窗口标题</strong> 后，匹配到对应游戏时自动切换
-          </p>
-          <p>• 每个配置文件可以独立设置源语言/目标语言</p>
-          <p>
-            • 配置文件保存在{' '}
-            <code className="bg-bg-tertiary px-1 rounded">
-              ~/.config/moontranslator/hook_profiles.json
-            </code>
-          </p>
+          <p>• {t('settings.hookProfile.tip1')}</p>
+          <p>• {t('settings.hookProfile.tip2')}</p>
+          <p>• {t('settings.hookProfile.tip3')}</p>
+          <p>• {t('settings.hookProfile.tip4')}</p>
         </div>
       </Card>
     </div>
@@ -320,7 +381,7 @@ interface ProfileCardProps {
   onDelete: () => void;
   onStartEdit: () => void;
   onCancelEdit: () => void;
-  onSaveEdit: (updates: HookProfileUpdate) => void;
+  onSaveEdit: (data: HookProfileFormData) => void;
   formatTime: (ts?: number) => string;
 }
 
@@ -335,98 +396,23 @@ function ProfileCard({
   onSaveEdit,
   formatTime,
 }: ProfileCardProps) {
-  const [editName, setEditName] = useState(profile.name);
-  const [editProcess, setEditProcess] = useState(profile.processName ?? '');
-  const [editTitle, setEditTitle] = useState(profile.windowTitlePattern ?? '');
-  const [editNotes, setEditNotes] = useState(profile.notes);
-  const [editSrc, setEditSrc] = useState(profile.sourceLang ?? '');
-  const [editTgt, setEditTgt] = useState(profile.targetLang ?? '');
+  const { t } = useI18n();
 
   if (isEditing) {
     return (
-      <div className="p-4 border border-primary/30 rounded-lg bg-bg-primary space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">名称</label>
-            <input
-              type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">进程名</label>
-            <input
-              type="text"
-              value={editProcess}
-              onChange={(e) => setEditProcess(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">窗口标题关键词</label>
-          <input
-            type="text"
-            value={editTitle}
-            onChange={(e) => setEditTitle(e.target.value)}
-            className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-          />
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">源语言</label>
-            <input
-              type="text"
-              value={editSrc}
-              onChange={(e) => setEditSrc(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">目标语言</label>
-            <input
-              type="text"
-              value={editTgt}
-              onChange={(e) => setEditTgt(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">备注</label>
-            <input
-              type="text"
-              value={editNotes}
-              onChange={(e) => setEditNotes(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-            />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancelEdit}
-            className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary"
-          >
-            取消
-          </button>
-          <button
-            onClick={() =>
-              onSaveEdit({
-                name: editName,
-                processName: editProcess || undefined,
-                windowTitlePattern: editTitle || undefined,
-                notes: editNotes,
-                sourceLang: editSrc || undefined,
-                targetLang: editTgt || undefined,
-              })
-            }
-            className="px-4 py-1.5 text-sm bg-primary text-primary-fg rounded hover:bg-primary/90"
-          >
-            保存
-          </button>
-        </div>
-      </div>
+      <HookProfileForm
+        initial={{
+          name: profile.name,
+          processName: profile.processName ?? '',
+          windowTitle: profile.windowTitlePattern ?? '',
+          sourceLang: profile.sourceLang ?? '',
+          targetLang: profile.targetLang ?? '',
+          notes: profile.notes,
+        }}
+        onSave={onSaveEdit}
+        onCancel={onCancelEdit}
+        saveLabel={t('settings.hookProfile.save')}
+      />
     );
   }
 
@@ -442,7 +428,9 @@ function ProfileCard({
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-medium text-text-primary">{profile.name}</h4>
           {isActive && (
-            <span className="text-xs px-1.5 py-0.5 bg-primary/20 text-primary rounded">激活中</span>
+            <span className="text-xs px-1.5 py-0.5 bg-primary/20 text-primary rounded">
+              {t('settings.hookProfile.activating')}
+            </span>
           )}
         </div>
 
@@ -454,7 +442,9 @@ function ProfileCard({
             </div>
           )}
           {profile.windowTitlePattern && (
-            <p className="text-xs text-text-secondary">窗口: {profile.windowTitlePattern}</p>
+            <p className="text-xs text-text-secondary">
+              {t('settings.hookProfile.windowLabel', { title: profile.windowTitlePattern })}
+            </p>
           )}
           {(profile.sourceLang || profile.targetLang) && (
             <p className="text-xs text-text-secondary">
@@ -463,7 +453,9 @@ function ProfileCard({
           )}
           <div className="flex items-center gap-1.5 text-xs text-text-tertiary">
             <Clock size={12} />
-            <span>上次使用: {formatTime(profile.lastUsed)}</span>
+            <span>
+              {t('settings.hookProfile.lastUsed', { time: formatTime(profile.lastUsed) })}
+            </span>
           </div>
           {profile.notes && <p className="text-xs text-text-tertiary italic">{profile.notes}</p>}
         </div>
@@ -475,20 +467,20 @@ function ProfileCard({
             onClick={onActivate}
             className="px-2 py-1 text-xs bg-primary/10 text-primary rounded hover:bg-primary/20"
           >
-            激活
+            {t('settings.hookProfile.activate')}
           </button>
         )}
         <button
           onClick={onStartEdit}
           className="p-1.5 text-text-tertiary hover:text-primary rounded"
-          title="编辑"
+          title={t('settings.hookProfile.edit')}
         >
           <Edit3 size={14} />
         </button>
         <button
           onClick={onDelete}
           className="p-1.5 text-text-tertiary hover:text-red-500 rounded"
-          title="删除"
+          title={t('settings.hookProfile.delete')}
         >
           <Trash2 size={14} />
         </button>

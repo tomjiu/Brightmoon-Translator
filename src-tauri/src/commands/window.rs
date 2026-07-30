@@ -308,162 +308,6 @@ pub async fn set_window_exclude_from_capture(
     }
 }
 
-/// Get the currently selected text by simulating Ctrl+C and reading clipboard.
-/// Saves and restores original clipboard content.
-/// Wrapped in spawn_blocking because it uses thread::sleep and synchronous Win32 clipboard/input APIs.
-#[command]
-pub async fn get_selected_text() -> Result<String, String> {
-    // Use spawn_blocking to avoid blocking the async runtime (150ms sleep + clipboard ops)
-    tokio::task::spawn_blocking(move || {
-        #[cfg(target_os = "windows")]
-        {
-            use std::mem::size_of;
-            use windows::Win32::UI::Input::KeyboardAndMouse::{
-                SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
-                KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_C, VK_CONTROL,
-            };
-
-            extern "system" {
-                fn OpenClipboard(hWndNewOwner: *mut std::ffi::c_void) -> i32;
-                fn CloseClipboard() -> i32;
-                fn EmptyClipboard() -> i32;
-                fn SetClipboardData(
-                    uFormat: u32,
-                    hMem: *mut std::ffi::c_void,
-                ) -> *mut std::ffi::c_void;
-                fn GetClipboardData(uFormat: u32) -> *mut std::ffi::c_void;
-                fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut std::ffi::c_void;
-                fn GlobalLock(hMem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
-                fn GlobalUnlock(hMem: *mut std::ffi::c_void) -> i32;
-                fn GlobalSize(hMem: *mut std::ffi::c_void) -> usize;
-            }
-
-            const CF_UNICODETEXT: u32 = 13;
-            const GMEM_MOVEABLE: u32 = 0x0002;
-
-            // Use windows crate INPUT (40 bytes on x64) — manual type+[u8;24] was 28 and broke SendInput.
-            fn make_input(vk: VIRTUAL_KEY, flags: KEYBD_EVENT_FLAGS) -> INPUT {
-                INPUT {
-                    r#type: INPUT_KEYBOARD,
-                    Anonymous: INPUT_0 {
-                        ki: KEYBDINPUT {
-                            wVk: vk,
-                            wScan: 0,
-                            dwFlags: flags,
-                            time: 0,
-                            dwExtraInfo: 0,
-                        },
-                    },
-                }
-            }
-
-            // SAFETY: Win32 clipboard and input simulation APIs.
-            // Clipboard is saved/restored properly. SendInput simulates Ctrl+C.
-            // SAFETY: GetSystemMetrics is a standard Win32 API.
-            unsafe {
-                // Save current clipboard content
-                let mut clipboard_was_opened = false;
-                let mut saved_text: Option<Vec<u8>> = None;
-
-                if OpenClipboard(std::ptr::null_mut()) != 0 {
-                    clipboard_was_opened = true;
-                    let h_data = GetClipboardData(CF_UNICODETEXT);
-                    if !h_data.is_null() {
-                        let p_data = GlobalLock(h_data);
-                        if !p_data.is_null() {
-                            let size = GlobalSize(h_data);
-                            if size > 2 {
-                                let slice = std::slice::from_raw_parts(p_data as *const u8, size);
-                                saved_text = Some(slice.to_vec());
-                            }
-                            GlobalUnlock(h_data);
-                        }
-                    }
-                    CloseClipboard();
-                }
-
-                // Clear clipboard before simulating Ctrl+C
-                if OpenClipboard(std::ptr::null_mut()) != 0 {
-                    EmptyClipboard();
-                    CloseClipboard();
-                }
-
-                // Simulate Ctrl+C to copy selected text
-                let inputs = [
-                    make_input(VK_CONTROL, KEYBD_EVENT_FLAGS(0)),
-                    make_input(VK_C, KEYBD_EVENT_FLAGS(0)),
-                    make_input(VK_C, KEYEVENTF_KEYUP),
-                    make_input(VK_CONTROL, KEYEVENTF_KEYUP),
-                ];
-                SendInput(&inputs, size_of::<INPUT>() as i32);
-
-                // Wait for clipboard to be populated
-                std::thread::sleep(std::time::Duration::from_millis(150));
-
-                // Read clipboard (the selected text)
-                let selected_text = if OpenClipboard(std::ptr::null_mut()) != 0 {
-                    let h_data = GetClipboardData(CF_UNICODETEXT);
-                    let text = if !h_data.is_null() {
-                        let p_data = GlobalLock(h_data);
-                        if !p_data.is_null() {
-                            let size = GlobalSize(h_data);
-                            if size > 2 {
-                                let slice =
-                                    std::slice::from_raw_parts(p_data as *const u16, size / 2);
-                                let text = String::from_utf16_lossy(slice);
-                                let text = text.trim_end_matches('\0');
-                                GlobalUnlock(h_data);
-                                Some(text.to_string())
-                            } else {
-                                GlobalUnlock(h_data);
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-                    CloseClipboard();
-                    text
-                } else {
-                    None
-                };
-
-                // Restore original clipboard (always, even if originally empty)
-                if clipboard_was_opened {
-                    if OpenClipboard(std::ptr::null_mut()) != 0 {
-                        EmptyClipboard();
-                        if let Some(ref saved) = saved_text {
-                            let h_mem = GlobalAlloc(GMEM_MOVEABLE, saved.len());
-                            if !h_mem.is_null() {
-                                let p_mem = GlobalLock(h_mem);
-                                if !p_mem.is_null() {
-                                    std::ptr::copy_nonoverlapping(
-                                        saved.as_ptr(),
-                                        p_mem as *mut u8,
-                                        saved.len(),
-                                    );
-                                    GlobalUnlock(h_mem);
-                                    SetClipboardData(CF_UNICODETEXT, h_mem);
-                                }
-                            }
-                        }
-                        CloseClipboard();
-                    }
-                }
-
-                return selected_text.ok_or_else(|| "No text selected".to_string());
-            }
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        Err("Not supported on this platform".to_string())
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
-}
-
 #[command]
 pub async fn get_cursor_position() -> Result<(f64, f64), String> {
     #[cfg(target_os = "windows")]
@@ -530,56 +374,6 @@ pub async fn close_overlay(
     Ok(())
 }
 
-#[command]
-pub async fn translate_selection(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, crate::AppState>,
-    text: String,
-    overlay_level: Option<u8>,
-) -> Result<(), String> {
-    if text.trim().is_empty() {
-        return Err("Text is empty".to_string());
-    }
-
-    let config = state.system.config.lock().await;
-    let from = config.default_from.clone();
-    let to = config.default_to.clone();
-    let config_level = config.overlay_level;
-    let dismiss_ms = config.overlay_auto_dismiss_ms;
-    drop(config);
-
-    let response = state
-        .translation
-        .service
-        .run_full(
-            crate::models::translation::TranslateChannel::Selection,
-            &text,
-            &from,
-            &to,
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if let Some(first) = response.results.first() {
-        let (cursor_x, cursor_y) = get_cursor_position().await.unwrap_or((100.0, 100.0));
-        let pos = crate::overlay::OverlayPosition::at_cursor(cursor_x, cursor_y);
-
-        let level: crate::overlay::OverlayLevel = overlay_level.unwrap_or(config_level).into();
-        let content = crate::overlay::OverlayContent {
-            source: text,
-            translated: first.text.clone(),
-            source_app: None,
-            window_title: None,
-        };
-        let html = crate::overlay::html_builder::build_html(&content, level, dismiss_ms);
-        crate::overlay::window_manager::create_overlay_window(
-            &app, &html, pos.x, pos.y, pos.width, pos.height, true,
-        )?;
-    }
-
-    Ok(())
-}
-
 /// Unified selection-translate entry point.
 /// Delegates to the SelectionTranslation capability which composes
 /// SelectionProviderManager -> TranslationService -> overlay.
@@ -606,9 +400,46 @@ pub async fn trigger_selection_translate(
     Ok(())
 }
 
+/// Dictionary-first lookup for current selection (QTranslate D).
+/// Single word → dict card when hit; otherwise machine translate overlay.
+#[command]
+pub async fn trigger_dictionary_lookup(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let exclude = {
+        let c = state.system.config.lock().await;
+        c.selection_ux.exclude_processes.clone()
+    };
+    let selection = state
+        .system
+        .selection_manager
+        .get_selection_routed(&exclude)
+        .await;
+    let text = selection
+        .map(|s| s.text)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        return Err("No text selected".to_string());
+    }
+
+    crate::selection::present::present_selection(&app, &text).await;
+    Ok(())
+}
+
 #[command]
 pub async fn set_overlay_click_through(app: tauri::AppHandle, ignore: bool) -> Result<(), String> {
     crate::overlay::interaction::set_click_through(&app, ignore)
+}
+
+/// Sync main-window theme (dark|light) to selection/hover overlay cards.
+#[command]
+pub async fn set_overlay_theme(theme: String) -> Result<(), String> {
+    let light = theme.eq_ignore_ascii_case("light");
+    crate::overlay::window_manager::set_overlay_theme_light(light);
+    Ok(())
 }
 
 #[command]
@@ -824,9 +655,7 @@ pub async fn create_ocr_region_frame(
 ) -> Result<(), String> {
     let scale_factor = monitor_scale_for_physical_rect(&app, x, y, width, height);
     // Keep in sync with src/components/ocrRegionGeometry.ts (I2/I3).
-    const OCR_TOOLBAR_CSS_PX: f64 = 32.0;
-    // Keep in sync with ocrRegionGeometry.ts OCR_MIN_FRAME_WIDTH_CSS (I3).
-    const OCR_MIN_FRAME_CSS_W: f64 = 460.0;
+    use crate::ocr_region_consts::{OCR_MIN_FRAME_CSS_W, OCR_TOOLBAR_CSS_PX};
     let toolbar_h_physical = OCR_TOOLBAR_CSS_PX * scale_factor;
     let min_w_physical = (OCR_MIN_FRAME_CSS_W * scale_factor).max(200.0);
     let min_h_physical = toolbar_h_physical + (48.0 * scale_factor);
@@ -1332,10 +1161,7 @@ pub async fn move_ocr_region_frame(
 
     let scale_factor = monitor_scale_for_physical_rect(&app, x, y, width, height);
     // Same constants as create_ocr_region_frame / OcrRegionFrame.tsx (I2/I3)
-    // Keep in sync with src/components/ocrRegionGeometry.ts
-    // OCR_TOOLBAR_HEIGHT_CSS / OCR_MIN_FRAME_WIDTH_CSS (I2/I3).
-    const OCR_TOOLBAR_CSS_PX: f64 = 32.0;
-    const OCR_MIN_FRAME_CSS_W: f64 = 460.0;
+    use crate::ocr_region_consts::{OCR_MIN_FRAME_CSS_W, OCR_TOOLBAR_CSS_PX};
     let toolbar_h_physical = OCR_TOOLBAR_CSS_PX * scale_factor;
     let min_w_physical = (OCR_MIN_FRAME_CSS_W * scale_factor).max(200.0);
     let min_h_physical = toolbar_h_physical + (48.0 * scale_factor);

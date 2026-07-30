@@ -148,7 +148,6 @@ pub trait PlatformTextCapture: Send + Sync {
 
 pub trait PlatformAppDetector: Send + Sync {
     fn get_foreground_app(&self) -> Option<ForegroundAppInfo>;
-    fn classify_embedded_app(&self, app_name: &str, window_class: &str) -> Option<EmbeddedAppType>;
 }
 
 pub trait PlatformInputSimulator: Send + Sync {

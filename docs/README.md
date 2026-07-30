@@ -24,9 +24,10 @@ Stale status dumps (`IMPLEMENTATION_STATUS`, `project-triage`, old MODULE_CHECKL
 | Area | Canonical docs | Study first |
 |------|----------------|-------------|
 | OCR / region frame | [OCR_INVARIANTS.md](./OCR_INVARIANTS.md), [OCR_STRATEGY.md](./OCR_STRATEGY.md), [OCR_SMOKE.md](./OCR_SMOKE.md) | pot-desktop, STranslate |
+| **划词 / 悬停 / OCR 取词** | **[REFERENCE_SELECTION_UX.md](./REFERENCE_SELECTION_UX.md)** | **Easydict Win32, QTranslate, MTT, YomiNinja**（pot/STranslate 不足） |
 | Engines / modes | [translation-modes.md](./translation-modes.md), [ENGINE_FACADE_INVENTORY.md](./ENGINE_FACADE_INVENTORY.md), [API.md](./API.md) | pot-desktop, STranslate |
 | Hook / inject | (code + FEATURES; smoke before trust) | LunaTranslator |
-| Extension | [browser-vs-desktop.md](./browser-vs-desktop.md), [extension-hover-translation.md](./extension-hover-translation.md) | immersive-translate, read-frog |
+| Extension | [browser-vs-desktop.md](./browser-vs-desktop.md), [extension-hover-translation.md](./extension-hover-translation.md) | immersive-translate, read-frog, **MTT** |
 | Integration matrix | [integration-plan.md](./integration-plan.md) | five-source summary |
 | Local clones | `tmp/reference/` (gitignored) | see `tmp/reference/README.md` (incl. AiNiee zip/extract) |
 | Reference deep study | [REFERENCE_STUDY.md](./REFERENCE_STUDY.md) | pot / STranslate / read-frog / **AiNiee** steal map |

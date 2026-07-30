@@ -550,10 +550,44 @@ impl LlmEngine {
         messages: Vec<Message>,
         tx: mpsc::Sender<String>,
     ) -> anyhow::Result<String> {
-        let ep = self
-            .endpoints
-            .first()
-            .ok_or_else(|| anyhow::anyhow!("No LLM endpoints configured"))?;
+        let total = self.endpoints.len();
+        if total == 0 {
+            return Err(anyhow::anyhow!("No LLM endpoints configured"));
+        }
+
+        let mut last_error = String::new();
+
+        for (attempt, ep) in self.endpoints.iter().enumerate() {
+            let label = crate::security::sanitize_log_message(&ep.label);
+            match self.stream_one_endpoint(ep, &messages, &tx).await {
+                Ok(text) => return Ok(text),
+                Err(e) => {
+                    last_error = format!("{}", e);
+                    tracing::warn!(
+                        "Stream endpoint '{}' attempt {} of {} failed: {}",
+                        label,
+                        attempt + 1,
+                        total,
+                        crate::security::sanitize_log_message(&last_error)
+                    );
+                    continue;
+                },
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "All {} stream endpoints failed. Last error: {}",
+            total,
+            last_error
+        ))
+    }
+
+    async fn stream_one_endpoint(
+        &self,
+        ep: &LlmEndpointConfig,
+        messages: &[Message],
+        tx: &mpsc::Sender<String>,
+    ) -> anyhow::Result<String> {
 
         let format = crate::models::config::normalize_api_format(&ep.api_format);
         if format != "openai" {
@@ -567,7 +601,7 @@ impl LlmEngine {
 
         let request = ChatRequest {
             model: ep.model.clone(),
-            messages,
+            messages: messages.to_vec(),
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             stream: true,

@@ -276,13 +276,50 @@ impl Router {
         self.engines.first().map(|e| e.name())
     }
 
+    /// Translate with a single named engine (case-insensitive id/name match).
+    /// Used by BatchConfig.engine override.
+    pub async fn translate_named(
+        &self,
+        engine_id: &str,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> anyhow::Result<String> {
+        let want = engine_id.trim().to_ascii_lowercase();
+        if want.is_empty() {
+            anyhow::bail!("empty engine id");
+        }
+        for engine in &self.engines {
+            let name = engine.name();
+            if name.eq_ignore_ascii_case(engine_id)
+                || name.to_ascii_lowercase().contains(&want)
+                || want.contains(&name.to_ascii_lowercase())
+            {
+                return engine.translate(text, from, to).await;
+            }
+        }
+        anyhow::bail!("engine not found or disabled: {engine_id}")
+    }
+
     /// Rebuild engines list with new config
     pub fn rebuild(&self, config: &AppConfig) -> Self {
         Self::new(config)
     }
 
     pub async fn translate_all(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
-        match self.strategy {
+        self.translate_with_strategy(self.strategy.clone(), text, from, to)
+            .await
+    }
+
+    /// Run with an explicit strategy (product channels override the global setting).
+    pub async fn translate_with_strategy(
+        &self,
+        strategy: RoutingStrategy,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> TranslateResponse {
+        match strategy {
             RoutingStrategy::PrimaryOnly => self.translate_primary_only(text, from, to).await,
             RoutingStrategy::FallbackOnError => self.translate_with_fallback(text, from, to).await,
             RoutingStrategy::ParallelCompare => {
@@ -290,6 +327,31 @@ impl Router {
             },
             RoutingStrategy::CostAware => self.translate_cost_aware(text, from, to).await,
             RoutingStrategy::LatencyFirst => self.translate_latency_first(text, from, to).await,
+        }
+    }
+
+    /// Ordered fallback returning a single string (OCR / batch single-result paths).
+    pub async fn translate_fallback_string(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> anyhow::Result<String> {
+        let mut errors = Vec::new();
+        for engine in &self.engines {
+            let name = engine.name().to_string();
+            match engine.translate(text, from, to).await {
+                Ok(translated) => return Ok(translated),
+                Err(e) => {
+                    tracing::warn!("[Router] Fallback engine {} failed: {}", name, e);
+                    errors.push(format!("{name}: {e}"));
+                },
+            }
+        }
+        if errors.is_empty() {
+            Err(anyhow::anyhow!("No translation engine available"))
+        } else {
+            Err(anyhow::anyhow!("All engines failed: {}", errors.join("; ")))
         }
     }
 

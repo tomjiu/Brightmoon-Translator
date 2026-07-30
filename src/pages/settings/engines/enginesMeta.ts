@@ -28,23 +28,23 @@ export interface EngineSectionMeta {
 export const ENGINE_SECTIONS: EngineSectionMeta[] = [
   {
     id: 'llm',
-    title: 'LLM 大模型',
-    description: '在「AI 增强」配置密钥与模型；此处仅摘要与路由顺序',
+    title: 'settings.enginePage.sectionLlm',
+    description: 'settings.enginePage.sectionLlmDesc',
   },
   {
     id: 'official',
-    title: '官方引擎',
-    description: '官方 API 或稳定公开服务；部分需填写密钥后才会被路由使用',
+    title: 'settings.enginePage.sectionOfficial',
+    description: 'settings.enginePage.sectionOfficialDesc',
   },
   {
     id: 'web',
-    title: '网页 / 非常规',
-    description: '免配置网页或非官方端点，可能随时失效；默认谨慎开启',
+    title: 'settings.enginePage.sectionWeb',
+    description: 'settings.enginePage.sectionWebDesc',
   },
   {
     id: 'offline',
-    title: '离线翻译 / OCR',
-    description: '本地翻译模型；离线 OCR 后端与模型目录在「OCR 识别」中配置',
+    title: 'settings.enginePage.sectionOffline',
+    description: 'settings.enginePage.sectionOfflineDesc',
   },
 ];
 

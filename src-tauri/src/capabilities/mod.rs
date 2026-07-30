@@ -4,13 +4,12 @@ pub mod document_translation;
 pub mod hook_monitor;
 pub mod input_replacement;
 pub mod input_replacement_impl;
-pub mod ocr_translation;
 pub mod platform;
 pub mod selection_translation;
 pub mod selection_translation_impl;
 
 // Re-export key types for convenient access
-pub use adapters::{AppContext, EmbeddedAppType, TargetAppDetector};
+pub use adapters::{AppContext, TargetAppDetector};
 pub use browser_translation::handle_browser_request;
 pub use hook_monitor::HookMonitor;
 pub use input_replacement::InputReplacement;

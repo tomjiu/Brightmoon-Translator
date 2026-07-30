@@ -332,7 +332,11 @@ pub fn write_translated_excel(
         cells_translated,
         words_translated,
         success: true,
-        error_message: None,
+        // calamine + rust_xlsxwriter rebuild loses merges, column widths, rich text, charts
+        error_message: Some(
+            "Excel export rewrites values only; merged cells, styles, charts may be lost"
+                .to_string(),
+        ),
     })
 }
 

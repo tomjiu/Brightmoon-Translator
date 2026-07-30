@@ -1,12 +1,38 @@
-use crate::pdf::{self, PdfDocument, PdfPage, ScannedPdfOcrResult, TranslatedPage, TranslatedPdf};
+use crate::pdf::{
+    self, PdfDocument, PdfExtractOptions, PdfExtractionSidecarConfig, PdfPage,
+    ScannedPdfOcrResult, TranslatedPage, TranslatedPdf,
+};
 use crate::security;
 use crate::AppState;
 use tauri::{Emitter, State, Window};
 
+async fn pdf_opts_from_state(state: &AppState) -> PdfExtractOptions {
+    let cfg = state.system.config.lock().await;
+    PdfExtractOptions {
+        engine: cfg.pdf_extraction_engine.clone(),
+        sidecar: PdfExtractionSidecarConfig {
+            mineru_cmd: cfg.pdf_extraction_sidecar.mineru_cmd.clone(),
+            marker_cmd: cfg.pdf_extraction_sidecar.marker_cmd.clone(),
+            ocrmypdf_cmd: cfg.pdf_extraction_sidecar.ocrmypdf_cmd.clone(),
+        },
+        max_ocr_pages: Some(40),
+        ocr_lang: None,
+    }
+}
+
 #[tauri::command]
-pub async fn open_pdf(file_path: String) -> Result<PdfDocument, String> {
+pub async fn open_pdf(
+    state: State<'_, AppState>,
+    file_path: String,
+) -> Result<PdfDocument, String> {
     security::validate_file_path(&file_path)?;
-    let mut doc = pdf::extract_text_from_pdf(&file_path)?;
+    let opts = pdf_opts_from_state(&state).await;
+    let path = file_path.clone();
+    let mut doc = tokio::task::spawn_blocking(move || {
+        pdf::extract_text_from_pdf_with_options(&path, &opts)
+    })
+    .await
+    .map_err(|e| format!("PDF extract join error: {e}"))??;
 
     // For scanned PDFs, get the actual page count via Windows.Data.Pdf
     if doc.is_scanned || doc.total_pages == 0 {
@@ -37,7 +63,13 @@ pub async fn translate_pdf(
     security::validate_file_path(&file_path)?;
     security::validate_language_code(&from_lang)?;
     security::validate_language_code(&to_lang)?;
-    let doc = pdf::extract_text_from_pdf(&file_path)?;
+    let opts = pdf_opts_from_state(&state).await;
+    let path = file_path.clone();
+    let doc = tokio::task::spawn_blocking(move || {
+        pdf::extract_text_from_pdf_with_options(&path, &opts)
+    })
+    .await
+    .map_err(|e| format!("PDF extract join error: {e}"))??;
 
     // Collect non-empty pages for batch translation
     let pages_to_translate: Vec<(usize, &str)> = doc

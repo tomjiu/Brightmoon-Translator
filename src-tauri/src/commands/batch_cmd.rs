@@ -1,87 +1,11 @@
 /**
- * Batch Translation Commands
- *
- * Tauri commands for batch translation queue management
+ * TM Import/Export Commands (originally part of batch_cmd)
  */
-use crate::batch::{BatchConfig, BatchJobStatus, BatchProgress, BatchTask};
 use crate::memory::TmExportData;
 use crate::security;
 use crate::tmx;
 use crate::AppState;
 use tauri::State;
-
-/// Submit texts for batch translation
-#[tauri::command]
-pub async fn batch_submit(
-    texts: Vec<String>,
-    config: Option<BatchConfig>,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
-    let batch_config = config.unwrap_or_default();
-    let job_id = state.batch.submit(texts, batch_config).await?;
-
-    // Start processing in background
-    let service = state.translation.service.clone();
-    let batch = state.batch.clone();
-    tokio::spawn(async move {
-        if let Err(e) = batch.process(service).await {
-            tracing::error!("[Batch] Processing error: {}", e);
-        }
-    });
-
-    Ok(job_id)
-}
-
-/// Cancel current batch job
-#[tauri::command]
-pub async fn batch_cancel(state: State<'_, AppState>) -> Result<(), String> {
-    state.batch.cancel().await;
-    Ok(())
-}
-
-/// Pause current batch job
-#[tauri::command]
-pub async fn batch_pause(state: State<'_, AppState>) -> Result<(), String> {
-    state.batch.pause().await
-}
-
-/// Resume paused batch job
-#[tauri::command]
-pub async fn batch_resume(state: State<'_, AppState>) -> Result<(), String> {
-    state.batch.resume().await
-}
-
-/// Retry failed batch tasks
-#[tauri::command]
-pub async fn batch_retry_failed(state: State<'_, AppState>) -> Result<(), String> {
-    let service = state.translation.service.clone();
-    state.batch.retry_failed(service).await
-}
-
-/// Get batch progress
-#[tauri::command]
-pub async fn batch_get_progress(state: State<'_, AppState>) -> Result<BatchProgress, String> {
-    Ok(state.batch.get_progress().await)
-}
-
-/// Get batch results
-#[tauri::command]
-pub async fn batch_get_results(state: State<'_, AppState>) -> Result<Vec<BatchTask>, String> {
-    Ok(state.batch.get_results().await)
-}
-
-/// Get batch job status
-#[tauri::command]
-pub async fn batch_get_status(state: State<'_, AppState>) -> Result<BatchJobStatus, String> {
-    Ok(state.batch.get_status().await)
-}
-
-/// Reset batch manager
-#[tauri::command]
-pub async fn batch_reset(state: State<'_, AppState>) -> Result<(), String> {
-    state.batch.reset().await;
-    Ok(())
-}
 
 /// Export translation memory as JSON
 #[tauri::command]

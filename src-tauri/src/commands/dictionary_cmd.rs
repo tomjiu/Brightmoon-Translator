@@ -583,6 +583,23 @@ pub async fn search_word_suggestions(
         .collect())
 }
 
+/// ECDICT load status for UI feedback (path may exist even if pool failed).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EcdictStatus {
+    pub loaded: bool,
+    pub path: Option<String>,
+}
+
+#[tauri::command]
+pub async fn ecdict_status(state: State<'_, crate::AppState>) -> Result<EcdictStatus, String> {
+    let path = crate::resolve_ecdict_db_path().map(|p| p.display().to_string());
+    Ok(EcdictStatus {
+        loaded: state.ecdict_pool.is_some(),
+        path,
+    })
+}
+
 /// 检查词典数据是否已导入
 #[tauri::command]
 pub async fn check_dictionary_imported(
@@ -928,4 +945,15 @@ pub async fn fuzzy_search_words(
     .map_err(|e| e.to_string())?;
 
     Ok(rows.into_iter().map(|r| r.get("word")).collect())
+}
+
+/// Look up a Japanese word using Jisho.org (JMdict) API.
+#[tauri::command]
+pub async fn lookup_japanese(
+    word: String,
+) -> Result<Vec<crate::services::JapaneseEntry>, String> {
+    let dict = crate::services::JapaneseDictionary::new();
+    dict.lookup(&word)
+        .await
+        .map_err(|e| format!("Japanese lookup failed: {}", e))
 }
