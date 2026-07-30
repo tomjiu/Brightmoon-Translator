@@ -1,15 +1,14 @@
 {
   "app": {
-    "name": "Moon Translator"
+    "name": "Moon Translator",
+    "dictNotLoadedWarning": "本地词典未加载，悬停词典可能不可用",
+    "dictNotLoadedPath": "路径: {path}"
   },
   "nav": {
     "translator": "翻译",
-    "batch": "批量翻译",
     "hook": "Hook翻译",
     "documents": "文档翻译",
     "vocabulary": "词汇",
-    "plugins": "插件",
-    "marketplace": "插件市场",
     "metrics": "指标",
     "tm": "翻译记忆",
     "settings": "设置"
@@ -62,7 +61,12 @@
     "embeddedEmpty": "暂无行间翻译结果",
     "embeddedEmptyHint": "输入文本后点击翻译按钮",
     "startListening": "开始语音输入",
-    "stopListening": "停止语音输入"
+    "stopListening": "停止语音输入",
+    "collect": "收藏",
+    "collected": "已收藏",
+    "collectToWordbook": "收藏到生词本（含外送）",
+    "collectedWithExport": "已收藏（含外送）",
+    "noResultError": "翻译无结果：请检查已启用引擎、密钥与网络"
   },
   "history": {
     "title": "翻译历史",
@@ -332,6 +336,7 @@
     "configImportFailed": "配置导入失败",
     "save": "保存设置",
     "saved": "已保存",
+    "configSaveFailed": "配置保存失败: {message}",
     "nav": {
       "groups": {
         "translate": "翻译",
@@ -788,7 +793,9 @@
   "documents": {
     "pdf": "PDF",
     "epub": "EPUB",
-    "subtitle": "字幕"
+    "subtitle": "字幕",
+    "openInDesktop": "请在桌面应用中打开文件",
+    "translatableDocs": "可翻译文档"
   },
   "pdf": {
     "title": "PDF翻译",
@@ -843,42 +850,6 @@
     "original": "原文",
     "translation": "译文",
     "notTranslated": "尚未翻译"
-  },
-  "plugins": {
-    "title": "插件管理",
-    "refresh": "刷新",
-    "directory": "插件目录",
-    "openDir": "打开目录",
-    "howTo": "如何添加插件",
-    "howToHint": "在插件目录中创建子文件夹，每个文件夹包含一个 manifest.json 文件。",
-    "manifestExample": "manifest.json 格式",
-    "apiFormat": "API 格式",
-    "noPlugins": "暂无插件",
-    "addHint": "将插件放入插件目录后点击刷新",
-    "author": "作者",
-    "restartHint": "启用或禁用插件后需要重启应用生效",
-    "typeTranslation": "翻译",
-    "typeOcr": "OCR",
-    "typeTts": "TTS"
-  },
-  "marketplace": {
-    "title": "插件市场",
-    "searchPlaceholder": "搜索插件...",
-    "catAll": "全部",
-    "catTranslation": "翻译引擎",
-    "catTextProcessing": "文本处理",
-    "catUiEnhancement": "UI 增强",
-    "catOther": "其他",
-    "noResults": "没有找到匹配的插件",
-    "install": "安装",
-    "uninstall": "卸载",
-    "update": "更新",
-    "updateAvailable": "可更新",
-    "installedTitle": "已安装插件",
-    "author": "作者",
-    "description": "插件介绍",
-    "permissions": "权限声明",
-    "versionHistory": "版本历史"
   },
   "ocr": {
     "title": "OCR区域监控",
@@ -1014,27 +985,6 @@
     "empty": "输入文本开始对比",
     "emptyHint": "按 Ctrl+Enter 快速翻译",
     "copy": "复制"
-  },
-  "batch": {
-    "title": "批量翻译",
-    "description": "输入多行文本，每行将作为独立段落进行翻译。支持大批量处理和并发翻译。",
-    "concurrency": "并发数:",
-    "continueOnError": "出错时继续",
-    "segmentCount": "共 {count} 段文本",
-    "start": "开始翻译",
-    "stop": "停止",
-    "pause": "暂停",
-    "resume": "继续",
-    "retry": "重试失败",
-    "reset": "重置",
-    "copyAll": "复制全部",
-    "export": "导出",
-    "completed": "完成",
-    "failed": "失败",
-    "noResults": "暂无翻译结果",
-    "noResultsHint": "输入文本并点击\"开始翻译\"",
-    "progress": "{completed}/{total}",
-    "failedCount": "({count} failed)"
   },
   "tm": {
     "title": "翻译记忆",

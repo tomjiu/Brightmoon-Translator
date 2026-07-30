@@ -1,15 +1,14 @@
 {
   "app": {
-    "name": "Moon Translator"
+    "name": "Moon Translator",
+    "dictNotLoadedWarning": "Local dictionary not loaded, hover dictionary may be unavailable",
+    "dictNotLoadedPath": "Path: {path}"
   },
   "nav": {
     "translator": "Translate",
-    "batch": "Batch Translate",
     "hook": "Hook Translate",
     "documents": "Documents",
     "vocabulary": "Vocabulary",
-    "plugins": "Plugins",
-    "marketplace": "Plugin Marketplace",
     "metrics": "Metrics",
     "tm": "Translation Memory",
     "settings": "Settings"
@@ -62,7 +61,12 @@
     "embeddedEmpty": "No embedded translation results",
     "embeddedEmptyHint": "Enter text and click translate button",
     "startListening": "Start Voice Input",
-    "stopListening": "Stop Voice Input"
+    "stopListening": "Stop Voice Input",
+    "collect": "Save",
+    "collected": "Saved",
+    "collectToWordbook": "Save to wordbook (with export)",
+    "collectedWithExport": "Saved (with export)",
+    "noResultError": "No translation result: please check enabled engines, API keys and network"
   },
   "history": {
     "title": "Translation History",
@@ -332,6 +336,7 @@
     "configImportFailed": "Config import failed",
     "save": "Save Settings",
     "saved": "Saved",
+    "configSaveFailed": "Config save failed: {message}",
     "nav": {
       "groups": {
         "translate": "Translate",
@@ -788,7 +793,9 @@
   "documents": {
     "pdf": "PDF",
     "epub": "EPUB",
-    "subtitle": "Subtitle"
+    "subtitle": "Subtitle",
+    "openInDesktop": "Please open files in the desktop app",
+    "translatableDocs": "Translatable documents"
   },
   "pdf": {
     "title": "PDF Translate",
@@ -843,42 +850,6 @@
     "original": "Original",
     "translation": "Translation",
     "notTranslated": "Not yet translated"
-  },
-  "plugins": {
-    "title": "Plugin Manager",
-    "refresh": "Refresh",
-    "directory": "Plugins Directory",
-    "openDir": "Open Directory",
-    "howTo": "How to Add Plugins",
-    "howToHint": "Create subfolders in the plugins directory, each containing a manifest.json file.",
-    "manifestExample": "manifest.json Format",
-    "apiFormat": "API Format",
-    "noPlugins": "No plugins yet",
-    "addHint": "Place plugins in the plugins directory and click Refresh",
-    "author": "Author",
-    "restartHint": "Restart the app after enabling or disabling plugins",
-    "typeTranslation": "Translation",
-    "typeOcr": "OCR",
-    "typeTts": "TTS"
-  },
-  "marketplace": {
-    "title": "Plugin Marketplace",
-    "searchPlaceholder": "Search plugins...",
-    "catAll": "All",
-    "catTranslation": "Translation Engine",
-    "catTextProcessing": "Text Processing",
-    "catUiEnhancement": "UI Enhancement",
-    "catOther": "Other",
-    "noResults": "No matching plugins found",
-    "install": "Install",
-    "uninstall": "Uninstall",
-    "update": "Update",
-    "updateAvailable": "Update available",
-    "installedTitle": "Installed Plugins",
-    "author": "Author",
-    "description": "Description",
-    "permissions": "Permissions",
-    "versionHistory": "Version History"
   },
   "ocr": {
     "title": "OCR Region Monitor",
@@ -1014,27 +985,6 @@
     "empty": "Enter text to start comparing",
     "emptyHint": "Press Ctrl+Enter to translate quickly",
     "copy": "Copy"
-  },
-  "batch": {
-    "title": "Batch Translate",
-    "description": "Enter multi-line text, each line will be translated as an independent paragraph. Supports bulk processing and concurrent translation.",
-    "concurrency": "Concurrency:",
-    "continueOnError": "Continue on error",
-    "segmentCount": "{count} segments total",
-    "start": "Start Translate",
-    "stop": "Stop",
-    "pause": "Pause",
-    "resume": "Resume",
-    "retry": "Retry Failed",
-    "reset": "Reset",
-    "copyAll": "Copy All",
-    "export": "Export",
-    "completed": "Completed",
-    "failed": "Failed",
-    "noResults": "No translation results yet",
-    "noResultsHint": "Enter text and click \"Start Translate\"",
-    "progress": "{completed}/{total}",
-    "failedCount": "({count} failed)"
   },
   "tm": {
     "title": "Translation Memory",

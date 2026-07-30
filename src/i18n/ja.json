@@ -1,15 +1,14 @@
 {
   "app": {
-    "name": "Moon Translator"
+    "name": "Moon Translator",
+    "dictNotLoadedWarning": "ローカル辞書が読み込まれていません。ホバー辞書が利用できない場合があります",
+    "dictNotLoadedPath": "パス: {path}"
   },
   "nav": {
     "translator": "翻訳",
-    "batch": "バッチ翻訳",
     "hook": "Hook翻訳",
     "documents": "文書",
     "vocabulary": "語彙",
-    "plugins": "プラグイン",
-    "marketplace": "プラグインマーケット",
     "metrics": "指標",
     "tm": "翻訳メモリ",
     "settings": "設定"
@@ -62,7 +61,12 @@
     "embeddedEmpty": "インライン翻訳結果なし",
     "embeddedEmptyHint": "テキストを入力して翻訳ボタンをクリック",
     "startListening": "音声入力開始",
-    "stopListening": "音声入力停止"
+    "stopListening": "音声入力停止",
+    "collect": "保存",
+    "collected": "保存済み",
+    "collectToWordbook": "単語帳に保存（外部連携あり）",
+    "collectedWithExport": "保存済み（外部連携あり）",
+    "noResultError": "翻訳結果なし：有効なエンジン、APIキー、ネットワークを確認してください"
   },
   "history": {
     "title": "翻訳履歴",
@@ -332,6 +336,7 @@
     "configImportFailed": "設定のインポートに失敗しました",
     "save": "設定を保存",
     "saved": "保存済み",
+    "configSaveFailed": "設定の保存に失敗しました: {message}",
     "nav": {
       "groups": {
         "translate": "翻訳",
@@ -783,7 +788,9 @@
   "documents": {
     "pdf": "PDF",
     "epub": "EPUB",
-    "subtitle": "字幕"
+    "subtitle": "字幕",
+    "openInDesktop": "デスクトップアプリでファイルを開いてください",
+    "translatableDocs": "翻訳可能な文書"
   },
   "pdf": {
     "title": "PDF翻訳",
@@ -838,42 +845,6 @@
     "original": "原文",
     "translation": "翻訳",
     "notTranslated": "未翻訳"
-  },
-  "plugins": {
-    "title": "プラグイン管理",
-    "refresh": "更新",
-    "directory": "プラグインディレクトリ",
-    "openDir": "ディレクトリを開く",
-    "howTo": "プラグインの追加方法",
-    "howToHint": "プラグインディレクトリにサブフォルダを作成し、各フォルダにmanifest.jsonファイルを含めてください。",
-    "manifestExample": "manifest.jsonフォーマット",
-    "apiFormat": "APIフォーマット",
-    "noPlugins": "プラグインがありません",
-    "addHint": "プラグインをディレクトリに入れて更新をクリック",
-    "author": "作者",
-    "restartHint": "プラグインの有効化・無効化後はアプリの再起動が必要です",
-    "typeTranslation": "翻訳",
-    "typeOcr": "OCR",
-    "typeTts": "TTS"
-  },
-  "marketplace": {
-    "title": "プラグインマーケット",
-    "searchPlaceholder": "プラグインを検索...",
-    "catAll": "すべて",
-    "catTranslation": "翻訳エンジン",
-    "catTextProcessing": "テキスト処理",
-    "catUiEnhancement": "UI拡張",
-    "catOther": "その他",
-    "noResults": "一致するプラグインがありません",
-    "install": "インストール",
-    "uninstall": "アンインストール",
-    "update": "アップデート",
-    "updateAvailable": "アップデート可能",
-    "installedTitle": "インストール済みプラグイン",
-    "author": "作者",
-    "description": "説明",
-    "permissions": "権限",
-    "versionHistory": "バージョン履歴"
   },
   "ocr": {
     "title": "OCR領域監視",
@@ -1009,27 +980,6 @@
     "empty": "テキストを入力して比較開始",
     "emptyHint": "Ctrl+Enterで素早く翻訳",
     "copy": "コピー"
-  },
-  "batch": {
-    "title": "バッチ翻訳",
-    "description": "複数行のテキストを入力し、各行を独立した段落として翻訳。バルク処理と並行翻訳に対応。",
-    "concurrency": "並行数:",
-    "continueOnError": "エラー時も続行",
-    "segmentCount": "全 {count} セグメント",
-    "start": "翻訳開始",
-    "stop": "停止",
-    "pause": "一時停止",
-    "resume": "再開",
-    "retry": "失敗リトライ",
-    "reset": "リセット",
-    "copyAll": "すべてコピー",
-    "export": "エクスポート",
-    "completed": "完了",
-    "failed": "失敗",
-    "noResults": "翻訳結果がありません",
-    "noResultsHint": "テキストを入力して「翻訳開始」をクリック",
-    "progress": "{completed}/{total}",
-    "failedCount": "({count} 件失敗)"
   },
   "tm": {
     "title": "翻訳メモリ",

@@ -1,15 +1,14 @@
 {
   "app": {
-    "name": "Moon Translator"
+    "name": "Moon Translator",
+    "dictNotLoadedWarning": "로컬 사전이 로드되지 않았습니다. 호버 사전을 사용할 수 없을 수 있습니다",
+    "dictNotLoadedPath": "경로: {path}"
   },
   "nav": {
     "translator": "번역",
-    "batch": "일괄 번역",
     "hook": "Hook 번역",
     "documents": "문서",
     "vocabulary": "어휘",
-    "plugins": "플러그인",
-    "marketplace": "플러그인 마켓플레이스",
     "metrics": "지표",
     "tm": "번역 메모리",
     "settings": "설정"
@@ -62,7 +61,12 @@
     "embeddedEmpty": "인라인 번역 결과 없음",
     "embeddedEmptyHint": "텍스트를 입력하고 번역 버튼을 클릭하세요",
     "startListening": "음성 입력 시작",
-    "stopListening": "음성 입력 중지"
+    "stopListening": "음성 입력 중지",
+    "collect": "저장",
+    "collected": "저장됨",
+    "collectToWordbook": "단어장에 저장 (내보내기 포함)",
+    "collectedWithExport": "저장됨 (내보내기 포함)",
+    "noResultError": "번역 결과 없음: 활성화된 엔진, API 키, 네트워크를 확인하세요"
   },
   "history": {
     "title": "번역 기록",
@@ -332,6 +336,7 @@
     "configImportFailed": "설정 가져오기 실패",
     "save": "설정 저장",
     "saved": "저장됨",
+    "configSaveFailed": "설정 저장 실패: {message}",
     "nav": {
       "groups": {
         "translate": "번역",
@@ -783,7 +788,9 @@
   "documents": {
     "pdf": "PDF",
     "epub": "EPUB",
-    "subtitle": "자막"
+    "subtitle": "자막",
+    "openInDesktop": "데스크톱 앱에서 파일을 열어주세요",
+    "translatableDocs": "번역 가능한 문서"
   },
   "pdf": {
     "title": "PDF 번역",
@@ -838,42 +845,6 @@
     "original": "원문",
     "translation": "번역",
     "notTranslated": "미번역"
-  },
-  "plugins": {
-    "title": "플러그인 관리",
-    "refresh": "새로고침",
-    "directory": "플러그인 디렉토리",
-    "openDir": "디렉토리 열기",
-    "howTo": "플러그인 추가 방법",
-    "howToHint": "플러그인 디렉토리에 하위 폴더를 만들고 각 폴더에 manifest.json 파일을 포함하세요.",
-    "manifestExample": "manifest.json 형식",
-    "apiFormat": "API 형식",
-    "noPlugins": "플러그인이 없습니다",
-    "addHint": "플러그인을 디렉토리에 넣고 새로고침을 클릭하세요",
-    "author": "작성자",
-    "restartHint": "플러그인 활성화/비활성화 후 앱 재시작이 필요합니다",
-    "typeTranslation": "번역",
-    "typeOcr": "OCR",
-    "typeTts": "TTS"
-  },
-  "marketplace": {
-    "title": "플러그인 마켓플레이스",
-    "searchPlaceholder": "플러그인 검색...",
-    "catAll": "전체",
-    "catTranslation": "번역 엔진",
-    "catTextProcessing": "텍스트 처리",
-    "catUiEnhancement": "UI 향상",
-    "catOther": "기타",
-    "noResults": "일치하는 플러그인이 없습니다",
-    "install": "설치",
-    "uninstall": "제거",
-    "update": "업데이트",
-    "updateAvailable": "업데이트 가능",
-    "installedTitle": "설치된 플러그인",
-    "author": "작성자",
-    "description": "설명",
-    "permissions": "권한",
-    "versionHistory": "버전 기록"
   },
   "ocr": {
     "title": "OCR 영역 모니터링",
@@ -1009,27 +980,6 @@
     "empty": "텍스트를 입력하여 비교 시작",
     "emptyHint": "Ctrl+Enter로 빠르게 번역",
     "copy": "복사"
-  },
-  "batch": {
-    "title": "일괄 번역",
-    "description": "여러 줄의 텍스트를 입력하면 각 줄이 독립적인 단락으로 번역됩니다. 대량 처리 및 병렬 번역을 지원합니다.",
-    "concurrency": "동시 처리 수:",
-    "continueOnError": "오류 시 계속",
-    "segmentCount": "총 {count}개 세그먼트",
-    "start": "번역 시작",
-    "stop": "중지",
-    "pause": "일시정지",
-    "resume": "재개",
-    "retry": "실패 재시도",
-    "reset": "초기화",
-    "copyAll": "모두 복사",
-    "export": "내보내기",
-    "completed": "완료",
-    "failed": "실패",
-    "noResults": "번역 결과가 없습니다",
-    "noResultsHint": "텍스트를 입력하고 \"번역 시작\"을 클릭하세요",
-    "progress": "{completed}/{total}",
-    "failedCount": "({count}건 실패)"
   },
   "tm": {
     "title": "번역 메모리",
