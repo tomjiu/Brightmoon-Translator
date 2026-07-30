@@ -664,10 +664,15 @@ fn try_text_pattern_at_point(
             extract_sentence_candidate_with_hint(raw, cursor_ratio.or(Some(0.45)))
                 .unwrap_or_else(|| raw.chars().take(160).collect::<String>())
         } else {
-            if !dictionary::is_single_word(raw) || raw.chars().count() > 40 {
-                return None;
+            // MTT: don't blindly trust UIA's TextUnit_Word expansion — some controls return
+            // a phrase/line for the Word unit. Extract the word under the cursor ratio with
+            // the same algorithm as the ValuePattern path, so word-boundary handling is
+            // consistent across both UIA text sources. extract_word_candidate_with_hint
+            // already applies is_single_word / is_ui_chrome_word / length guards.
+            match extract_word_candidate_with_hint(raw, cursor_ratio) {
+                Some(w) if w.chars().count() <= 40 => w,
+                _ => return None,
             }
-            raw.to_string()
         };
         let word = word.trim();
         if word.is_empty() || word.chars().count() > 160 || is_ui_chrome_word(word) {
@@ -881,68 +886,6 @@ fn pick_word_near_cursor_ocr_win(half_w: i32, half_h: i32) -> Option<HoverPick> 
     })
 }
 
-/// Format dictionary results as short overlay body (word + phonetic + defs only).
-/// Returns None when there is nothing useful to show (caller should MT or skip).
-pub fn format_dict_body(
-    word: &str,
-    results: &[crate::models::dictionary::DictionaryResult],
-) -> Option<String> {
-    if !crate::dictionary::has_real_meanings(results) {
-        return None;
-    }
-    let r0 = &results[0];
-    let mut lines = Vec::new();
-    // One headword line only (avoid duplicating "未找到" blocks)
-    if let Some(ph) = &r0.phonetic {
-        lines.push(format!("{}  {}", word, ph));
-    } else {
-        lines.push(word.to_string());
-    }
-    for m in r0.meanings.iter().take(6) {
-        if m.part_of_speech.contains("未找到") {
-            continue;
-        }
-        let defs: Vec<&str> = m
-            .definitions
-            .iter()
-            .take(3)
-            .map(|d| d.definition.as_str())
-            .filter(|d| !d.is_empty() && !d.contains("未找到"))
-            .collect();
-        if defs.is_empty() {
-            continue;
-        }
-        // Full definition lines (not truncated to one short phrase)
-        for d in defs {
-            let line = if m.part_of_speech.is_empty()
-                || m.part_of_speech == "基本释义"
-                || m.part_of_speech == "扩展释义"
-            {
-                d.to_string()
-            } else {
-                format!("[{}] {}", m.part_of_speech, d)
-            };
-            // Cap each def length for card, keep substance
-            let line = if line.chars().count() > 120 {
-                format!("{}…", line.chars().take(118).collect::<String>())
-            } else {
-                line
-            };
-            lines.push(line);
-            if lines.len() >= 8 {
-                break;
-            }
-        }
-        if lines.len() >= 8 {
-            break;
-        }
-    }
-    if lines.len() <= 1 {
-        return None;
-    }
-    Some(lines.join("\n"))
-}
-
 /// Simple rate limiter helper for hover (same word / same cell).
 pub struct HoverDedupe {
     last_word: String,
@@ -1057,10 +1000,5 @@ mod tests {
         .unwrap();
         assert!(s.contains("Dr. Smith") || s.contains("3.14"));
         assert!(!s.contains("Next line"));
-    }
-
-    #[test]
-    fn format_dict_body_none_on_empty() {
-        assert!(format_dict_body("hello", &[]).is_none());
     }
 }

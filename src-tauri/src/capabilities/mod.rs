@@ -9,7 +9,7 @@ pub mod selection_translation;
 pub mod selection_translation_impl;
 
 // Re-export key types for convenient access
-pub use adapters::{AppContext, EmbeddedAppType, TargetAppDetector};
+pub use adapters::{AppContext, TargetAppDetector};
 pub use browser_translation::handle_browser_request;
 pub use hook_monitor::HookMonitor;
 pub use input_replacement::InputReplacement;

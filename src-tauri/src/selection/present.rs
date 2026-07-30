@@ -438,16 +438,7 @@ pub async fn present_mt_card(app: &AppHandle, source: &str, pos: Option<(f64, f6
             };
             let (cx, cy) = pos.unwrap_or_else(cursor_pos);
             let place = overlay::OverlayPosition::at_cursor(cx, cy);
-            let line_n = display.lines().count().max(1) as f64;
-            let h = (56.0 + line_n * 22.0).clamp(72.0, 320.0);
-            let w = (display
-                .lines()
-                .map(|l| l.chars().count())
-                .max()
-                .unwrap_or(16) as f64
-                * 8.0
-                + 48.0)
-                .clamp(200.0, 460.0);
+            let (w, h) = overlay::window_manager::estimate_mt_card_size(&display);
             let content = overlay::OverlayContent {
                 source: source.to_string(),
                 translated: display,

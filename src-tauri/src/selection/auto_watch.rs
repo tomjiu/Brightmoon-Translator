@@ -432,11 +432,6 @@ fn is_junk_hover_word(w: &str) -> bool {
     is_ui_chrome_word(w) || super::hover_pick::looks_like_app_or_process_name(w)
 }
 
-/// Public entry for dictionary hotkey / external callers (dict vs MT via present router).
-pub async fn show_selection_translate_text_public(app: &AppHandle, text: &str) {
-    present::present_selection(app, text).await;
-}
-
 fn left_button_down() -> bool {
     #[cfg(windows)]
     {

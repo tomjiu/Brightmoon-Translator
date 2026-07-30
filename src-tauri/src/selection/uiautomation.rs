@@ -1,4 +1,6 @@
 use super::{SelectionBounds, SelectionProvider, SelectionResult};
+use std::sync::LazyLock;
+use tokio::sync::Semaphore;
 use windows::core::Interface;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{
@@ -24,9 +26,36 @@ extern "system" {
 /// Falls back gracefully when the focused element doesn't support text patterns.
 pub struct UiAutomationSelectionProvider;
 
+/// Easydict `_automationSemaphore` (SemaphoreSlim 1,1) + UiaSemaphoreTimeoutMs=200.
+/// Serializes UIA calls so concurrent selection requests (hotkey + auto_select + hover)
+/// don't contend on the focused element / COM apartment. If busy past 200ms we skip
+/// rather than piling up — matches Easydict's "Wait 200ms then give up" behavior.
+static UIA_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(1));
+
 #[async_trait::async_trait]
 impl SelectionProvider for UiAutomationSelectionProvider {
     async fn get_selection(&self) -> Option<SelectionResult> {
+        // Easydict: acquire the UIA semaphore (200ms budget) before doing any UIA work,
+        // so two in-flight selection requests can't race on GetFocusedElement / COM.
+        let _permit = match tokio::time::timeout(
+            std::time::Duration::from_millis(200),
+            UIA_SEMAPHORE.acquire(),
+        )
+        .await
+        {
+            Ok(Ok(p)) => p,
+            Ok(Err(_)) => {
+                tracing::warn!("[uiautomation] semaphore closed — skip");
+                return None;
+            },
+            Err(_) => {
+                tracing::warn!(
+                    "[uiautomation] semaphore busy after 200ms — skip (UIA serialized)"
+                );
+                return None;
+            },
+        };
+
         // Easydict: UIA execution timeout 800ms — never hang selection path
         match tokio::time::timeout(
             std::time::Duration::from_millis(800),

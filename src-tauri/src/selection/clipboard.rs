@@ -90,6 +90,15 @@ fn record_outcome(process_name: &str, outcome: ClipWaitResult) {
     });
 }
 
+/// Easydict `RecordOutcome(Success)` for a non-clipboard selection success (e.g. UIA).
+/// A successful UIA pick rehabilitates a process that previously accumulated non-text
+/// clipboard failures: resets `consecutive_non_text` and clears any active suppress,
+/// so the next single non-text clipboard payload doesn't immediately trip the 5min
+/// window on top of a stale count. Mirrors `TextSelectionService.RecordOutcome(Success)`.
+pub fn record_selection_success(process_name: &str) {
+    record_outcome(process_name, ClipWaitResult::Success);
+}
+
 fn resolve_clipboard_restore(
     original_text: Option<&str>,
     original_was_empty: bool,

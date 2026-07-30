@@ -27,11 +27,6 @@ impl SelectionProviderManager {
         Self { providers }
     }
 
-    /// Get selection with Easydict-style process routing (no exclude list).
-    pub async fn get_selection(&self) -> Option<SelectionResult> {
-        self.get_selection_routed(&[]).await
-    }
-
     /// Get selection with optional process-name exclude list (from settings).
     pub async fn get_selection_routed(
         &self,
@@ -67,24 +62,34 @@ impl SelectionProviderManager {
             return None;
         }
 
+        // Process name for Easydict RecordOutcome(Success) when UIA succeeds — rehabilitates
+        // a process that previously accumulated non-text clipboard failures.
+        let fg_name = fg.as_ref().map(|p| p.process_name.as_str());
+
         match strategy {
             SelectionStrategy::Skip => {
                 tracing::debug!("[selection_manager] Skip (self or excluded process)");
                 None
             },
-            SelectionStrategy::UiaOnly => self.try_providers_in_order(&["uiautomation"]).await,
+            SelectionStrategy::UiaOnly => {
+                self.try_providers_in_order(&["uiautomation"], fg_name).await
+            },
             SelectionStrategy::ClipboardThenUia => {
-                self.try_providers_in_order(&["clipboard", "uiautomation"])
+                self.try_providers_in_order(&["clipboard", "uiautomation"], fg_name)
                     .await
             },
             SelectionStrategy::UiaThenClipboard => {
-                self.try_providers_in_order(&["uiautomation", "clipboard"])
+                self.try_providers_in_order(&["uiautomation", "clipboard"], fg_name)
                     .await
             },
         }
     }
 
-    async fn try_providers_in_order(&self, order: &[&str]) -> Option<SelectionResult> {
+    async fn try_providers_in_order(
+        &self,
+        order: &[&str],
+        fg_name: Option<&str>,
+    ) -> Option<SelectionResult> {
         let mut tried: Vec<&str> = Vec::new();
         for want in order {
             let Some(provider) = self.providers.iter().find(|p| p.name() == *want) else {
@@ -95,6 +100,14 @@ impl SelectionProviderManager {
             tracing::debug!("[selection_manager] Trying provider '{}' (routed)", name);
             match provider.get_selection().await {
                 Some(result) if !result.text.trim().is_empty() => {
+                    // Easydict RecordOutcome(Success): a successful UIA pick rehabilitates
+                    // a process with prior non-text clipboard failures (resets the counter so
+                    // the next single non-text doesn't immediately trip the 5min suppress).
+                    if name == "uiautomation" {
+                        if let Some(pn) = fg_name {
+                            super::clipboard::record_selection_success(pn);
+                        }
+                    }
                     tracing::info!(
                         "[selection_manager] Provider '{}' succeeded: {} chars from '{}'",
                         name,
@@ -117,57 +130,6 @@ impl SelectionProviderManager {
         tracing::warn!(
             "[selection_manager] All routed providers failed. Tried: {:?}",
             tried
-        );
-        None
-    }
-
-    /// Get the current selection, skipping providers whose names are in `exclude`.
-    /// Used for strategy dispatch: e.g., skip UIA for embedded apps where it won't work.
-    pub async fn get_selection_excluding(&self, exclude: &[&str]) -> Option<SelectionResult> {
-        let mut tried: Vec<&str> = Vec::new();
-        let mut skipped: Vec<&str> = Vec::new();
-        for provider in &self.providers {
-            let name = provider.name();
-            if exclude.contains(&name) {
-                skipped.push(name);
-                tracing::debug!(
-                    "[selection_manager] Skipping provider '{}' (excluded)",
-                    name
-                );
-                continue;
-            }
-            tried.push(name);
-            tracing::debug!(
-                "[selection_manager] Trying provider '{}' (priority {})",
-                name,
-                provider.priority()
-            );
-            match provider.get_selection().await {
-                Some(result) => {
-                    if !result.text.trim().is_empty() {
-                        tracing::info!(
-                            "[selection_manager] Provider '{}' succeeded: {} chars from '{}'",
-                            name,
-                            result.text.len(),
-                            result.source_app
-                        );
-                        return Some(result);
-                    } else {
-                        tracing::debug!(
-                            "[selection_manager] Provider '{}' returned empty text",
-                            name
-                        );
-                    }
-                },
-                None => {
-                    tracing::debug!("[selection_manager] Provider '{}' returned None", name);
-                },
-            }
-        }
-        tracing::warn!(
-            "[selection_manager] All providers failed. Tried: {:?}, Skipped: {:?}",
-            tried,
-            skipped
         );
         None
     }

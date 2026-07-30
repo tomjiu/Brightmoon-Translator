@@ -182,7 +182,20 @@ pub fn take_pending() -> Option<String> {
     PENDING
         .lock()
         .ok()
-        .and_then(|mut g| g.take().map(|p| p.text))
+        .and_then(|mut g| {
+            g.take().map(|p| {
+                // Prove show == take: same preview as the `armed pending` log in show().
+                // Confirms Pop consumes the exact text captured at gesture time (no re-fetch),
+                // and the age stays inside the 5000ms auto-dismiss window.
+                tracing::info!(
+                    "[pop] consumed pending_len={} preview={:?} age_ms={}",
+                    p.text.chars().count(),
+                    p.text.chars().take(40).collect::<String>(),
+                    p.shown_at.elapsed().as_millis()
+                );
+                p.text
+            })
+        })
 }
 
 pub fn has_pending() -> bool {

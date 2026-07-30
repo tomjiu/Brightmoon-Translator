@@ -15,6 +15,23 @@ pub fn overlay_theme_is_light() -> bool {
     OVERLAY_LIGHT.load(Ordering::SeqCst)
 }
 
+/// Shared sizing for machine-translate overlay cards.
+/// Both `present::present_mt_card` and `DefaultSelectionTranslation::show_overlay`
+/// use this so card dimensions stay consistent regardless of trigger path.
+pub fn estimate_mt_card_size(display_text: &str) -> (f64, f64) {
+    let line_n = display_text.lines().count().max(1) as f64;
+    let h = (56.0 + line_n * 22.0).clamp(72.0, 320.0);
+    let w = (display_text
+        .lines()
+        .map(|l| l.chars().count())
+        .max()
+        .unwrap_or(16) as f64
+        * 8.0
+        + 48.0)
+        .clamp(200.0, 460.0);
+    (w, h)
+}
+
 /// Close existing overlay and create a new one.
 /// x, y are in physical pixels (from Win32 APIs).
 ///

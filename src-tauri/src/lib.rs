@@ -353,6 +353,7 @@ pub fn run() {
                     Arc::new(DefaultInputReplacement::new(
                         app_state.system.selection_manager.clone(),
                         app_state.translation.service.clone(),
+                        app_state.system.config.clone(),
                     ));
                 let _ = app_state.selection_translation.set(sel_translation);
                 let _ = app_state.input_replacement.set(inp_replacement);
@@ -528,12 +529,8 @@ pub fn run() {
             commands::window::hide_main_window,
             commands::window::show_main_window,
             commands::window::set_window_exclude_from_capture,
-            commands::window::get_selected_text,
-            commands::window::translate_selection,
             commands::window::trigger_selection_translate,
             commands::window::trigger_dictionary_lookup,
-            commands::window::pop_button_confirm,
-            commands::window::pop_button_dismiss,
             commands::window::get_cursor_position,
             commands::window::toggle_always_on_top,
             commands::window::get_always_on_top,
