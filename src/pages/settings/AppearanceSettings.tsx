@@ -1,15 +1,17 @@
 import { Moon, Sun } from 'lucide-react';
 import { useThemeStore } from '../../stores/themeStore';
 import Card from '../../components/Card';
+import { useI18n } from '../../i18n';
 
 export default function AppearanceSettings() {
   const { theme, setTheme } = useThemeStore();
+  const { t } = useI18n();
 
   const themes = [
     {
       id: 'dark' as const,
-      name: '黑色',
-      description: '纯黑画布，高对比反白控件',
+      name: t('settings.appearance.dark'),
+      description: t('settings.appearance.darkDesc'),
       icon: Moon,
       swatch: 'bg-black border-border',
       bar: 'bg-neutral-900',
@@ -17,8 +19,8 @@ export default function AppearanceSettings() {
     },
     {
       id: 'light' as const,
-      name: '白色',
-      description: '浅灰画布，黑底操作按钮',
+      name: t('settings.appearance.light'),
+      description: t('settings.appearance.lightDesc'),
       icon: Sun,
       swatch: 'bg-white border-border',
       bar: 'bg-white',
@@ -29,11 +31,14 @@ export default function AppearanceSettings() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="ui-page-title">外观</h1>
-        <p className="ui-page-desc">仅黑 / 白两套单色主题</p>
+        <h1 className="ui-page-title">{t('settings.appearance.pageTitle')}</h1>
+        <p className="ui-page-desc">{t('settings.appearance.pageDesc')}</p>
       </div>
 
-      <Card title="主题" description="侧栏底部亦可一键切换">
+      <Card
+        title={t('settings.appearance.themeTitle')}
+        description={t('settings.appearance.themeDesc')}
+      >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {themes.map((opt) => {
             const Icon = opt.icon;
@@ -61,7 +66,7 @@ export default function AppearanceSettings() {
                   <span className="text-sm font-semibold text-text-primary">{opt.name}</span>
                   {active && (
                     <span className="ml-auto text-[10px] uppercase tracking-wider text-text-secondary">
-                      当前
+                      {t('settings.appearance.current')}
                     </span>
                   )}
                 </div>

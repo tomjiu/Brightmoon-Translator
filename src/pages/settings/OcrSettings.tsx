@@ -6,17 +6,18 @@ import {
   OCR_WATCH_INTERVAL_DEFAULT_MS,
   OCR_WATCH_INTERVAL_MIN_MS,
 } from '../../services/ocrConstants';
+import { useI18n } from '../../i18n';
 
 type OcrEngineId = 'auto' | 'winrt' | 'youdao' | 'tesseract' | 'rapid' | 'paddle';
 
 interface OcrEngineOption {
   id: OcrEngineId;
-  name: string;
-  description: string;
+  nameKey: string;
+  descKey: string;
   icon: LucideIcon;
   status: 'available' | 'unavailable';
   recommended?: boolean;
-  badges: Array<{ label: string; variant: 'success' | 'warning' | 'error' | 'info' }>;
+  badgeKeys: Array<{ labelKey: string; variant: 'success' | 'warning' | 'error' | 'info' }>;
 }
 
 interface OcrSettingsProps {
@@ -24,6 +25,7 @@ interface OcrSettingsProps {
 }
 
 export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
+  const { t } = useI18n();
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
@@ -31,67 +33,67 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
   const ocrEngines: OcrEngineOption[] = [
     {
       id: 'winrt',
-      name: 'Windows 原生 OCR',
-      description: '系统内置引擎，速度快、免费、无需密钥',
+      nameKey: 'settings.ocr.winrtName',
+      descKey: 'settings.ocr.winrtDesc',
       icon: Monitor,
       status: 'available',
       recommended: true,
-      badges: [
-        { label: '推荐', variant: 'success' },
-        { label: '快速', variant: 'info' },
-        { label: '免费', variant: 'success' },
+      badgeKeys: [
+        { labelKey: 'settings.ocr.badgeRec', variant: 'success' },
+        { labelKey: 'settings.ocr.badgeFast', variant: 'info' },
+        { labelKey: 'settings.ocr.badgeFree', variant: 'success' },
       ],
     },
     {
       id: 'auto',
-      name: '自动选择',
-      description: '依次尝试多个识别后端，兼容性更好但可能更慢（与翻译多引擎无关）',
+      nameKey: 'settings.ocr.autoName',
+      descKey: 'settings.ocr.autoDesc',
       icon: Sparkles,
       status: 'available',
-      badges: [{ label: '智能', variant: 'info' }],
+      badgeKeys: [{ labelKey: 'settings.ocr.badgeSmart', variant: 'info' }],
     },
     {
       id: 'youdao',
-      name: '有道 OCR',
-      description: '有道免费 OCR 通道，无需单独配置 API Key',
+      nameKey: 'settings.ocr.youdaoName',
+      descKey: 'settings.ocr.youdaoDesc',
       icon: BookOpen,
       status: 'available',
-      badges: [
-        { label: '免费', variant: 'success' },
-        { label: '无需配置', variant: 'info' },
+      badgeKeys: [
+        { labelKey: 'settings.ocr.badgeFree', variant: 'success' },
+        { labelKey: 'settings.ocr.badgeNoConfig', variant: 'info' },
       ],
     },
     {
       id: 'tesseract',
-      name: 'Tesseract',
-      description: '浏览器端 tesseract.js；首次需下载语言模型，非纯离线',
+      nameKey: 'settings.ocr.tesseractName',
+      descKey: 'settings.ocr.tesseractDesc',
       icon: Cpu,
       status: 'available',
-      badges: [
-        { label: '离线', variant: 'info' },
-        { label: '慢速', variant: 'warning' },
+      badgeKeys: [
+        { labelKey: 'settings.ocr.badgeOffline', variant: 'info' },
+        { labelKey: 'settings.ocr.badgeSlow', variant: 'warning' },
       ],
     },
     {
       id: 'rapid',
-      name: 'RapidOCR（离线）',
-      description: '需自备 RapidOcrOnnx + 模型目录（见 docs/OCR_OFFLINE.md）',
+      nameKey: 'settings.ocr.rapidName',
+      descKey: 'settings.ocr.rapidDesc',
       icon: Cpu,
       status: 'available',
-      badges: [
-        { label: '离线', variant: 'info' },
-        { label: '外置模型', variant: 'warning' },
+      badgeKeys: [
+        { labelKey: 'settings.ocr.badgeOffline', variant: 'info' },
+        { labelKey: 'settings.ocr.badgeExtModel', variant: 'warning' },
       ],
     },
     {
       id: 'paddle',
-      name: 'PaddleOCR-json（离线）',
-      description: '需自备 PaddleOCR-json.exe + models（Windows）',
+      nameKey: 'settings.ocr.paddleName',
+      descKey: 'settings.ocr.paddleDesc',
       icon: Cpu,
       status: 'available',
-      badges: [
-        { label: '离线', variant: 'info' },
-        { label: '外置模型', variant: 'warning' },
+      badgeKeys: [
+        { labelKey: 'settings.ocr.badgeOffline', variant: 'info' },
+        { labelKey: 'settings.ocr.badgeExtModel', variant: 'warning' },
       ],
     },
   ];
@@ -99,27 +101,26 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
   const currentEngine = (config.ocrEngine || 'winrt') as OcrEngineId;
   const currentEngineInfo = ocrEngines.find((e) => e.id === currentEngine);
   const CurrentIcon = currentEngineInfo?.icon ?? Monitor;
+  const currentName = currentEngineInfo ? t(currentEngineInfo.nameKey) : currentEngine;
 
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="ui-page-title">OCR 识别</h1>
-        <p className="ui-page-desc">
-          只管「图 → 字」。识完后的翻译按引擎列表顺序回退；换引擎在结果框内操作
-        </p>
+        <h1 className="ui-page-title">{t('settings.ocr.pageTitle')}</h1>
+        <p className="ui-page-desc">{t('settings.ocr.pageDesc')}</p>
       </div>
 
-      <Card title="与翻译的关系">
+      <Card title={t('settings.ocr.relationTitle')}>
         <ul className="text-xs text-text-secondary space-y-1.5 leading-relaxed list-disc pl-4">
           <li>
-            <span className="text-text-primary font-medium">本页</span>
-            ：识别后端（WinRT / 有道 / 离线等）与监视间隔
+            <span className="text-text-primary font-medium">{t('settings.ocr.relationThisPage')}</span>
+            {t('settings.ocr.relationThisPageDesc')}
           </li>
           <li>
-            <span className="text-text-primary font-medium">翻译引擎</span>
-            ：字 → 另一种语言的优先级与密钥
+            <span className="text-text-primary font-medium">{t('settings.ocr.relationEngines')}</span>
+            {t('settings.ocr.relationEnginesDesc')}
           </li>
-          <li>OCR 框默认单条译文 + 失败回退，不并排多引擎对比</li>
+          <li>{t('settings.ocr.relationNote')}</li>
         </ul>
         {onNavigate && (
           <button
@@ -127,7 +128,7 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
             onClick={() => onNavigate('engines')}
             className="mt-3 text-xs font-medium text-primary hover:underline"
           >
-            去「翻译引擎」调整优先级 →
+            {t('settings.ocr.goEngines')}
           </button>
         )}
       </Card>
@@ -138,19 +139,19 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
             <CurrentIcon size={22} strokeWidth={1.75} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="ui-caption">当前识别引擎</p>
-            <p className="ui-section-title mt-0.5">{currentEngineInfo?.name}</p>
+            <p className="ui-caption">{t('settings.ocr.currentEngine')}</p>
+            <p className="ui-section-title mt-0.5">{currentName}</p>
           </div>
           <CheckCircle size={20} className="text-text-secondary shrink-0" />
         </div>
         {(currentEngine === 'winrt' || currentEngine === 'tesseract') && (
           <p className="ui-caption mt-3 leading-relaxed">
-            {currentEngine === 'winrt' ? 'Windows 原生 OCR' : 'Tesseract'} 开箱即用，无需额外配置。
+            {t('settings.ocr.readyHint', { engine: currentName })}
           </p>
         )}
       </Card>
 
-      <Card title="选择识别引擎" description="截图翻译的图→字后端（不是翻译引擎）">
+      <Card title={t('settings.ocr.chooseTitle')} description={t('settings.ocr.chooseDesc')}>
         <div className="space-y-2">
           {ocrEngines.map((engine) => {
             const Icon = engine.icon;
@@ -189,15 +190,17 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-sm font-medium tracking-tight text-text-primary">
-                      {engine.name}
+                      {t(engine.nameKey)}
                     </span>
-                    {engine.recommended && !active && <Badge variant="success">推荐</Badge>}
+                    {engine.recommended && !active && (
+                      <Badge variant="success">{t('settings.ocr.badgeRec')}</Badge>
+                    )}
                   </div>
-                  <p className="ui-caption mb-2 leading-relaxed">{engine.description}</p>
+                  <p className="ui-caption mb-2 leading-relaxed">{t(engine.descKey)}</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {engine.badges.map((badge, idx) => (
+                    {engine.badgeKeys.map((badge, idx) => (
                       <Badge key={idx} variant={badge.variant}>
-                        {badge.label}
+                        {t(badge.labelKey)}
                       </Badge>
                     ))}
                   </div>
@@ -209,11 +212,11 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
       </Card>
 
       {(currentEngine === 'rapid' || currentEngine === 'paddle') && (
-        <Card title="离线 OCR 目录" description="不内置模型；指向 pot 插件或 Paddle 解压目录">
+        <Card title={t('settings.ocr.offlineTitle')} description={t('settings.ocr.offlineDesc')}>
           <div className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-text-primary mb-2">
-                插件/模型目录 pluginDir
+                {t('settings.ocr.pluginDir')}
               </label>
               <input
                 type="text"
@@ -228,25 +231,21 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
                   }));
                 }}
                 onBlur={() => void saveConfig()}
-                placeholder="例如 D:\ocr\rapid 或 pot 插件解压路径"
+                placeholder={t('settings.ocr.pluginDirPh')}
                 className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
               />
-              <p className="ui-caption mt-1.5">
-                Rapid 需含 RapidOcrOnnx.exe + models；Paddle 需 PaddleOCR-json.exe。详见
-                docs/OCR_OFFLINE.md
-              </p>
+              <p className="ui-caption mt-1.5">{t('settings.ocr.pluginDirHint')}</p>
             </div>
           </div>
         </Card>
       )}
 
-      <Card
-        title="PDF 文本抽取引擎"
-        description="文档翻译用。默认 pdf-extract；碎字会自动回退页渲染 OCR"
-      >
+      <Card title={t('settings.ocr.pdfTitle')} description={t('settings.ocr.pdfDesc')}>
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">抽取引擎</label>
+            <label className="block text-sm font-medium text-text-primary mb-2">
+              {t('settings.ocr.pdfEngine')}
+            </label>
             <select
               value={config.pdfExtractionEngine || 'pdf-extract'}
               onChange={(e) => {
@@ -258,23 +257,20 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
               onBlur={() => void saveConfig()}
               className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
             >
-              <option value="pdf-extract">pdf-extract（内置，推荐）</option>
-              <option value="ocr">ocr（页渲染 + WinRT，慢但稳）</option>
-              <option value="mineru">mineru（需 magic-pdf CLI）</option>
-              <option value="marker">marker（需 marker_single CLI）</option>
-              <option value="ocrmypdf">ocrmypdf（扫描书可搜索层）</option>
+              <option value="pdf-extract">{t('settings.ocr.pdfExtract')}</option>
+              <option value="ocr">{t('settings.ocr.pdfOcr')}</option>
+              <option value="mineru">{t('settings.ocr.pdfMineru')}</option>
+              <option value="marker">{t('settings.ocr.pdfMarker')}</option>
+              <option value="ocrmypdf">{t('settings.ocr.pdfOcrmypdf')}</option>
             </select>
-            <p className="ui-caption mt-1.5 leading-relaxed">
-              pdf-extract：大多数数字 PDF。遇碎字/崩溃自动 OCR。ocr：不需外置工具。mineru/marker：复杂排版，需自行
-              pip install。
-            </p>
+            <p className="ui-caption mt-1.5 leading-relaxed">{t('settings.ocr.pdfHint')}</p>
           </div>
           {(config.pdfExtractionEngine === 'mineru' ||
             config.pdfExtractionEngine === 'marker' ||
             config.pdfExtractionEngine === 'ocrmypdf') && (
             <div className="space-y-2">
               <label className="block text-sm font-medium text-text-primary">
-                Sidecar CLI 路径（可空，空则用 PATH 上命令名）
+                {t('settings.ocr.sidecarPath')}
               </label>
               {config.pdfExtractionEngine === 'mineru' && (
                 <input
@@ -290,7 +286,7 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
                     }));
                   }}
                   onBlur={() => void saveConfig()}
-                  placeholder="magic-pdf 或完整路径"
+                  placeholder="magic-pdf"
                   className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
                 />
               )}
@@ -308,7 +304,7 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
                     }));
                   }}
                   onBlur={() => void saveConfig()}
-                  placeholder="marker_single 或完整路径"
+                  placeholder="marker_single"
                   className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
                 />
               )}
@@ -326,7 +322,7 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
                     }));
                   }}
                   onBlur={() => void saveConfig()}
-                  placeholder="ocrmypdf 或完整路径"
+                  placeholder="ocrmypdf"
                   className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
                 />
               )}
@@ -335,11 +331,11 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
         </div>
       </Card>
 
-      <Card title="OCR 参数" description="区域监视行为">
+      <Card title={t('settings.ocr.paramsTitle')} description={t('settings.ocr.paramsDesc')}>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">
-              区域监视间隔 (毫秒)
+              {t('settings.ocr.interval')}
             </label>
             <input
               type="number"
@@ -360,9 +356,10 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
               className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg"
             />
             <p className="ui-caption mt-1.5 leading-relaxed">
-              结果框开启「区域监视」后的检测间隔（默认 {OCR_WATCH_INTERVAL_DEFAULT_MS}
-              ms，最小 {OCR_WATCH_INTERVAL_MIN_MS}
-              ms）。内容未变时会自动拉长间隔以省电。
+              {t('settings.ocr.intervalHint', {
+                default: OCR_WATCH_INTERVAL_DEFAULT_MS,
+                min: OCR_WATCH_INTERVAL_MIN_MS,
+              })}
             </p>
           </div>
         </div>

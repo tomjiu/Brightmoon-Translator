@@ -506,6 +506,64 @@ pub fn run() {
                 });
             }
 
+            // Background WebDAV sync loop (interval_mins; 0 = manual only)
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    // Delay first poll so startup is quiet
+                    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+                    let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(60));
+                    loop {
+                        ticker.tick().await;
+                        let state = app_handle.state::<AppState>();
+                        let (enabled, mins, last_at, sync_cfg, glossary, history, wordbook) = {
+                            let c = state.system.config.lock().await;
+                            (
+                                c.sync.enabled,
+                                c.sync.interval_mins,
+                                c.sync.last_sync_at,
+                                c.clone(),
+                                state.translation.glossary.clone(),
+                                state.document.history.clone(),
+                                state.document.wordbook.clone(),
+                            )
+                        };
+                        if !enabled || mins == 0 {
+                            continue;
+                        }
+                        let now = chrono::Utc::now().timestamp_millis();
+                        let elapsed_mins = if last_at > 0 {
+                            ((now - last_at) / 60_000).max(0) as u64
+                        } else {
+                            mins // force first run
+                        };
+                        if elapsed_mins < mins {
+                            continue;
+                        }
+                        tracing::info!("[Sync] auto interval tick ({} min)", mins);
+                        match sync::sync_all(&sync_cfg, glossary, history, wordbook).await {
+                            Ok(result) => {
+                                let mut c = state.system.config.lock().await;
+                                c.sync.last_sync_at = result.synced_at;
+                                c.sync.last_sync_status = result.message.clone();
+                                c.save();
+                                if result.downloaded_config.is_some() {
+                                    tracing::info!(
+                                        "[Sync] auto sync downloaded config — open Sync settings or sync_now to apply via IPC path"
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("[Sync] auto sync failed: {}", e);
+                                let mut c = state.system.config.lock().await;
+                                c.sync.last_sync_status = format!("Auto sync failed: {e}");
+                                c.save();
+                            }
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

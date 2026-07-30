@@ -30,34 +30,35 @@ import PostProcessSettings from './PostProcessSettings';
 import HookProfileSettings from './HookProfileSettings';
 import SyncSettings from './SyncSettings';
 import { NotificationManager } from '../../components/vocabulary';
+import { useI18n } from '../../i18n';
 
 export default function SettingsLayout() {
   // 默认打开划词翻译，避免用户找不到入口
   const [activeSection, setActiveSection] = useState('selection');
+  const { t } = useI18n();
 
   const groups = [
-    { key: 'translate', label: '翻译' },
-    { key: 'interact', label: '交互' },
-    { key: 'learn', label: '学习' },
-    { key: 'system', label: '系统' },
+    { key: 'translate', label: t('settings.nav.groups.translate') },
+    { key: 'interact', label: t('settings.nav.groups.interact') },
+    { key: 'learn', label: t('settings.nav.groups.learn') },
+    { key: 'system', label: t('settings.nav.groups.system') },
   ];
 
   const sections = [
-    { id: 'basic', icon: <Globe size={16} />, label: '基础设置', group: 'translate' },
-    // 划词放「翻译」分组靠前，避免滚到「交互」才找得到
-    { id: 'selection', icon: <MousePointer2 size={16} />, label: '划词翻译', group: 'translate' },
-    { id: 'engines', icon: <Languages size={16} />, label: '翻译引擎', group: 'translate' },
-    { id: 'ai', icon: <Sparkles size={16} />, label: '大模型', group: 'translate' },
-    { id: 'ocr', icon: <Eye size={16} />, label: 'OCR 识别', group: 'translate' },
-    { id: 'preprocess', icon: <Filter size={16} />, label: '预处理', group: 'translate' },
-    { id: 'postprocess', icon: <Wand2 size={16} />, label: '后处理', group: 'translate' },
-    { id: 'hotkeys', icon: <Keyboard size={16} />, label: '快捷键', group: 'interact' },
-    { id: 'hookprofiles', icon: <Gamepad2 size={16} />, label: 'Hook', group: 'interact' },
-    { id: 'appearance', icon: <Palette size={16} />, label: '外观', group: 'interact' },
-    { id: 'notifications', icon: <Bell size={16} />, label: '学习提醒', group: 'learn' },
-    { id: 'collection', icon: <BookMarked size={16} />, label: '外部生词本', group: 'learn' },
-    { id: 'sync', icon: <Cloud size={16} />, label: '云同步', group: 'system' },
-    { id: 'advanced', icon: <SettingsIcon size={16} />, label: '高级', group: 'system' },
+    { id: 'basic', icon: <Globe size={16} />, label: t('settings.nav.sections.basic'), group: 'translate' },
+    { id: 'selection', icon: <MousePointer2 size={16} />, label: t('settings.nav.sections.selection'), group: 'translate' },
+    { id: 'engines', icon: <Languages size={16} />, label: t('settings.nav.sections.engines'), group: 'translate' },
+    { id: 'ai', icon: <Sparkles size={16} />, label: t('settings.nav.sections.ai'), group: 'translate' },
+    { id: 'ocr', icon: <Eye size={16} />, label: t('settings.nav.sections.ocr'), group: 'translate' },
+    { id: 'preprocess', icon: <Filter size={16} />, label: t('settings.nav.sections.preprocess'), group: 'translate' },
+    { id: 'postprocess', icon: <Wand2 size={16} />, label: t('settings.nav.sections.postprocess'), group: 'translate' },
+    { id: 'hotkeys', icon: <Keyboard size={16} />, label: t('settings.nav.sections.hotkeys'), group: 'interact' },
+    { id: 'hookprofiles', icon: <Gamepad2 size={16} />, label: t('settings.nav.sections.hookprofiles'), group: 'interact' },
+    { id: 'appearance', icon: <Palette size={16} />, label: t('settings.nav.sections.appearance'), group: 'interact' },
+    { id: 'notifications', icon: <Bell size={16} />, label: t('settings.nav.sections.notifications'), group: 'learn' },
+    { id: 'collection', icon: <BookMarked size={16} />, label: t('settings.nav.sections.collection'), group: 'learn' },
+    { id: 'sync', icon: <Cloud size={16} />, label: t('settings.nav.sections.sync'), group: 'system' },
+    { id: 'advanced', icon: <SettingsIcon size={16} />, label: t('settings.nav.sections.advanced'), group: 'system' },
   ];
 
   const go = (id: string) => setActiveSection(id);
@@ -72,10 +73,8 @@ export default function SettingsLayout() {
         return (
           <div className="space-y-5 animate-fadeIn">
             <div>
-              <h1 className="ui-page-title">大模型</h1>
-              <p className="ui-page-desc">
-                API 密钥、模型与提示词。启用顺序在「翻译引擎」；学习功能也用此处模型
-              </p>
+              <h1 className="ui-page-title">{t('settings.nav.aiTitle')}</h1>
+              <p className="ui-page-desc">{t('settings.nav.aiDesc')}</p>
             </div>
             <AiSettings onNavigate={go} />
           </div>

@@ -19,6 +19,7 @@ import {
   Brain,
   HardDrive,
 } from 'lucide-react';
+import { useI18n } from '../i18n';
 
 type VocabTab =
   | 'dictionary'
@@ -33,113 +34,39 @@ type VocabTab =
 
 function Vocabulary() {
   const [activeTab, setActiveTab] = useState<VocabTab>('dictionary');
+  const { t } = useI18n();
+
+  const tabs: { id: VocabTab; icon: typeof Search; labelKey: string }[] = [
+    { id: 'dictionary', icon: Search, labelKey: 'vocabulary.tabs.dictionary' },
+    { id: 'learning', icon: GraduationCap, labelKey: 'vocabulary.tabs.learning' },
+    { id: 'review', icon: RefreshCw, labelKey: 'vocabulary.tabs.review' },
+    { id: 'modes', icon: Zap, labelKey: 'vocabulary.tabs.modes' },
+    { id: 'wordbook', icon: Book, labelKey: 'vocabulary.tabs.wordbook' },
+    { id: 'statistics', icon: BarChart3, labelKey: 'vocabulary.tabs.statistics' },
+    { id: 'data', icon: Database, labelKey: 'vocabulary.tabs.data' },
+    { id: 'fsrs', icon: Brain, labelKey: 'vocabulary.tabs.fsrs' },
+    { id: 'dictopt', icon: HardDrive, labelKey: 'vocabulary.tabs.dictopt' },
+  ];
 
   return (
     <div className="h-full flex flex-col">
-      {/* Tab Bar */}
       <div className="ui-chrome flex items-center gap-1 px-4 py-2.5 border-b border-border overflow-x-auto">
-        <button
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === 'dictionary'
-              ? 'bg-primary text-primary-fg'
-              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-          }`}
-          onClick={() => setActiveTab('dictionary')}
-        >
-          <Search size={14} />
-          词典查询
-        </button>
-        <button
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === 'learning'
-              ? 'bg-primary text-primary-fg'
-              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-          }`}
-          onClick={() => setActiveTab('learning')}
-        >
-          <GraduationCap size={14} />
-          AI 学习
-        </button>
-        <button
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === 'review'
-              ? 'bg-primary text-primary-fg'
-              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-          }`}
-          onClick={() => setActiveTab('review')}
-        >
-          <RefreshCw size={14} />
-          复习
-        </button>
-        <button
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === 'modes'
-              ? 'bg-primary text-primary-fg'
-              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-          }`}
-          onClick={() => setActiveTab('modes')}
-        >
-          <Zap size={14} />
-          练习
-        </button>
-        <button
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === 'wordbook'
-              ? 'bg-primary text-primary-fg'
-              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-          }`}
-          onClick={() => setActiveTab('wordbook')}
-        >
-          <Book size={14} />
-          生词本
-        </button>
-        <button
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === 'statistics'
-              ? 'bg-primary text-primary-fg'
-              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-          }`}
-          onClick={() => setActiveTab('statistics')}
-        >
-          <BarChart3 size={14} />
-          统计
-        </button>
-        <button
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === 'data'
-              ? 'bg-primary text-primary-fg'
-              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-          }`}
-          onClick={() => setActiveTab('data')}
-        >
-          <Database size={14} />
-          数据
-        </button>
-        <button
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === 'fsrs'
-              ? 'bg-primary text-primary-fg'
-              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-          }`}
-          onClick={() => setActiveTab('fsrs')}
-        >
-          <Brain size={14} />
-          FSRS
-        </button>
-        <button
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            activeTab === 'dictopt'
-              ? 'bg-primary text-primary-fg'
-              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-          }`}
-          onClick={() => setActiveTab('dictopt')}
-        >
-          <HardDrive size={14} />
-          词典优化
-        </button>
+        {tabs.map(({ id, icon: Icon, labelKey }) => (
+          <button
+            key={id}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              activeTab === id
+                ? 'bg-primary text-primary-fg'
+                : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+            }`}
+            onClick={() => setActiveTab(id)}
+          >
+            <Icon size={14} />
+            {t(labelKey)}
+          </button>
+        ))}
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'dictionary' && <DictionarySearch />}
         {activeTab === 'learning' && <VocabularyLearning />}

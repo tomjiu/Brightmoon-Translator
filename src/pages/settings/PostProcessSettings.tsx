@@ -120,7 +120,7 @@ export default function PostProcessSettings() {
   };
 
   if (!config) {
-    return <div className="text-text-secondary p-6">加载中...</div>;
+    return <div className="text-text-secondary p-6">{t('common.loading')}</div>;
   }
 
   return (
@@ -196,7 +196,9 @@ export default function PostProcessSettings() {
               <button
                 onClick={() => void handleToggleRule(rule)}
                 className="text-text-secondary hover:text-primary"
-                title={rule.enabled ? '禁用' : '启用'}
+                title={
+                  rule.enabled ? t('settings.preProcess.disable') : t('settings.preProcess.enable')
+                }
               >
                 {rule.enabled ? (
                   <ToggleRight size={20} className="text-primary" />
@@ -217,7 +219,7 @@ export default function PostProcessSettings() {
                   </code>
                   <span className="text-text-tertiary text-xs">→</span>
                   <code className="text-xs text-text-primary bg-bg-tertiary px-1.5 py-0.5 rounded truncate">
-                    {rule.replacement || '(空)'}
+                    {rule.replacement || t('settings.preProcess.emptyReplace')}
                   </code>
                 </div>
               </div>
@@ -225,7 +227,7 @@ export default function PostProcessSettings() {
               <button
                 onClick={() => void handleDeleteRule(rule.id)}
                 className="p-1.5 text-text-tertiary hover:text-red-500 rounded"
-                title="删除"
+                title={t('common.delete')}
               >
                 <Trash2 size={14} />
               </button>
@@ -279,7 +281,7 @@ export default function PostProcessSettings() {
                   onClick={() => setShowAddForm(false)}
                   className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary"
                 >
-                  取消
+                  {t('common.cancel')}
                 </button>
                 <button
                   onClick={() => void handleAddRule()}

@@ -22,6 +22,7 @@ import {
   Bot,
   Languages,
 } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 type ConfigUpdater = (updater: (prev: AppConfig) => AppConfig) => void;
 
@@ -45,6 +46,7 @@ interface EngineSettingsProps {
 }
 
 export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
+  const { t } = useI18n();
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
@@ -94,16 +96,16 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
         const llmOk = isLlmConfigured(config.llm);
         return {
           id: 'llm',
-          name: 'LLM 大模型翻译',
+          name: t('settings.enginePage.llmName'),
           enabled: llmOk,
           status: (llmOk ? 'connected' : 'warning') as 'connected' | 'warning' | 'error',
           badges: [
-            { label: '主引擎', variant: 'info' as const },
+            { label: t('settings.enginePage.badgePrimary'), variant: 'info' as const },
             llmOk
-              ? { label: '已配置', variant: 'success' as const }
-              : { label: '需要 API Key', variant: 'warning' as const },
+              ? { label: t('settings.enginePage.badgeConfigured'), variant: 'success' as const }
+              : { label: t('settings.enginePage.badgeNeedKey'), variant: 'warning' as const },
           ],
-          description: '使用大语言模型进行翻译，支持上下文理解和自定义提示词',
+          description: t('settings.enginePage.llmDesc'),
         };
       }
       case 'google':
@@ -113,37 +115,37 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
           enabled: config.engines.google.enabled,
           status: 'connected' as const,
           badges: [
-            { label: '免费', variant: 'success' as const },
-            { label: '无需配置', variant: 'info' as const },
+            { label: t('settings.enginePage.badgeFree'), variant: 'success' as const },
+            { label: t('settings.enginePage.badgeNoConfig'), variant: 'info' as const },
           ],
-          description: 'Google 提供的免费翻译服务，支持100+语言',
+          description: t('settings.enginePage.googleDesc'),
         };
       case 'youdao':
         return {
           id: 'youdao',
-          name: '有道翻译',
+          name: t('settings.enginePage.youdaoName'),
           enabled: config.engines.youdao.enabled,
           status: 'connected' as const,
           badges: [
-            { label: '免费', variant: 'success' as const },
-            { label: '免配置网页', variant: 'info' as const },
+            { label: t('settings.enginePage.badgeFree'), variant: 'success' as const },
+            { label: t('settings.enginePage.badgeWebFree'), variant: 'info' as const },
           ],
-          description: '有道网页免 Key 接口（非官方开放平台，可能变更）',
+          description: t('settings.enginePage.youdaoDesc'),
         };
       case 'caiyun': {
         const hasToken = !!config.engines.caiyun?.apiToken.trim();
         return {
           id: 'caiyun',
-          name: '彩云小译',
+          name: t('settings.enginePage.caiyunName'),
           enabled: config.engines.caiyun?.enabled || false,
           status: hasToken ? 'connected' : 'warning',
           badges: [
-            { label: '免费额度', variant: 'success' as const },
+            { label: t('settings.enginePage.badgeFreeQuota'), variant: 'success' as const },
             hasToken
-              ? { label: '已配置', variant: 'success' as const }
-              : { label: '需填写密钥后才会被路由使用', variant: 'warning' as const },
+              ? { label: t('settings.enginePage.badgeConfigured'), variant: 'success' as const }
+              : { label: t('settings.enginePage.badgeNeedKeyRoute'), variant: 'warning' as const },
           ],
-          description: '擅长长文本和小说翻译，免费额度100万字/月',
+          description: t('settings.enginePage.caiyunDesc'),
         };
       }
       case 'deepl': {
@@ -154,12 +156,12 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
           enabled: config.engines.deepl.enabled || false,
           status: hasKey ? 'connected' : 'warning',
           badges: [
-            { label: '付费', variant: 'warning' as const },
+            { label: t('settings.enginePage.badgePaid'), variant: 'warning' as const },
             hasKey
-              ? { label: '已配置', variant: 'success' as const }
-              : { label: '需填写密钥后才会被路由使用', variant: 'warning' as const },
+              ? { label: t('settings.enginePage.badgeConfigured'), variant: 'success' as const }
+              : { label: t('settings.enginePage.badgeNeedKeyRoute'), variant: 'warning' as const },
           ],
-          description: '高质量机器翻译服务',
+          description: t('settings.enginePage.deeplDesc'),
         };
       }
       case 'deeplx':
@@ -169,122 +171,122 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
           enabled: config.engines.deeplx.enabled || false,
           status: 'connected' as const,
           badges: [
-            { label: '免费', variant: 'success' as const },
-            { label: '可选自建 Key', variant: 'info' as const },
+            { label: t('settings.enginePage.badgeFree'), variant: 'success' as const },
+            { label: t('settings.enginePage.badgeOptionalKey'), variant: 'info' as const },
           ],
-          description: '免费的 DeepL 翻译接口，可选自建 Key',
+          description: t('settings.enginePage.deeplxDesc'),
         };
       case 'baidu': {
         const hasAppId = !!config.engines.baidu.appId.trim();
         return {
           id: 'baidu',
-          name: '百度翻译',
+          name: t('settings.enginePage.baiduName'),
           enabled: config.engines.baidu.enabled,
           status: hasAppId ? 'connected' : 'warning',
           badges: [
-            { label: '免费额度', variant: 'success' as const },
+            { label: t('settings.enginePage.badgeFreeQuota'), variant: 'success' as const },
             hasAppId
-              ? { label: '已配置', variant: 'success' as const }
-              : { label: '需填写密钥后才会被路由使用', variant: 'warning' as const },
+              ? { label: t('settings.enginePage.badgeConfigured'), variant: 'success' as const }
+              : { label: t('settings.enginePage.badgeNeedKeyRoute'), variant: 'warning' as const },
           ],
-          description: '百度提供的翻译服务，支持200+语言',
+          description: t('settings.enginePage.baiduDesc'),
         };
       }
       case 'microsoft':
         return {
           id: 'microsoft',
-          name: '微软翻译',
+          name: t('settings.enginePage.msName'),
           enabled: config.engines.microsoft.enabled || false,
           status: 'connected' as const,
           badges: [
-            { label: '免费', variant: 'success' as const },
-            { label: '无需配置', variant: 'info' as const },
+            { label: t('settings.enginePage.badgeFree'), variant: 'success' as const },
+            { label: t('settings.enginePage.badgeNoConfig'), variant: 'info' as const },
           ],
-          description: '微软提供的翻译服务',
+          description: t('settings.enginePage.msDesc'),
         };
       case 'yandex':
         return {
           id: 'yandex',
-          name: 'Yandex翻译',
+          name: t('settings.enginePage.yandexName'),
           enabled: config.engines.yandex.enabled || false,
           status: 'connected' as const,
           badges: [
-            { label: '免费', variant: 'success' as const },
-            { label: '无需配置', variant: 'info' as const },
+            { label: t('settings.enginePage.badgeFree'), variant: 'success' as const },
+            { label: t('settings.enginePage.badgeNoConfig'), variant: 'info' as const },
           ],
-          description: 'Yandex 提供的翻译服务',
+          description: t('settings.enginePage.yandexDesc'),
         };
       case 'offline':
         return {
           id: 'offline',
-          name: '离线翻译',
+          name: t('settings.enginePage.offlineName'),
           enabled: config.engines.offline.enabled || false,
           status: 'warning' as const,
           badges: [
-            { label: '本地', variant: 'info' as const },
-            { label: '需下载模型', variant: 'warning' as const },
+            { label: t('settings.enginePage.badgeLocal'), variant: 'info' as const },
+            { label: t('settings.enginePage.badgeNeedModel'), variant: 'warning' as const },
           ],
-          description: '完全本地化的翻译模型，无需网络连接',
+          description: t('settings.enginePage.offlineDesc'),
         };
       case 'tatoeba':
         return {
           id: 'tatoeba',
-          name: 'Tatoeba 例句',
+          name: t('settings.enginePage.tatoebaName'),
           enabled: config.engines.tatoeba?.enabled || false,
           status: 'connected' as const,
           badges: [
-            { label: '例句', variant: 'info' as const },
-            { label: '非机翻', variant: 'warning' as const },
+            { label: t('settings.enginePage.badgeExample'), variant: 'info' as const },
+            { label: t('settings.enginePage.badgeNotMt'), variant: 'warning' as const },
           ],
-          description: 'Tatoeba 多语例句对查询，结果为例句列表而非整段机翻',
+          description: t('settings.enginePage.tatoebaDesc'),
         };
       case 'baidu_web':
         return {
           id: 'baidu_web',
-          name: '百度翻译（免配置）',
+          name: t('settings.enginePage.baiduWebName'),
           enabled: config.engines.baiduWeb?.enabled || false,
           status: 'warning' as const,
           badges: [
-            { label: '免费', variant: 'success' as const },
-            { label: '非常规', variant: 'warning' as const },
+            { label: t('settings.enginePage.badgeFree'), variant: 'success' as const },
+            { label: t('settings.enginePage.badgeUnofficial'), variant: 'warning' as const },
           ],
-          description: '网页接口，无需 AppId；可能随时失效',
+          description: t('settings.enginePage.baiduWebDesc'),
         };
       case 'caiyun_web':
         return {
           id: 'caiyun_web',
-          name: '彩云（免配置）',
+          name: t('settings.enginePage.caiyunWebName'),
           enabled: config.engines.caiyunWeb?.enabled || false,
           status: 'warning' as const,
           badges: [
-            { label: '免费', variant: 'success' as const },
-            { label: '非常规', variant: 'warning' as const },
+            { label: t('settings.enginePage.badgeFree'), variant: 'success' as const },
+            { label: t('settings.enginePage.badgeUnofficial'), variant: 'warning' as const },
           ],
-          description: '网页 JWT 路径；正式版请用「彩云小译」填 Token',
+          description: t('settings.enginePage.caiyunWebDesc'),
         };
       case 'volcengine_web':
         return {
           id: 'volcengine_web',
-          name: '火山翻译（免配置）',
+          name: t('settings.enginePage.volcName'),
           enabled: config.engines.volcengineWeb?.enabled || false,
           status: 'warning' as const,
           badges: [
-            { label: '免费', variant: 'success' as const },
-            { label: '非常规', variant: 'warning' as const },
+            { label: t('settings.enginePage.badgeFree'), variant: 'success' as const },
+            { label: t('settings.enginePage.badgeUnofficial'), variant: 'warning' as const },
           ],
-          description: 'translate.volcengine.com CRX 接口',
+          description: t('settings.enginePage.volcDesc'),
         };
       case 'transmart':
         return {
           id: 'transmart',
-          name: '腾讯交互翻译',
+          name: t('settings.enginePage.transmartName'),
           enabled: config.engines.transmart?.enabled || false,
           status: 'warning' as const,
           badges: [
-            { label: '免费', variant: 'success' as const },
-            { label: '非常规', variant: 'warning' as const },
+            { label: t('settings.enginePage.badgeFree'), variant: 'success' as const },
+            { label: t('settings.enginePage.badgeUnofficial'), variant: 'warning' as const },
           ],
-          description: 'transmart.qq.com，可空凭证调用',
+          description: t('settings.enginePage.transmartDesc'),
         };
       case 'papago':
         return {
@@ -293,10 +295,10 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
           enabled: config.engines.papago?.enabled || false,
           status: 'warning' as const,
           badges: [
-            { label: '免费', variant: 'success' as const },
-            { label: '非常规', variant: 'warning' as const },
+            { label: t('settings.enginePage.badgeFree'), variant: 'success' as const },
+            { label: t('settings.enginePage.badgeUnofficial'), variant: 'warning' as const },
           ],
-          description: 'Naver Papago 网页接口',
+          description: t('settings.enginePage.papagoDesc'),
         };
       default:
         return null;
@@ -306,25 +308,32 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="ui-page-title">翻译引擎</h1>
-        <p className="ui-page-desc">
-          管「字 → 另一种语言」：开关、密钥（非大模型）、全局优先级。图→字在「OCR 识别」
-        </p>
+        <h1 className="ui-page-title">{t('settings.enginePage.title')}</h1>
+        <p className="ui-page-desc">{t('settings.enginePage.desc')}</p>
       </div>
 
-      <Card title="各入口怎么用引擎" description="产品固定策略，不随下方路由单选改变">
+      <Card
+        title={t('settings.enginePage.usageTitle')}
+        description={t('settings.enginePage.usageDesc')}
+      >
         <ul className="text-xs text-text-secondary space-y-1.5 leading-relaxed list-disc pl-4">
           <li>
-            <span className="text-text-primary font-medium">主页复制翻译</span>
-            ：已启用引擎并行，展示多条结果
+            <span className="text-text-primary font-medium">
+              {t('settings.enginePage.usageMain')}
+            </span>
+            {t('settings.enginePage.usageMainDesc')}
           </li>
           <li>
-            <span className="text-text-primary font-medium">OCR 框</span>
-            ：按列表顺序回退，单条译文；框内可换引擎重翻
+            <span className="text-text-primary font-medium">
+              {t('settings.enginePage.usageOcr')}
+            </span>
+            {t('settings.enginePage.usageOcrDesc')}
           </li>
           <li>
-            <span className="text-text-primary font-medium">划词 / Hook 等</span>
-            ：由下方「路由」决定
+            <span className="text-text-primary font-medium">
+              {t('settings.enginePage.usageHook')}
+            </span>
+            {t('settings.enginePage.usageHookDesc')}
           </li>
         </ul>
         <div className="flex flex-wrap gap-2 mt-3">
@@ -335,7 +344,7 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
                 onClick={() => onNavigate('ai')}
                 className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
               >
-                配置大模型密钥
+                {t('settings.enginePage.goAi')}
                 <ExternalLink size={12} />
               </button>
               <button
@@ -343,7 +352,7 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
                 onClick={() => onNavigate('ocr')}
                 className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
               >
-                OCR 识别设置
+                {t('settings.enginePage.goOcr')}
                 <ExternalLink size={12} />
               </button>
             </>
@@ -351,7 +360,10 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
         </div>
       </Card>
 
-      <Card title="路由（划词 / Hook 等）" description="主页与 OCR 已固定；此处只影响其它通道">
+      <Card
+        title={t('settings.enginePage.routingTitle')}
+        description={t('settings.enginePage.routingDesc')}
+      >
         <div className="grid gap-2">
           {ROUTING_STRATEGIES.map((strategy) => (
             <label
@@ -378,11 +390,15 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-text-primary">{strategy.label}</span>
-                  {strategy.recommended && <Badge variant="info">默认</Badge>}
+                  <span className="text-sm font-medium text-text-primary">
+                    {t(strategy.labelKey)}
+                  </span>
+                  {strategy.recommended && (
+                    <Badge variant="info">{t('settings.enginePage.defaultBadge')}</Badge>
+                  )}
                 </div>
                 <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
-                  {strategy.description}
+                  {t(strategy.descriptionKey)}
                 </p>
               </div>
             </label>
@@ -391,7 +407,7 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
       </Card>
 
       <p className="text-xs text-text-secondary leading-relaxed">
-        下方按类型分组；▲▼ 调整全局优先级（数字越小越优先）。大模型密钥不在此页填写。
+        {t('settings.enginePage.listHint')}
       </p>
 
       {ENGINE_SECTIONS.map((section) => {
@@ -399,7 +415,7 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
         if (sectionIds.length === 0) return null;
 
         return (
-          <Card key={section.id} title={section.title} description={section.description}>
+          <Card key={section.id} title={t(section.title)} description={t(section.description)}>
             <div className="space-y-2">
               {sectionIds.map((engineId) => {
                 const idx = engineOrder.indexOf(engineId);
@@ -427,7 +443,7 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
             </div>
             {section.id === 'offline' && (
               <p className="mt-3 text-xs text-text-secondary leading-relaxed">
-                截图识字（WinRT / Tesseract / Rapid / Paddle）在「OCR 识别」；本区仅本地文字翻译。
+                {t('settings.enginePage.offlineOcrNote')}
               </p>
             )}
           </Card>
@@ -457,12 +473,15 @@ function LLMEngineConfig({ config, onNavigate }: EngineConfigProps) {
     providers: [],
   };
   const configured = isLlmConfigured(llm);
-  const model = (llm.model ?? '').trim() || '未设置模型';
+  const { t } = useI18n();
+  const model = (llm.model ?? '').trim() || t('settings.enginePage.noModel');
   const provider = llm.provider || 'custom';
   return (
     <div className="mt-3 space-y-2">
       <p className="text-sm text-text-secondary">
-        状态：{configured ? `已配置（${provider} / ${model}）` : '未配置 API Key'}
+        {configured
+          ? t('settings.enginePage.statusConfigured', { provider, model })
+          : t('settings.enginePage.statusNeedKey')}
       </p>
       {onNavigate ? (
         <button
@@ -470,11 +489,11 @@ function LLMEngineConfig({ config, onNavigate }: EngineConfigProps) {
           onClick={() => onNavigate('ai')}
           className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
         >
-          去「大模型」配置密钥与模型
+          {t('settings.enginePage.goAiConfig')}
           <ExternalLink size={14} />
         </button>
       ) : (
-        <p className="text-sm text-primary">在设置 → 大模型 中配置</p>
+        <p className="text-sm text-primary">{t('settings.enginePage.goAiConfig')}</p>
       )}
     </div>
   );
@@ -487,6 +506,7 @@ function CaiyunEngineConfig({
   showSecrets,
   toggleSecret,
 }: EngineConfigProps) {
+  const { t } = useI18n();
   return (
     <div className="mt-3 space-y-3">
       <div>
@@ -509,7 +529,7 @@ function CaiyunEngineConfig({
               }));
             }}
             onBlur={() => void saveConfig()}
-            placeholder="输入彩云小译 API Token"
+            placeholder={t('settings.enginePage.phCaiyun')}
             className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none pr-10"
           />
           <button
@@ -526,7 +546,7 @@ function CaiyunEngineConfig({
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
       >
-        获取 API Token <ExternalLink size={12} />
+        {t('settings.enginePage.getToken')} <ExternalLink size={12} />
       </a>
     </div>
   );
@@ -539,6 +559,7 @@ function DeepLEngineConfig({
   showSecrets,
   toggleSecret,
 }: EngineConfigProps) {
+  const { t } = useI18n();
   return (
     <div className="mt-3 space-y-3">
       <div>
@@ -562,7 +583,7 @@ function DeepLEngineConfig({
               }));
             }}
             onBlur={() => void saveConfig()}
-            placeholder="输入 DeepL API Key"
+            placeholder={t('settings.enginePage.phDeepl')}
             className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none pr-10"
           />
           <button
@@ -594,7 +615,7 @@ function DeepLEngineConfig({
           }}
           className="rounded"
         />
-        <span className="text-sm text-text-secondary">Pro 账户</span>
+        <span className="text-sm text-text-secondary">{t('settings.enginePage.proAccount')}</span>
       </label>
       <a
         href="https://www.deepl.com/pro-api"
@@ -602,7 +623,7 @@ function DeepLEngineConfig({
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
       >
-        获取 API Key <ExternalLink size={12} />
+        {t('settings.enginePage.getApiKey')} <ExternalLink size={12} />
       </a>
     </div>
   );
@@ -615,6 +636,7 @@ function BaiduEngineConfig({
   showSecrets,
   toggleSecret,
 }: EngineConfigProps) {
+  const { t } = useI18n();
   return (
     <div className="mt-3 space-y-3">
       <div>
@@ -629,12 +651,14 @@ function BaiduEngineConfig({
             }));
           }}
           onBlur={() => void saveConfig()}
-          placeholder="输入百度翻译 APP ID"
+          placeholder={t('settings.enginePage.phBaiduId')}
           className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-text-primary mb-2">密钥</label>
+        <label className="block text-sm font-medium text-text-primary mb-2">
+          {t('settings.enginePage.secret')}
+        </label>
         <div className="relative">
           <input
             type={showSecrets?.baidu ? 'text' : 'password'}
@@ -649,7 +673,7 @@ function BaiduEngineConfig({
               }));
             }}
             onBlur={() => void saveConfig()}
-            placeholder="输入百度翻译密钥"
+            placeholder={t('settings.enginePage.phBaiduSecret')}
             className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none pr-10"
           />
           <button
@@ -666,7 +690,7 @@ function BaiduEngineConfig({
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
       >
-        获取 API 凭证 <ExternalLink size={12} />
+        {t('settings.enginePage.getCreds')} <ExternalLink size={12} />
       </a>
     </div>
   );
@@ -679,10 +703,11 @@ function DeepLXEngineConfig({
   showSecrets,
   toggleSecret,
 }: EngineConfigProps) {
+  const { t } = useI18n();
   return (
     <div className="mt-3 space-y-3">
       <div>
-        <label className="block text-sm font-medium text-text-primary mb-2">API Key（可选）</label>
+        <label className="block text-sm font-medium text-text-primary mb-2">API Key</label>
         <div className="relative">
           <input
             type={showSecrets?.deeplx ? 'text' : 'password'}
@@ -702,7 +727,7 @@ function DeepLXEngineConfig({
               }));
             }}
             onBlur={() => void saveConfig()}
-            placeholder="可选，自建 DeepLX 服务 Key"
+            placeholder={t('settings.enginePage.phDeeplx')}
             className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none pr-10"
           />
           <button
@@ -718,6 +743,7 @@ function DeepLXEngineConfig({
 }
 
 function OfflineEngineConfig({ config, updateConfig, saveConfig }: EngineConfigProps) {
+  const { t } = useI18n();
   const offline = config.engines.offline ?? {
     enabled: false,
     autoSwitch: true,
@@ -727,7 +753,9 @@ function OfflineEngineConfig({ config, updateConfig, saveConfig }: EngineConfigP
   const modelCount = (offline.downloadedModels ?? []).length;
   return (
     <div className="mt-3 space-y-2">
-      <p className="ui-caption">已下载模型: {modelCount} 个</p>
+      <p className="ui-caption">
+        {t('settings.enginePage.downloadedModels', { count: modelCount })}
+      </p>
       <label className="flex items-center gap-2">
         <input
           type="checkbox"
@@ -749,7 +777,9 @@ function OfflineEngineConfig({ config, updateConfig, saveConfig }: EngineConfigP
           }}
           className="rounded"
         />
-        <span className="ui-body text-text-secondary">离线可用时自动切换</span>
+        <span className="ui-body text-text-secondary">
+          {t('settings.enginePage.autoOffline')}
+        </span>
       </label>
     </div>
   );
@@ -785,7 +815,7 @@ function SortableEngineCard({
   onMoveDown,
   onNavigate,
 }: SortableEngineCardProps) {
-  // 根据不同引擎渲染不同的toggle和配置
+  const { t } = useI18n();
   const getToggleHandler = () => {
     switch (engineId) {
       case 'google':
@@ -966,7 +996,7 @@ function SortableEngineCard({
           onClick={onMoveUp}
           disabled={index === 0}
           className="p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-tertiary disabled:opacity-25 disabled:pointer-events-none"
-          title="上移（更高优先级）"
+          title={t('settings.enginePage.moveUp')}
         >
           <ChevronUp size={16} />
         </button>
@@ -975,7 +1005,7 @@ function SortableEngineCard({
           onClick={onMoveDown}
           disabled={index >= total - 1}
           className="p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-tertiary disabled:opacity-25 disabled:pointer-events-none"
-          title="下移"
+          title={t('settings.enginePage.moveDown')}
         >
           <ChevronDown size={16} />
         </button>

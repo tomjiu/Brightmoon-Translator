@@ -3,6 +3,7 @@ import { Keyboard } from 'lucide-react';
 import { useConfigStore } from '../../stores/configStore';
 import Card from '../../components/Card';
 import { isTauriRuntime } from '../../services/tauriRuntime';
+import { useI18n } from '../../i18n';
 
 type HotkeyKey =
   | 'ocrTranslate'
@@ -12,19 +13,27 @@ type HotkeyKey =
   | 'toggleOverlayClickThrough'
   | 'dictionaryLookup';
 
-const FIELDS: Array<{ key: HotkeyKey; label: string; placeholder: string }> = [
-  { key: 'ocrTranslate', label: 'OCR 截图翻译', placeholder: 'Ctrl+Shift+T' },
-  { key: 'showWindow', label: '显示主窗口', placeholder: 'Ctrl+T' },
-  { key: 'translateSelection', label: '选中文本翻译', placeholder: 'Ctrl+Shift+Y' },
+const FIELD_KEYS: Array<{ key: HotkeyKey; labelKey: string; placeholder: string }> = [
+  { key: 'ocrTranslate', labelKey: 'settings.hotkeys.ocrTranslate', placeholder: 'Ctrl+Shift+T' },
+  { key: 'showWindow', labelKey: 'settings.hotkeys.showWindow', placeholder: 'Ctrl+T' },
+  {
+    key: 'translateSelection',
+    labelKey: 'settings.hotkeys.translateSelection',
+    placeholder: 'Ctrl+Shift+Y',
+  },
   {
     key: 'dictionaryLookup',
-    label: '选中词典查询（可空=关闭）',
+    labelKey: 'settings.hotkeys.dictionaryLookup',
     placeholder: 'Ctrl+Shift+D',
   },
-  { key: 'replaceTranslate', label: '替换翻译', placeholder: 'Ctrl+Shift+R' },
+  {
+    key: 'replaceTranslate',
+    labelKey: 'settings.hotkeys.replaceTranslate',
+    placeholder: 'Ctrl+Shift+R',
+  },
   {
     key: 'toggleOverlayClickThrough',
-    label: '浮层取消穿透',
+    labelKey: 'settings.hotkeys.toggleOverlayClickThrough',
     placeholder: 'Ctrl+Shift+Escape',
   },
 ];
@@ -49,6 +58,7 @@ function formatHotkey(e: React.KeyboardEvent): string | null {
 }
 
 export default function HotkeySettings() {
+  const { t } = useI18n();
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
@@ -71,8 +81,8 @@ export default function HotkeySettings() {
     return (
       <div className="space-y-5">
         <div>
-          <h1 className="ui-page-title">快捷键</h1>
-          <p className="ui-page-desc">快捷键仅在桌面版可用</p>
+          <h1 className="ui-page-title">{t('settings.hotkeys.pageTitle')}</h1>
+          <p className="ui-page-desc">{t('settings.hotkeys.desktopOnly')}</p>
         </div>
       </div>
     );
@@ -81,15 +91,13 @@ export default function HotkeySettings() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="ui-page-title">快捷键</h1>
-        <p className="ui-page-desc">
-          点击输入框后按下组合键即可录制；保存后立即生效。自动划词/浮钮请到「划词翻译」页
-        </p>
+        <h1 className="ui-page-title">{t('settings.hotkeys.pageTitle')}</h1>
+        <p className="ui-page-desc">{t('settings.hotkeys.pageDesc')}</p>
       </div>
 
-      <Card title="全局快捷键" description="系统级热键 · Lucide 图标导航对应功能">
+      <Card title={t('settings.hotkeys.globalTitle')} description={t('settings.hotkeys.globalDesc')}>
         <div className="space-y-3">
-          {FIELDS.map((f) => {
+          {FIELD_KEYS.map((f) => {
             const value = config.hotkeys[f.key] || f.placeholder;
             const isCap = capturing === f.key;
             return (
@@ -98,7 +106,7 @@ export default function HotkeySettings() {
                 className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 py-2 border-b border-border last:border-0"
               >
                 <label className="sm:w-40 shrink-0 text-sm font-medium text-text-primary">
-                  {f.label}
+                  {t(f.labelKey)}
                 </label>
                 <div className="flex-1 relative">
                   <Keyboard
@@ -108,7 +116,7 @@ export default function HotkeySettings() {
                   <input
                     type="text"
                     readOnly
-                    value={isCap ? '按下快捷键…' : value}
+                    value={isCap ? '…' : value}
                     placeholder={f.placeholder}
                     onFocus={() => setCapturing(f.key)}
                     onBlur={() => setCapturing(null)}

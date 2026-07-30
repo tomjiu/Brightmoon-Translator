@@ -12,6 +12,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { collectionTestTarget, summarizeReport } from '../../hooks/useCollectionPush';
+import { useI18n } from '../../i18n';
 
 const DEFAULT_COLLECTION: CollectionConfig = {
   eudic: { enabled: false, token: '', bookName: 'Moon' },
@@ -23,6 +24,7 @@ const DEFAULT_COLLECTION: CollectionConfig = {
 };
 
 export default function CollectionSettings() {
+  const { t } = useI18n();
   const { config, saved, saveConfig, updateConfig } = useConfigStore();
   const collection = config.collection ?? DEFAULT_COLLECTION;
 
@@ -71,10 +73,8 @@ export default function CollectionSettings() {
   return (
     <div className="space-y-5 animate-fadeIn">
       <div>
-        <h1 className="ui-page-title">同步到外部生词本</h1>
-        <p className="ui-page-desc">
-          把本应用里收藏的单词，同步到欧陆、Anki、扇贝、有道或墨墨等外部词库（可选，默认不推送）。
-        </p>
+        <h1 className="ui-page-title">{t('settings.collection.pageTitle')}</h1>
+        <p className="ui-page-desc">{t('settings.collection.pageDesc')}</p>
       </div>
 
       <section className="bg-bg-secondary border border-border rounded-lg p-4 space-y-3">
@@ -85,7 +85,7 @@ export default function CollectionSettings() {
             checked={collection.autoPushOnSave}
             onChange={(e) => updateCollection((c) => ({ ...c, autoPushOnSave: e.target.checked }))}
           />
-          <span>保存到本地生词本时自动外送到已启用目标</span>
+          <span>{t('settings.collection.autoPush')}</span>
         </label>
       </section>
 
@@ -94,7 +94,7 @@ export default function CollectionSettings() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BookMarked size={16} />
-            <h2 className="font-medium text-sm">欧陆词典</h2>
+            <h2 className="font-medium text-sm">{t('settings.collection.eudic')}</h2>
           </div>
           <label className="flex items-center gap-2 text-xs cursor-pointer">
             <input
@@ -107,12 +107,10 @@ export default function CollectionSettings() {
                 }))
               }
             />
-            启用
+            {t('settings.collection.enable')}
           </label>
         </div>
-        <p className="text-xs text-text-secondary">
-          使用欧路开放 API（api.frdic.com）。Token 在欧陆开放平台申请。
-        </p>
+        <p className="text-xs text-text-secondary">{t('settings.collection.eudicHint')}</p>
         <div className="space-y-2">
           <label className="block text-xs text-text-secondary">Token</label>
           <div className="flex gap-2">
@@ -136,7 +134,9 @@ export default function CollectionSettings() {
               {showEudicToken ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
-          <label className="block text-xs text-text-secondary">词本名称</label>
+          <label className="block text-xs text-text-secondary">
+            {t('settings.collection.bookName')}
+          </label>
           <input
             className="w-full bg-bg-primary border border-border rounded-md px-3 py-2 text-sm"
             value={collection.eudic.bookName}
@@ -155,7 +155,7 @@ export default function CollectionSettings() {
             className="text-xs border border-border rounded-md px-3 py-1.5 hover:bg-bg-tertiary disabled:opacity-50"
           >
             {testing === 'eudic' ? <Loader2 size={12} className="inline animate-spin" /> : null}{' '}
-            测试连接
+            {t('settings.collection.testConn')}
           </button>
         </div>
       </section>
@@ -163,7 +163,7 @@ export default function CollectionSettings() {
       {/* Anki */}
       <section className="bg-bg-secondary border border-border rounded-lg p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-medium text-sm">AnkiConnect</h2>
+          <h2 className="font-medium text-sm">{t('settings.collection.ankiTitle')}</h2>
           <label className="flex items-center gap-2 text-xs cursor-pointer">
             <input
               type="checkbox"
@@ -175,15 +175,15 @@ export default function CollectionSettings() {
                 }))
               }
             />
-            启用
+            {t('settings.collection.enable')}
           </label>
         </div>
-        <p className="text-xs text-text-secondary">
-          需本机运行 Anki + AnkiConnect 插件（默认 127.0.0.1:8765）。
-        </p>
+        <p className="text-xs text-text-secondary">{t('settings.collection.ankiHint')}</p>
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="block text-xs text-text-secondary mb-1">端口</label>
+            <label className="block text-xs text-text-secondary mb-1">
+              {t('settings.collection.port')}
+            </label>
             <input
               type="number"
               className="w-full bg-bg-primary border border-border rounded-md px-3 py-2 text-sm"
@@ -230,14 +230,14 @@ export default function CollectionSettings() {
           className="text-xs border border-border rounded-md px-3 py-1.5 hover:bg-bg-tertiary disabled:opacity-50"
         >
           {testing === 'anki' ? <Loader2 size={12} className="inline animate-spin" /> : null}{' '}
-          测试连接
+          {t('settings.collection.testConn')}
         </button>
       </section>
 
       {/* Shanbay */}
       <section className="bg-bg-secondary border border-border rounded-lg p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-medium text-sm">扇贝单词</h2>
+          <h2 className="font-medium text-sm">{t('settings.collection.shanbayTitle')}</h2>
           <label className="flex items-center gap-2 text-xs cursor-pointer">
             <input
               type="checkbox"
@@ -249,13 +249,10 @@ export default function CollectionSettings() {
                 }))
               }
             />
-            启用
+            {t('settings.collection.enable')}
           </label>
         </div>
-        <p className="ui-caption">
-          在浏览器登录扇贝后，从 Cookie 复制 <code className="text-xs">auth_token</code>
-          。登录过期需重新复制。也可使用生词本 CSV 导出后在扇贝中导入。
-        </p>
+        <p className="ui-caption">{t('settings.collection.shanbayHint')}</p>
         <div className="space-y-2">
           <label className="block text-xs text-text-secondary">auth_token</label>
           <div className="flex gap-2">
@@ -269,7 +266,7 @@ export default function CollectionSettings() {
                   shanbay: { ...c.shanbay, credential: e.target.value },
                 }))
               }
-              placeholder="从浏览器 Cookie 复制 auth_token"
+              placeholder={t('settings.collection.shanbayPh')}
             />
             <button
               type="button"
@@ -286,7 +283,7 @@ export default function CollectionSettings() {
             className="text-xs border border-border rounded-md px-3 py-1.5 hover:bg-bg-tertiary disabled:opacity-50"
           >
             {testing === 'shanbay' ? <Loader2 size={12} className="inline animate-spin" /> : null}{' '}
-            测试连接
+            {t('settings.collection.testConn')}
           </button>
         </div>
       </section>
@@ -294,7 +291,7 @@ export default function CollectionSettings() {
       {/* Youdao wordbook */}
       <section className="bg-bg-secondary border border-border rounded-lg p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-medium text-sm">有道单词本</h2>
+          <h2 className="font-medium text-sm">{t('settings.collection.youdaoTitle')}</h2>
           <label className="flex items-center gap-2 text-xs cursor-pointer">
             <input
               type="checkbox"
@@ -309,16 +306,10 @@ export default function CollectionSettings() {
                 }))
               }
             />
-            启用
+            {t('settings.collection.enable')}
           </label>
         </div>
-        <p className="ui-caption">
-          浏览器打开{' '}
-          <a className="underline" href="https://www.youdao.com/" target="_blank" rel="noreferrer">
-            youdao.com
-          </a>{' '}
-          并登录，在开发者工具的网络请求中找到 accountinfo，复制完整 Cookie 填入下方。
-        </p>
+        <p className="ui-caption">{t('settings.collection.youdaoHint')}</p>
         <div className="space-y-2">
           <label className="block text-xs text-text-secondary">Cookie</label>
           <div className="flex gap-2">
@@ -335,7 +326,7 @@ export default function CollectionSettings() {
                   },
                 }))
               }
-              placeholder="完整 Cookie 字符串"
+              placeholder={t('settings.collection.cookiePh')}
             />
             <button
               type="button"
@@ -346,7 +337,9 @@ export default function CollectionSettings() {
             </button>
           </div>
           <div>
-            <label className="block text-xs text-text-secondary mb-1">语言 lan</label>
+            <label className="block text-xs text-text-secondary mb-1">
+              {t('settings.collection.lan')}
+            </label>
             <input
               className="w-full bg-bg-primary border border-border rounded-md px-3 py-2 text-sm"
               value={collection.youdao.lan ?? 'en'}
@@ -369,7 +362,7 @@ export default function CollectionSettings() {
             className="text-xs border border-border rounded-md px-3 py-1.5 hover:bg-bg-tertiary disabled:opacity-50"
           >
             {testing === 'youdao' ? <Loader2 size={12} className="inline animate-spin" /> : null}{' '}
-            测试连接
+            {t('settings.collection.testConn')}
           </button>
         </div>
       </section>
@@ -377,7 +370,7 @@ export default function CollectionSettings() {
       {/* Maimemo */}
       <section className="bg-bg-secondary border border-border rounded-lg p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-medium text-sm">墨墨背单词</h2>
+          <h2 className="font-medium text-sm">{t('settings.collection.maimemoTitle')}</h2>
           <label className="flex items-center gap-2 text-xs cursor-pointer">
             <input
               type="checkbox"
@@ -392,13 +385,10 @@ export default function CollectionSettings() {
                 }))
               }
             />
-            启用
+            {t('settings.collection.enable')}
           </label>
         </div>
-        <p className="text-xs text-text-secondary">
-          官方开放 API：App → 我的 → 更多设置 → 实验功能 → 开放 API，复制 Token。云词本 ID
-          可空（首次外送会创建并在结果中返回 id，请填回保存）。
-        </p>
+        <p className="text-xs text-text-secondary">{t('settings.collection.maimemoHint')}</p>
         <div className="space-y-2">
           <label className="block text-xs text-text-secondary">API Token</label>
           <div className="flex gap-2">
@@ -415,7 +405,7 @@ export default function CollectionSettings() {
                   },
                 }))
               }
-              placeholder="开放 API Token"
+              placeholder="API Token"
             />
             <button
               type="button"
@@ -427,7 +417,9 @@ export default function CollectionSettings() {
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs text-text-secondary mb-1">云词本 ID</label>
+              <label className="block text-xs text-text-secondary mb-1">
+                {t('settings.collection.cloudId')}
+              </label>
               <input
                 className="w-full bg-bg-primary border border-border rounded-md px-3 py-2 text-sm"
                 value={collection.maimemo.notepadId ?? ''}
@@ -440,11 +432,13 @@ export default function CollectionSettings() {
                     },
                   }))
                 }
-                placeholder="可选"
+                placeholder={t('settings.collection.optional')}
               />
             </div>
             <div>
-              <label className="block text-xs text-text-secondary mb-1">新建时标题</label>
+              <label className="block text-xs text-text-secondary mb-1">
+                {t('settings.collection.newTitle')}
+              </label>
               <input
                 className="w-full bg-bg-primary border border-border rounded-md px-3 py-2 text-sm"
                 value={collection.maimemo.notepadTitle ?? 'Moon'}
@@ -467,7 +461,7 @@ export default function CollectionSettings() {
             className="text-xs border border-border rounded-md px-3 py-1.5 hover:bg-bg-tertiary disabled:opacity-50"
           >
             {testing === 'maimemo' ? <Loader2 size={12} className="inline animate-spin" /> : null}{' '}
-            测试连接
+            {t('settings.collection.testConn')}
           </button>
         </div>
       </section>
@@ -492,16 +486,18 @@ export default function CollectionSettings() {
           className="inline-flex items-center gap-2 bg-primary text-primary-fg rounded-md px-4 py-2 text-sm"
         >
           <Save size={14} />
-          保存
+          {t('settings.collection.save')}
         </button>
-        {saved && <span className="text-xs text-text-secondary">已保存</span>}
+        {saved && (
+          <span className="text-xs text-text-secondary">{t('settings.collection.saved')}</span>
+        )}
         <a
           className="text-xs text-text-secondary inline-flex items-center gap-1 hover:underline"
           href="https://api.frdic.com"
           target="_blank"
           rel="noreferrer"
         >
-          欧陆开放平台 <ExternalLink size={10} />
+          {t('settings.collection.eudicPortal')} <ExternalLink size={10} />
         </a>
       </div>
     </div>

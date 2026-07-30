@@ -49,7 +49,8 @@ export const useI18n = create<I18nState>((set, get) => ({
 
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
-        value = value!.replace(`{${k}}`, String(v));
+        const re = new RegExp(`\\{${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`, 'g');
+        value = value!.replace(re, String(v));
       });
     }
 
