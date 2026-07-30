@@ -48,6 +48,9 @@ fn monitor_work_area(cx: f64, cy: f64) -> (f64, f64, f64, f64) {
         use windows::Win32::Graphics::Gdi::{
             GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
         };
+        // SAFETY: pt is a stack-allocated POINT; mi is a stack-allocated
+        // MONITORINFO with cbSize set. MonitorFromPoint/GetMonitorInfoW are
+        // pure Win32 queries with no preconditions beyond valid pointers.
         unsafe {
             let pt = POINT {
                 x: cx as i32,

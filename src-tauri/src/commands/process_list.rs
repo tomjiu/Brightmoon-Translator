@@ -38,6 +38,9 @@ fn get_windows_process_list() -> Result<Vec<ProcessInfo>, String> {
     let mut pids = vec![0u32; 4096];
     let mut bytes_returned = 0u32;
 
+    // SAFETY: EnumProcesses writes into the pids buffer (sized 4096 entries)
+    // and bytes_returned is a stack &mut. OpenProcess handles are null-checked
+    // and closed via CloseHandle on every path.
     unsafe {
         // Get all process IDs
         let enum_result = EnumProcesses(

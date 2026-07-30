@@ -19,22 +19,33 @@ struct Pending {
 static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
 
 fn pop_html() -> String {
-    r##"<!DOCTYPE html>
+    // S3-5: theme-aware pop button. Previously hardcoded dark colors
+    // (#12141a / #1a1d27 / #e8eaed) that didn't respond to
+    // set_overlay_theme_light, so the button looked out of place on light
+    // wallpaper or when the main window was in light mode.
+    let light = crate::overlay::window_manager::overlay_theme_is_light();
+    let (body_bg, chip_bg, chip_color, border) = if light {
+        ("#f5f5f7", "#ffffff", "#1d1d1f", "rgba(0,0,0,0.12)")
+    } else {
+        ("#12141a", "#1a1d27", "#e8eaed", "rgba(255,255,255,0.14)")
+    };
+    format!(
+        r##"<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <style>
-html,body{margin:0;width:100%;height:100%;background:#12141a;overflow:hidden;user-select:none;}
-.chip{
+html,body{{margin:0;width:100%;height:100%;background:{body_bg};overflow:hidden;user-select:none;}}
+.chip{{
   width:100%;height:100%;display:flex;align-items:center;justify-content:center;
-  border-radius:8px;background:#1a1d27;color:#e8eaed;
+  border-radius:8px;background:{chip_bg};color:{chip_color};
   font:600 12px/1 "Segoe UI","Microsoft YaHei",sans-serif;
-  border:1px solid rgba(255,255,255,0.14);
+  border:1px solid {border};
   cursor:pointer;
-}
-.chip:hover{background:#2563eb;color:#fff;}
+}}
+.chip:hover{{background:#2563eb;color:#fff;}}
 </style></head>
 <body><div class="chip" id="b">译</div></body></html>
 "##
-    .to_string()
+    )
 }
 
 pub fn show(app: &AppHandle, text: String, screen_x: f64, screen_y: f64) -> Result<(), String> {

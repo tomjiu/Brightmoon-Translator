@@ -300,23 +300,7 @@ impl SelectionTranslation for DefaultSelectionTranslation {
 
 /// Get the current cursor position. Falls back to (100, 100) if unavailable.
 fn get_cursor_position() -> (f64, f64) {
-    #[cfg(target_os = "windows")]
-    {
-        #[repr(C)]
-        struct POINT {
-            x: i32,
-            y: i32,
-        }
-        extern "system" {
-            fn GetCursorPos(lpPoint: *mut POINT) -> i32;
-        }
-        // SAFETY: GetCursorPos is a standard Win32 API. Buffer is stack-allocated.
-        unsafe {
-            let mut point = POINT { x: 0, y: 0 };
-            if GetCursorPos(&mut point) != 0 {
-                return (point.x as f64, point.y as f64);
-            }
-        }
-    }
-    (100.0, 100.0)
+    // S1-6: delegate to the shared crate::win::cursor_pos() instead of a
+    // local GetCursorPos FFI block.
+    crate::win::cursor_pos()
 }

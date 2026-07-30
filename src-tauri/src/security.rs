@@ -288,7 +288,9 @@ impl SecureString {
 
 impl Drop for SecureString {
     fn drop(&mut self) {
-        // Zero out the underlying string bytes
+        // Zero out the underlying string bytes.
+        // SAFETY: String::as_mut_vec is sound during Drop because self owns
+        // the buffer for the remainder of drop; bytes remain valid until then.
         unsafe {
             let bytes = self.0.as_mut_vec();
             zeroize::Zeroize::zeroize(bytes);
@@ -329,6 +331,9 @@ pub fn dpapi_encrypt(plaintext: &[u8]) -> Result<Vec<u8>, String> {
         pbData: std::ptr::null_mut(),
     };
 
+    // SAFETY: input_blob points to `plaintext` (valid for the call duration)
+    // and output_blob is a stack-allocated CRYPT_INTEGER_BLOB. CryptProtectData
+    // fills output_blob.pbData with an allocated buffer the caller must free.
     let success = unsafe {
         CryptProtectData(
             &mut input_blob,
@@ -342,10 +347,13 @@ pub fn dpapi_encrypt(plaintext: &[u8]) -> Result<Vec<u8>, String> {
     };
 
     if success.is_ok() {
+        // SAFETY: CryptProtectData populated output_blob.pbData with a buffer
+        // of cbData bytes; both fields are set by the API on success.
         let encrypted = unsafe {
             std::slice::from_raw_parts(output_blob.pbData, output_blob.cbData as usize).to_vec()
         };
-        // Free the output blob
+        // SAFETY: LocalFree releases the DPAPI-allocated output buffer exactly
+        // once after it has been copied into `encrypted`.
         unsafe {
             let _ = LocalFree(HLOCAL(output_blob.pbData as *mut core::ffi::c_void));
         }
@@ -373,6 +381,9 @@ pub fn dpapi_decrypt(ciphertext: &[u8]) -> Result<Vec<u8>, String> {
 
     let mut desc_ptr = windows::core::PWSTR::null();
 
+    // SAFETY: input_blob points to `ciphertext` (valid for the call duration)
+    // and output_blob/desc_ptr are stack-allocated. CryptUnprotectData fills
+    // output_blob.pbData and (optionally) desc_ptr with caller-freed buffers.
     let success = unsafe {
         CryptUnprotectData(
             &mut input_blob,
@@ -386,9 +397,13 @@ pub fn dpapi_decrypt(ciphertext: &[u8]) -> Result<Vec<u8>, String> {
     };
 
     if success.is_ok() {
+        // SAFETY: CryptUnprotectData populated output_blob.pbData with a buffer
+        // of cbData bytes; both fields are set by the API on success.
         let decrypted = unsafe {
             std::slice::from_raw_parts(output_blob.pbData, output_blob.cbData as usize).to_vec()
         };
+        // SAFETY: LocalFree releases the DPAPI-allocated buffers exactly once
+        // after they have been copied into `decrypted`. desc_ptr is null-checked.
         unsafe {
             let _ = LocalFree(HLOCAL(output_blob.pbData as *mut core::ffi::c_void));
             if !desc_ptr.is_null() {

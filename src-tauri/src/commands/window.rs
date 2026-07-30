@@ -272,7 +272,13 @@ pub async fn set_window_exclude_from_capture(
     let Some(window) = app.get_webview_window(&label) else {
         return Ok(false);
     };
+    Ok(set_window_exclude_from_capture_inner(&window, exclude))
+}
 
+/// Inner helper operating on a resolved webview window so callers that already
+/// have the window (e.g. `ocr_begin_session_hide_main`) can reuse the logic
+/// without an extra label lookup.
+fn set_window_exclude_from_capture_inner(window: &tauri::WebviewWindow, exclude: bool) -> bool {
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::Foundation::HWND;
@@ -282,7 +288,7 @@ pub async fn set_window_exclude_from_capture(
 
         let hwnd = match window.hwnd() {
             Ok(h) => HWND(h.0 as *mut _),
-            Err(_) => return Ok(false),
+            Err(_) => return false,
         };
         let affinity = if exclude {
             WDA_EXCLUDEFROMCAPTURE
@@ -293,44 +299,26 @@ pub async fn set_window_exclude_from_capture(
         let ok = unsafe { SetWindowDisplayAffinity(hwnd, affinity) };
         if ok.is_err() {
             tracing::warn!(
-                "SetWindowDisplayAffinity({label}, exclude={exclude}) failed: {:?}",
+                "SetWindowDisplayAffinity(exclude={exclude}) failed: {:?}",
                 ok
             );
-            return Ok(false);
+            return false;
         }
-        return Ok(true);
+        return true;
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (window, exclude);
-        Ok(false)
+        let _ = exclude;
+        false
     }
 }
 
 #[command]
 pub async fn get_cursor_position() -> Result<(f64, f64), String> {
-    #[cfg(target_os = "windows")]
-    {
-        #[repr(C)]
-        struct POINT {
-            x: i32,
-            y: i32,
-        }
-
-        extern "system" {
-            fn GetCursorPos(lpPoint: *mut POINT) -> i32;
-        }
-
-        let mut point = POINT { x: 0, y: 0 };
-        // SAFETY: GetCursorPos is a standard Win32 API. Buffer is stack-allocated.
-        unsafe {
-            if GetCursorPos(&mut point) != 0 {
-                return Ok((point.x as f64, point.y as f64));
-            }
-        }
-    }
-    Ok((100.0, 100.0))
+    // S1-6: delegate to the shared crate::win::cursor_pos() instead of a
+    // local GetCursorPos FFI block.
+    Ok(crate::win::cursor_pos())
 }
 
 // Overlay HTML generation is now in crate::overlay::html_builder
@@ -908,6 +896,8 @@ pub async fn create_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(),
         const SM_YVIRTUALSCREEN: i32 = 77;
         const SM_CXVIRTUALSCREEN: i32 = 78;
         const SM_CYVIRTUALSCREEN: i32 = 79;
+        // SAFETY: GetSystemMetrics is a pure Win32 query (i32 index → i32)
+        // with no preconditions; applies to the four consecutive calls below.
         let physical_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) } as f64;
         let physical_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) } as f64;
         let physical_w = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) } as f64;
@@ -1065,14 +1055,31 @@ pub async fn close_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(), 
     Ok(())
 }
 
-/// OCR session start (STranslate): collapse main for the whole session.
-/// Main must not re-enter until `ocr_end_session_show_main`.
+/// OCR session begin: prepare main so it does not block the selector but the
+/// desktop is never blank while the snapshot runs.
+///
+/// Old behavior (hide()) caused a ~150–400ms void between main hide and the
+/// selector `img.onLoad` show — visible as a brief black flash.
+///
+/// New behavior: keep main visible (covers the desktop) but
+///   1. drop always_on_top so the fullscreen selector can sit above it,
+///   2. set WDA_EXCLUDEFROMCAPTURE so GDI/DXGI snapshot does not capture main
+///      (clean desktop freeze), and
+///   3. set skip_taskbar so the taskbar entry does not flash during snip.
+///
+/// On non-Windows or when affinity fails, fall back to hide() so a stale
+/// main is never captured into the snapshot.
 #[command]
 pub async fn ocr_begin_session_hide_main(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.set_always_on_top(false);
         let _ = main.set_skip_taskbar(true);
-        let _ = main.hide();
+
+        let excluded = set_window_exclude_from_capture_inner(&main, true);
+        if !excluded {
+            // Affinity unavailable (non-Windows / old OS): fall back to hide.
+            let _ = main.hide();
+        }
     }
     Ok(())
 }
@@ -1081,6 +1088,8 @@ pub async fn ocr_begin_session_hide_main(app: tauri::AppHandle) -> Result<(), St
 #[command]
 pub async fn ocr_end_session_show_main(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(main) = app.get_webview_window("main") {
+        // Always clear capture-exclusion first; harmless if it was never set.
+        let _ = set_window_exclude_from_capture_inner(&main, false);
         let _ = main.set_skip_taskbar(false);
         let _ = main.unminimize();
         let _ = main.show();
