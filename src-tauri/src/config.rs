@@ -101,6 +101,8 @@ impl AppConfig {
         self.collection.youdao.cookie = encrypt_secret(&self.collection.youdao.cookie);
         self.collection.maimemo.token = encrypt_secret(&self.collection.maimemo.token);
         self.openai_tts.api_key = encrypt_secret(&self.openai_tts.api_key);
+        self.fish_tts.api_key = encrypt_secret(&self.fish_tts.api_key);
+        self.edge_tts_token = encrypt_secret(&self.edge_tts_token);
     }
 
     /// Decrypt all sensitive fields in place after loading from disk.
@@ -128,6 +130,8 @@ impl AppConfig {
         self.collection.youdao.cookie = decrypt_secret(&self.collection.youdao.cookie);
         self.collection.maimemo.token = decrypt_secret(&self.collection.maimemo.token);
         self.openai_tts.api_key = decrypt_secret(&self.openai_tts.api_key);
+        self.fish_tts.api_key = decrypt_secret(&self.fish_tts.api_key);
+        self.edge_tts_token = decrypt_secret(&self.edge_tts_token);
     }
 
     /// Create a copy with all API keys masked for safe display/export.
@@ -157,6 +161,8 @@ impl AppConfig {
         masked.collection.youdao.cookie = mask(&masked.collection.youdao.cookie);
         masked.collection.maimemo.token = mask(&masked.collection.maimemo.token);
         masked.openai_tts.api_key = mask(&masked.openai_tts.api_key);
+        masked.fish_tts.api_key = mask(&masked.fish_tts.api_key);
+        masked.edge_tts_token = mask(&masked.edge_tts_token);
         masked
     }
 }

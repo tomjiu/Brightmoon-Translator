@@ -946,3 +946,14 @@ pub async fn fuzzy_search_words(
 
     Ok(rows.into_iter().map(|r| r.get("word")).collect())
 }
+
+/// Look up a Japanese word using Jisho.org (JMdict) API.
+#[tauri::command]
+pub async fn lookup_japanese(
+    word: String,
+) -> Result<Vec<crate::services::JapaneseEntry>, String> {
+    let dict = crate::services::JapaneseDictionary::new();
+    dict.lookup(&word)
+        .await
+        .map_err(|e| format!("Japanese lookup failed: {}", e))
+}

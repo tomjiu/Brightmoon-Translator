@@ -16,6 +16,8 @@ import {
   Edit2,
   Save,
   BookMarked,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 
@@ -51,6 +53,8 @@ function WordBook() {
   const [newWord, setNewWord] = useState('');
   const [newTranslation, setNewTranslation] = useState('');
   const [newNote, setNewNote] = useState('');
+  const [page, setPage] = useState(0);
+  const pageSize = 50;
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>();
   const { t, locale } = useI18n();
   const fromLang = useTranslateStore((s) => s.fromLang);
@@ -116,7 +120,11 @@ function WordBook() {
     } else {
       loadWordBook();
     }
+    setPage(0);
   }, [debouncedSearch, isTauri]);
+
+  const paginatedItems = items.slice(page * pageSize, (page + 1) * pageSize);
+  const totalPages = Math.ceil(items.length / pageSize);
 
   const addWord = async () => {
     if (!newWord.trim() || !newTranslation.trim()) return;
@@ -351,7 +359,7 @@ function WordBook() {
               </span>
             </div>
 
-            {items.map((item) => (
+            {paginatedItems.map((item) => (
               <div
                 key={item.id}
                 className={`bg-bg-secondary border rounded-xl p-3.5 group relative ${
@@ -447,6 +455,29 @@ function WordBook() {
           </>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-4 pb-4">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors disabled:opacity-50"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className="text-sm text-text-secondary px-3">
+            {page + 1} / {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-3 py-2 text-sm hover:bg-bg-tertiary/80 transition-colors disabled:opacity-50"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

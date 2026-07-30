@@ -20,8 +20,8 @@ pub struct AlignedSegment {
 /// Splits both texts by paragraph boundaries and attempts to match them.
 /// Uses multiple heuristics for alignment:
 /// 1. Count-based matching (same number of paragraphs)
-/// 2. Length-ratio matching (proportional lengths)
-/// 3. Sentence boundary detection
+/// 2. Proportional distribution (mismatched counts, e.g. 3:5 → 2:2:1)
+/// 3. Sentence-level fallback (when counts differ by 2x or more)
 pub fn align_paragraphs(source: &str, target: &str) -> Vec<AlignedSegment> {
     let source_paragraphs = split_paragraphs(source);
     let target_paragraphs = split_paragraphs(target);
@@ -30,8 +30,11 @@ pub fn align_paragraphs(source: &str, target: &str) -> Vec<AlignedSegment> {
         return Vec::new();
     }
 
+    let src_count = source_paragraphs.len();
+    let tgt_count = target_paragraphs.len();
+
     // If same count, direct 1:1 alignment
-    if source_paragraphs.len() == target_paragraphs.len() {
+    if src_count == tgt_count {
         return source_paragraphs
             .iter()
             .zip(target_paragraphs.iter())
@@ -43,7 +46,16 @@ pub fn align_paragraphs(source: &str, target: &str) -> Vec<AlignedSegment> {
             .collect();
     }
 
-    // Otherwise, use ratio-based alignment
+    // When counts differ by 2x or more, try sentence-level alignment first
+    let ratio = src_count.max(tgt_count) as f64 / src_count.min(tgt_count) as f64;
+    if ratio >= 2.0 {
+        let sentence_result = align_sentences(source, target);
+        if !sentence_result.is_empty() {
+            return sentence_result;
+        }
+    }
+
+    // Otherwise, use proportional distribution
     align_by_ratio(&source_paragraphs, &target_paragraphs)
 }
 
@@ -55,10 +67,10 @@ fn split_paragraphs(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Align paragraphs using length-ratio matching.
+/// Align paragraphs using proportional distribution.
 ///
-/// Groups shorter segments together or splits longer segments
-/// to match the expected count.
+/// Uses ceil-division to evenly distribute segments across mismatched counts.
+/// For example, 3 source and 5 target paragraphs → 2:2:1 distribution.
 fn align_by_ratio(source: &[String], target: &[String]) -> Vec<AlignedSegment> {
     let src_count = source.len();
     let tgt_count = target.len();
@@ -69,62 +81,50 @@ fn align_by_ratio(source: &[String], target: &[String]) -> Vec<AlignedSegment> {
 
     let mut result = Vec::new();
 
-    // Simple approach: align proportionally
-    let ratio = src_count as f64 / tgt_count as f64;
-
-    if ratio >= 1.0 {
-        // More source paragraphs than target - group source paragraphs
+    if src_count <= tgt_count {
+        // More (or equal) target paragraphs than source.
+        // Distribute targets proportionally across sources.
         let mut tgt_idx = 0;
-        let mut src_group = Vec::new();
+        for (src_idx, src) in source.iter().enumerate() {
+            let remaining_src = src_count - src_idx;
+            let remaining_tgt = tgt_count - tgt_idx;
+            // ceil division: how many targets this source should get
+            let count = (remaining_tgt + remaining_src - 1) / remaining_src;
 
-        for (i, src) in source.iter().enumerate() {
-            src_group.push(src.clone());
-            let expected_tgt = ((i + 1) as f64 / ratio) as usize;
-            if expected_tgt > tgt_idx && tgt_idx < tgt_count {
+            let end = (tgt_idx + count).min(tgt_count);
+            let group = target[tgt_idx..end].join("\n");
+
+            if !group.is_empty() {
+                let confidence = if count == 1 { 0.85 } else { 0.65 };
                 result.push(AlignedSegment {
-                    source: src_group.join("\n"),
-                    target: target[tgt_idx].clone(),
-                    confidence: 0.7,
+                    source: src.clone(),
+                    target: group,
+                    confidence,
                 });
-                src_group.clear();
-                tgt_idx += 1;
+                tgt_idx = end;
             }
-        }
-
-        // Handle remaining
-        if !src_group.is_empty() && tgt_idx < tgt_count {
-            result.push(AlignedSegment {
-                source: src_group.join("\n"),
-                target: target[tgt_idx].clone(),
-                confidence: 0.5,
-            });
         }
     } else {
-        // More target paragraphs than source - group target paragraphs
+        // More source paragraphs than target.
+        // Distribute sources proportionally across targets.
         let mut src_idx = 0;
-        let mut tgt_group = Vec::new();
+        for (tgt_idx, tgt) in target.iter().enumerate() {
+            let remaining_tgt = tgt_count - tgt_idx;
+            let remaining_src = src_count - src_idx;
+            let count = (remaining_src + remaining_tgt - 1) / remaining_tgt;
 
-        for (i, tgt) in target.iter().enumerate() {
-            tgt_group.push(tgt.clone());
-            let expected_src = ((i + 1) as f64 * ratio) as usize;
-            if expected_src > src_idx && src_idx < src_count {
+            let end = (src_idx + count).min(src_count);
+            let group = source[src_idx..end].join("\n");
+
+            if !group.is_empty() {
+                let confidence = if count == 1 { 0.85 } else { 0.65 };
                 result.push(AlignedSegment {
-                    source: source[src_idx].clone(),
-                    target: tgt_group.join("\n"),
-                    confidence: 0.7,
+                    source: group,
+                    target: tgt.clone(),
+                    confidence,
                 });
-                tgt_group.clear();
-                src_idx += 1;
+                src_idx = end;
             }
-        }
-
-        // Handle remaining
-        if !tgt_group.is_empty() && src_idx < src_count {
-            result.push(AlignedSegment {
-                source: source[src_idx].clone(),
-                target: tgt_group.join("\n"),
-                confidence: 0.5,
-            });
         }
     }
 
@@ -220,6 +220,55 @@ mod tests {
     }
 
     #[test]
+    fn test_align_3_to_5_paragraphs() {
+        // 3 source paragraphs, 5 target paragraphs (translator split some)
+        let source = "First paragraph.\nSecond paragraph.\nThird paragraph.";
+        let target = "第一段。\n第二段A。\n第二段B。\n第三段A。\n第三段B。";
+        let result = align_paragraphs(source, target);
+
+        // Should produce 3 aligned segments (one per source paragraph)
+        // with 2:2:1 distribution of target paragraphs
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].source, "First paragraph.");
+        assert!(result[0].target.contains("第一段"));
+        assert_eq!(result[1].source, "Second paragraph.");
+        assert!(result[1].target.contains("第二段A"));
+        assert!(result[1].target.contains("第二段B"));
+        assert_eq!(result[2].source, "Third paragraph.");
+        assert!(result[2].target.contains("第三段A"));
+    }
+
+    #[test]
+    fn test_align_5_to_3_paragraphs() {
+        // 5 source paragraphs, 3 target paragraphs
+        let source = "P1.\nP2.\nP3.\nP4.\nP5.";
+        let target = "T1.\nT2.\nT3.";
+        let result = align_paragraphs(source, target);
+
+        // Should produce 3 aligned segments (one per target paragraph)
+        // with 2:2:1 distribution of source paragraphs
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].target, "T1.");
+        assert!(result[0].source.contains("P1."));
+        assert!(result[0].source.contains("P2."));
+        assert_eq!(result[1].target, "T2.");
+        assert_eq!(result[2].target, "T3.");
+    }
+
+    #[test]
+    fn test_align_1_to_5_paragraphs() {
+        // 1 source paragraph, 5 target paragraphs (ratio 5.0, triggers sentence fallback)
+        let source = "Hello. World. How are you?";
+        let target = "你好。\n世界。\n你好吗？\n我很好。\n谢谢。";
+        let result = align_paragraphs(source, target);
+
+        // Should fall back to sentence-level alignment (3 sentences)
+        assert!(!result.is_empty());
+        // Each result has source as a sentence, target as a paragraph
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
     fn test_split_sentences() {
         let sentences = split_sentences("Hello. World! How are you?");
         assert_eq!(sentences.len(), 3);
@@ -229,5 +278,24 @@ mod tests {
     fn test_align_sentences() {
         let result = align_sentences("Hello. World.", "你好。世界。");
         assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_align_3_to_5_proportional() {
+        // Verify 3:5 produces 2:2:1 distribution
+        let source: Vec<String> = (0..3).map(|i| format!("S{}", i)).collect();
+        let target: Vec<String> = (0..5).map(|i| format!("T{}", i)).collect();
+        let result = align_by_ratio(&source, &target);
+
+        assert_eq!(result.len(), 3);
+        // source[0] gets 2 targets (ceil(5/3)=2)
+        assert_eq!(result[0].source, "S0");
+        assert_eq!(result[0].target, "T0\nT1");
+        // source[1] gets 2 targets (ceil(3/2)=2)
+        assert_eq!(result[1].source, "S1");
+        assert_eq!(result[1].target, "T2\nT3");
+        // source[2] gets 1 target (remaining)
+        assert_eq!(result[2].source, "S2");
+        assert_eq!(result[2].target, "T4");
     }
 }

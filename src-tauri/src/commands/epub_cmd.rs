@@ -68,3 +68,29 @@ pub async fn translate_epub(
         total_chapters: doc.total_chapters,
     })
 }
+
+/// Save a bilingual EPUB: re-opens the original EPUB, injects translated text
+/// into each chapter's HTML while preserving the original formatting, and writes
+/// a new .epub file that can be opened in any EPUB reader.
+#[tauri::command]
+pub async fn save_bilingual_epub(
+    original_path: String,
+    output_path: String,
+    translated_chapters: Vec<TranslatedChapter>,
+) -> Result<(), String> {
+    security::validate_file_path(&original_path)?;
+    security::validate_output_path(&output_path)?;
+
+    // Re-open the original EPUB to get chapter HTML content
+    let doc = epub_reader::extract_text_from_epub(&original_path)?;
+
+    // Run EPUB creation in a blocking thread since it does file I/O
+    let orig = original_path.clone();
+    let out = output_path.clone();
+    let chs = translated_chapters;
+    tokio::task::spawn_blocking(move || {
+        epub_reader::create_bilingual_epub(&orig, &out, &chs, &doc.chapters)
+    })
+    .await
+    .map_err(|e| format!("EPUB creation join error: {}", e))?
+}

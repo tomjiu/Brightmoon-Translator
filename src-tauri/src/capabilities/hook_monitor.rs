@@ -877,6 +877,8 @@ fn capture_foreground_text() -> Option<(String, usize, String, String, Option<(i
 }
 
 /// Read text from window using UI Automation TextPattern.
+/// Uses GetVisibleRanges (only on-screen text) instead of DocumentRange
+/// (entire document) to avoid thrashing large documents on every poll.
 /// SAFETY: COM and UI Automation API calls. All COM objects are reference-counted.
 unsafe fn get_window_text_pattern_with_rect(
     hwnd: HWND,
@@ -892,13 +894,38 @@ unsafe fn get_window_text_pattern_with_rect(
         .GetCurrentPattern(UIA_TextPatternId)
         .ok()
         .and_then(|p| p.cast::<IUIAutomationTextPattern>().ok())?;
-    let range = pattern.DocumentRange().ok()?;
-    let text = range.GetText(-1).ok()?;
-    let text_str = text.to_string();
 
-    if text_str.is_empty() {
-        return None;
-    }
+    // Try GetVisibleRanges first — only reads on-screen text, not the whole document.
+    let text_str = match pattern.GetVisibleRanges() {
+        Ok(ranges) => {
+            let count = ranges.Length().unwrap_or(0);
+            if count == 0 {
+                return None;
+            }
+            let mut all_text = String::new();
+            for i in 0..count {
+                if let Ok(range) = ranges.GetElement(i) {
+                    if let Ok(t) = range.GetText(-1) {
+                        all_text.push_str(&t.to_string());
+                    }
+                }
+            }
+            if all_text.is_empty() {
+                return None;
+            }
+            all_text
+        },
+        Err(_) => {
+            // Fallback: DocumentRange (entire document) — only when GetVisibleRanges fails.
+            let range = pattern.DocumentRange().ok()?;
+            let text = range.GetText(-1).ok()?;
+            let s = text.to_string();
+            if s.is_empty() {
+                return None;
+            }
+            s
+        },
+    };
 
     // Get bounding rectangle of the UIA element (screen coordinates)
     let text_rect = element

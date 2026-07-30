@@ -1,7 +1,7 @@
 // HookProfileSettings - Hook profile management (Phase 3.1)
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Trash2, Check, Monitor, Clock, Edit3 } from 'lucide-react';
+import { Plus, Trash2, Check, Monitor, Clock, Edit3, X } from 'lucide-react';
 import Card from '../../components/Card';
 import { useI18n } from '../../i18n';
 
@@ -37,6 +37,24 @@ interface HookProfileUpdate {
   notes?: string;
 }
 
+interface HookProfileFormData {
+  name: string;
+  processName: string;
+  windowTitle: string;
+  sourceLang: string;
+  targetLang: string;
+  notes: string;
+}
+
+const EMPTY_FORM: HookProfileFormData = {
+  name: '',
+  processName: '',
+  windowTitle: '',
+  sourceLang: '',
+  targetLang: '',
+  notes: '',
+};
+
 const DEFAULT_HOOK_CONFIG: HookConfig = {
   enabledSources: ['uia'],
   showOverlay: true,
@@ -46,20 +64,146 @@ const DEFAULT_HOOK_CONFIG: HookConfig = {
   ocrIntervalMs: 5000,
 };
 
+const LANG_OPTIONS = [
+  { value: '', label: 'Auto' },
+  { value: 'en', label: 'English' },
+  { value: 'zh', label: '中文' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko', label: '한국어' },
+  { value: 'fr', label: 'Français' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'es', label: 'Español' },
+  { value: 'ru', label: 'Русский' },
+];
+
+// ── Reusable profile form (create & edit) ──
+
+function HookProfileForm({
+  initial,
+  onSave,
+  onCancel,
+  saveLabel,
+}: {
+  initial: HookProfileFormData;
+  onSave: (data: HookProfileFormData) => void;
+  onCancel: () => void;
+  saveLabel: string;
+}) {
+  const { t } = useI18n();
+  const [form, setForm] = useState<HookProfileFormData>(initial);
+
+  return (
+    <div className="p-4 border border-primary/30 rounded-lg bg-bg-primary space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">
+            {t('settings.hookProfile.name')} *
+          </label>
+          <input
+            type="text"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="如: 星露谷物语"
+            className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">
+            {t('settings.hookProfile.process')}
+          </label>
+          <input
+            type="text"
+            value={form.processName}
+            onChange={(e) => setForm({ ...form, processName: e.target.value })}
+            placeholder="如: game.exe"
+            className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs text-text-secondary mb-1">
+          {t('settings.hookProfile.window')}
+        </label>
+        <input
+          type="text"
+          value={form.windowTitle}
+          onChange={(e) => setForm({ ...form, windowTitle: e.target.value })}
+          placeholder="Stardew Valley"
+          className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">
+            {t('settings.hookProfile.sourceLang')}
+          </label>
+          <select
+            value={form.sourceLang}
+            onChange={(e) => setForm({ ...form, sourceLang: e.target.value })}
+            className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none cursor-pointer"
+          >
+            {LANG_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-text-secondary mb-1">
+            {t('settings.hookProfile.targetLang')}
+          </label>
+          <select
+            value={form.targetLang}
+            onChange={(e) => setForm({ ...form, targetLang: e.target.value })}
+            className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none cursor-pointer"
+          >
+            {LANG_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs text-text-secondary mb-1">
+          {t('settings.hookProfile.notes')}
+        </label>
+        <input
+          type="text"
+          value={form.notes}
+          onChange={(e) => setForm({ ...form, notes: e.target.value })}
+          className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={onCancel}
+          className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary flex items-center gap-1"
+        >
+          <X size={14} />
+          {t('settings.hookProfile.cancel')}
+        </button>
+        <button
+          onClick={() => onSave(form)}
+          disabled={!form.name.trim()}
+          className="px-4 py-1.5 text-sm bg-primary text-primary-fg rounded hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1"
+        >
+          <Check size={14} />
+          {saveLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function HookProfileSettings() {
   const { t } = useI18n();
   const [profiles, setProfiles] = useState<HookProfile[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-
-  // Create form
-  const [newName, setNewName] = useState('');
-  const [newProcessName, setNewProcessName] = useState('');
-  const [newWindowTitle, setNewWindowTitle] = useState('');
-  const [newNotes, setNewNotes] = useState('');
-  const [newSourceLang, setNewSourceLang] = useState('');
-  const [newTargetLang, setNewTargetLang] = useState('');
 
   const loadProfiles = useCallback(async () => {
     try {
@@ -78,28 +222,26 @@ export default function HookProfileSettings() {
     void loadProfiles();
   }, [loadProfiles]);
 
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
+  const handleCreate = async (data: HookProfileFormData) => {
     try {
       await invoke('create_hook_profile', {
-        name: newName.trim(),
+        name: data.name.trim(),
         hookConfig: DEFAULT_HOOK_CONFIG,
       });
-      // Update optional fields
       const allProfiles = await invoke<HookProfile[]>('get_hook_profiles');
       const created = allProfiles[allProfiles.length - 1];
       if (created) {
         const updates: HookProfileUpdate = {};
-        if (newProcessName) updates.processName = newProcessName;
-        if (newWindowTitle) updates.windowTitlePattern = newWindowTitle;
-        if (newNotes) updates.notes = newNotes;
-        if (newSourceLang) updates.sourceLang = newSourceLang;
-        if (newTargetLang) updates.targetLang = newTargetLang;
+        if (data.processName) updates.processName = data.processName;
+        if (data.windowTitle) updates.windowTitlePattern = data.windowTitle;
+        if (data.notes) updates.notes = data.notes;
+        if (data.sourceLang) updates.sourceLang = data.sourceLang;
+        if (data.targetLang) updates.targetLang = data.targetLang;
         if (Object.keys(updates).length > 0) {
           await invoke('update_hook_profile', { id: created.id, updates });
         }
       }
-      resetForm();
+      setShowCreateForm(false);
       await loadProfiles();
     } catch (err) {
       console.error('Failed to create profile:', err);
@@ -124,24 +266,24 @@ export default function HookProfileSettings() {
     }
   };
 
-  const handleUpdate = async (id: string, updates: HookProfileUpdate) => {
+  const handleUpdate = async (id: string, data: HookProfileFormData) => {
     try {
-      await invoke('update_hook_profile', { id, updates });
+      await invoke('update_hook_profile', {
+        id,
+        updates: {
+          name: data.name,
+          processName: data.processName || undefined,
+          windowTitlePattern: data.windowTitle || undefined,
+          notes: data.notes,
+          sourceLang: data.sourceLang || undefined,
+          targetLang: data.targetLang || undefined,
+        },
+      });
       setEditingId(null);
       await loadProfiles();
     } catch (err) {
       console.error('Failed to update profile:', err);
     }
-  };
-
-  const resetForm = () => {
-    setNewName('');
-    setNewProcessName('');
-    setNewWindowTitle('');
-    setNewNotes('');
-    setNewSourceLang('');
-    setNewTargetLang('');
-    setShowCreateForm(false);
   };
 
   const formatTime = (ts?: number) => {
@@ -187,7 +329,7 @@ export default function HookProfileSettings() {
               onDelete={() => void handleDelete(profile.id)}
               onStartEdit={() => setEditingId(profile.id)}
               onCancelEdit={() => setEditingId(null)}
-              onSaveEdit={(updates) => void handleUpdate(profile.id, updates)}
+              onSaveEdit={(data) => void handleUpdate(profile.id, data)}
               formatTime={formatTime}
             />
           ))}
@@ -200,101 +342,12 @@ export default function HookProfileSettings() {
 
           {/* Create Form */}
           {showCreateForm ? (
-            <div className="p-4 border border-primary/30 rounded-lg bg-bg-primary space-y-3">
-              <h4 className="text-sm font-medium text-text-primary">
-                {t('settings.hookProfile.create')}
-              </h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1">
-                    {t('settings.hookProfile.name')} *
-                  </label>
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="如: 星露谷物语"
-                    className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1">
-                    {t('settings.hookProfile.process')}
-                  </label>
-                  <input
-                    type="text"
-                    value={newProcessName}
-                    onChange={(e) => setNewProcessName(e.target.value)}
-                    placeholder="如: game.exe"
-                    className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">
-                  {t('settings.hookProfile.window')}
-                </label>
-                <input
-                  type="text"
-                  value={newWindowTitle}
-                  onChange={(e) => setNewWindowTitle(e.target.value)}
-                  placeholder="Stardew Valley"
-                  className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1">
-                    {t('settings.hookProfile.sourceLang')}
-                  </label>
-                  <input
-                    type="text"
-                    value={newSourceLang}
-                    onChange={(e) => setNewSourceLang(e.target.value)}
-                    placeholder="ja"
-                    className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-text-secondary mb-1">
-                    {t('settings.hookProfile.targetLang')}
-                  </label>
-                  <input
-                    type="text"
-                    value={newTargetLang}
-                    onChange={(e) => setNewTargetLang(e.target.value)}
-                    placeholder="zh"
-                    className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-text-secondary mb-1">
-                  {t('settings.hookProfile.notes')}
-                </label>
-                <input
-                  type="text"
-                  value={newNotes}
-                  onChange={(e) => setNewNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={resetForm}
-                  className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary"
-                >
-                  {t('settings.hookProfile.cancel')}
-                </button>
-                <button
-                  onClick={() => void handleCreate()}
-                  disabled={!newName.trim()}
-                  className="px-4 py-1.5 text-sm bg-primary text-primary-fg rounded hover:bg-primary/90 disabled:opacity-50"
-                >
-                  {t('settings.hookProfile.createBtn')}
-                </button>
-              </div>
-            </div>
+            <HookProfileForm
+              initial={EMPTY_FORM}
+              onSave={handleCreate}
+              onCancel={() => setShowCreateForm(false)}
+              saveLabel={t('settings.hookProfile.createBtn')}
+            />
           ) : (
             <button
               onClick={() => setShowCreateForm(true)}
@@ -328,7 +381,7 @@ interface ProfileCardProps {
   onDelete: () => void;
   onStartEdit: () => void;
   onCancelEdit: () => void;
-  onSaveEdit: (updates: HookProfileUpdate) => void;
+  onSaveEdit: (data: HookProfileFormData) => void;
   formatTime: (ts?: number) => string;
 }
 
@@ -344,110 +397,22 @@ function ProfileCard({
   formatTime,
 }: ProfileCardProps) {
   const { t } = useI18n();
-  const [editName, setEditName] = useState(profile.name);
-  const [editProcess, setEditProcess] = useState(profile.processName ?? '');
-  const [editTitle, setEditTitle] = useState(profile.windowTitlePattern ?? '');
-  const [editNotes, setEditNotes] = useState(profile.notes);
-  const [editSrc, setEditSrc] = useState(profile.sourceLang ?? '');
-  const [editTgt, setEditTgt] = useState(profile.targetLang ?? '');
 
   if (isEditing) {
     return (
-      <div className="p-4 border border-primary/30 rounded-lg bg-bg-primary space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">
-              {t('settings.hookProfile.name')}
-            </label>
-            <input
-              type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">
-              {t('settings.hookProfile.process')}
-            </label>
-            <input
-              type="text"
-              value={editProcess}
-              onChange={(e) => setEditProcess(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs text-text-secondary mb-1">
-            {t('settings.hookProfile.window')}
-          </label>
-          <input
-            type="text"
-            value={editTitle}
-            onChange={(e) => setEditTitle(e.target.value)}
-            className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-          />
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">
-              {t('settings.hookProfile.sourceLang')}
-            </label>
-            <input
-              type="text"
-              value={editSrc}
-              onChange={(e) => setEditSrc(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">
-              {t('settings.hookProfile.targetLang')}
-            </label>
-            <input
-              type="text"
-              value={editTgt}
-              onChange={(e) => setEditTgt(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-text-secondary mb-1">
-              {t('settings.hookProfile.notes')}
-            </label>
-            <input
-              type="text"
-              value={editNotes}
-              onChange={(e) => setEditNotes(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm bg-bg-tertiary text-text-primary border border-border rounded focus:border-primary outline-none"
-            />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancelEdit}
-            className="px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary"
-          >
-            {t('settings.hookProfile.cancel')}
-          </button>
-          <button
-            onClick={() =>
-              onSaveEdit({
-                name: editName,
-                processName: editProcess || undefined,
-                windowTitlePattern: editTitle || undefined,
-                notes: editNotes,
-                sourceLang: editSrc || undefined,
-                targetLang: editTgt || undefined,
-              })
-            }
-            className="px-4 py-1.5 text-sm bg-primary text-primary-fg rounded hover:bg-primary/90"
-          >
-            {t('settings.hookProfile.save')}
-          </button>
-        </div>
-      </div>
+      <HookProfileForm
+        initial={{
+          name: profile.name,
+          processName: profile.processName ?? '',
+          windowTitle: profile.windowTitlePattern ?? '',
+          sourceLang: profile.sourceLang ?? '',
+          targetLang: profile.targetLang ?? '',
+          notes: profile.notes,
+        }}
+        onSave={onSaveEdit}
+        onCancel={onCancelEdit}
+        saveLabel={t('settings.hookProfile.save')}
+      />
     );
   }
 

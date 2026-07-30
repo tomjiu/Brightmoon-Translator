@@ -70,3 +70,12 @@ tmp/
 # Local export / agent clutter
 github-data/
 archive/
+
+# Agent workspace
+.workbuddy/
+
+# iOS icon assets (not needed for desktop build)
+src-tauri/icons/ios/
+
+# Dev-only example binaries
+src-tauri/examples/

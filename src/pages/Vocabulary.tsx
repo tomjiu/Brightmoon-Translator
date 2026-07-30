@@ -1,12 +1,4 @@
-import { useState } from 'react';
-import VocabularyLearning from './VocabularyLearning';
-import VocabularyReview from './VocabularyReview';
-import DictionarySearch from './DictionarySearch';
-import WordBook from './WordBook';
-import LearningModes from './LearningModes';
-import DataIO from './DataIO';
-import FsrsOptimization from './FsrsOptimization';
-import DictOptimization from './DictOptimization';
+import { useState, lazy, Suspense } from 'react';
 import { LearningStatsDashboard } from '../components/vocabulary';
 import {
   Search,
@@ -18,8 +10,27 @@ import {
   Database,
   Brain,
   HardDrive,
+  Loader2,
 } from 'lucide-react';
 import { useI18n } from '../i18n';
+
+const VocabularyLearning = lazy(() => import('./VocabularyLearning'));
+const VocabularyReview = lazy(() => import('./VocabularyReview'));
+const DictionarySearch = lazy(() => import('./DictionarySearch'));
+const WordBook = lazy(() => import('./WordBook'));
+const LearningModes = lazy(() => import('./LearningModes'));
+const DataIO = lazy(() => import('./DataIO'));
+const FsrsOptimization = lazy(() => import('./FsrsOptimization'));
+const DictOptimization = lazy(() => import('./DictOptimization'));
+
+function LazyFallback() {
+  return (
+    <div className="flex items-center justify-center h-32 text-text-secondary">
+      <Loader2 size={18} className="animate-spin mr-2" />
+      Loading...
+    </div>
+  );
+}
 
 type VocabTab =
   | 'dictionary'
@@ -36,7 +47,7 @@ function Vocabulary() {
   const [activeTab, setActiveTab] = useState<VocabTab>('dictionary');
   const { t } = useI18n();
 
-  const tabs: { id: VocabTab; icon: typeof Search; labelKey: string }[] = [
+  const tabs: Array<{ id: VocabTab; icon: typeof Search; labelKey: string }> = [
     { id: 'dictionary', icon: Search, labelKey: 'vocabulary.tabs.dictionary' },
     { id: 'learning', icon: GraduationCap, labelKey: 'vocabulary.tabs.learning' },
     { id: 'review', icon: RefreshCw, labelKey: 'vocabulary.tabs.review' },
@@ -68,15 +79,17 @@ function Vocabulary() {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'dictionary' && <DictionarySearch />}
-        {activeTab === 'learning' && <VocabularyLearning />}
-        {activeTab === 'review' && <VocabularyReview />}
-        {activeTab === 'modes' && <LearningModes />}
-        {activeTab === 'wordbook' && <WordBook />}
-        {activeTab === 'statistics' && <LearningStatsDashboard />}
-        {activeTab === 'data' && <DataIO />}
-        {activeTab === 'fsrs' && <FsrsOptimization />}
-        {activeTab === 'dictopt' && <DictOptimization />}
+        <Suspense fallback={<LazyFallback />}>
+          {activeTab === 'dictionary' && <DictionarySearch />}
+          {activeTab === 'learning' && <VocabularyLearning />}
+          {activeTab === 'review' && <VocabularyReview />}
+          {activeTab === 'modes' && <LearningModes />}
+          {activeTab === 'wordbook' && <WordBook />}
+          {activeTab === 'statistics' && <LearningStatsDashboard />}
+          {activeTab === 'data' && <DataIO />}
+          {activeTab === 'fsrs' && <FsrsOptimization />}
+          {activeTab === 'dictopt' && <DictOptimization />}
+        </Suspense>
       </div>
     </div>
   );
