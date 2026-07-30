@@ -31,20 +31,10 @@ describe('translateStore', () => {
       realtimeDelayMs: 500,
     });
 
-    useIncrementalStore.setState({
-      incrementalMode: false,
-      incrementalEntries: [],
-    });
-
     useTranslateStore.setState({
       translationHistory: [],
       historyIndex: -1,
     } as unknown);
-
-    useEmbeddedStore.setState({
-      embeddedMode: false,
-      embeddedLines: [],
-    });
 
     vi.clearAllMocks();
   });
@@ -213,7 +203,6 @@ describe('translateStore', () => {
         incrementalMode: true,
         incrementalEntries: [],
       });
-      useIncrementalStore.setState({ incrementalMode: true, incrementalEntries: [] });
 
       vi.mocked(safeInvoke).mockResolvedValue([
         { results: [{ engine: 'google', text: '你好' }], detectedLanguage: 'en' },
