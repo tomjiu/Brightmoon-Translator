@@ -2,14 +2,6 @@ use super::{OverlayContent, OverlayLevel};
 
 /// Build overlay HTML — single solid card, fills window (no black chrome + white inset).
 pub fn build_html(content: &OverlayContent, level: OverlayLevel, dismiss_ms: u64) -> String {
-    // Dictionary cards (hover + selection word): badge + phonetic, not generic MT.
-    if content
-        .source_app
-        .as_deref()
-        .is_some_and(|s| s == "hover-dict" || s == "dict")
-    {
-        return build_dict_card_html(&content.translated, dismiss_ms.max(3500));
-    }
     match level {
         OverlayLevel::Minimal => {
             build_card_html(None, &content.translated, dismiss_ms.max(2000), true)
@@ -174,66 +166,6 @@ pub fn build_dict_card_structured(
         })
         .unwrap_or_default();
     render_dict_card_shell(&card.word, &phon_html, &defs_html, dismiss_ms)
-}
-
-/// Dictionary hover card: headword + phonetic + POS badges (visually distinct from MT).
-/// Legacy path: parses plain-text body from format_dict_body.
-pub fn build_dict_card_html(body: &str, dismiss_ms: u64) -> String {
-    let mut lines = body.lines();
-    let head = lines.next().unwrap_or("").trim();
-    let (word, phonetic) = if let Some((w, rest)) = head.split_once("  /") {
-        (w.trim(), Some(format!("/{}", rest.trim())))
-    } else if let Some((w, rest)) = head.split_once("  [") {
-        (w.trim(), Some(format!("[{}", rest.trim())))
-    } else if let Some((w, rest)) = head.split_once("  ") {
-        let rest = rest.trim();
-        if rest.starts_with('/') || rest.starts_with('[') {
-            (w.trim(), Some(rest.to_string()))
-        } else {
-            (head, None)
-        }
-    } else {
-        (head, None)
-    };
-    let mut defs_html = String::new();
-    for line in lines {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if let Some(rest) = line.strip_prefix('[') {
-            if let Some((pos, def)) = rest.split_once(']') {
-                let pos = pos.trim();
-                let def = def.trim();
-                if pos.eq_ignore_ascii_case("ecdict") || pos.is_empty() {
-                    defs_html.push_str(&format!(
-                        r#"<div class="def">{}</div>"#,
-                        html_escape::encode_text(def)
-                    ));
-                } else {
-                    defs_html.push_str(&format!(
-                        r#"<div class="def"><span class="pos">{}</span> {}</div>"#,
-                        html_escape::encode_text(pos),
-                        html_escape::encode_text(def)
-                    ));
-                }
-                continue;
-            }
-        }
-        defs_html.push_str(&format!(
-            r#"<div class="def">{}</div>"#,
-            html_escape::encode_text(line)
-        ));
-    }
-    let phon_html = phonetic
-        .map(|p| {
-            format!(
-                r#"<span class="phon">{}</span>"#,
-                html_escape::encode_text(&p)
-            )
-        })
-        .unwrap_or_default();
-    render_dict_card_shell(word, &phon_html, &defs_html, dismiss_ms)
 }
 
 fn render_dict_card_shell(word: &str, phon_html: &str, defs_html: &str, dismiss_ms: u64) -> String {
