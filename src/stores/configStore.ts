@@ -20,6 +20,7 @@ const INITIAL_CONFIG: AppConfig = {
     offline: { enabled: false, autoSwitch: true, downloadedModels: [], modelDir: '' },
     tatoeba: { enabled: false },
     baiduWeb: { enabled: false },
+    caiyun: { enabled: false, apiToken: '' },
     caiyunWeb: { enabled: false },
     volcengineWeb: { enabled: false },
     transmart: { enabled: false },
@@ -209,7 +210,16 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       ...INITIAL_CONFIG,
       ...loadedCfg,
       llm: { ...INITIAL_CONFIG.llm, ...(loadedCfg.llm ?? {}) },
-      engines: { ...INITIAL_CONFIG.engines, ...(loadedCfg.engines ?? {}) } as AppConfig['engines'],
+      engines: {
+        ...INITIAL_CONFIG.engines,
+        ...(loadedCfg.engines ?? {}),
+        caiyun: {
+          enabled: false,
+          apiToken: '',
+          ...INITIAL_CONFIG.engines.caiyun,
+          ...loadedCfg.engines?.caiyun,
+        },
+      } as AppConfig['engines'],
       hotkeys: { ...INITIAL_CONFIG.hotkeys, ...(loadedCfg.hotkeys ?? {}) },
       selectionUx: {
         ...INITIAL_CONFIG.selectionUx!,
@@ -276,9 +286,17 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       console.error('Refusing saveConfig: config not loaded yet (would clobber disk)');
       return;
     }
+    const prev = structuredClone(config);
     const [, error] = await safeInvoke('save_config', { config });
     if (error) {
       console.error('Failed to save config:', error);
+      set({ config: prev, saved: false });
+      const { useToastStore } = await import('./toastStore');
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: `配置保存失败: ${error.message}`,
+        duration: 4000,
+      });
       return;
     }
     set({ saved: true });

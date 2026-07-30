@@ -59,6 +59,7 @@ quick-xml = "0.31"
 image = "0.25"
 ab_glyph = "0.2"
 imageproc = "0.24"
+fsrs = "6"
 
 [dependencies.windows]
 version = "0.58"

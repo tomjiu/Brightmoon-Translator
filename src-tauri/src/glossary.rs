@@ -5,6 +5,44 @@ use std::path::PathBuf;
 // Re-export shared type from models
 pub use crate::models::glossary::GlossaryEntry;
 
+fn is_ascii_word_term(source: &str) -> bool {
+    !source.is_empty()
+        && source
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '\'' || c == '-')
+}
+
+/// Replace ASCII term only at word boundaries (avoid "cat" → "猫" inside "category").
+fn replace_ascii_whole_word(text: &str, source: &str, target: &str) -> String {
+    if source.is_empty() || text.is_empty() {
+        return text.to_string();
+    }
+    let lower_text: String = text.to_ascii_lowercase();
+    let lower_src = source.to_ascii_lowercase();
+    let src_len = source.len();
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < text.len() {
+        if i + src_len <= text.len()
+            && lower_text.as_bytes()[i..i + src_len] == lower_src.as_bytes()[..]
+        {
+            let before_ok = i == 0 || !bytes[i - 1].is_ascii_alphanumeric();
+            let after_ok = i + src_len >= text.len() || !bytes[i + src_len].is_ascii_alphanumeric();
+            if before_ok && after_ok {
+                out.push_str(target);
+                i += src_len;
+                continue;
+            }
+        }
+        // advance one UTF-8 char
+        let ch = text[i..].chars().next().unwrap_or('\0');
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Glossary {
     entries: HashMap<String, Vec<GlossaryEntry>>,
@@ -76,8 +114,17 @@ impl Glossary {
 
     pub fn apply_glossary(&self, text: &mut String, lang_pair: &str) {
         if let Some(entries) = self.entries.get(lang_pair) {
-            for entry in entries {
-                *text = text.replace(&entry.source, &entry.target);
+            let mut ordered = entries.clone();
+            ordered.sort_by(|a, b| b.source.len().cmp(&a.source.len()));
+            for entry in &ordered {
+                if entry.source.is_empty() {
+                    continue;
+                }
+                if is_ascii_word_term(&entry.source) {
+                    *text = replace_ascii_whole_word(text, &entry.source, &entry.target);
+                } else {
+                    *text = text.replace(&entry.source, &entry.target);
+                }
             }
         }
     }
@@ -296,10 +343,30 @@ mod tests {
             entries,
             path: PathBuf::from("/tmp/test_partial.json"),
         };
-        // "cat" is a substring of "category" - this is expected behavior (simple replace)
+        // "cat" must not rewrite inside "category"
         let mut text = "category".to_string();
         glossary.apply_glossary(&mut text, "en-zh");
-        assert_eq!(text, "猫egory");
+        assert_eq!(text, "category");
+    }
+
+    #[test]
+    fn test_apply_glossary_whole_word_only() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "en-zh".to_string(),
+            vec![GlossaryEntry {
+                source: "cat".to_string(),
+                target: "猫".to_string(),
+                context: None,
+            }],
+        );
+        let glossary = Glossary {
+            entries,
+            path: PathBuf::from("/tmp/test_whole_word.json"),
+        };
+        let mut text = "the cat sat on category".to_string();
+        glossary.apply_glossary(&mut text, "en-zh");
+        assert_eq!(text, "the 猫 sat on category");
     }
 
     #[test]

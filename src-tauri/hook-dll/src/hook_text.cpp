@@ -52,11 +52,18 @@ struct TextMessage {
 
 static const uint32_t SHARED_MEMORY_MAGIC = 0x4D4F4F4E; // "MOON"
 static const uint32_t SHARED_MEMORY_SIZE = 1024 * 1024; // 1MB
-static const wchar_t* SHARED_MEMORY_NAME = L"MoonTranslatorHookSharedMem";
+static wchar_t g_shared_mem_name[128] = L"MoonTranslatorHookSharedMem";
 
 static HANDLE g_shared_mem = nullptr;
 static SharedMemoryHeader* g_shared_data = nullptr;
 static CRITICAL_SECTION g_write_lock;
+static bool g_write_lock_inited = false;
+static HMODULE g_self_module = nullptr;
+
+static void BuildSharedMemoryName() {
+    DWORD pid = GetCurrentProcessId();
+    swprintf_s(g_shared_mem_name, L"MoonTranslatorHookSharedMem_PID%lu", (unsigned long)pid);
+}
 
 // ============================================================================
 // Original function pointers
@@ -122,13 +129,14 @@ static bool IsPrintableText(const char* utf8, size_t len) {
 // ============================================================================
 
 static bool InitSharedMemory() {
+    BuildSharedMemoryName();
     g_shared_mem = CreateFileMappingW(
         INVALID_HANDLE_VALUE,
         nullptr,
         PAGE_READWRITE,
         0,
         SHARED_MEMORY_SIZE,
-        SHARED_MEMORY_NAME
+        g_shared_mem_name
     );
     if (!g_shared_mem) return false;
 
@@ -161,12 +169,18 @@ static bool InitSharedMemory() {
         strncpy_s(g_shared_data->process_name, sizeof(g_shared_data->process_name), name, _TRUNCATE);
     }
 
-    InitializeCriticalSection(&g_write_lock);
+    if (!g_write_lock_inited) {
+        InitializeCriticalSection(&g_write_lock);
+        g_write_lock_inited = true;
+    }
     return true;
 }
 
 static void CleanupSharedMemory() {
-    DeleteCriticalSection(&g_write_lock);
+    if (g_write_lock_inited) {
+        DeleteCriticalSection(&g_write_lock);
+        g_write_lock_inited = false;
+    }
     if (g_shared_data) {
         UnmapViewOfFile(g_shared_data);
         g_shared_data = nullptr;
@@ -420,13 +434,10 @@ static int PatchAllModulesIAT(const HookTarget* targets, int count) {
 // Hook installation/removal
 // ============================================================================
 
-static bool InstallHooks() {
-    if (g_hooks_installed) return true;
-
-    // Resolve real APIs as fallback originals if IAT never saw them
+static void ResolveOriginals() {
     HMODULE gdi32 = GetModuleHandleW(L"gdi32.dll");
     HMODULE user32 = GetModuleHandleW(L"user32.dll");
-    if (!gdi32 || !user32) return false;
+    if (!gdi32 || !user32) return;
 
     if (!g_orig_TextOutW) g_orig_TextOutW = (TextOutW_t)GetProcAddress(gdi32, "TextOutW");
     if (!g_orig_TextOutA) g_orig_TextOutA = (TextOutA_t)GetProcAddress(gdi32, "TextOutA");
@@ -436,6 +447,13 @@ static bool InstallHooks() {
     if (!g_orig_DrawTextA) g_orig_DrawTextA = (DrawTextA_t)GetProcAddress(user32, "DrawTextA");
     if (!g_orig_DrawTextExW) g_orig_DrawTextExW = (DrawTextExW_t)GetProcAddress(user32, "DrawTextExW");
     if (!g_orig_DrawTextExA) g_orig_DrawTextExA = (DrawTextExA_t)GetProcAddress(user32, "DrawTextExA");
+}
+
+static bool InstallHooks() {
+    if (g_hooks_installed) return true;
+
+    ResolveOriginals();
+    if (!g_orig_TextOutW && !g_orig_ExtTextOutW && !g_orig_DrawTextW) return false;
 
     const HookTarget targets[] = {
         {"gdi32.dll", "TextOutW", (void*)HookedTextOutW, (void**)&g_orig_TextOutW},
@@ -456,6 +474,51 @@ static bool InstallHooks() {
                         || g_orig_DrawTextW != nullptr);
 }
 
+/// Restore IAT slots from hooked functions back to g_orig_* (best-effort).
+static void UninstallHooks() {
+    if (!g_hooks_installed) return;
+    ResolveOriginals();
+
+    // Patch hooked slots back to originals by treating g_orig as the "new" target
+    // and temporarily clearing *orig so PatchIAT does not overwrite g_orig.
+    auto restore_one = [](const char* dll, const char* name, void* orig) {
+        if (!orig) return;
+        void* scratch = orig; // already the real API
+        // Walk modules and replace Hooked* with orig where present.
+        HMODULE mods[1024];
+        DWORD needed = 0;
+        HANDLE proc = GetCurrentProcess();
+        if (!EnumProcessModules(proc, mods, sizeof(mods), &needed)) {
+            HMODULE exe = GetModuleHandleW(nullptr);
+            if (exe) {
+                void* dummy = nullptr;
+                // Force-write orig into IAT by patching any slot currently pointing at our hooks
+                // Reuse PatchIAT with new_func=orig; dummy orig storage ignored if already set.
+                dummy = orig;
+                PatchIAT(exe, dll, name, orig, &dummy);
+            }
+            return;
+        }
+        int nmods = (int)(needed / sizeof(HMODULE));
+        if (nmods > 1024) nmods = 1024;
+        for (int mi = 0; mi < nmods; ++mi) {
+            void* dummy = orig;
+            PatchIAT(mods[mi], dll, name, orig, &dummy);
+        }
+    };
+
+    restore_one("gdi32.dll", "TextOutW", (void*)g_orig_TextOutW);
+    restore_one("gdi32.dll", "TextOutA", (void*)g_orig_TextOutA);
+    restore_one("gdi32.dll", "ExtTextOutW", (void*)g_orig_ExtTextOutW);
+    restore_one("gdi32.dll", "ExtTextOutA", (void*)g_orig_ExtTextOutA);
+    restore_one("user32.dll", "DrawTextW", (void*)g_orig_DrawTextW);
+    restore_one("user32.dll", "DrawTextA", (void*)g_orig_DrawTextA);
+    restore_one("user32.dll", "DrawTextExW", (void*)g_orig_DrawTextExW);
+    restore_one("user32.dll", "DrawTextExA", (void*)g_orig_DrawTextExA);
+
+    g_hooks_installed = false;
+}
+
 // ============================================================================
 // DLL Entry Point
 // ============================================================================
@@ -463,6 +526,7 @@ static bool InstallHooks() {
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved) {
     switch (reason) {
     case DLL_PROCESS_ATTACH:
+        g_self_module = hModule;
         DisableThreadLibraryCalls(hModule);
         if (InitSharedMemory()) {
             InstallHooks();
@@ -470,6 +534,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved) {
         break;
 
     case DLL_PROCESS_DETACH:
+        // If FreeLibraryAndExitThread already cleaned up, this is a no-op.
+        if (g_hooks_installed) {
+            UninstallHooks();
+        }
         CleanupSharedMemory();
         break;
 
@@ -496,5 +564,16 @@ extern "C" {
     __declspec(dllexport) const char* __cdecl HookGetProcessName() {
         if (!g_shared_data) return "";
         return g_shared_data->process_name;
+    }
+
+    /// Host calls this via CreateRemoteThread after resolving export in remote module.
+    /// Restores IAT, cleans shared memory, then unloads this DLL from the target process.
+    __declspec(dllexport) DWORD __stdcall HookUninstall(LPVOID) {
+        UninstallHooks();
+        CleanupSharedMemory();
+        if (g_self_module) {
+            FreeLibraryAndExitThread(g_self_module, 0);
+        }
+        return 0;
     }
 }

@@ -1,30 +1,38 @@
-// FSRS Engine - 复习调度算法（纯 Rust 实现）
-// 基于 FSRS-4.5 算法
+// FSRS Engine - wraps official fsrs crate (FSRS-6 scheduler)
 
 use crate::domain::{CardState, Rating};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use chrono::{DateTime, Duration, Utc};
+use fsrs::{FSRS, ItemState, MemoryState};
 
 /// FSRS 引擎
 pub struct FsrsEngine {
-    /// 参数权重（默认 FSRS-4.5 参数）
+    inner: FSRS,
+    /// Cached weights for get_params (first 17 of default / custom)
     w: [f64; 17],
+    desired_retention: f32,
 }
 
 impl FsrsEngine {
-    /// 创建默认引擎（FSRS-4.5 默认参数）
+    /// 创建默认引擎
     pub fn new() -> Self {
+        let inner = FSRS::default();
         Self {
-            w: [
-                0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34,
-                1.26, 0.29, 2.61,
-            ],
+            inner,
+            w: default_w17(),
+            desired_retention: 0.9,
         }
     }
 
-    /// 使用自定义参数创建
+    /// 使用自定义参数创建（不足则用默认补齐；多余截断到 17 供 get_params）
     pub fn with_params(params: [f64; 17]) -> Self {
-        Self { w: params }
+        let f32_params: Vec<f32> = params.iter().map(|&x| x as f32).collect();
+        let inner = FSRS::new(&f32_params).unwrap_or_default();
+        Self {
+            inner,
+            w: params,
+            desired_retention: 0.9,
+        }
     }
 
     /// 计算下次复习
@@ -35,21 +43,28 @@ impl FsrsEngine {
         review_time: DateTime<Utc>,
     ) -> Result<CardState> {
         let elapsed_days = if let Some(last_review) = current_state.last_review {
-            let last = DateTime::from_timestamp(last_review, 0).unwrap();
+            let last = DateTime::from_timestamp(last_review, 0).unwrap_or(review_time);
             (review_time - last).num_days().max(0) as u32
         } else {
             0
         };
 
-        let (new_stability, new_difficulty) = if current_state.reps == 0 {
-            // 新卡片
-            self.init_stability_difficulty(rating)
+        let prev = if current_state.reps == 0 || current_state.stability <= 0.0 {
+            None
         } else {
-            // 已学习卡片
-            self.next_stability_difficulty(current_state, rating, elapsed_days)
+            Some(MemoryState {
+                stability: current_state.stability as f32,
+                difficulty: current_state.difficulty as f32,
+            })
         };
 
-        let scheduled_days = self.next_interval(new_stability);
+        let next = self
+            .inner
+            .next_states(prev, self.desired_retention, elapsed_days)
+            .map_err(|e| anyhow!("FSRS next_states failed: {e}"))?;
+
+        let item = pick_rating(&next, rating);
+        let scheduled_days = item.interval.round().max(1.0) as u32;
         let next_review_time = review_time + Duration::days(scheduled_days as i64);
 
         let (new_reps, new_lapses) = match rating {
@@ -58,8 +73,8 @@ impl FsrsEngine {
         };
 
         Ok(CardState {
-            stability: new_stability,
-            difficulty: new_difficulty,
+            stability: item.memory.stability as f64,
+            difficulty: item.memory.difficulty as f64,
             elapsed_days,
             scheduled_days,
             reps: new_reps,
@@ -102,79 +117,13 @@ impl FsrsEngine {
         })
     }
 
-    /// 初始化稳定性和难度（新卡片）
-    fn init_stability_difficulty(&self, rating: Rating) -> (f64, f64) {
-        let stability = match rating {
-            Rating::Again => self.w[0],
-            Rating::Hard => self.w[1],
-            Rating::Good => self.w[2],
-            Rating::Easy => self.w[3],
-        };
-
-        let difficulty = self.w[4] - (rating as i32 as f64 - 3.0) * self.w[5];
-        let difficulty = difficulty.clamp(1.0, 10.0);
-
-        (stability, difficulty)
-    }
-
-    /// 计算下一个稳定性和难度（已学习卡片）
-    fn next_stability_difficulty(
-        &self,
-        state: &CardState,
-        rating: Rating,
-        elapsed_days: u32,
-    ) -> (f64, f64) {
-        let retrievability = self.forgetting_curve(elapsed_days, state.stability);
-
-        let new_difficulty = if rating == Rating::Again {
-            state.difficulty
-        } else {
-            let new_d = state.difficulty - self.w[6] * (rating as i32 as f64 - 3.0);
-            new_d.clamp(1.0, 10.0)
-        };
-
-        let new_stability = match rating {
-            Rating::Again => {
-                self.w[11]
-                    * state.difficulty.powf(-self.w[12])
-                    * ((state.stability + 1.0).powf(self.w[13]) - 1.0)
-                    * (1.0 - retrievability).exp()
-            },
-            Rating::Hard => {
-                state.stability
-                    * (1.0
-                        + (self.w[7] * (11.0 - new_difficulty) * state.stability.powf(-self.w[8]))
-                            .exp()
-                            * (1.0 - retrievability))
-            },
-            Rating::Good => {
-                state.stability
-                    * (1.0
-                        + (self.w[7] * (11.0 - new_difficulty) * state.stability.powf(-self.w[8]))
-                            .exp()
-                            * (1.0 - retrievability))
-            },
-            Rating::Easy => {
-                state.stability
-                    * (1.0
-                        + (self.w[9] * (11.0 - new_difficulty) * state.stability.powf(-self.w[10]))
-                            .exp()
-                            * (1.0 - retrievability))
-            },
-        };
-
-        (new_stability.max(0.01), new_difficulty)
-    }
-
-    /// 计算下一个间隔（天数）
-    fn next_interval(&self, stability: f64) -> u32 {
-        let interval = (stability * 9.0 * (1.0 / 0.9 - 1.0)).round();
-        interval.max(1.0) as u32
-    }
-
-    /// 遗忘曲线（计算记忆保持率）
+    /// 遗忘曲线（计算记忆保持率）— FSRS-6 style with decay ≈ 0.5 for display
     pub fn forgetting_curve(&self, elapsed_days: u32, stability: f64) -> f64 {
-        (1.0 + (elapsed_days as f64) / (9.0 * stability)).powf(-1.0)
+        if stability <= 0.0 {
+            return 0.0;
+        }
+        let factor = (0.9f64).powf(1.0 / -0.5) - 1.0;
+        (1.0 + factor * (elapsed_days as f64) / stability).powf(-0.5)
     }
 
     /// 是否应该复习
@@ -198,6 +147,11 @@ impl FsrsEngine {
         let now = Utc::now().timestamp();
         (state.next_review - now) / 86400
     }
+
+    /// 获取当前参数
+    pub fn get_params(&self) -> &[f64; 17] {
+        &self.w
+    }
 }
 
 impl Default for FsrsEngine {
@@ -206,11 +160,21 @@ impl Default for FsrsEngine {
     }
 }
 
-impl FsrsEngine {
-    /// 获取当前参数
-    pub fn get_params(&self) -> &[f64; 17] {
-        &self.w
+fn pick_rating(next: &fsrs::NextStates, rating: Rating) -> ItemState {
+    match rating {
+        Rating::Again => next.again.clone(),
+        Rating::Hard => next.hard.clone(),
+        Rating::Good => next.good.clone(),
+        Rating::Easy => next.easy.clone(),
     }
+}
+
+fn default_w17() -> [f64; 17] {
+    // First 17 of FSRS default weights (display / with_params compat)
+    [
+        0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29,
+        2.61,
+    ]
 }
 
 /// 评分预览
@@ -263,7 +227,6 @@ mod tests {
         let initial = engine.initial_state();
         let now = Utc::now();
 
-        // 第一次复习：Good
         let after_good = engine.schedule_review(&initial, Rating::Good, now).unwrap();
 
         assert_eq!(after_good.reps, 1);
@@ -278,11 +241,9 @@ mod tests {
         let initial = engine.initial_state();
         let now = Utc::now();
 
-        // 第一次：Good
         let state1 = engine.schedule_review(&initial, Rating::Good, now).unwrap();
         assert_eq!(state1.lapses, 0);
 
-        // 第二次：Again（忘记）
         let state2 = engine
             .schedule_review(&state1, Rating::Again, now + Duration::days(1))
             .unwrap();
@@ -298,7 +259,6 @@ mod tests {
         let preview = engine.preview_ratings(&state, now).unwrap();
         let intervals = preview.intervals();
 
-        // 验证间隔递增：Again < Hard < Good < Easy
         assert!(intervals.again <= intervals.hard);
         assert!(intervals.hard <= intervals.good);
         assert!(intervals.good <= intervals.easy);
@@ -309,14 +269,11 @@ mod tests {
         let engine = FsrsEngine::new();
         let mut state = engine.initial_state();
 
-        // 新卡片应该立即复习
         assert!(engine.should_review(&state));
 
-        // 设置未来的复习时间
         state.next_review = (Utc::now() + Duration::days(1)).timestamp();
         assert!(!engine.should_review(&state));
 
-        // 设置过去的复习时间
         state.next_review = (Utc::now() - Duration::days(1)).timestamp();
         assert!(engine.should_review(&state));
     }
@@ -326,11 +283,9 @@ mod tests {
         let engine = FsrsEngine::new();
         let stability = 10.0;
 
-        // 刚复习完，记忆保持率接近 1.0
         let retention_0 = engine.forgetting_curve(0, stability);
         assert!(retention_0 > 0.99);
 
-        // 经过一段时间，记忆保持率下降
         let retention_10 = engine.forgetting_curve(10, stability);
         assert!(retention_10 < retention_0);
         assert!(retention_10 > 0.5);
@@ -342,17 +297,65 @@ mod tests {
         let initial = engine.initial_state();
         let now = Utc::now();
 
-        // Good 评分，难度应该适中
         let state_good = engine.schedule_review(&initial, Rating::Good, now).unwrap();
         assert!(state_good.difficulty > 1.0);
         assert!(state_good.difficulty < 10.0);
 
-        // Easy 评分，难度应该更低
         let state_easy = engine.schedule_review(&initial, Rating::Easy, now).unwrap();
         assert!(state_easy.difficulty < state_good.difficulty);
 
-        // Hard 评分，难度应该更高
         let state_hard = engine.schedule_review(&initial, Rating::Hard, now).unwrap();
         assert!(state_hard.difficulty > state_good.difficulty);
+    }
+
+    #[test]
+    fn hard_stability_differs_from_good_after_review() {
+        let engine = FsrsEngine::new();
+        let initial = engine.initial_state();
+        let t0 = Utc::now();
+        let learned = engine.schedule_review(&initial, Rating::Good, t0).unwrap();
+        let t1 = t0 + Duration::days(learned.scheduled_days.max(1) as i64);
+        let hard = engine.schedule_review(&learned, Rating::Hard, t1).unwrap();
+        let good = engine.schedule_review(&learned, Rating::Good, t1).unwrap();
+        assert!(
+            (hard.stability - good.stability).abs() > 1e-6,
+            "Hard and Good must produce different stability (got hard={} good={})",
+            hard.stability,
+            good.stability
+        );
+        assert!(hard.scheduled_days <= good.scheduled_days);
+    }
+
+    #[test]
+    fn again_increases_difficulty_on_review() {
+        let engine = FsrsEngine::new();
+        let initial = engine.initial_state();
+        let t0 = Utc::now();
+        let learned = engine.schedule_review(&initial, Rating::Good, t0).unwrap();
+        let d0 = learned.difficulty;
+        let t1 = t0 + Duration::days(learned.scheduled_days.max(1) as i64);
+        let after_again = engine.schedule_review(&learned, Rating::Again, t1).unwrap();
+        assert!(
+            after_again.difficulty > d0,
+            "Again must increase difficulty (before={} after={})",
+            d0,
+            after_again.difficulty
+        );
+        assert_eq!(after_again.lapses, learned.lapses + 1);
+    }
+
+    #[test]
+    fn rating_order_intervals_strict_or_nondecreasing() {
+        let engine = FsrsEngine::new();
+        let initial = engine.initial_state();
+        let t0 = Utc::now();
+        let learned = engine.schedule_review(&initial, Rating::Good, t0).unwrap();
+        let t1 = t0 + Duration::days(learned.scheduled_days.max(1) as i64);
+        let preview = engine.preview_ratings(&learned, t1).unwrap();
+        let i = preview.intervals();
+        assert!(i.again <= i.hard);
+        assert!(i.hard <= i.good);
+        assert!(i.good <= i.easy);
+        assert!(i.hard < i.good || i.again < i.hard || i.good < i.easy);
     }
 }

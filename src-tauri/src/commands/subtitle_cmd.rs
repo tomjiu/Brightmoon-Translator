@@ -101,6 +101,7 @@ pub async fn export_subtitle_file(
         total_entries: entries.len(),
         entries,
         format,
+        raw_content: None,
     };
     let content = subtitle::export_subtitle(&doc, bilingual);
 

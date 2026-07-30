@@ -45,6 +45,19 @@ pub struct TmxData {
     pub units: Vec<TmxTranslationUnit>,
 }
 
+/// Case-insensitive language match (`en` ↔ `en-US`).
+fn lang_matches(lang: &str, srclang: &str) -> bool {
+    if lang.is_empty() || srclang.is_empty() {
+        return false;
+    }
+    let a = lang.to_ascii_lowercase();
+    let b = srclang.to_ascii_lowercase();
+    a == b
+        || a.starts_with(&format!("{b}-"))
+        || b.starts_with(&format!("{a}-"))
+        || a.split('-').next() == b.split('-').next()
+}
+
 /// Parse a TMX file from XML string.
 ///
 /// Supports both TMX 1.4 and 2.0 formats. Extracts translation units (tu)
@@ -70,6 +83,8 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
     let mut current_change_date: Option<String> = None;
     let mut current_creation_user: Option<String> = None;
     let mut is_source_tuv = false;
+    let mut tuv_index_in_tu: u32 = 0;
+    let mut current_tuv_is_source_lang: Option<String> = None;
     let mut buf = Vec::new();
 
     loop {
@@ -110,11 +125,12 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                         current_creation_date = None;
                         current_change_date = None;
                         current_creation_user = None;
+                        tuv_index_in_tu = 0;
+                        current_tuv_is_source_lang = None;
                     },
                     "tuv" => {
                         in_tuv = true;
                         current_lang.clear();
-                        is_source_tuv = false;
                         for attr in e.attributes().flatten() {
                             let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
                             let val = String::from_utf8_lossy(&attr.value).to_string();
@@ -122,6 +138,16 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                                 current_lang = val;
                             }
                         }
+                        is_source_tuv = if let Some(ref src) = header_srclang {
+                            lang_matches(&current_lang, src)
+                        } else {
+                            // First tuv is source when header has no srclang
+                            tuv_index_in_tu == 0
+                        };
+                        if is_source_tuv {
+                            current_tuv_is_source_lang = Some(current_lang.clone());
+                        }
+                        tuv_index_in_tu += 1;
                     },
                     "seg" => {
                         in_seg = true;
@@ -179,13 +205,19 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                         in_tu = false;
                         // Determine which is source and which is target
                         if !current_source.is_empty() && !current_target.is_empty() {
-                            let src_lang =
-                                header_srclang.clone().unwrap_or_else(|| "en".to_string());
+                            let src_lang = header_srclang
+                                .clone()
+                                .or_else(|| current_tuv_is_source_lang.clone())
+                                .unwrap_or_else(|| "en".to_string());
                             units.push(TmxTranslationUnit {
                                 source_text: current_source.clone(),
                                 target_text: current_target.clone(),
                                 source_lang: src_lang,
-                                target_lang: "zh".to_string(),
+                                target_lang: if current_lang.is_empty() {
+                                    "zh".to_string()
+                                } else {
+                                    current_lang.clone()
+                                },
                                 creation_date: current_creation_date.clone(),
                                 change_date: current_change_date.clone(),
                                 creation_user: current_creation_user.clone(),
@@ -477,8 +509,28 @@ mod tests {
         assert_eq!(data.units.len(), 2);
         assert_eq!(data.units[0].source_text, "Hello World");
         assert_eq!(data.units[0].target_text, "你好世界");
+        assert_eq!(data.units[0].source_lang, "en");
         assert_eq!(data.units[1].source_text, "Good morning");
         assert_eq!(data.units[1].target_text, "早上好");
+    }
+
+    #[test]
+    fn test_is_source_tuv_uses_header_srclang() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<tmx version="1.4">
+  <header creationtool="Test" datatype="PlainText" segtype="sentence" adminlang="en" srclang="ja"/>
+  <body>
+    <tu>
+      <tuv xml:lang="en"><seg>Should be target</seg></tuv>
+      <tuv xml:lang="ja"><seg>ソース</seg></tuv>
+    </tu>
+  </body>
+</tmx>"#;
+        let data = parse_tmx(xml).unwrap();
+        assert_eq!(data.units.len(), 1);
+        assert_eq!(data.units[0].source_text, "ソース");
+        assert_eq!(data.units[0].target_text, "Should be target");
+        assert_eq!(data.units[0].source_lang, "ja");
     }
 
     #[test]

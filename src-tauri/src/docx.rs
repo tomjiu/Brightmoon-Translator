@@ -200,6 +200,7 @@ pub fn write_translated_docx(
     let mut para_index = 0;
     let mut paragraphs_translated = 0;
     let mut words_translated = 0;
+    let mut skipped_non_para = 0usize;
 
     // Create a lookup map for translations
     let translation_map: std::collections::HashMap<usize, &String> = translations
@@ -208,32 +209,39 @@ pub fn write_translated_docx(
         .collect();
 
     for child in docx.document.children {
-        if let docx_rs::DocumentChild::Paragraph(para) = child {
-            let text = extract_paragraph_text(&para);
+        match child {
+            docx_rs::DocumentChild::Paragraph(para) => {
+                let text = extract_paragraph_text(&para);
 
-            // Skip empty paragraphs
-            if text.trim().is_empty() {
-                new_doc = new_doc.add_paragraph(*para);
-                continue;
+                // Skip empty paragraphs
+                if text.trim().is_empty() {
+                    new_doc = new_doc.add_paragraph(*para);
+                    continue;
+                }
+
+                // Check if we have a translation for this paragraph
+                if let Some(translated) = translation_map.get(&para_index) {
+                    // Create new paragraph with translated text but preserve first-run rPr
+                    let new_para = create_translated_paragraph(&para, translated);
+                    new_doc = new_doc.add_paragraph(new_para);
+
+                    paragraphs_translated += 1;
+                    words_translated += count_words(&text);
+                } else {
+                    // Keep original paragraph
+                    new_doc = new_doc.add_paragraph(*para);
+                }
+
+                para_index += 1;
             }
-
-            // Check if we have a translation for this paragraph
-            if let Some(translated) = translation_map.get(&para_index) {
-                // Create new paragraph with translated text but preserve formatting
-                let new_para = create_translated_paragraph(&para, translated);
-                new_doc = new_doc.add_paragraph(new_para);
-
-                paragraphs_translated += 1;
-                words_translated += count_words(&text);
-            } else {
-                // Keep original paragraph
-                new_doc = new_doc.add_paragraph(*para);
+            docx_rs::DocumentChild::Table(table) => {
+                // Best-effort: re-attach tables so they are not silently dropped.
+                // Cell text is not rewritten in this pass (known fidelity limit).
+                new_doc = new_doc.add_table(*table);
             }
-
-            para_index += 1;
-        } else {
-            // Preserve other document children (tables, etc.)
-            // Note: docx-rs may not support all document children directly
+            _ => {
+                skipped_non_para += 1;
+            }
         }
     }
 
@@ -246,13 +254,21 @@ pub fn write_translated_docx(
         .pack(std::io::BufWriter::new(output_file))
         .map_err(|e| format!("Failed to write DOCX file: {}", e))?;
 
+    let warning = if skipped_non_para > 0 {
+        Some(format!(
+            "Preserved tables; skipped {skipped_non_para} non-paragraph document children (styles may be incomplete)"
+        ))
+    } else {
+        None
+    };
+
     Ok(DocxTranslationResult {
         input_path: input_path.to_string(),
         output_path: output_path.to_string(),
         paragraphs_translated,
         words_translated,
         success: true,
-        error_message: None,
+        error_message: warning,
     })
 }
 
