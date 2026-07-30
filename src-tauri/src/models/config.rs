@@ -544,6 +544,10 @@ fn default_ocr_engine() -> String {
     "winrt".to_string() // Changed from "auto" - WinRT is fast and reliable on Windows
 }
 
+fn default_pdf_extraction_engine() -> String {
+    "pdf-extract".into()
+}
+
 /// Offline OCR sidecar (Rapid / Paddle) — models external.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -567,6 +571,18 @@ impl Default for OfflineOcrConfig {
             plugin_dir: String::new(),
         }
     }
+}
+
+/// External PDF text extractors (MinerU / Marker / OCRmyPDF). Empty = bare command on PATH.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PdfExtractionSidecarConfig {
+    #[serde(default)]
+    pub mineru_cmd: String,
+    #[serde(default)]
+    pub marker_cmd: String,
+    #[serde(default)]
+    pub ocrmypdf_cmd: String,
 }
 
 fn default_llm_timeout_secs() -> u64 {
@@ -839,6 +855,12 @@ pub struct AppConfig {
     /// Offline OCR sidecar paths (when ocr_engine is rapid/paddle).
     #[serde(default)]
     pub offline_ocr: OfflineOcrConfig,
+    /// PDF text extraction: "pdf-extract" | "ocr" | "mineru" | "marker" | "ocrmypdf"
+    #[serde(default = "default_pdf_extraction_engine")]
+    pub pdf_extraction_engine: String,
+    /// Optional CLI paths for mineru/marker/ocrmypdf.
+    #[serde(default)]
+    pub pdf_extraction_sidecar: PdfExtractionSidecarConfig,
     #[serde(default = "default_overlay_level")]
     pub overlay_level: u8,
     #[serde(default = "default_overlay_auto_dismiss_ms")]
@@ -1534,6 +1556,8 @@ impl Default for AppConfig {
             engine_order: Vec::new(),
             ocr_engine: default_ocr_engine(),
             offline_ocr: OfflineOcrConfig::default(),
+            pdf_extraction_engine: default_pdf_extraction_engine(),
+            pdf_extraction_sidecar: PdfExtractionSidecarConfig::default(),
             overlay_level: 2,
             overlay_auto_dismiss_ms: 3000,
             overlay_follow_mode: "none".to_string(),

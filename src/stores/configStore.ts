@@ -67,6 +67,8 @@ const INITIAL_CONFIG: AppConfig = {
   routingStrategy: null,
   ocrEngine: 'winrt',
   offlineOcr: { backend: 'rapid', pluginDir: '' },
+  pdfExtractionEngine: 'pdf-extract',
+  pdfExtractionSidecar: { mineruCmd: '', markerCmd: '', ocrmypdfCmd: '' },
   /** Screenshot OCR continuous refresh (ms). Distinct from hook.ocrIntervalMs. */
   ocrInterval: 2000,
   overlayLevel: 2,
@@ -255,6 +257,22 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       offlineOcr: {
         backend: loadedCfg.offlineOcr?.backend ?? INITIAL_CONFIG.offlineOcr?.backend ?? 'rapid',
         pluginDir: loadedCfg.offlineOcr?.pluginDir ?? INITIAL_CONFIG.offlineOcr?.pluginDir ?? '',
+      },
+      pdfExtractionEngine:
+        loadedCfg.pdfExtractionEngine ?? INITIAL_CONFIG.pdfExtractionEngine ?? 'pdf-extract',
+      pdfExtractionSidecar: {
+        mineruCmd:
+          loadedCfg.pdfExtractionSidecar?.mineruCmd ??
+          INITIAL_CONFIG.pdfExtractionSidecar?.mineruCmd ??
+          '',
+        markerCmd:
+          loadedCfg.pdfExtractionSidecar?.markerCmd ??
+          INITIAL_CONFIG.pdfExtractionSidecar?.markerCmd ??
+          '',
+        ocrmypdfCmd:
+          loadedCfg.pdfExtractionSidecar?.ocrmypdfCmd ??
+          INITIAL_CONFIG.pdfExtractionSidecar?.ocrmypdfCmd ??
+          '',
       },
       openaiTts: {
         apiKey: loadedCfg.openaiTts?.apiKey ?? INITIAL_CONFIG.openaiTts?.apiKey ?? '',

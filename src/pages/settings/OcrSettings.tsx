@@ -240,6 +240,101 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
         </Card>
       )}
 
+      <Card
+        title="PDF 文本抽取引擎"
+        description="文档翻译用。默认 pdf-extract；碎字会自动回退页渲染 OCR"
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-2">抽取引擎</label>
+            <select
+              value={config.pdfExtractionEngine || 'pdf-extract'}
+              onChange={(e) => {
+                updateConfig((prev) => ({
+                  ...prev,
+                  pdfExtractionEngine: e.target.value,
+                }));
+              }}
+              onBlur={() => void saveConfig()}
+              className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+            >
+              <option value="pdf-extract">pdf-extract（内置，推荐）</option>
+              <option value="ocr">ocr（页渲染 + WinRT，慢但稳）</option>
+              <option value="mineru">mineru（需 magic-pdf CLI）</option>
+              <option value="marker">marker（需 marker_single CLI）</option>
+              <option value="ocrmypdf">ocrmypdf（扫描书可搜索层）</option>
+            </select>
+            <p className="ui-caption mt-1.5 leading-relaxed">
+              pdf-extract：大多数数字 PDF。遇碎字/崩溃自动 OCR。ocr：不需外置工具。mineru/marker：复杂排版，需自行
+              pip install。
+            </p>
+          </div>
+          {(config.pdfExtractionEngine === 'mineru' ||
+            config.pdfExtractionEngine === 'marker' ||
+            config.pdfExtractionEngine === 'ocrmypdf') && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-text-primary">
+                Sidecar CLI 路径（可空，空则用 PATH 上命令名）
+              </label>
+              {config.pdfExtractionEngine === 'mineru' && (
+                <input
+                  type="text"
+                  value={config.pdfExtractionSidecar?.mineruCmd || ''}
+                  onChange={(e) => {
+                    updateConfig((prev) => ({
+                      ...prev,
+                      pdfExtractionSidecar: {
+                        ...prev.pdfExtractionSidecar,
+                        mineruCmd: e.target.value,
+                      },
+                    }));
+                  }}
+                  onBlur={() => void saveConfig()}
+                  placeholder="magic-pdf 或完整路径"
+                  className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+                />
+              )}
+              {config.pdfExtractionEngine === 'marker' && (
+                <input
+                  type="text"
+                  value={config.pdfExtractionSidecar?.markerCmd || ''}
+                  onChange={(e) => {
+                    updateConfig((prev) => ({
+                      ...prev,
+                      pdfExtractionSidecar: {
+                        ...prev.pdfExtractionSidecar,
+                        markerCmd: e.target.value,
+                      },
+                    }));
+                  }}
+                  onBlur={() => void saveConfig()}
+                  placeholder="marker_single 或完整路径"
+                  className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+                />
+              )}
+              {config.pdfExtractionEngine === 'ocrmypdf' && (
+                <input
+                  type="text"
+                  value={config.pdfExtractionSidecar?.ocrmypdfCmd || ''}
+                  onChange={(e) => {
+                    updateConfig((prev) => ({
+                      ...prev,
+                      pdfExtractionSidecar: {
+                        ...prev.pdfExtractionSidecar,
+                        ocrmypdfCmd: e.target.value,
+                      },
+                    }));
+                  }}
+                  onBlur={() => void saveConfig()}
+                  placeholder="ocrmypdf 或完整路径"
+                  className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </Card>
+
       <Card title="OCR 参数" description="区域监视行为">
         <div className="space-y-4">
           <div>

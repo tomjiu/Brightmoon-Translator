@@ -50,6 +50,14 @@ interface OcrProgress {
   done?: boolean;
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function PdfViewer() {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
@@ -185,8 +193,38 @@ function PdfViewer() {
     }
   };
 
-  const exportTranslatedPdf = () => {
+  const exportTranslatedPdf = (asHtml = false) => {
     if (!translatedPdf) return;
+
+    if (asHtml) {
+      const body = translatedPdf.pages
+        .map((page) => {
+          const orig = escapeHtml(page.originalText).replace(/\n/g, '<br/>');
+          const tr = escapeHtml(page.translatedText).replace(/\n/g, '<br/>');
+          return `<section class="page"><h2>Page ${page.pageNumber}</h2>
+<article class="bilingual"><div class="orig"><h3>Original</h3><p>${orig}</p></div>
+<div class="tr"><h3>Translation</h3><p>${tr}</p></div></article></section>`;
+        })
+        .join('\n');
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escapeHtml(fileName)} translated</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:900px;margin:2rem auto;line-height:1.6;color:#111}
+.page{margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid #ddd}
+.bilingual{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media print{.bilingual{grid-template-columns:1fr}}
+h2{font-size:1.1rem} h3{font-size:.9rem;color:#555}
+</style></head><body>
+<p><em>Print this page to PDF from the browser (Ctrl+P). Native PDF writer is not available yet.</em></p>
+${body}</body></html>`;
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${fileName.replace(/\.pdf$/i, '')}_translated.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
 
     let content = '';
     for (const page of translatedPdf.pages) {
@@ -200,7 +238,7 @@ function PdfViewer() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${fileName.replace('.pdf', '')}_translated.txt`;
+    a.download = `${fileName.replace(/\.pdf$/i, '')}_translated.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -281,10 +319,19 @@ function PdfViewer() {
                 </button>
                 <button
                   className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
-                  onClick={exportTranslatedPdf}
+                  onClick={() => exportTranslatedPdf(false)}
+                  title="Plain text export"
                 >
                   <Download size={14} />
                   {t('pdf.export')}
+                </button>
+                <button
+                  className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
+                  onClick={() => exportTranslatedPdf(true)}
+                  title="HTML for browser print-to-PDF"
+                >
+                  <Download size={14} />
+                  HTML
                 </button>
               </>
             )}

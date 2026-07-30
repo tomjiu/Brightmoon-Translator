@@ -187,6 +187,13 @@ export interface AppConfig {
   ocrEngine: OcrEngine;
   /** Rapid/Paddle sidecar path when ocrEngine is rapid|paddle */
   offlineOcr?: { backend: string; pluginDir: string };
+  /** PDF text extraction: pdf-extract | ocr | mineru | marker | ocrmypdf */
+  pdfExtractionEngine?: string;
+  pdfExtractionSidecar?: {
+    mineruCmd?: string;
+    markerCmd?: string;
+    ocrmypdfCmd?: string;
+  };
   overlayLevel?: number;
   overlayAutoDismissMs?: number;
   overlayFollowMode?: 'none' | 'cursor' | 'target_bounds';
