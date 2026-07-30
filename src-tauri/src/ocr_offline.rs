@@ -5,6 +5,17 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use uuid::Uuid;
 
+/// RAII guard that deletes a temp file on drop.
+/// S2-3: ensures cleanup even on early `?` return or panic, so the sidecar
+/// temp PNG does not leak when the process is killed mid-OCR.
+struct TempFileGuard(PathBuf);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 /// Run offline OCR on PNG bytes.
 /// `backend`: "rapid" | "paddle"
 /// `plugin_dir`: directory containing exe + models (user-provided).
@@ -25,14 +36,15 @@ pub fn run_offline_ocr(
     let id = Uuid::new_v4().to_string();
     let temp_path = std::env::temp_dir().join(format!("moontranslator_ocr_{id}.png"));
     std::fs::write(&temp_path, png_bytes).map_err(|e| format!("OCR temp write failed: {e}"))?;
+    // S2-3: guard the temp file so it is deleted even if run_rapid/run_paddle
+    // returns Err early or panics. Previously the cleanup at the end of the
+    // function was skipped on early `?` paths, leaking moontranslator_ocr_*.png.
+    let _guard = TempFileGuard(temp_path.clone());
 
-    let result = match backend.trim().to_ascii_lowercase().as_str() {
+    match backend.trim().to_ascii_lowercase().as_str() {
         "paddle" => run_paddle(&dir, &temp_path, lang),
         _ => run_rapid(&dir, &temp_path, lang),
-    };
-
-    let _ = std::fs::remove_file(&temp_path);
-    result
+    }
 }
 
 fn run_rapid(plugin_dir: &Path, image: &Path, lang: Option<&str>) -> Result<String, String> {

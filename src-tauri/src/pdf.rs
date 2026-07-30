@@ -213,8 +213,31 @@ fn finalize_document(pages: Vec<PdfPage>, force_scanned: Option<bool>) -> PdfDoc
     }
 }
 
+/// Maximum PDF size we are willing to slurp into memory for pdf-extract.
+/// pdf_extract::extract_text_from_mem requires the whole file in memory, so
+/// streaming wouldn't help; instead we refuse pathologically large files to
+/// avoid OOM. 256 MB is well above any normal text PDF and matches the
+/// upper bound of scanned-book PDFs we have tested.
+const PDF_MAX_INMEMORY_BYTES: u64 = 256 * 1024 * 1024;
+
 /// Original pdf-extract path only (no quality gate).
+///
+/// S2-6: this function is synchronous and reads the entire file into memory.
+/// It is safe to call from the tokio runtime because every caller wraps it
+/// in `tokio::task::spawn_blocking` (see `pdf_cmd::open_pdf` /
+/// `translate_pdf`). We guard against OOM on huge scanned PDFs with a size
+/// check before the read — `pdf_extract::extract_text_from_mem` needs the
+/// whole file in memory anyway, so streaming would not help here.
 pub fn extract_text_via_pdf_extract(file_path: &str) -> Result<PdfDocument, String> {
+    let metadata = std::fs::metadata(file_path)
+        .map_err(|e| format!("Failed to stat PDF file: {}", e))?;
+    if metadata.len() > PDF_MAX_INMEMORY_BYTES {
+        return Err(format!(
+            "PDF file is too large ({} bytes > {} limit). Please use a scanned-PDF OCR sidecar (ocrmypdf) for large files.",
+            metadata.len(),
+            PDF_MAX_INMEMORY_BYTES
+        ));
+    }
     let data = std::fs::read(file_path).map_err(|e| format!("Failed to read PDF file: {}", e))?;
 
     // Catch panics from pdf-extract on unsupported PDF features

@@ -88,9 +88,16 @@ impl SelectionProvider for UiAutomationSelectionProvider {
 /// SAFETY: COM and UI Automation API calls. All COM objects are reference-counted.
 fn get_uia_selection() -> Option<SelectionResult> {
     unsafe {
-        // Initialize COM on this thread
+        // Initialize COM on this thread.
+        // S2-12: RPC_E_CHANGED_MODE (0x80010106) means COM was already
+        // initialized on this thread with a different threading model —
+        // common when UIA is called from a thread that already hosts an
+        // STA component. This is NOT fatal: the thread already has COM,
+        // so we proceed and let UIA use the existing apartment.
         let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-        if hr.is_err() {
+        // S_FALSE (1) = already initialized same mode — also OK.
+        const RPC_E_CHANGED_MODE: windows::core::HRESULT = windows::core::HRESULT(0x80010106u32 as i32);
+        if hr.is_err() && hr != RPC_E_CHANGED_MODE {
             tracing::error!("[uiautomation] CoInitializeEx failed: {:?}", hr);
             return None;
         }
@@ -197,6 +204,18 @@ fn get_uia_selection() -> Option<SelectionResult> {
 /// Concatenates all selected ranges and merges their bounds.
 /// Try to read selected text via TextPattern.
 /// SAFETY: UI Automation COM interface calls.
+///
+/// S1-7: this is intentionally a SEPARATE function from
+/// `hover_pick::try_text_pattern_at_point`. Both touch UIA TextPattern but
+/// serve different purposes and use different UIA APIs:
+///   - this fn reads the user's *current selection* via `GetSelection()`
+///     and concatenates all selected ranges (used by selection translation)
+///   - hover_pick fn reads the word/sentence *under the cursor* via
+///     `RangeFromPoint(pt)` + `ExpandToEnclosingUnit` (used by hover dict)
+/// The only shared logic is `range.GetText(max_chars).to_string()` — a
+/// one-liner not worth a shared module. `GetBoundingRectangles` (the
+/// non-trivial SAFEARRAY parsing below) is only called here, not in
+/// hover_pick, so there is no real duplication to extract.
 unsafe fn try_text_pattern(
     element: &IUIAutomationElement,
 ) -> Result<(String, Option<SelectionBounds>), Box<dyn std::error::Error>> {
@@ -216,7 +235,12 @@ unsafe fn try_text_pattern(
 
     for i in 0..count {
         let range = ranges.GetElement(i)?;
-        let text = range.GetText(-1)?;
+        // S2-11: cap GetText at 4096 chars per range. Previously -1 requested
+        // the entire document text, which for large controls (Word, browser
+        // pages) returned megabytes and blocked the 800ms selection timeout.
+        // 4096 matches the hover_pick.rs cap and is well above any realistic
+        // single-selection length.
+        let text = range.GetText(4096)?;
         let text_str = text.to_string();
         if !text_str.is_empty() {
             all_text.push_str(&text_str);
@@ -317,6 +341,8 @@ unsafe fn try_value_pattern_with_selection(
 }
 
 /// Full ValuePattern — not used for selection (would return whole document).
+/// SAFETY: Read-only UI Automation COM calls on a borrowed element.
+/// COM pointers from GetCurrentPattern are reference-counted.
 #[allow(dead_code)]
 unsafe fn try_value_pattern_full(
     element: &IUIAutomationElement,
@@ -343,6 +369,8 @@ unsafe fn try_value_pattern_full(
 
 /// Walk children for TextPattern **selection** only (Easydict — no full Value).
 /// Max depth 3, max 8 children (bounded for 800ms timeout).
+/// SAFETY: UI Automation COM calls on borrowed elements; depth/width are
+/// bounded so the walk always terminates. COM pointers are reference-counted.
 unsafe fn find_text_selection_in_children(
     element: &IUIAutomationElement,
     automation: &IUIAutomation,

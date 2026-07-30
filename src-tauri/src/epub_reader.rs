@@ -168,11 +168,20 @@ fn extract_text_from_html(html: &str) -> String {
         .join("\n")
 }
 
+// S3-6: theme-neutral bilingual EPUB CSS. Previously hardcoded #333/#1a56db/#999
+// which were invisible on dark-mode EPUB readers (Apple Books dark, Kobo dark).
+// Now original text uses `inherit` to follow the reader's default text color,
+// and the translation uses a blue that is readable on both light and dark
+// backgrounds. The separator and label use `currentColor` + opacity so they
+// adapt to whatever text color the reader applies.
 const BILINGUAL_CSS: &str = r#"
-.bilingual-orig { color: #333; margin-bottom: 1.5em; }
-.bilingual-trans { color: #1a56db; margin-bottom: 1.5em; padding-left: 1em; border-left: 3px solid #1a56db; }
-.bilingual-sep { border: none; border-top: 1px dashed #999; margin: 1.5em 0; }
-.bilingual-label { font-size: 0.85em; font-weight: bold; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+.bilingual-orig { color: inherit; margin-bottom: 1.5em; }
+.bilingual-trans { color: #2563eb; margin-bottom: 1.5em; padding-left: 1em; border-left: 3px solid #2563eb; }
+.bilingual-sep { border: none; border-top: 1px dashed currentColor; opacity: 0.3; margin: 1.5em 0; }
+.bilingual-label { font-size: 0.85em; font-weight: bold; color: inherit; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.05em; }
+@media (prefers-color-scheme: dark) {
+  .bilingual-trans { color: #60a5fa; border-left-color: #60a5fa; }
+}
 "#;
 
 /// Create a bilingual EPUB file preserving original formatting with translated text interleaved.
