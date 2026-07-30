@@ -1,4 +1,4 @@
-use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
+use quick_xml::events::{BytesText, Event};
 use quick_xml::reader::Reader;
 use quick_xml::writer::Writer;
 use serde::{Deserialize, Serialize};
@@ -349,50 +349,45 @@ fn extract_slide_index(name: &str) -> Option<usize> {
     num_str.parse::<usize>().ok().map(|n| n.saturating_sub(1))
 }
 
-/// Translate text in slide XML while preserving structure.
-/// Strategy: Collect all events first, identify paragraph text ranges,
-/// then rebuild XML with translations applied to <a:t> content.
+/// Translate text in slide XML while preserving structure and run properties (`a:rPr`).
+///
+/// For a translated paragraph: put full translation into the **first** `<a:t>`,
+/// clear subsequent `<a:t>` in the same paragraph. Never rebuild runs (keeps rPr).
 fn translate_slide_xml(
     xml: &str,
     slide_index: usize,
     translations: &HashMap<String, &String>,
 ) -> Result<(String, usize, usize), String> {
-    // First pass: collect all text from paragraphs to map block IDs
     let blocks = extract_text_from_xml(xml, slide_index);
 
-    // Build a mapping from paragraph occurrence to translated text
     let mut paragraph_translations: HashMap<usize, &str> = HashMap::new();
     let mut blocks_translated = 0;
     let mut words_translated = 0;
 
     for block in &blocks {
         if let Some(translated) = translations.get(&block.id) {
-            paragraph_translations.insert(
-                block
-                    .id
-                    .split('_')
-                    .nth(1)
-                    .unwrap_or("0")
-                    .parse()
-                    .unwrap_or(0),
-                translated.as_str(),
-            );
+            // block.id is like "s{slide}_{para}" — use extract order index from blocks
+            let para_idx = block
+                .id
+                .rsplit('_')
+                .next()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0);
+            paragraph_translations.insert(para_idx, translated.as_str());
             blocks_translated += 1;
             words_translated += count_words(&block.text);
         }
     }
 
-    // Second pass: rebuild XML with translations
     let mut reader = Reader::from_str(xml);
+    reader.trim_text(false);
     let mut writer = Writer::new(Vec::new());
     let mut in_text_body = false;
     let mut in_paragraph = false;
     let mut in_text_elem = false;
-    let mut current_text = String::new();
-    let mut para_index = 0;
-    // Track whether the current paragraph has multiple <a:t> runs
-    // that we need to consolidate into one translated text
-    let mut para_has_translation = false;
+    let mut para_index = 0usize;
+    let mut t_index_in_para = 0usize;
+    let mut para_translation: Option<&str> = None;
 
     loop {
         match reader.read_event() {
@@ -403,34 +398,29 @@ fn translate_slide_xml(
                         in_text_body = true;
                         writer
                             .write_event(Event::Start(e.clone()))
-                            .map_err(|e| format!("Write error: {}", e))?;
-                    },
+                            .map_err(|err| format!("Write error: {}", err))?;
+                    }
                     b"p" if in_text_body => {
                         in_paragraph = true;
-                        current_text.clear();
-                        para_has_translation = paragraph_translations.contains_key(&para_index);
+                        t_index_in_para = 0;
+                        para_translation = paragraph_translations.get(&para_index).copied();
                         writer
                             .write_event(Event::Start(e.clone()))
-                            .map_err(|e| format!("Write error: {}", e))?;
-                    },
+                            .map_err(|err| format!("Write error: {}", err))?;
+                    }
                     b"t" if in_paragraph => {
                         in_text_elem = true;
-                        // We'll decide whether to write the start tag based on translation state
-                        if !para_has_translation {
-                            writer
-                                .write_event(Event::Start(e.clone()))
-                                .map_err(|e| format!("Write error: {}", e))?;
-                        }
-                        // If paragraph has translation, we skip individual a:t starts
-                        // and handle them at paragraph end
-                    },
+                        writer
+                            .write_event(Event::Start(e.clone()))
+                            .map_err(|err| format!("Write error: {}", err))?;
+                    }
                     _ => {
                         writer
                             .write_event(Event::Start(e.clone()))
-                            .map_err(|e| format!("Write error: {}", e))?;
-                    },
+                            .map_err(|err| format!("Write error: {}", err))?;
+                    }
                 }
-            },
+            }
             Ok(Event::End(ref e)) => {
                 let tag = e.name().as_ref().to_vec();
                 match local_tag_name(&tag) {
@@ -438,75 +428,54 @@ fn translate_slide_xml(
                         in_text_body = false;
                         writer
                             .write_event(Event::End(e.clone()))
-                            .map_err(|e| format!("Write error: {}", e))?;
-                    },
+                            .map_err(|err| format!("Write error: {}", err))?;
+                    }
                     b"p" if in_text_body => {
                         in_paragraph = false;
-                        // If this paragraph had a translation, write the translated text now
-                        if para_has_translation {
-                            if let Some(translated) = paragraph_translations.get(&para_index) {
-                                // Write: <a:r><a:rPr/><a:t>translated</a:t></a:r>
-                                let r_start = BytesStart::new("a:r");
-                                writer
-                                    .write_event(Event::Start(r_start))
-                                    .map_err(|e| format!("Write error: {}", e))?;
-                                let rpr_start = BytesStart::new("a:rPr");
-                                writer
-                                    .write_event(Event::Start(rpr_start))
-                                    .map_err(|e| format!("Write error: {}", e))?;
-                                writer
-                                    .write_event(Event::End(BytesEnd::new("a:rPr")))
-                                    .map_err(|e| format!("Write error: {}", e))?;
-                                let t_start = BytesStart::new("a:t");
-                                writer
-                                    .write_event(Event::Start(t_start))
-                                    .map_err(|e| format!("Write error: {}", e))?;
-                                writer
-                                    .write_event(Event::Text(BytesText::new(translated)))
-                                    .map_err(|e| format!("Write error: {}", e))?;
-                                writer
-                                    .write_event(Event::End(BytesEnd::new("a:t")))
-                                    .map_err(|e| format!("Write error: {}", e))?;
-                                writer
-                                    .write_event(Event::End(BytesEnd::new("a:r")))
-                                    .map_err(|e| format!("Write error: {}", e))?;
-                            }
-                        }
+                        para_translation = None;
                         writer
                             .write_event(Event::End(e.clone()))
-                            .map_err(|e| format!("Write error: {}", e))?;
+                            .map_err(|err| format!("Write error: {}", err))?;
                         para_index += 1;
-                    },
+                    }
                     b"t" if in_paragraph => {
                         in_text_elem = false;
-                        if !para_has_translation {
-                            writer
-                                .write_event(Event::End(e.clone()))
-                                .map_err(|e| format!("Write error: {}", e))?;
-                        }
-                    },
+                        t_index_in_para += 1;
+                        writer
+                            .write_event(Event::End(e.clone()))
+                            .map_err(|err| format!("Write error: {}", err))?;
+                    }
                     _ => {
                         writer
                             .write_event(Event::End(e.clone()))
-                            .map_err(|e| format!("Write error: {}", e))?;
-                    },
+                            .map_err(|err| format!("Write error: {}", err))?;
+                    }
                 }
-            },
+            }
             Ok(Event::Text(ref e)) if in_text_elem => {
-                if !para_has_translation {
-                    // Write original text if no translation for this paragraph
+                if let Some(translated) = para_translation {
+                    if t_index_in_para == 0 {
+                        writer
+                            .write_event(Event::Text(BytesText::new(translated)))
+                            .map_err(|err| format!("Write error: {}", err))?;
+                    } else {
+                        // Clear extra runs' text so layout/rPr stay, content not duplicated
+                        writer
+                            .write_event(Event::Text(BytesText::new("")))
+                            .map_err(|err| format!("Write error: {}", err))?;
+                    }
+                } else {
                     writer
                         .write_event(Event::Text(e.clone()))
-                        .map_err(|e| format!("Write error: {}", e))?;
+                        .map_err(|err| format!("Write error: {}", err))?;
                 }
-                // If paragraph has translation, we skip original text
-            },
+            }
             Ok(Event::Eof) => break,
             Ok(ref other) => {
                 writer
                     .write_event(other.clone())
-                    .map_err(|e| format!("Write error: {}", e))?;
-            },
+                    .map_err(|err| format!("Write error: {}", err))?;
+            }
             Err(e) => return Err(format!("XML parse error: {}", e)),
         }
     }
