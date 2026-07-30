@@ -18,17 +18,19 @@ pub fn overlay_theme_is_light() -> bool {
 /// Shared sizing for machine-translate overlay cards.
 /// Both `present::present_mt_card` and `DefaultSelectionTranslation::show_overlay`
 /// use this so card dimensions stay consistent regardless of trigger path.
+/// CJK-aware: characters >= U+3000 are ~15px wide, others ~8px (matches dict_card_size).
 pub fn estimate_mt_card_size(display_text: &str) -> (f64, f64) {
     let line_n = display_text.lines().count().max(1) as f64;
     let h = (56.0 + line_n * 22.0).clamp(72.0, 320.0);
-    let w = (display_text
+    let longest = display_text
         .lines()
-        .map(|l| l.chars().count())
-        .max()
-        .unwrap_or(16) as f64
-        * 8.0
-        + 48.0)
-        .clamp(200.0, 460.0);
+        .map(|l| {
+            l.chars()
+                .map(|c| if c >= '\u{3000}' { 15.0_f64 } else { 8.0 })
+                .sum::<f64>()
+        })
+        .fold(0.0_f64, f64::max);
+    let w = (longest + 48.0).clamp(200.0, 460.0);
     (w, h)
 }
 

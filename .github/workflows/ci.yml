@@ -73,6 +73,14 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib --bins --no-run
 
+      # Clean up stub files so they never accidentally ship in a build artifact.
+      - name: Remove stub resource files
+        if: always()
+        working-directory: src-tauri
+        run: |
+          Remove-Item -Force -ErrorAction SilentlyContinue bin/moon_hook.dll
+          Remove-Item -Force -ErrorAction SilentlyContinue ../dictionaries/ecdict.db
+
   frontend-check:
     name: Frontend Check
     runs-on: windows-2025-vs2026
