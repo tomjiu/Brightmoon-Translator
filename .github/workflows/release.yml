@@ -14,12 +14,12 @@ env:
 jobs:
   build-windows:
     name: Build Windows
-    runs-on: windows-2025-vs2026
+    runs-on: windows-latest
     outputs:
       releaseId: ${{ steps.tauri_build.outputs.releaseId }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -29,7 +29,7 @@ jobs:
         # version from package.json packageManager
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
@@ -38,7 +38,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -66,13 +66,13 @@ jobs:
 
   build-extension:
     name: Build Extensions
-    runs-on: windows-2025-vs2026
+    runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
 
@@ -93,13 +93,13 @@ jobs:
           }
 
       - name: Upload Chrome extension
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: moontranslator-chrome
           path: extension/dist/moontranslator-chrome.zip
 
       - name: Upload Firefox extension
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: moontranslator-firefox
           path: extension/dist/moontranslator-firefox.xpi
@@ -107,21 +107,21 @@ jobs:
   upload-extensions:
     name: Upload Extensions to Release
     needs: [build-windows, build-extension]
-    runs-on: windows-2025-vs2026
+    runs-on: windows-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Download Chrome extension
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: moontranslator-chrome
 
       - name: Download Firefox extension
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: moontranslator-firefox
 

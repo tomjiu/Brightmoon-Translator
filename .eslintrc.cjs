@@ -81,5 +81,48 @@ module.exports = {
         '@typescript-eslint/require-await': 'off',
       },
     },
+    // S4-5: extension is plain JS (not TS), so the @typescript-eslint parser
+    // and type-checked rules don't apply. Use the default JS parser and keep
+    // only eslint:recommended + browser environment rules. This lets
+    // `npm run lint:extension` catch real bugs (undeclared vars, no-undef,
+    // eqeqeq) in the browser extension's service worker and content scripts.
+    {
+      files: ['extension/**/*.js'],
+      parser: 'espree',
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+      },
+      extends: ['eslint:recommended'],
+      rules: {
+        // Disable all @typescript-eslint rules — they require the TS parser
+        '@typescript-eslint/no-explicit-any': 'off',
+        '@typescript-eslint/no-unsafe-assignment': 'off',
+        '@typescript-eslint/no-unsafe-member-access': 'off',
+        '@typescript-eslint/no-unsafe-call': 'off',
+        '@typescript-eslint/no-unsafe-return': 'off',
+        '@typescript-eslint/no-unsafe-argument': 'off',
+        '@typescript-eslint/restrict-template-expressions': 'off',
+        '@typescript-eslint/restrict-plus-operands': 'off',
+        '@typescript-eslint/no-floating-promises': 'off',
+        '@typescript-eslint/no-misused-promises': 'off',
+        '@typescript-eslint/await-thenable': 'off',
+        '@typescript-eslint/no-unused-vars': 'off',
+        '@typescript-eslint/no-non-null-assertion': 'off',
+        '@typescript-eslint/consistent-type-imports': 'off',
+        '@typescript-eslint/consistent-type-definitions': 'off',
+        '@typescript-eslint/array-type': 'off',
+        '@typescript-eslint/prefer-nullish-coalescing': 'off',
+        '@typescript-eslint/prefer-optional-chain': 'off',
+        '@typescript-eslint/no-unnecessary-condition': 'off',
+        '@typescript-eslint/no-confusing-void-expression': 'off',
+        '@typescript-eslint/unbound-method': 'off',
+        '@typescript-eslint/require-await': 'off',
+        // Extension uses chrome.* APIs
+        'no-undef': 'off',
+        // Extension service worker uses console for debugging
+        'no-console': 'off',
+      },
+    },
   ],
 };
