@@ -251,6 +251,18 @@ impl TranslationService {
         to: &str,
     ) -> Result<String, String> {
         let prepared = self.prepare(text, from, to).await;
+
+        // Check cache first (named engine results are cached per-engine)
+        if let Some(cached) = self.cache.get(&prepared.text, from, to).await {
+            self.metrics.record_cache_hit();
+            return Ok(self
+                .finalize(
+                    &cached.results.first().map(|r| r.1.as_str()).unwrap_or(""),
+                    text, from, to, &prepared.blacklist,
+                )
+                .await);
+        }
+
         let router = self.engine_router.read().await;
         match router
             .translate_named(engine_id, &prepared.text, from, to)
@@ -258,9 +270,21 @@ impl TranslationService {
         {
             Ok(raw) => {
                 drop(router);
-                Ok(self
+                let final_text = self
                     .finalize(&raw, text, from, to, &prepared.blacklist)
-                    .await)
+                    .await;
+
+                // Store in cache
+                self.cache
+                    .set(
+                        &prepared.text,
+                        from,
+                        to,
+                        vec![(engine_id.to_string(), final_text.clone())],
+                    )
+                    .await;
+
+                Ok(final_text)
             },
             Err(e) => Err(e.to_string()),
         }
@@ -704,6 +728,15 @@ impl TranslationService {
         async {
             let prepared = self.prepare(text, from, to).await;
 
+            // Check cache first (same pattern as run_full)
+            if let Some(cached) = self.cache.get(&prepared.text, from, to).await {
+                self.metrics.record_cache_hit();
+                let final_text = self
+                    .finalize(&cached.results.first().map(|r| r.1.as_str()).unwrap_or(""), text, from, to, &prepared.blacklist)
+                    .await;
+                return Ok(final_text);
+            }
+
             // Check Translation Memory
             let (tm_enabled, tm_threshold) = {
                 let config = self.config.lock().await;
@@ -762,6 +795,17 @@ impl TranslationService {
                     let final_text = self
                         .finalize(&translated, text, from, to, &prepared.blacklist)
                         .await;
+
+                    // Store in cache for future lookups
+                    self.cache
+                        .set(
+                            &prepared.text,
+                            from,
+                            to,
+                            vec![("primary".to_string(), final_text.clone())],
+                        )
+                        .await;
+
                     Ok(final_text)
                 },
                 Err(e) => {
@@ -783,15 +827,40 @@ impl TranslationService {
         context: &[crate::engine::llm::TranslationContext],
     ) -> Result<String, TranslationError> {
         let prepared = self.prepare(text, from, to).await;
+
+        // Check cache first
+        if let Some(cached) = self.cache.get(&prepared.text, from, to).await {
+            self.metrics.record_cache_hit();
+            return Ok(self
+                .finalize(
+                    &cached.results.first().map(|r| r.1.as_str()).unwrap_or(""),
+                    text, from, to, &prepared.blacklist,
+                )
+                .await);
+        }
+
         let router = self.engine_router.read().await;
         let raw = router
             .translate_primary_with_context(&prepared.text, from, to, context)
             .await
             .map_err(TranslationError::from)?;
         drop(router);
-        Ok(self
+
+        let final_text = self
             .finalize(&raw, text, from, to, &prepared.blacklist)
-            .await)
+            .await;
+
+        // Store in cache
+        self.cache
+            .set(
+                &prepared.text,
+                from,
+                to,
+                vec![("primary".to_string(), final_text.clone())],
+            )
+            .await;
+
+        Ok(final_text)
     }
 
     /// Get the engine router for advanced operations
