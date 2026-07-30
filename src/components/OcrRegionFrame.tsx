@@ -19,8 +19,6 @@ import { useI18n } from '../i18n';
 import { useConfigStore } from '../stores/configStore';
 import {
   DEFAULT_ENGINE_ORDER,
-  ENGINE_META,
-  type EngineId,
 } from '../pages/settings/engines/enginesMeta';
 import {
   frameToCaptureRegion,
@@ -1179,8 +1177,13 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
             ? engineOrder
             : (DEFAULT_ENGINE_ORDER as string[])
           ).map((id) => {
-            const meta = ENGINE_META.find((m) => m.id === (id as EngineId));
-            const label = meta?.nameZh.replace(/翻译|大模型/g, '').trim() || id;
+            // S3-3: engine short label via i18n (previously derived from
+            // enginesMeta.nameZh with a zh-only regex strip — broke for
+            // non-Chinese locales and coupled OCR UI to a dead meta field).
+            const labels = t('settings.enginePage.shortLabels') as unknown as
+              | Record<string, string>
+              | undefined;
+            const label = labels?.[String(id)] || String(id);
             const eng = engines as unknown as Record<string, { enabled?: boolean } | undefined>;
             const on = isEngineEnabled(eng, id);
             return (
