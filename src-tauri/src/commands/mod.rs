@@ -30,7 +30,6 @@ pub mod post_process_cmd;
 pub mod pptx_cmd;
 pub mod pre_process_cmd;
 pub mod process_list;
-pub mod project_cmd;
 pub mod quality_cmd;
 pub mod speech_cmd;
 pub mod statistics_cmd;

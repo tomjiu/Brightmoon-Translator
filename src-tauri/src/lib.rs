@@ -39,7 +39,6 @@ pub mod pdf;
 pub mod post_process;
 pub mod pptx;
 pub mod pre_process;
-pub mod project;
 pub mod quality;
 pub mod response_check;
 pub mod security;
@@ -666,15 +665,6 @@ pub fn run() {
             commands::furigana_cmd::add_furigana,
             commands::furigana_cmd::add_furigana_html,
             commands::furigana_cmd::add_furigana_text,
-            commands::batch_cmd::batch_submit,
-            commands::batch_cmd::batch_cancel,
-            commands::batch_cmd::batch_pause,
-            commands::batch_cmd::batch_resume,
-            commands::batch_cmd::batch_retry_failed,
-            commands::batch_cmd::batch_get_progress,
-            commands::batch_cmd::batch_get_results,
-            commands::batch_cmd::batch_get_status,
-            commands::batch_cmd::batch_reset,
             commands::batch_cmd::tm_export,
             commands::batch_cmd::tm_import,
             commands::batch_cmd::tm_get_stats,
@@ -702,20 +692,6 @@ pub fn run() {
             commands::offline_cmd::update_offline_settings,
             commands::offline_cmd::generate_sample_offline_models,
             commands::offline_cmd::get_offline_status,
-            commands::project_cmd::create_project,
-            commands::project_cmd::get_project,
-            commands::project_cmd::get_all_projects,
-            commands::project_cmd::update_project,
-            commands::project_cmd::delete_project,
-            commands::project_cmd::add_file_to_project,
-            commands::project_cmd::get_project_files,
-            commands::project_cmd::delete_file,
-            commands::project_cmd::update_file_status,
-            commands::project_cmd::add_segments,
-            commands::project_cmd::get_file_segments,
-            commands::project_cmd::update_segment,
-            commands::project_cmd::export_project,
-            commands::project_cmd::export_project_json,
             commands::sync_cmd::test_webdav_connection,
             commands::sync_cmd::sync_now,
             commands::sync_cmd::get_sync_config,
