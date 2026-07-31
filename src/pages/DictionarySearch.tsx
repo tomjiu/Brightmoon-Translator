@@ -12,7 +12,7 @@ import {
   BookOpen,
   Sparkles,
 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { safeInvoke, invokeOrDefault } from '../services/invoke';
 import { useI18n } from '../i18n';
 import { saveAndCollect, summarizeReport } from '../hooks/useCollectionPush';
 import PageHeader from '../components/PageHeader';
@@ -90,38 +90,32 @@ function DictionarySearch() {
   // 自动检测并导入词典数据（仅首次）
   useEffect(() => {
     const checkAndImport = async () => {
-      try {
-        const status = await invoke<{ imported: boolean; vocabCount: number }>(
-          'check_dictionary_imported',
-        );
-        if (!status.imported) {
-          setIsImporting(true);
-          setImportStatus('首次使用，正在导入词典数据...');
-          try {
-            const msg = await invoke<string>('import_dictionary_data');
-            setImportStatus(msg);
-          } catch (err) {
-            setImportStatus(`导入失败: ${err}`);
-          } finally {
-            setIsImporting(false);
-          }
-        }
-      } catch {
-        // ignore check errors
+      const status = await invokeOrDefault<{ imported: boolean; vocabCount: number }>(
+        'check_dictionary_imported',
+        undefined,
+        { imported: false, vocabCount: 0 },
+      );
+      if (!status.imported) {
+        setIsImporting(true);
+        setImportStatus('首次使用，正在导入词典数据...');
+        const [msg, importErr] = await safeInvoke<string>('import_dictionary_data', undefined, {
+          silent: true,
+        });
+        setImportStatus(importErr ? `导入失败: ${importErr.message}` : msg);
+        setIsImporting(false);
       }
     };
     void checkAndImport();
   }, []);
   const [history, setHistory] = useState<DictionaryHistoryItem[]>([]);
   const loadHistory = useCallback(async () => {
-    try {
-      const items = await invoke<DictionaryHistoryItem[]>('get_dictionary_history', {
-        limit: 50,
-      });
-      setHistory(items);
-    } catch {
-      // 数据库未初始化或首次使用 — 静默
-    }
+    // 数据库未初始化或首次使用 — 静默返回空数组
+    const items = await invokeOrDefault<DictionaryHistoryItem[]>(
+      'get_dictionary_history',
+      { limit: 50 },
+      [],
+    );
+    setHistory(items);
   }, []);
 
   // 加载持久化查词历史
@@ -130,11 +124,11 @@ function DictionarySearch() {
   }, [loadHistory]);
 
   const handleClearHistory = async () => {
-    try {
-      await invoke('clear_dictionary_history');
+    const [, error] = await safeInvoke('clear_dictionary_history');
+    if (error) {
+      console.error('清空历史失败:', error.message);
+    } else {
       setHistory([]);
-    } catch (err) {
-      console.error('清空历史失败:', err);
     }
   };
   const searchRef = useRef<HTMLDivElement>(null);
@@ -150,15 +144,14 @@ function DictionarySearch() {
       }
       setIsSuggestionsLoading(true);
       try {
-        const data = await invoke<SuggestionItem[]>('search_word_suggestions', {
-          query: searchQuery.trim(),
-          limit: 10,
-        });
+        const data = await invokeOrDefault<SuggestionItem[]>(
+          'search_word_suggestions',
+          { query: searchQuery.trim(), limit: 10 },
+          [],
+        );
         setSuggestions(data);
         setShowSuggestions(true);
         setSelectedIndex(-1);
-      } catch {
-        setSuggestions([]);
       } finally {
         setIsSuggestionsLoading(false);
       }
@@ -183,16 +176,18 @@ function DictionarySearch() {
     setError(null);
     setShowSuggestions(false);
     try {
-      const data = await invoke<ComprehensiveEntry>('lookup_word_multi_source', {
+      const [data, error] = await safeInvoke<ComprehensiveEntry>('lookup_word_multi_source', {
         word: word.trim(),
       });
+      if (error || !data) {
+        setError(error?.message || '查询失败');
+        setResult(null);
+        return;
+      }
       setResult(data);
       setSearchQuery(data.word);
       // 刷新持久化历史（后端 UPSERT 已更新次数与时间）
       void loadHistory();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '查询失败');
-      setResult(null);
     } finally {
       setIsLoading(false);
     }
@@ -239,14 +234,9 @@ function DictionarySearch() {
   const handleImport = async () => {
     setIsImporting(true);
     setImportStatus('导入中...');
-    try {
-      const msg = await invoke<string>('import_dictionary_data');
-      setImportStatus(msg);
-    } catch (err) {
-      setImportStatus(`导入失败: ${err}`);
-    } finally {
-      setIsImporting(false);
-    }
+    const [msg, error] = await safeInvoke<string>('import_dictionary_data');
+    setImportStatus(error ? `导入失败: ${error.message}` : msg);
+    setIsImporting(false);
   };
 
   return (
