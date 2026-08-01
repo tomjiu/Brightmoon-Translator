@@ -1233,6 +1233,39 @@ pub async fn offline_ocr(
     Ok(synthetic_ocr_lines_from_text(&text, img_w, img_h))
 }
 
+/// Run offline (Rapid/Paddle) OCR on raw PNG bytes and return synthetic
+/// per-line boxes (sidecar backends return plain text only).
+pub async fn run_offline_ocr_detailed(
+    png_bytes: &[u8],
+    backend: &str,
+    plugin_dir: &str,
+    lang: Option<String>,
+    offset_x: f64,
+    offset_y: f64,
+) -> Result<OcrResultDetailed, String> {
+    let (img_w, img_h) = png_dimensions(png_bytes);
+    let backend_owned = backend.to_string();
+    let plugin_dir_owned = plugin_dir.to_string();
+    let png_owned = png_bytes.to_vec();
+    let text = tokio::task::spawn_blocking(move || {
+        crate::ocr_offline::run_offline_ocr(&png_owned, &backend_owned, &plugin_dir_owned, lang.as_deref())
+    })
+    .await
+    .map_err(|e| format!("Offline OCR join: {e}"))??;
+    let mut result = synthetic_ocr_lines_from_text(&text, img_w, img_h);
+    if offset_x != 0.0 || offset_y != 0.0 {
+        for line in &mut result.lines {
+            line.x += offset_x;
+            line.y += offset_y;
+            for word in &mut line.words {
+                word.x += offset_x;
+                word.y += offset_y;
+            }
+        }
+    }
+    Ok(result)
+}
+
 /// Run WinRT OCR on raw PNG bytes (for use by other modules).
 pub async fn run_winrt_ocr_detailed_from_bytes(
     png_bytes: &[u8],
