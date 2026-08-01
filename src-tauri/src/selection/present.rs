@@ -449,6 +449,7 @@ pub async fn present_mt_card(app: &AppHandle, source: &str, pos: Option<(f64, f6
                 &content,
                 overlay::OverlayLevel::Standard,
                 dismiss.max(5000),
+                None,
             );
             let _ = overlay::window_manager::create_overlay_window_ex(
                 app, &html, place.x, place.y, w, h, true, false,
@@ -465,7 +466,7 @@ pub async fn present_mt_card(app: &AppHandle, source: &str, pos: Option<(f64, f6
                 window_title: None,
             };
             let html =
-                overlay::html_builder::build_html(&content, overlay::OverlayLevel::Minimal, 4000);
+                overlay::html_builder::build_html(&content, overlay::OverlayLevel::Minimal, 4000, None);
             let _ = overlay::window_manager::create_overlay_window_ex(
                 app, &html, place.x, place.y, 320.0, 120.0, true, false,
             );

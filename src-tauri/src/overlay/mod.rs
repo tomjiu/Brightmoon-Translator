@@ -2,11 +2,14 @@ pub mod follow_controller;
 pub mod html_builder;
 pub mod http_server;
 pub mod interaction;
+pub mod pin_manager;
 pub mod positioner;
+pub mod resize_service;
 pub mod window_manager;
 
 pub use follow_controller::{FollowController, FollowMode, TargetBounds};
 pub use http_server::OverlayHttpServer;
+pub use pin_manager::{PinSlot, PinWindowManager};
 
 use serde::{Deserialize, Serialize};
 

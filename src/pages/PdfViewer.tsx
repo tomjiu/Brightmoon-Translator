@@ -193,6 +193,46 @@ function PdfViewer() {
     }
   };
 
+  const exportBilingualPdf = async () => {
+    if (!translatedPdf) return;
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const savePath = await save({
+        defaultPath: `${fileName.replace(/\.pdf$/i, '')}_bilingual.pdf`,
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (!savePath) return;
+
+      await invokeOrThrow('save_bilingual_pdf', {
+        outputPath: savePath,
+        translatedPages: translatedPdf.pages,
+        layout: 'sideBySide',
+      });
+    } catch (err) {
+      console.error('Failed to save bilingual PDF:', err);
+    }
+  };
+
+  const exportDualPdf = async () => {
+    if (!translatedPdf) return;
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const savePath = await save({
+        defaultPath: `${fileName.replace(/\.pdf$/i, '')}_dual.pdf`,
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (!savePath) return;
+
+      await invokeOrThrow('save_translated_pdf', {
+        outputPath: savePath,
+        translatedPages: translatedPdf.pages,
+        mode: 'dual',
+      });
+    } catch (err) {
+      console.error('Failed to save dual PDF:', err);
+    }
+  };
+
   const exportTranslatedPdf = (asHtml = false) => {
     if (!translatedPdf) return;
 
@@ -333,6 +373,22 @@ ${body}</body></html>`;
                   <Download size={14} />
                   HTML
                 </button>
+                <button
+                  className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
+                  onClick={() => void exportBilingualPdf()}
+                  title="Native bilingual PDF"
+                >
+                  <Download size={14} />
+                  PDF
+                </button>
+                <button
+                  className="bg-bg-tertiary text-text-secondary border border-border rounded-lg px-4 py-2 text-sm hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1.5"
+                  onClick={() => void exportDualPdf()}
+                  title="Dual PDF (original + translation interleaved pages)"
+                >
+                  <Download size={14} />
+                  Dual
+                </button>
               </>
             )}
           </div>
@@ -340,7 +396,7 @@ ${body}</body></html>`;
       />
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-h-0">
         {!filePath ? (
           <div className="flex flex-col items-center justify-center h-full text-text-secondary">
             <FileText size={64} className="mb-4 opacity-50" />
@@ -454,23 +510,23 @@ ${body}</body></html>`;
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto min-h-0">
               {showBilingual && translatedPdf ? (
                 /* Bilingual View */
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-bg-secondary border border-border rounded-xl p-4">
+                  <div className="bg-bg-secondary border border-border rounded-xl p-4 min-w-0">
                     <h3 className="text-xs font-semibold text-text-secondary uppercase mb-3">
                       {t('pdf.original')}
                     </h3>
-                    <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                    <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
                       {currentPdfPage?.text || t('pdf.emptyPage')}
                     </div>
                   </div>
-                  <div className="bg-bg-secondary border border-border rounded-xl p-4">
+                  <div className="bg-bg-secondary border border-border rounded-xl p-4 min-w-0">
                     <h3 className="text-xs font-semibold text-primary uppercase mb-3">
                       {t('pdf.translation')}
                     </h3>
-                    <div className="text-sm leading-relaxed whitespace-pre-wrap text-primary">
+                    <div className="text-sm leading-relaxed whitespace-pre-wrap break-words text-primary">
                       {currentTranslatedPage?.translatedText || t('pdf.notTranslated')}
                     </div>
                   </div>

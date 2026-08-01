@@ -351,7 +351,7 @@ function OfficeViewer({ kind }: { kind: OfficeKind }) {
         </p>
       )}
 
-      <div className="flex-1 overflow-auto rounded-lg border border-border bg-bg-secondary p-4 space-y-3">
+      <div className="flex-1 overflow-auto min-h-0 rounded-lg border border-border bg-bg-secondary p-4 space-y-3">
         {loading && (
           <div className="flex items-center gap-2 text-text-secondary">
             <Loader2 className="animate-spin" size={18} />

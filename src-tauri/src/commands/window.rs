@@ -359,7 +359,7 @@ pub async fn create_overlay(
         source_app: None,
         window_title: None,
     };
-    let html = crate::overlay::html_builder::build_html(&content, level, 3000);
+    let html = crate::overlay::html_builder::build_html(&content, level, 3000, None);
     crate::overlay::window_manager::create_overlay_window(&app, &html, x, y, width, height, true)
 }
 
@@ -612,7 +612,7 @@ pub async fn update_overlay(
             source_app: None,
             window_title: None,
         };
-        let html = crate::overlay::html_builder::build_html(&content, level, 3000);
+        let html = crate::overlay::html_builder::build_html(&content, level, 3000, None);
         crate::overlay::window_manager::create_overlay_window(
             &app, &html, x, y, width, height, true,
         )?;
@@ -716,9 +716,15 @@ pub async fn create_ocr_region_frame(
             let _ = main.hide();
         }
         let _ = existing.set_always_on_top(true);
-        let _ = existing.show();
-        let _ = existing.set_focus();
-        tracing::info!("OCR region frame reused (repositioned)");
+        // S5-fix: enforce min-size on reuse path too (survives across sessions).
+        let _ = existing.set_min_size(Some(tauri::Size::Physical(
+            tauri::PhysicalSize::new(min_w_physical as u32, min_h_physical as u32),
+        )));
+        // C3+C4: show without stealing focus from the target app (follow mode
+        // keeps keyboard focus on the source window). Buttons still work —
+        // WS_EX_NOACTIVATE only suppresses activation, not mouse input.
+        crate::win::show_webview_no_activate(&existing);
+        tracing::info!("OCR region frame reused (repositioned, no-activate)");
         return Ok(());
     }
 
@@ -744,7 +750,10 @@ pub async fn create_ocr_region_frame(
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(true)
-        .focused(true)
+        // C3+C4: do not steal focus on create — WS_EX_NOACTIVATE is applied
+        // below and the window is shown via SW_SHOWNOACTIVATE when the FE is
+        // ready. The target app keeps keyboard focus for hook follow mode.
+        .focused(false)
         .fullscreen(false)
         // Opaque dark first paint — transparent WebView2 flashes pure white on create.
         .transparent(false)
@@ -790,9 +799,21 @@ pub async fn create_ocr_region_frame(
                     let _ = main.hide();
                 }
                 let _ = window.set_always_on_top(true);
+                // S5-fix: enforce min-size so toolbar buttons are never clipped
+                // when the user drags the frame narrower than MIN_FRAME_CSS_W.
+                let _ = window.set_min_size(Some(tauri::Size::Physical(
+                    tauri::PhysicalSize::new(min_w_physical as u32, min_h_physical as u32),
+                )));
+                // C3+C4: apply WS_EX_NOACTIVATE so the frame never steals
+                // keyboard focus from the target app. FE shows the window via
+                // SW_SHOWNOACTIVATE when the crop image is ready.
+                #[cfg(target_os = "windows")]
+                if let Ok(h) = window.hwnd() {
+                    crate::win::set_window_no_activate(h.0 as isize, true);
+                }
                 // Keep hidden until FE shows after crop — avoids white WebView2 flash.
                 tracing::info!(
-                    "OCR region frame created successfully (attempt {})",
+                    "OCR region frame created successfully (attempt {}, no-activate)",
                     attempt
                 );
                 return Ok(());
@@ -816,6 +837,49 @@ pub async fn create_ocr_region_frame(
         "Failed to create OCR region frame after {} attempts: {}",
         max_attempts, last_error
     ))
+}
+
+/// O5: Preload the OCR region frame webview at app startup.
+///
+/// Creates the `ocr-region-frame` window hidden and off-screen so the first
+/// real OCR session skips the WebView2 create cost (~300–600 ms on cold cache).
+/// `create_ocr_region_frame` will find the existing window via the reuse path
+/// and just reposition + show it.
+///
+/// Safe to call multiple times — no-op if the window already exists.
+pub fn preload_ocr_region_frame(app: &tauri::AppHandle) -> Result<(), String> {
+    if app.get_webview_window("ocr-region-frame").is_some() {
+        return Ok(());
+    }
+    let window = WebviewWindowBuilder::new(
+        app,
+        "ocr-region-frame",
+        WebviewUrl::App("index.html?window=ocr-region-frame&v=ocr2".into()),
+    )
+    .title("OCR Region")
+    .inner_size(320.0, 80.0)
+    // Off-screen so the hidden window never paints over the desktop if DWM
+    // races the `visible(false)` setting during creation.
+    .position(-32000.0, -32000.0)
+    .decorations(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(true)
+    .focused(false)
+    .fullscreen(false)
+    .transparent(false)
+    .background_color(tauri::window::Color(12, 12, 14, 255))
+    .visible(false)
+    .build()
+    .map_err(|e| format!("Failed to preload OCR region frame: {}", e))?;
+
+    // C3+C4: apply WS_EX_NOACTIVATE so even an accidental show never steals focus.
+    #[cfg(target_os = "windows")]
+    if let Ok(h) = window.hwnd() {
+        crate::win::set_window_no_activate(h.0 as isize, true);
+    }
+    tracing::info!("[O5] OCR region frame preloaded (hidden, off-screen)");
+    Ok(())
 }
 
 /// Create the full-screen OCR screenshot selector window.
@@ -977,8 +1041,8 @@ pub async fn close_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(), 
     if let Some(frame) = app.get_webview_window("ocr-region-frame") {
         let _ = frame.set_ignore_cursor_events(false);
         let _ = frame.set_always_on_top(true);
-        let _ = frame.show();
-        let _ = frame.set_focus();
+        // C3+C4: show without activating so the target app retains focus.
+        crate::win::show_webview_no_activate(&frame);
     }
     if let Some(window) = app.get_webview_window("ocr-screenshot") {
         let _ = window.hide();
@@ -992,7 +1056,11 @@ pub async fn close_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(), 
     }
     if let Some(frame) = app.get_webview_window("ocr-region-frame") {
         let _ = frame.set_always_on_top(true);
-        let _ = frame.set_focus();
+        // Re-assert no-activate in case the close path reset styles.
+        #[cfg(target_os = "windows")]
+        if let Ok(h) = frame.hwnd() {
+            crate::win::set_window_no_activate(h.0 as isize, true);
+        }
     }
     Ok(())
 }
@@ -1042,8 +1110,8 @@ pub async fn set_ocr_region_frame_visible(
     if let Some(window) = app.get_webview_window("ocr-region-frame") {
         if visible {
             let _ = window.set_always_on_top(true);
-            let _ = window.show();
-            let _ = window.set_focus();
+            // C3+C4: show without stealing focus from the target app.
+            crate::win::show_webview_no_activate(&window);
             // Do not hide main here — caller owns main visibility.
             // Hiding main from every "visible:true" left users on a black desktop when
             // the frame failed or was empty.
@@ -1210,4 +1278,149 @@ pub async fn move_ocr_region_frame(
     }
 
     Ok(())
+}
+
+// ── O1-O4: Pinned translation card commands ────────────────────────────────
+//
+// Pinned cards persist on screen until the user dismisses them, unlike the
+// transient `overlay` window. The PinWindowManager keeps a retain pool of
+// reusable webview windows so re-pinning is cheap.
+
+/// O1+O2+O3: Pin a translation card at (x, y) with stacked cascade origin.
+///
+/// `x`/`y` are physical pixels. The manager reuses a hidden window from the
+/// pool if available, otherwise creates a new one (up to 12). Returns the
+/// pin label (e.g. `pin-0`) so FE can track / dismiss it.
+#[command]
+pub async fn pin_translation_card(
+    app: tauri::AppHandle,
+    source: String,
+    translated: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    source_app: Option<String>,
+    window_title: Option<String>,
+) -> Result<String, String> {
+    crate::overlay::pin_manager::pin_card(
+        &app,
+        &source,
+        &translated,
+        x,
+        y,
+        width,
+        height,
+        source_app.as_deref(),
+        window_title.as_deref(),
+    )
+}
+
+/// O4: Dismiss a single pinned card by label.
+#[command]
+pub async fn dismiss_pinned_card(app: tauri::AppHandle, label: String) -> Result<bool, String> {
+    Ok(crate::overlay::pin_manager::dismiss_pin(&app, &label))
+}
+
+/// O4: Dismiss all pinned cards.
+#[command]
+pub async fn dismiss_all_pinned_cards(app: tauri::AppHandle) -> Result<(), String> {
+    crate::overlay::pin_manager::dismiss_all(&app);
+    Ok(())
+}
+
+/// Tier4-3: Update a pinned card's stored size after the user drag-resizes
+/// the window. Called from the pin card's resize event listener.
+#[command]
+pub async fn update_pinned_card_size(
+    label: String,
+    width: f64,
+    height: f64,
+) -> Result<bool, String> {
+    Ok(crate::overlay::pin_manager::update_pin_size(&label, width, height))
+}
+
+/// Tier4-P2: Compute the aspect-ratio-constrained resize rect for a pin window.
+///
+/// Called from the FE's `pointermove` handler (throttled via
+/// `requestAnimationFrame`) during a drag-resize of a screenshot pin window.
+/// The FE sends the current window origin/size, the requested new size, the
+/// anchor corner (which stays fixed), and the target aspect ratio. The
+/// backend enforces the ratio, clamps to pin-card bounds, and returns the
+/// `(x, y, width, height)` rect for the FE to apply via `window.setPosition`
+/// + `window.setSize`.
+///
+/// `anchor` accepts "topLeft"/"topRight"/"bottomLeft"/"bottomRight"
+/// (case-insensitive, also kebab/snake variants and short forms "tl"/"tr"/
+/// "bl"/"br"). Unrecognized values default to `topLeft`.
+///
+/// `ratio` is `width / height`. Pass a non-positive value or NaN to disable
+/// the constraint (text cards reflow freely).
+#[command]
+pub async fn compute_aspect_resize(
+    origin_x: f64,
+    origin_y: f64,
+    cur_w: f64,
+    cur_h: f64,
+    req_w: f64,
+    req_h: f64,
+    anchor: String,
+    ratio: f64,
+) -> Result<crate::overlay::resize_service::AspectResizeResult, String> {
+    let anchor = crate::overlay::resize_service::ResizeAnchor::parse(&anchor)
+        .unwrap_or(crate::overlay::resize_service::ResizeAnchor::TopLeft);
+    Ok(crate::overlay::resize_service::compute_aspect_resize(
+        origin_x, origin_y, cur_w, cur_h, req_w, req_h, anchor, ratio,
+    ))
+}
+
+/// List active pinned cards (FE can show count / manage).
+#[command]
+pub async fn list_pinned_cards() -> Result<Vec<crate::overlay::pin_manager::PinSlot>, String> {
+    Ok(crate::overlay::pin_manager::active_pins())
+}
+
+/// Count of active pinned cards.
+#[command]
+pub async fn pinned_card_count() -> Result<usize, String> {
+    Ok(crate::overlay::pin_manager::active_count())
+}
+
+// ── P6: DocLayout-YOLO 模型管理命令 ──────────────────────────────────────
+//
+// 按需下载：默认不打包模型，用户在设置里启用布局检测时才下载。
+// 下载进度通过 `layout-model-download-progress` 事件推送。
+
+/// P6: 检查 DocLayout-YOLO 模型是否已下载且可用。
+#[command]
+pub async fn is_layout_model_ready(app: tauri::AppHandle) -> Result<bool, String> {
+    Ok(crate::layout_model_download::is_model_ready(&app))
+}
+
+/// P6: 下载 DocLayout-YOLO 模型（~50MB）。
+///
+/// 幂等：模型已就绪则直接返回路径。
+/// 下载进度通过 `layout-model-download-progress` 事件推送。
+/// 返回模型文件的完整路径。
+#[command]
+pub async fn download_layout_model(app: tauri::AppHandle) -> Result<String, String> {
+    let path = crate::layout_model_download::download_model(&app).await?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// P6: 删除已下载的 DocLayout-YOLO 模型（用户关闭功能时清理空间）。
+#[command]
+pub async fn remove_layout_model(app: tauri::AppHandle) -> Result<bool, String> {
+    Ok(crate::layout_model_download::remove_model(&app))
+}
+
+/// P6: 获取模型文件大小（字节），未下载返回 0。
+#[command]
+pub async fn layout_model_size(app: tauri::AppHandle) -> Result<u64, String> {
+    let path = crate::layout_model_download::model_path(&app);
+    if !path.exists() {
+        return Ok(0);
+    }
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    Ok(meta.len())
 }

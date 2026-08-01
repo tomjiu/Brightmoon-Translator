@@ -43,6 +43,8 @@
     "dictionary": "词典",
     "copy": "复制",
     "copied": "已复制",
+    "pin": "钉住",
+    "pinned": "已钉住",
     "speak": "朗读",
     "speaking": "朗读中",
     "showOriginal": "显示原文",
@@ -452,6 +454,15 @@
       "pdfOcrmypdf": "ocrmypdf（扫描书可搜索层）",
       "pdfHint": "pdf-extract：大多数数字 PDF。遇碎字/崩溃自动 OCR。ocr：不需外置工具。mineru/marker：复杂排版，需自行 pip install。",
       "sidecarPath": "Sidecar CLI 路径（可空，空则用 PATH 上命令名）",
+      "layoutTitle": "PDF 布局检测",
+      "layoutDesc": "DocLayout-YOLO 模型识别标题/正文/图/表/公式等区域，改善复杂排版 PDF 的翻译质量",
+      "layoutEnable": "启用布局检测",
+      "layoutEnableHint": "默认关闭。启用后按需下载 ~50MB ONNX 模型；未下载时自动回退到普通文本抽取",
+      "layoutModelReady": "模型已就绪",
+      "layoutModelNotReady": "模型未下载",
+      "layoutDownload": "下载模型",
+      "layoutRemove": "删除模型",
+      "layoutNote": "模型存于 app_data_dir/models/。下载失败可重试；删除后再次启用时会重新下载",
       "paramsTitle": "OCR 参数",
       "paramsDesc": "区域监视行为",
       "interval": "区域监视间隔 (毫秒)",
@@ -540,7 +551,12 @@
       "proxyEnable": "启用代理",
       "proxyEnableHint": "应用到支持代理的网络请求（含 LLM、Google 回退等）",
       "proxyHost": "主机",
-      "proxyPort": "端口"
+      "proxyPort": "端口",
+      "cacheTitle": "翻译缓存",
+      "cacheDesc": "已翻译内容会缓存到本地，重复翻译时直接返回",
+      "cacheTtlLabel": "缓存有效期（小时）",
+      "cacheTtlHint": "超过此时间的条目会在下次读取时自动清理。默认 72 小时（3 天）。更改后重启应用生效。",
+      "cacheTtlInvalid": "请输入 1-720 之间的整数"
     },
     "enginePage": {
       "title": "翻译引擎",
@@ -975,7 +991,8 @@
       "noDllFound": "未找到 moon_hook.dll",
       "injectSuccess": "注入成功",
       "injectFailed": "注入失败",
-      "ejectSuccess": "已卸载DLL"
+      "ejectSuccess": "已卸载DLL",
+      "installHook": "安装Hook"
     },
     "processPicker": {
       "title": "选择进程",

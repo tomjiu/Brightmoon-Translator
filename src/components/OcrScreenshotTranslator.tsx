@@ -88,6 +88,24 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
   /** OCR session owns main visibility: hidden from session start until result close / cancel. */
   const ocrSessionActiveRef = useRef(false);
   const sessionIdRef = useRef(0);
+  /**
+   * C6: selection three-state machine.
+   * - `idle`: no session, or session closed.
+   * - `selecting`: fullscreen selector is up, waiting for the user to draw a region.
+   * - `captured`: a region was selected and handed off to the region frame.
+   *
+   * Guards against invalid transitions (e.g. a second selection event arriving
+   * after the frame already took over) and makes the hand-off explicit.
+   */
+  type SelectionPhase = 'idle' | 'selecting' | 'captured';
+  const selectionPhaseRef = useRef<SelectionPhase>('idle');
+  /**
+   * C7: take-once flag for the `ocr-screenshot-selected` event.
+   * Set to `true` on the first event of a session; subsequent events are
+   * ignored until the session resets. Prevents double crop / double
+   * create_ocr_region_frame / double OCR if the selector emits twice.
+   */
+  const selectionTakenRef = useRef(false);
   const lastOcrTextRef = useRef<string>('');
   /** Last successful translation for I7 geometry-only updates (skip re-translate). */
   const lastTranslatedRef = useRef<string>('');
@@ -831,6 +849,9 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       hasOcrRef.current = false;
       langOverriddenRef.current = false;
       followEnabledRef.current = false;
+      // C6+C7: session closed — return to idle so the next OCR launch can select.
+      selectionPhaseRef.current = 'idle';
+      selectionTakenRef.current = false;
       windowBindingRef.current?.unbind();
       await safeInvoke('set_ocr_region_frame_click_through', { ignore: false }, { silent: true });
       await safeInvoke('set_ocr_region_frame_sampling', { sampling: false }, { silent: true });
@@ -971,6 +992,20 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
 
     listen<ScreenshotRegion>('ocr-screenshot-selected', async (event) => {
       if (cancelled) return; // guard against StrictMode double-mount
+      // C6+C7: take-once — only the first selection event per session is
+      // processed. If the selector emits twice (race between pointerup and
+      // key-Esc-cancel, or a double-fire from the selector's finishingRef),
+      // the second event is dropped instead of creating a second frame.
+      if (selectionPhaseRef.current !== 'selecting' || selectionTakenRef.current) {
+        console.warn(
+          '[OCR] ignoring duplicate ocr-screenshot-selected (phase=%s, taken=%s)',
+          selectionPhaseRef.current,
+          selectionTakenRef.current,
+        );
+        return;
+      }
+      selectionTakenRef.current = true;
+      selectionPhaseRef.current = 'captured';
       const sel = event.payload;
       const info = snapshotInfoRef.current;
       // Selector emits IMAGE-pixel coords. Crop the same snapshot the user saw
@@ -1152,6 +1187,9 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       if (cancelled) return;
       clearSelectorSafetyTimer();
       ocrSessionActiveRef.current = false;
+      // C6: cancelled from selecting → back to idle.
+      selectionPhaseRef.current = 'idle';
+      selectionTakenRef.current = false;
       void (async () => {
         await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
         await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
@@ -1196,6 +1234,9 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     hasOcrRef.current = false;
     langOverriddenRef.current = false;
     followEnabledRef.current = false;
+    // C6+C7: reset selection phase + take-once at session start.
+    selectionPhaseRef.current = 'idle';
+    selectionTakenRef.current = false;
     windowBindingRef.current?.unbind();
     clearSelectorSafetyTimer();
 
@@ -1239,6 +1280,11 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
             /* ignore */
           }
         }
+        // C6: selector is up and accepting input — enter `selecting` phase.
+        // C7: arm take-once so a duplicate `ocr-screenshot-selected` event
+        // does not trigger a second crop / frame create.
+        selectionTakenRef.current = false;
+        selectionPhaseRef.current = 'selecting';
       } catch (selErr) {
         ocrSessionActiveRef.current = false;
         await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
@@ -1254,8 +1300,12 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           try {
             if (!ocrSessionActiveRef.current) return;
             if (!frameClosedRef.current) return; // result already up
+            // C6: only abort if still in selecting phase (captured means hand-off done).
+            if (selectionPhaseRef.current !== 'selecting') return;
             console.warn('[OCR] Selector stuck 20s — end session, restore main');
             ocrSessionActiveRef.current = false;
+            selectionPhaseRef.current = 'idle';
+            selectionTakenRef.current = false;
             await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
             await safeInvoke('set_ocr_region_frame_visible', { visible: false }, { silent: true });
             await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });

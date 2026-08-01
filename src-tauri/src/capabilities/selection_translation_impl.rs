@@ -77,7 +77,7 @@ impl DefaultSelectionTranslation {
         };
         let (mut w, h) = overlay::window_manager::estimate_mt_card_size(&translated_text);
         w = w.max(pos.width.min(460.0));
-        let html = overlay::html_builder::build_html(&content, level, dismiss_ms);
+        let html = overlay::html_builder::build_html(&content, level, dismiss_ms, None);
         overlay::window_manager::create_overlay_window(
             &self.app_handle,
             &html,

@@ -84,6 +84,7 @@ const INITIAL_CONFIG: AppConfig = {
   },
   tmEnabled: false,
   tmThreshold: 0.8,
+  cacheTtlHours: 72,
   furiganaEnabled: false,
   ttsAutoPlay: false,
   ttsVoice: '',
@@ -130,6 +131,7 @@ const INITIAL_CONFIG: AppConfig = {
     maimemo: { enabled: false, token: '', notepadId: '', notepadTitle: 'Moon' },
     autoPushOnSave: true,
   },
+  layoutDetectionEnabled: false,
 };
 
 interface EngineCacheStats {
@@ -294,6 +296,8 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         format: loadedCfg.fishTts?.format ?? INITIAL_CONFIG.fishTts?.format ?? 'mp3',
         speed: loadedCfg.fishTts?.speed ?? INITIAL_CONFIG.fishTts?.speed ?? 1,
       },
+      layoutDetectionEnabled:
+        loadedCfg.layoutDetectionEnabled ?? INITIAL_CONFIG.layoutDetectionEnabled ?? false,
     };
     set({ config: merged, loaded: true });
   },

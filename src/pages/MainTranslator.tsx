@@ -1,10 +1,12 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { speakText as ttsSpeak } from '../services/tts';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useTranslateStore } from '../stores/translateStore';
 import { useConfigStore } from '../stores/configStore';
 import { useI18n } from '../i18n';
 import { isTauriRuntime } from '../services/tauriRuntime';
+import { safeInvoke } from '../services/invoke';
 import { LANGUAGES } from '../types';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { normalizeTranslatorInput } from '../services/translatorText';
@@ -32,6 +34,7 @@ import {
   MicOff,
   Sparkles,
   Bookmark,
+  Pin,
 } from 'lucide-react';
 import { saveAndCollect, summarizeReport } from '../hooks/useCollectionPush';
 
@@ -187,6 +190,47 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
     navigator.clipboard.writeText(text);
     setCopiedIndex(index);
     setTimeout(() => setCopiedIndex(null), 1500);
+  };
+
+  // O1-O4: Pin translation card to screen as a persistent always-on-top window.
+  // The backend PinWindowManager maintains a retain pool of reusable webviews
+  // and stacks multiple pins with a +24/+24 cascade offset.
+  const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
+  const pinResult = async (text: string, index: number) => {
+    if (!isTauri) return;
+    // Place the pin near the current window's bottom-right corner so it
+    // doesn't cover the result panel. The backend applies stacked cascade.
+    let x = 100;
+    let y = 100;
+    try {
+      const win = getCurrentWebviewWindow();
+      const pos = await win.outerPosition();
+      const size = await win.outerSize();
+      x = pos.x + size.width + 8;
+      y = pos.y + 40;
+    } catch {
+      // Fallback to default position if window info is unavailable.
+    }
+    const [label, err] = await safeInvoke<string>(
+      'pin_translation_card',
+      {
+        source: sourceText,
+        translated: text,
+        x,
+        y,
+        width: 360,
+        height: 160,
+        sourceApp: null,
+        windowTitle: null,
+      },
+      { silent: true },
+    );
+    if (err || !label) {
+      console.warn('[Pin] failed to pin translation:', err);
+      return;
+    }
+    setPinnedIndex(index);
+    setTimeout(() => setPinnedIndex(null), 1500);
   };
 
   const speakText = async (text: string, lang: string, index: number) => {
@@ -698,6 +742,20 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
                             </>
                           )}
                         </button>
+                        {isTauri && (
+                          <button
+                            className={`border border-border rounded-md px-2 py-1 text-xs transition-colors flex items-center gap-1 ${
+                              pinnedIndex === i
+                                ? 'bg-primary text-primary-fg border-primary'
+                                : 'bg-bg-tertiary text-text-secondary hover:bg-primary hover:text-primary-fg hover:border-primary'
+                            }`}
+                            onClick={() => void pinResult(r.text, i)}
+                            title={t('translator.pin')}
+                          >
+                            <Pin size={12} />
+                            {pinnedIndex === i ? t('translator.pinned') : t('translator.pin')}
+                          </button>
+                        )}
                         {i === 0 && (
                           <>
                             <button

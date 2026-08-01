@@ -334,23 +334,23 @@ ${body}</body></html>`;
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto min-h-0">
               {showBilingual && translatedEpub ? (
                 /* Bilingual View */
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-bg-secondary border border-border rounded-xl p-4">
+                  <div className="bg-bg-secondary border border-border rounded-xl p-4 min-w-0">
                     <h3 className="text-xs font-semibold text-text-secondary uppercase mb-3">
                       {t('epub.original')}
                     </h3>
-                    <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                    <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
                       {currentEpubChapter?.text || t('epub.emptyChapter')}
                     </div>
                   </div>
-                  <div className="bg-bg-secondary border border-border rounded-xl p-4">
+                  <div className="bg-bg-secondary border border-border rounded-xl p-4 min-w-0">
                     <h3 className="text-xs font-semibold text-primary uppercase mb-3">
                       {t('epub.translation')}
                     </h3>
-                    <div className="text-sm leading-relaxed whitespace-pre-wrap text-primary">
+                    <div className="text-sm leading-relaxed whitespace-pre-wrap break-words text-primary">
                       {currentTranslatedChapter?.translatedText || t('epub.notTranslated')}
                     </div>
                   </div>

@@ -324,6 +324,13 @@ pub fn generate_srt(entries: &[SubtitleEntry], bilingual: bool) -> String {
 }
 
 /// Generate ASS output with bilingual text
+///
+/// S5-11: previously this function did a raw `replace('\n', "\\N")` on
+/// original/translated text and concatenated them with `\N`. That broke on:
+///   - `\r\n` line endings (the `\r` survived and corrupted the line)
+///   - `{` / `}` in text (ASS interprets these as override-tag delimiters)
+///   - empty translations (produced a trailing `\N` with nothing after it)
+/// We now route through `escape_ass_text` which handles all three cases.
 pub fn generate_ass_bilingual(original_content: &str, entries: &[SubtitleEntry]) -> String {
     let mut output = String::new();
     let mut in_events = false;
@@ -355,14 +362,15 @@ pub fn generate_ass_bilingual(original_content: &str, entries: &[SubtitleEntry])
         if trimmed.starts_with("Dialogue:") {
             if entry_idx < entries.len() {
                 let entry = &entries[entry_idx];
-                // Replace the text portion with bilingual text
+                // Replace the text portion with bilingual text.
+                // splitn(10, ',') — Text is the 10th field and is allowed to
+                // contain commas (it's the last field on the line).
                 let parts: Vec<&str> = trimmed.splitn(10, ',').collect();
                 if parts.len() >= 10 {
                     let prefix = parts[..9].join(",");
-                    let bilingual_text = format!(
-                        "{}\\N{}",
-                        entry.original_text.replace('\n', "\\N"),
-                        entry.translated_text.replace('\n', "\\N")
+                    let bilingual_text = build_ass_bilingual_text(
+                        &entry.original_text,
+                        &entry.translated_text,
                     );
                     output.push_str(&format!("{},{}", prefix, bilingual_text));
                 } else {
@@ -380,6 +388,65 @@ pub fn generate_ass_bilingual(original_content: &str, entries: &[SubtitleEntry])
     }
 
     output
+}
+
+/// S5-11: build the ASS Text field for a bilingual cue.
+///
+/// - Empty translation → just the (escaped) original, no trailing `\N`.
+/// - Empty original → just the (escaped) translation.
+/// - Both present → `original\Ntranslation`.
+fn build_ass_bilingual_text(original: &str, translated: &str) -> String {
+    let orig = escape_ass_text(original);
+    let trans = escape_ass_text(translated);
+    match (orig.is_empty(), trans.is_empty()) {
+        (true, true) => String::new(),
+        (true, false) => trans,
+        (false, true) => orig,
+        (false, false) => format!("{}\\N{}", orig, trans),
+    }
+}
+
+/// S5-11: escape a text string for safe inclusion in an ASS Dialogue Text
+/// field.
+///
+/// ASS / SSA spec mandates:
+///   - `\r\n` and `\n` → `\N` (hard line break)
+///   - `\r` alone → `\N` (defensive: treat lone CR as a line break too)
+///   - `{` and `}` → these delimit override tags (`{\b1}bold{\b0}`);
+///     literal braces in subtitle text must be escaped or they'll be
+///     silently swallowed / mis-parsed by libass. We wrap them with
+///     `{\}` escape — the canonical ASS way to emit a literal brace is
+///     actually just to avoid the override block; the simplest portable
+///     fix is to replace `{` with `\{` is NOT standard. Instead we use
+///     the `\\h` (hard space) approach is wrong too. The correct approach
+///     per libass: there is no escape for `{` `}` — you must not emit
+///     them raw. We replace them with full-width braces `｛｝` which are
+///     visually similar and safe. This matches what most subtitle editors
+///     (Aegisub, Subtitle Edit) do when sanitizing pasted text.
+fn escape_ass_text(text: &str) -> String {
+    let mut s = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\r' => {
+                // Lone CR or CR+LF → hard line break.
+                // (The following '\n' if present will be consumed by the
+                // iterator and also map to '\N', but we de-duplicate below.)
+                s.push_str("\\N");
+            },
+            '\n' => {
+                s.push_str("\\N");
+            },
+            '{' => {
+                s.push('｛');
+            },
+            '}' => {
+                s.push('｝');
+            },
+            _ => s.push(ch),
+        }
+    }
+    // Collapse doubled `\N\N` that came from `\r\n` sequences.
+    s.replace("\\N\\N", "\\N")
 }
 
 /// Generate VTT output
@@ -493,6 +560,92 @@ mod tests {
         assert!(
             out.contains("你好") || out.contains(r"\N"),
             "expected translation in ASS: {out}"
+        );
+    }
+
+    // ── S5-11: ASS bilingual robustness ──────────────────────────────────
+
+    #[test]
+    fn ass_escape_newlines_to_hard_break() {
+        assert_eq!(escape_ass_text("line1\nline2"), "line1\\Nline2");
+        // \r\n should collapse to a single \N, not \N\N
+        assert_eq!(escape_ass_text("line1\r\nline2"), "line1\\Nline2");
+        // lone \r
+        assert_eq!(escape_ass_text("a\rb"), "a\\Nb");
+    }
+
+    #[test]
+    fn ass_escape_braces_to_fullwidth() {
+        // { and } would be interpreted as override-tag delimiters by libass.
+        assert_eq!(escape_ass_text("{bold}"), "｛bold｝");
+    }
+
+    #[test]
+    fn ass_escape_preserves_plain_text() {
+        assert_eq!(escape_ass_text("Hello, world!"), "Hello, world!");
+        // commas are fine — Text is the last field, commas don't split it
+        assert_eq!(escape_ass_text("a,b,c"), "a,b,c");
+    }
+
+    #[test]
+    fn ass_bilingual_text_empty_translation() {
+        // No trailing \N when translation is empty
+        let text = build_ass_bilingual_text("Hello", "");
+        assert_eq!(text, "Hello");
+        assert!(!text.contains("\\N"));
+    }
+
+    #[test]
+    fn ass_bilingual_text_empty_original() {
+        let text = build_ass_bilingual_text("", "你好");
+        assert_eq!(text, "你好");
+        assert!(!text.contains("\\N"));
+    }
+
+    #[test]
+    fn ass_bilingual_text_both_present() {
+        let text = build_ass_bilingual_text("Hello", "你好");
+        assert_eq!(text, "Hello\\N你好");
+    }
+
+    #[test]
+    fn ass_bilingual_text_both_empty() {
+        assert_eq!(build_ass_bilingual_text("", ""), "");
+    }
+
+    #[test]
+    fn ass_bilingual_with_multiline_original() {
+        // Multiline original should be escaped, not break the Dialogue line
+        let text = build_ass_bilingual_text("line1\nline2", "翻译");
+        assert_eq!(text, "line1\\Nline2\\N翻译");
+    }
+
+    #[test]
+    fn ass_generate_handles_crlf_input() {
+        // Original ASS file with \r\n line endings — must still parse Dialogue lines
+        let raw = "[Script Info]\r\nTitle: test\r\n\r\n[Events]\r\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\r\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hello\r\n";
+        let entries = vec![sample_entry(1, "Hello", "你好")];
+        let out = generate_ass_bilingual(raw, &entries);
+        assert!(out.contains("你好"), "translation must appear: {out}");
+        assert!(
+            !out.contains("\r\n你好"),
+            "translation should not have stray \\r: {out}"
+        );
+    }
+
+    #[test]
+    fn ass_generate_with_override_tags_in_text() {
+        // Text containing { } should be sanitized, not interpreted as tags
+        let raw = "[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,original\n";
+        let entries = vec![sample_entry(1, "original", "翻译{tag}")];
+        let out = generate_ass_bilingual(raw, &entries);
+        assert!(
+            out.contains("｛tag｝"),
+            "braces should be fullwidth-escaped: {out}"
+        );
+        assert!(
+            !out.contains("翻译{tag}"),
+            "raw braces must not survive: {out}"
         );
     }
 }

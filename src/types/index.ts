@@ -204,6 +204,8 @@ export interface AppConfig {
   hook?: HookConfig;
   tmEnabled?: boolean;
   tmThreshold?: number;
+  /** S5-10: Translation cache TTL in hours (default 72 = 3 days) */
+  cacheTtlHours?: number;
   furiganaEnabled?: boolean;
   ttsAutoPlay?: boolean;
   ttsVoice?: string;
@@ -234,6 +236,10 @@ export interface AppConfig {
   sync?: SyncConfig;
   /** External vocabulary collection (Eudic / Anki / Shanbay / Youdao / Maimemo). Not FSRS. */
   collection?: CollectionConfig;
+  /** P6: Enable DocLayout-YOLO layout detection for PDF translation (default off; model downloaded on demand). */
+  layoutDetectionEnabled?: boolean;
+  /** Tier4-6: Run WinRT OCR in a one-shot subprocess so OS reclaims ONNX model memory (default off; ~200ms slower per call). */
+  winrtOcrUseSubprocess?: boolean;
 }
 
 export interface CollectionConfig {

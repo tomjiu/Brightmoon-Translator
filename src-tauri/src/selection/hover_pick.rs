@@ -820,14 +820,14 @@ fn pick_word_near_cursor_ocr_win(half_w: i32, half_h: i32) -> Option<HoverPick> 
     if let Some((cursor_pt, element)) = uia_element_at_cursor() {
         pt = cursor_pt;
         if element_is_ocr_chrome(&element) {
-            tracing::debug!("[hover_pick] OCR strip skipped: chrome control under cursor");
+            tracing::trace!("[hover_pick] OCR strip skipped: chrome control under cursor");
             return None;
         }
         if element_is_image_like(&element) {
             // Slightly larger strip over images/canvas (still line-ish, not a square blob)
             half_w = half_w.max(110);
             half_h = half_h.max(22);
-            tracing::debug!(
+            tracing::trace!(
                 "[hover_pick] OCR strip image-like → larger {}x{}",
                 half_w * 2,
                 half_h * 2

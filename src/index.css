@@ -34,6 +34,22 @@
   --color-success: #a3a3a3;
   --color-warning: #d4d4d4;
   --color-error: #e5e5e5;
+  /* S5-fix: RGB triplets for Tailwind opacity modifier (bg-primary/5 etc.) */
+  --color-primary-rgb: 245 245 245;
+  --color-primary-hover-rgb: 255 255 255;
+  --color-primary-fg-rgb: 10 10 10;
+  --color-accent-rgb: 163 163 163;
+  --color-bg-primary-rgb: 0 0 0;
+  --color-bg-secondary-rgb: 10 10 10;
+  --color-bg-tertiary-rgb: 20 20 20;
+  --color-bg-chrome-rgb: 10 10 10;
+  --color-text-primary-rgb: 250 250 250;
+  --color-text-secondary-rgb: 163 163 163;
+  --color-border-rgb: 38 38 38;
+  --color-border-strong-rgb: 64 64 64;
+  --color-success-rgb: 163 163 163;
+  --color-warning-rgb: 212 212 212;
+  --color-error-rgb: 229 229 229;
   --shadow-elevated: 0 8px 30px rgba(0, 0, 0, 0.45);
   --ring: 0 0 0 2px rgba(245, 245, 245, 0.25);
   color-scheme: dark;
@@ -55,6 +71,22 @@
   --color-success: #404040;
   --color-warning: #737373;
   --color-error: #171717;
+  /* S5-fix: RGB triplets for Tailwind opacity modifier (bg-primary/5 etc.) */
+  --color-primary-rgb: 10 10 10;
+  --color-primary-hover-rgb: 0 0 0;
+  --color-primary-fg-rgb: 250 250 250;
+  --color-accent-rgb: 82 82 82;
+  --color-bg-primary-rgb: 245 245 245;
+  --color-bg-secondary-rgb: 255 255 255;
+  --color-bg-tertiary-rgb: 235 235 235;
+  --color-bg-chrome-rgb: 255 255 255;
+  --color-text-primary-rgb: 10 10 10;
+  --color-text-secondary-rgb: 82 82 82;
+  --color-border-rgb: 229 229 229;
+  --color-border-strong-rgb: 212 212 212;
+  --color-success-rgb: 64 64 64;
+  --color-warning-rgb: 115 115 115;
+  --color-error-rgb: 23 23 23;
   --shadow-elevated: 0 8px 30px rgba(0, 0, 0, 0.08);
   --ring: 0 0 0 2px rgba(10, 10, 10, 0.15);
   color-scheme: light;

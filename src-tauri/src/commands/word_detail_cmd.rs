@@ -302,14 +302,92 @@ pub async fn get_corpus_examples(
 }
 
 /// 获取单词词根词缀分析
+///
+/// S5-2: 先查 morphology 表（MorphoLex 导入的词根拆解数据），
+/// 查不到时 fallback 到内置的前缀/后缀启发式。morphology 表可能
+/// 不存在（用户未运行 DataInitializer），所以查询失败时静默降级。
 #[tauri::command]
 pub async fn get_word_etymology(
-    _state: State<'_, crate::AppState>,
+    state: State<'_, crate::AppState>,
     word: String,
 ) -> Result<String, String> {
-    // TODO: 集成词根词缀数据库或 LLM 分析
-    // 这里返回简单的占位符
+    // 1. 尝试从 morphology 表查询（如果数据库可用）
+    if let Some(store) = state.event_store.as_ref() {
+        let pool = store.pool();
+        let result = sqlx::query("SELECT segmentation, pos, parts FROM morphology WHERE word = ?")
+            .bind(&word.to_lowercase())
+            .fetch_optional(pool)
+            .await;
 
+        if let Ok(Some(row)) = result {
+            let segmentation: String = row.try_get("segmentation").unwrap_or_default();
+            let pos: Option<String> = row.try_get("pos").ok().flatten();
+            let parts_json: String = row.try_get("parts").unwrap_or_default();
+
+            if !segmentation.is_empty() {
+                return Ok(format_morphology_result(&word, &segmentation, pos.as_deref(), &parts_json));
+            }
+        }
+        // 查询失败（表不存在）或无结果 — 静默降级到启发式
+    }
+
+    // 2. Fallback: 内置前缀/后缀启发式
+    Ok(etymology_heuristic(&word))
+}
+
+/// 格式化 morphology 表的查询结果为用户可读的词根分析。
+fn format_morphology_result(
+    word: &str,
+    segmentation: &str,
+    pos: Option<&str>,
+    parts_json: &str,
+) -> String {
+    let mut lines = Vec::new();
+
+    if let Some(p) = pos {
+        if !p.is_empty() {
+            lines.push(format!("词性: {}", p));
+        }
+    }
+
+    // 尝试解析 parts JSON 获取更详细的拆解
+    let parts_parsed: Vec<serde_json::Value> = serde_json::from_str(parts_json).unwrap_or_default();
+    if !parts_parsed.is_empty() {
+        for part in &parts_parsed {
+            let part_text = part.get("part").and_then(|v| v.as_str()).unwrap_or("");
+            let part_type = part.get("part_type").and_then(|v| v.as_str()).unwrap_or("root");
+            let meaning = part.get("meaning").and_then(|v| v.as_str());
+
+            let type_label = match part_type {
+                "prefix" => "前缀",
+                "suffix" => "后缀",
+                _ => "词根",
+            };
+
+            if let Some(m) = meaning {
+                if !m.is_empty() {
+                    lines.push(format!("{}: {} ({})", type_label, part_text, m));
+                } else {
+                    lines.push(format!("{}: {}", type_label, part_text));
+                }
+            } else {
+                lines.push(format!("{}: {}", type_label, part_text));
+            }
+        }
+    } else if !segmentation.is_empty() {
+        // parts JSON 解析失败时，直接用 segmentation
+        lines.push(format!("拆解: {}", segmentation));
+    }
+
+    if lines.is_empty() {
+        format!("「{}」是一个单一词根", word)
+    } else {
+        lines.join("\n")
+    }
+}
+
+/// 启发式词根分析（morphology 表不可用时的 fallback）。
+fn etymology_heuristic(word: &str) -> String {
     let common_prefixes = vec![
         ("un", "不，非"),
         ("re", "再，重新"),
@@ -366,8 +444,68 @@ pub async fn get_word_etymology(
     }
 
     if analysis.is_empty() {
-        Ok(format!("「{}」是一个单一词根", word))
+        format!("「{}」是一个单一词根", word)
     } else {
-        Ok(analysis.join("\n"))
+        analysis.join("\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── S5-2: etymology heuristic fallback ────────────────────────────────
+
+    #[test]
+    fn heuristic_detects_prefix() {
+        let result = etymology_heuristic("unhappy");
+        assert!(result.contains("前缀: un"), "got: {result}");
+        assert!(result.contains("词根: happy"), "got: {result}");
+    }
+
+    #[test]
+    fn heuristic_detects_suffix() {
+        let result = etymology_heuristic("quickly");
+        assert!(result.contains("后缀: ly"), "got: {result}");
+    }
+
+    #[test]
+    fn heuristic_single_root() {
+        let result = etymology_heuristic("cat");
+        assert!(result.contains("单一词根"), "got: {result}");
+    }
+
+    // ── S5-2: morphology result formatting ───────────────────────────────
+
+    #[test]
+    fn format_morphology_with_parts_json() {
+        // Simulate the parts JSON shape produced by data_init::parse_segmentation
+        let parts = r#"[{"part":"brill","part_type":"prefix","meaning":null},{"part":"i","part_type":"root","meaning":null},{"part":"ant","part_type":"suffix","meaning":null}]"#;
+        let result = format_morphology_result("brilliant", "brill.i.ant", Some("adj."), parts);
+        assert!(result.contains("词性: adj."), "got: {result}");
+        assert!(result.contains("前缀: brill"), "got: {result}");
+        assert!(result.contains("词根: i"), "got: {result}");
+        assert!(result.contains("后缀: ant"), "got: {result}");
+    }
+
+    #[test]
+    fn format_morphology_with_meaning() {
+        let parts = r#"[{"part":"pre","part_type":"prefix","meaning":"预先"},{"part":"view","part_type":"root","meaning":"看"}]"#;
+        let result = format_morphology_result("preview", "pre.view", None, parts);
+        assert!(result.contains("前缀: pre (预先)"), "got: {result}");
+        assert!(result.contains("词根: view (看)"), "got: {result}");
+    }
+
+    #[test]
+    fn format_morphology_empty_parts_falls_back_to_segmentation() {
+        // parts JSON is invalid/empty — should still show segmentation
+        let result = format_morphology_result("test", "te.st", None, "[]");
+        assert!(result.contains("拆解: te.st"), "got: {result}");
+    }
+
+    #[test]
+    fn format_morphology_empty_everything() {
+        let result = format_morphology_result("word", "", None, "[]");
+        assert!(result.contains("单一词根"), "got: {result}");
     }
 }

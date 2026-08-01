@@ -6,6 +6,14 @@ use std::path::PathBuf;
 use tauri::command;
 use uuid::Uuid;
 
+// Tier 4 P2: multi-monitor parallel capture types (used by monitor_enum_proc
+// callback + capture_virtual_screen_parallel). Imported at module level so the
+// extern "system" callback signature can reference them.
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::{BOOL, LPARAM, RECT};
+#[cfg(target_os = "windows")]
+use windows::Win32::Graphics::Gdi::{HDC, HMONITOR};
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenshotSnapshotInfo {
@@ -321,6 +329,265 @@ fn virtual_screen_info() -> Result<ScreenshotSnapshotInfo, String> {
     })
 }
 
+// ── Tier 4 P2: Multi-monitor parallel capture ──────────────────────────────
+// Captures each monitor from its own device DC (CreateDCW) in parallel scoped
+// threads, then composites into a single virtual-desktop image. Short-circuits
+// to a single capture_area_gdi when only one monitor is present.
+//
+// Benefit over the single virtual-screen BitBlt: each monitor is captured at
+// its native physical resolution via its own device DC, which is correct for
+// mixed-DPI multi-monitor rigs and multi-GPU setups where the virtual-screen
+// DC may not span all adapters.
+
+#[cfg(target_os = "windows")]
+struct PhysicalMonitor {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    device_name: [u16; 32],
+}
+
+// SAFETY: EnumDisplayMonitors callback. Writes each monitor's rect + device
+// name (via GetMonitorInfoW) into the Vec passed through dwdata. Only touches
+// already-mapped memory; safe under the enum call.
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn monitor_enum_proc(
+    hmon: HMONITOR,
+    _hdc: HDC,
+    lprc: *mut RECT,
+    dwdata: LPARAM,
+) -> BOOL {
+    use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITORINFOEXW};
+    let monitors = &mut *(dwdata.0 as *mut Vec<PhysicalMonitor>);
+    if lprc.is_null() {
+        return BOOL(1);
+    }
+    let r = &*lprc;
+    let mut info = MONITORINFOEXW::default();
+    info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+    // Cast *mut MONITORINFOEXW → *mut MONITORINFO (first field, #[repr(C)]).
+    if GetMonitorInfoW(hmon, &mut info as *mut _ as *mut _).as_bool() {
+        monitors.push(PhysicalMonitor {
+            x: r.left,
+            y: r.top,
+            width: (r.right - r.left) as u32,
+            height: (r.bottom - r.top) as u32,
+            device_name: info.szDevice,
+        });
+    }
+    BOOL(1) // continue enumeration
+}
+
+#[cfg(target_os = "windows")]
+fn enumerate_physical_monitors() -> Vec<PhysicalMonitor> {
+    use windows::Win32::Graphics::Gdi::EnumDisplayMonitors;
+    let mut monitors: Vec<PhysicalMonitor> = Vec::new();
+    // SAFETY: EnumDisplayMonitors with None DC enumerates all monitors. The
+    // callback writes to the Vec passed via dwdata LPARAM; no shared mutable
+    // state outside that Vec. MONITORENUMPROC is a type alias for
+    // Option<unsafe extern "system" fn(...)>, so we pass Some(fn) directly —
+    // it is NOT a tuple-struct constructor.
+    unsafe {
+        let _ = EnumDisplayMonitors(
+            None,
+            None,
+            Some(monitor_enum_proc),
+            LPARAM(&mut monitors as *mut _ as isize),
+        );
+    }
+    monitors
+}
+
+/// Capture a single monitor at its native resolution via its own device DC.
+#[cfg(target_os = "windows")]
+fn capture_monitor_dc(monitor: &PhysicalMonitor) -> Result<screenshots::image::DynamicImage, String> {
+    use screenshots::image::{ImageBuffer, Rgba};
+    use windows::core::PCWSTR;
+    use windows::Win32::Graphics::Gdi::{
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateDCW, DeleteDC, DeleteObject,
+        GetDIBits, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
+        SRCCOPY,
+    };
+
+    let width = monitor.width;
+    let height = monitor.height;
+    if width == 0 || height == 0 {
+        return Err("Monitor capture area is empty".to_string());
+    }
+
+    // SAFETY: GDI per-monitor capture. CreateDCW creates a DC for the specific
+    // monitor device, capturing at its native physical resolution. All GDI
+    // objects are released on every path (including error).
+    unsafe {
+        // windows 0.58: CreateDCW returns HDC directly (not Result). A null HDC
+        // means the device DC could not be created (e.g. transient GDI pressure).
+        let screen_dc = CreateDCW(PCWSTR(monitor.device_name.as_ptr()), None, None, None);
+        if screen_dc.0.is_null() {
+            return Err("CreateDCW for monitor failed".to_string());
+        }
+
+        let mem_dc = CreateCompatibleDC(screen_dc);
+        if mem_dc.0.is_null() {
+            let _ = DeleteDC(screen_dc);
+            return Err("CreateCompatibleDC failed".to_string());
+        }
+
+        let bitmap = CreateCompatibleBitmap(screen_dc, width as i32, height as i32);
+        if bitmap.0.is_null() {
+            let _ = DeleteDC(mem_dc);
+            let _ = DeleteDC(screen_dc);
+            return Err("CreateCompatibleBitmap failed".to_string());
+        }
+
+        let old_object = SelectObject(mem_dc, HGDIOBJ(bitmap.0));
+        if old_object.0.is_null() {
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(mem_dc);
+            let _ = DeleteDC(screen_dc);
+            return Err("SelectObject failed".to_string());
+        }
+
+        let blt_ok =
+            BitBlt(mem_dc, 0, 0, width as i32, height as i32, screen_dc, 0, 0, SRCCOPY).is_ok();
+
+        if !blt_ok {
+            let _ = SelectObject(mem_dc, old_object);
+            let _ = DeleteObject(HGDIOBJ(bitmap.0));
+            let _ = DeleteDC(mem_dc);
+            let _ = DeleteDC(screen_dc);
+            return Err("BitBlt failed".to_string());
+        }
+
+        let mut info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width as i32,
+                biHeight: -(height as i32),
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bgra = vec![0u8; (width * height * 4) as usize];
+        let rows = GetDIBits(
+            mem_dc,
+            bitmap,
+            0,
+            height,
+            Some(bgra.as_mut_ptr() as *mut _),
+            &mut info,
+            DIB_RGB_COLORS,
+        );
+
+        let _ = SelectObject(mem_dc, old_object);
+        let _ = DeleteObject(HGDIOBJ(bitmap.0));
+        let _ = DeleteDC(mem_dc);
+        let _ = DeleteDC(screen_dc);
+
+        if rows == 0 {
+            return Err("GetDIBits failed".to_string());
+        }
+
+        for px in bgra.chunks_exact_mut(4) {
+            px.swap(0, 2); // BGRA → RGBA
+        }
+
+        let image = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(width, height, bgra)
+            .ok_or_else(|| "Failed to construct monitor image buffer".to_string())?;
+        Ok(screenshots::image::DynamicImage::ImageRgba8(image))
+    }
+}
+
+/// Capture the full virtual desktop, using parallel per-monitor capture when
+/// multiple monitors are present. Returns the screen info + composite image.
+#[cfg(target_os = "windows")]
+fn capture_virtual_screen_parallel(
+) -> Result<(ScreenshotSnapshotInfo, screenshots::image::DynamicImage), String> {
+    let vs = virtual_screen_info()?;
+    let monitors = enumerate_physical_monitors();
+
+    // Single-monitor short-circuit: one BitBlt of the whole virtual screen is
+    // simpler and faster than spawning a thread + compositing.
+    if monitors.len() <= 1 {
+        let img = capture_area_gdi(vs.screen_x, vs.screen_y, vs.screen_width, vs.screen_height)?;
+        return Ok((vs, img));
+    }
+
+    tracing::info!(
+        "capture_virtual_screen_parallel: {} monitors, capturing in parallel",
+        monitors.len()
+    );
+
+    // Parallel per-monitor capture via scoped threads (no rayon dependency).
+    // Each thread creates its own DC via CreateDCW, so there is no GDI handle
+    // contention. A failed monitor is skipped (its region stays black in the
+    // composite); if ALL fail, we fall back to a single virtual-screen BitBlt.
+    let captures: Vec<(usize, Result<screenshots::image::DynamicImage, String>)> =
+        std::thread::scope(|s| {
+            let handles: Vec<_> = monitors
+                .iter()
+                .enumerate()
+                .map(|(i, m)| s.spawn(move || (i, capture_monitor_dc(m))))
+                .collect();
+            handles.into_iter().filter_map(|h| h.join().ok()).collect()
+        });
+
+    // Composite per-monitor images into the virtual-desktop master image.
+    use screenshots::image::{ImageBuffer, Rgba};
+    let mut master = ImageBuffer::<Rgba<u8>, Vec<u8>>::new(vs.screen_width, vs.screen_height);
+
+    let mut ok_count = 0usize;
+    for (i, result) in captures {
+        match result {
+            Ok(img) => {
+                let m = &monitors[i];
+                let dx = (m.x - vs.screen_x).max(0) as u32;
+                let dy = (m.y - vs.screen_y).max(0) as u32;
+                // Composite per-monitor frame onto the virtual-desktop master.
+                // Manual pixel copy avoids the imageops::replace generic-bound
+                // friction across the screenshots-bundled image 0.24 re-export.
+                // Per-pixel put_pixel is fine here: a one-time composite, and
+                // each failed monitor simply leaves its tile black.
+                let region_img = img.to_rgba8();
+                for (rx, ry, pixel) in region_img.enumerate_pixels() {
+                    let tx = dx + rx;
+                    let ty = dy + ry;
+                    if tx < master.width() && ty < master.height() {
+                        master.put_pixel(tx, ty, *pixel);
+                    }
+                }
+                ok_count += 1;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "capture_virtual_screen_parallel: monitor {} failed: {}",
+                    i,
+                    e
+                );
+            }
+        }
+    }
+
+    tracing::info!(
+        "capture_virtual_screen_parallel: composite done ({} ok, {} failed)",
+        ok_count,
+        monitors.len() - ok_count
+    );
+
+    if ok_count == 0 {
+        tracing::warn!(
+            "capture_virtual_screen_parallel: all monitors failed, falling back to single BitBlt"
+        );
+        let img = capture_area_gdi(vs.screen_x, vs.screen_y, vs.screen_width, vs.screen_height)?;
+        return Ok((vs, img));
+    }
+
+    Ok((vs, screenshots::image::DynamicImage::ImageRgba8(master)))
+}
+
 #[cfg_attr(target_os = "windows", allow(dead_code))]
 fn crop_image_to_base64(
     image: &screenshots::image::DynamicImage,
@@ -485,14 +752,27 @@ pub async fn prepare_screenshot_snapshot(
         #[cfg(target_os = "windows")]
         let (info, png_bytes) = {
             tracing::info!("prepare_screenshot_snapshot: capturing virtual screen");
+            // Tier 4 P2: parallel per-monitor capture for multi-monitor rigs.
+            // Single-monitor short-circuits to one BitBlt inside the helper.
             let mut info = virtual_screen_info()?;
             tracing::info!("prepare_screenshot_snapshot: screen info {:?}", info);
-            let img = capture_area_gdi(
-                info.screen_x,
-                info.screen_y,
-                info.screen_width,
-                info.screen_height,
-            )?;
+            let img = capture_virtual_screen_parallel()
+                .map(|(_, image)| image)
+                .or_else(|e| {
+                    // Defensive: if the parallel path fails entirely, fall back
+                    // to a single virtual-screen BitBlt so capture never breaks.
+                    tracing::warn!(
+                        "prepare_screenshot_snapshot: parallel capture failed ({}), \
+                         falling back to single BitBlt",
+                        e
+                    );
+                    capture_area_gdi(
+                        info.screen_x,
+                        info.screen_y,
+                        info.screen_width,
+                        info.screen_height,
+                    )
+                })?;
             // Update with actual captured image dimensions (may differ from logical screen size on DPI-scaled displays)
             info.image_width = img.width();
             info.image_height = img.height();
@@ -1325,11 +1605,7 @@ pub async fn system_ocr_detailed(
             });
         }
 
-        let full_text = line_results
-            .iter()
-            .map(|l| l.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let full_text = crate::ocr_postprocess::join_text_regions(&line_results);
 
         if full_text.is_empty() {
             // Empty is a valid UI state (I4) — let FE show retry, do not throw.
@@ -1354,6 +1630,40 @@ pub async fn system_ocr_detailed(
     {
         Err("Windows.Media.Ocr is only available on Windows".to_string())
     }
+}
+
+/// Layout-aware OCR entry point.
+///
+/// When `layout_detection_enabled` is true in config AND the `layout-detection`
+/// Cargo feature is compiled AND the DocLayout-YOLO model is available, this
+/// runs layout detection first (filtering figure/table/formula regions), then
+/// OCRs each text region separately and merges results with correct bounding
+/// box offsets. Otherwise it delegates to the raw full-image OCR path
+/// (`system_ocr_detailed` or `offline_ocr`).
+///
+/// `ocr_backend`: "winrt" (default) or "offline". When "offline", uses the
+/// Rapid/Paddle sidecar; the specific backend is read from config.
+///
+/// This command exists as a **separate entry point** from `system_ocr_detailed`
+/// / `offline_ocr` to avoid infinite recursion: the layout pipeline internally
+/// calls `run_winrt_ocr_detailed_from_bytes` / `run_offline_ocr_detailed`
+/// (the raw helpers), not these commands.
+#[command]
+pub async fn ocr_image_with_layout(
+    app: tauri::AppHandle,
+    base64_data: String,
+    lang: Option<String>,
+    ocr_backend: Option<String>,
+) -> Result<OcrResultDetailed, String> {
+    let raw = decode_base64_png(&base64_data)?;
+    let backend = ocr_backend.as_deref().unwrap_or("winrt");
+    crate::ocr_layout_pipeline::ocr_with_layout_detection(
+        &app,
+        &raw,
+        lang.as_deref(),
+        backend,
+    )
+    .await
 }
 
 // ── Youdao OCR ─────────────────────────────────────────────────────────────

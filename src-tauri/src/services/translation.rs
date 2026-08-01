@@ -345,6 +345,14 @@ impl TranslationService {
         }
     }
 
+    /// S5-4: Returns true if this channel should skip TM/cache (the "lean" path).
+    /// Only realtime screenshot OCR is lean; document OCR (Document channel)
+    /// and image translation (Image channel) go through the full pipeline with
+    /// TM + cache enabled. See the decision rationale in `translate_batch_core`.
+    fn is_lean_ocr_channel(channel: TranslateChannel) -> bool {
+        matches!(channel, TranslateChannel::Ocr)
+    }
+
     /// Translate text with full pipeline: pre-process -> glossary -> blacklist -> TM -> cache -> engine -> restore -> cache -> history
     pub async fn translate(
         &self,
@@ -884,7 +892,22 @@ impl TranslationService {
     where
         F: FnMut(usize, usize),
     {
-        let ocr_fallback = matches!(channel, TranslateChannel::Ocr);
+        // S5-4 decision: only the realtime screenshot OCR channel (Ocr) stays
+        // lean — no TM/cache. Document OCR (PDF via OCR engine) and image
+        // translation go through `Document` / `Image` channels, which are NOT
+        // matched here, so they already enjoy full TM + cache parity with the
+        // regular batch path. Rationale for keeping realtime OCR lean:
+        //   1. Realtime OCR frames capture dynamic screen content; the same
+        //      text region may show different text moments later (video,
+        //      scrolling, animations). A stale cache hit would show the wrong
+        //      translation for the current frame.
+        //   2. Realtime OCR prioritises latency; cache lookups (history lock +
+        //      fuzzy match) add overhead for little reuse benefit since
+        //      identical exact-screen-content recurs rarely.
+        //   3. The fallback-on-error routing for Ocr already gives resilience
+        //      without needing cache. Document OCR is batch + idempotent, so
+        //      cache is safe and beneficial there.
+        let ocr_fallback = Self::is_lean_ocr_channel(channel);
         let span = info_span!(
             "translate_batch",
             channel = ?channel,
@@ -1086,7 +1109,8 @@ impl TranslationService {
                         let prepared = self.prepare(text, from, to).await;
                         let original = text.to_string();
 
-                        // TM + cache (skip for OCR channel — keep OCR path lean / unchanged)
+                        // S5-4: TM + cache enabled for Document/Image/batch;
+                        // skipped for realtime Ocr channel (see rationale above).
                         if !ocr_fallback {
                             if tm_enabled {
                                 let history = self.history.lock().await;
@@ -1319,5 +1343,47 @@ impl TranslationService {
 
         self.translate_batch_core(channel, &lines, from, to, concurrency, on_progress)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::translation::TranslateChannel;
+
+    /// S5-4: Verify that only the realtime screenshot OCR channel is "lean"
+    /// (skips TM/cache). Document OCR and image translation must go through
+    /// the full pipeline so that repeated document/image translations can
+    /// reuse cached results.
+    #[test]
+    fn ocr_channel_leanness_decision() {
+        // Lean: realtime screenshot OCR only.
+        assert!(
+            TranslationService::is_lean_ocr_channel(TranslateChannel::Ocr),
+            "realtime OCR channel must be lean (no TM/cache)"
+        );
+
+        // Full pipeline: document OCR, image translation, and all other channels.
+        let full_pipeline = [
+            TranslateChannel::Ui,
+            TranslateChannel::Selection,
+            TranslateChannel::Replace,
+            TranslateChannel::Hook,
+            TranslateChannel::Clipboard,
+            TranslateChannel::Document,
+            TranslateChannel::Subtitle,
+            TranslateChannel::Image,
+            TranslateChannel::Http,
+            TranslateChannel::Browser,
+            TranslateChannel::Plugin,
+            TranslateChannel::Unknown,
+        ];
+        for ch in full_pipeline {
+            assert!(
+                !TranslationService::is_lean_ocr_channel(ch),
+                "{:?} must NOT be lean — document/image/batch paths need TM + cache",
+                ch
+            );
+        }
     }
 }

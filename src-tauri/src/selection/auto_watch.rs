@@ -420,7 +420,7 @@ async fn handle_hook_event(
                         }
                     },
                     _ => {
-                        tracing::debug!("[selection_ux] gesture: no selection text");
+                        tracing::trace!("[selection_ux] gesture: no selection text");
                     },
                 }
             });

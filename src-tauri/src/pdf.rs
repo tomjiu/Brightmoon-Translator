@@ -10,6 +10,22 @@ pub struct PdfPage {
     pub text: String,
 }
 
+/// S5-1: layout mode for bilingual PDF export.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BilingualPdfLayout {
+    /// Original and translation side-by-side in two columns.
+    SideBySide,
+    /// Original paragraph followed by translation paragraph.
+    Interleaved,
+}
+
+impl Default for BilingualPdfLayout {
+    fn default() -> Self {
+        Self::SideBySide
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfDocument {
@@ -279,21 +295,23 @@ pub fn extract_pages_via_ocr(
     Err("PDF page OCR fallback requires Windows".to_string())
 }
 
-fn command_exists(cmd: &str) -> bool {
+/// S5-12: resolve a PDF sidecar CLI to a canonical absolute path.
+///
+/// Replaces the old `command_exists` which spawned `cmd --help` to probe
+/// existence — that executed arbitrary code from `sidecar.*_cmd` and was
+/// a PATH-hijack / cwd-injection vector. We now use the `which` crate to
+/// resolve the command through PATH (or accept an absolute path directly),
+/// and return the canonicalized path so the later `Command::new` uses the
+/// resolved binary instead of re-searching PATH at spawn time.
+///
+/// Returns `Err(message)` when the command cannot be found, with a message
+/// suitable for surfacing to the user.
+fn resolve_sidecar_cmd(cmd: &str) -> Result<PathBuf, String> {
     if cmd.is_empty() {
-        return false;
+        return Err("empty command".into());
     }
-    let path = Path::new(cmd);
-    if path.is_file() {
-        return true;
-    }
-    // bare name on PATH
-    Command::new(cmd)
-        .arg("--help")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok()
+    which::which(cmd)
+        .map_err(|e| format!("'{cmd}' not found on PATH: {e}"))
 }
 
 /// Run external PDF extractor CLI; returns plain text / markdown body.
@@ -309,18 +327,21 @@ pub fn run_pdf_sidecar(
     ));
     let _ = std::fs::create_dir_all(&tmp);
 
-    let (program, args, result_glob): (String, Vec<String>, Option<PathBuf>) = match engine {
+    // S5-12: each branch resolves the CLI to an absolute path via `which`
+    // before spawning. The resolved path is what we pass to `Command::new`
+    // so a later PATH mutation between resolve and spawn can't redirect us
+    // to a different binary.
+    let (program, args, result_glob): (PathBuf, Vec<String>, Option<PathBuf>) = match engine {
         "mineru" => {
             let cmd = if sidecar.mineru_cmd.is_empty() {
                 "magic-pdf".to_string()
             } else {
                 sidecar.mineru_cmd.clone()
             };
-            if !command_exists(&cmd) {
-                return Err(format!("mineru CLI not found ({cmd})"));
-            }
+            let resolved = resolve_sidecar_cmd(&cmd)
+                .map_err(|e| format!("mineru CLI not found: {e}"))?;
             (
-                cmd,
+                resolved,
                 vec![
                     "-p".into(),
                     file_path.into(),
@@ -336,12 +357,11 @@ pub fn run_pdf_sidecar(
             } else {
                 sidecar.marker_cmd.clone()
             };
-            if !command_exists(&cmd) {
-                return Err(format!("marker CLI not found ({cmd})"));
-            }
+            let resolved = resolve_sidecar_cmd(&cmd)
+                .map_err(|e| format!("marker CLI not found: {e}"))?;
             let out_md = tmp.join("out.md");
             (
-                cmd,
+                resolved,
                 vec![
                     file_path.into(),
                     "--output_format".into(),
@@ -358,12 +378,11 @@ pub fn run_pdf_sidecar(
             } else {
                 sidecar.ocrmypdf_cmd.clone()
             };
-            if !command_exists(&cmd) {
-                return Err(format!("ocrmypdf CLI not found ({cmd})"));
-            }
+            let resolved = resolve_sidecar_cmd(&cmd)
+                .map_err(|e| format!("ocrmypdf CLI not found: {e}"))?;
             let out_pdf = tmp.join("ocr_output.pdf");
             (
-                cmd,
+                resolved,
                 vec![
                     "--force-ocr".into(),
                     "--output-type".into(),
@@ -377,14 +396,19 @@ pub fn run_pdf_sidecar(
         other => return Err(format!("Unknown PDF sidecar engine: {other}")),
     };
 
-    tracing::info!("[PDF] running sidecar {} on {}", engine, file_path);
+    tracing::info!(
+        "[PDF] running sidecar {} (resolved: {}) on {}",
+        engine,
+        program.display(),
+        file_path
+    );
 
     let mut child = Command::new(&program)
         .args(&args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to spawn {engine} ({program}): {e}"))?;
+        .map_err(|e| format!("Failed to spawn {engine} ({}): {e}", program.display()))?;
 
     // Soft timeout ~120s
     let deadline = std::time::Instant::now() + Duration::from_secs(120);
@@ -726,6 +750,427 @@ pub fn is_pdf_file(file_path: &str) -> bool {
         .unwrap_or(false)
 }
 
+// ── S5-1: bilingual PDF writer ─────────────────────────────────────────────
+
+/// Resolve a system CJK-capable font file path. We prefer Windows' Microsoft
+/// YaHei (msyh.ttc) and Microsoft YaHei UI, then fall back to a few common
+/// candidates. Returns `None` only if no candidate exists — the caller then
+/// falls back to the built-in Helvetica (Latin only) so export still works
+/// for ASCII-heavy documents.
+fn resolve_cjk_font() -> Option<PathBuf> {
+    let windir = std::env::var_os("WINDIR").unwrap_or_else(|| std::ffi::OsString::from("C:\\Windows"));
+    let fonts_dir = Path::new(&windir).join("Fonts");
+    // Order matters: prefer YaHei UI (lighter, good CJK + Latin), then the
+    // classic YaHei, then SimSun as last resort.
+    let candidates = [
+        "msyh.ttc",
+        "msyh.ttf",
+        "msyhbd.ttc",
+        "simsun.ttc",
+        "simhei.ttf",
+        "Deng.ttf",
+    ];
+    for name in &candidates {
+        let p = fonts_dir.join(name);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// S5-1: Write a bilingual PDF file. Each page of the source document is
+/// rendered as one or two columns (original + translation) in the output
+/// PDF. Uses system CJK fonts when available; otherwise falls back to
+/// Helvetica (Latin only).
+///
+/// Layout:
+/// - `SideBySide`: two columns per page (original left, translation right).
+/// - `Interleaved`: original paragraph followed by translation paragraph,
+///   single column.
+pub fn write_bilingual_pdf(
+    output_path: &str,
+    pages: &[TranslatedPage],
+    layout: BilingualPdfLayout,
+) -> Result<(), String> {
+    use printpdf::{BuiltinFont, PdfDocument as PdfDoc, Mm};
+
+    let (doc, page1, layer1) = PdfDoc::new(
+        "Moon Translator - Bilingual PDF",
+        Mm(210.0), // A4 width
+        Mm(297.0), // A4 height
+        "Layer 1",
+    );
+
+    // Load CJK font if available; otherwise fall back to Helvetica.
+    let font = match resolve_cjk_font() {
+        Some(font_path) => {
+            let font_data = std::fs::read(&font_path)
+                .map_err(|e| format!("Failed to read font {:?}: {}", font_path, e))?;
+            // printpdf expects Vec<u8> for both TTF and TTC.
+            // msyh.ttc is a TrueType Collection; printpdf's TTF loader reads
+            // only the first face, which is YaHei Regular — exactly what we want.
+            //
+            // P7: attempt to subset the font to only the glyphs used in the
+            // translated text. This can shrink msyh.ttf (17 MB) to ~50 KB,
+            // keeping the bilingual PDF small. Falls back to the full font
+            // if subsetting fails or printpdf rejects the subsetted font.
+            let all_text: Vec<&str> = pages
+                .iter()
+                .flat_map(|p| [p.original_text.as_str(), p.translated_text.as_str()])
+                .collect();
+            let subset_text = crate::font_subset::collect_text_chars(&all_text);
+            let subset_bytes: Option<Vec<u8>> = match crate::font_subset::subset_font_for_text(
+                &font_data,
+                &subset_text,
+            ) {
+                Ok(result) => {
+                    tracing::info!(
+                        "[P7] using subsetted font ({} KB → {} KB)",
+                        font_data.len() / 1024,
+                        result.font_bytes.len() / 1024
+                    );
+                    Some(result.font_bytes)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "[P7] font subsetting failed, using full font ({} KB): {}",
+                        font_data.len() / 1024,
+                        e
+                    );
+                    None
+                }
+            };
+            // Try the subsetted font first; fall back to full font if printpdf
+            // rejects it (subsetter removes cmap, which some loaders require).
+            if let Some(sub) = subset_bytes {
+                match doc.add_external_font(sub.as_slice()) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        tracing::warn!(
+                            "[P7] printpdf rejected subsetted font, using full font: {}",
+                            e
+                        );
+                        doc.add_external_font(font_data.as_slice())
+                            .map_err(|e| format!("Failed to load CJK font: {}", e))?
+                    }
+                }
+            } else {
+                doc.add_external_font(font_data.as_slice())
+                    .map_err(|e| format!("Failed to load CJK font: {}", e))?
+            }
+        },
+        None => {
+            tracing::warn!("[PDF export] No CJK font found; falling back to Helvetica (Latin only)");
+            doc.add_builtin_font(BuiltinFont::Helvetica)
+                .map_err(|e| format!("Failed to load builtin font: {}", e))?
+        },
+    };
+
+    let page_margin = Mm(15.0);
+    let page_width = Mm(210.0);
+    let page_height = Mm(297.0);
+    let content_width = page_width - page_margin * 2.0;
+    let line_height = Mm(5.5);
+    let font_size = 10.0;
+
+    let col_gap = Mm(6.0);
+    let col_width = (content_width - col_gap) / 2.0;
+
+    let mut current_layer = doc.get_page(page1).get_layer(layer1);
+    // Use f32 internally for y to simplify arithmetic; convert to Mm on draw.
+    // Initial value is overwritten by start_new_page on the first iteration.
+    #[allow(unused_assignments)]
+    let mut y: f32 = 0.0;
+    let mut first_page = true;
+
+    let start_new_page = |doc: &printpdf::PdfDocumentReference,
+                          first_page: &mut bool,
+                          current_layer: &mut printpdf::PdfLayerReference|
+     -> f32 {
+        if *first_page {
+            *first_page = false;
+            (page_height - page_margin).0
+        } else {
+            let (p, l) = doc.add_page(page_width, page_height, "Layer 1");
+            *current_layer = doc.get_page(p).get_layer(l);
+            (page_height - page_margin).0
+        }
+    };
+
+    #[allow(unused_assignments)]
+    for page in pages {
+        // Page header: "Page N"
+        y = start_new_page(&doc, &mut first_page, &mut current_layer);
+        current_layer.use_text(
+            format!("Page {}", page.page_number),
+            font_size + 2.0,
+            page_margin,
+            Mm(y),
+            &font,
+        );
+        y -= line_height.0 * 1.6;
+
+        let orig_lines = wrap_text(&page.original_text, font_size);
+        let trans_lines = wrap_text(&page.translated_text, font_size);
+
+        match layout {
+            BilingualPdfLayout::SideBySide => {
+                let max_lines = orig_lines.len().max(trans_lines.len());
+                for i in 0..max_lines {
+                    if y < page_margin.0 + line_height.0 {
+                        y = start_new_page(&doc, &mut first_page, &mut current_layer);
+                    }
+                    if let Some(line) = orig_lines.get(i) {
+                        current_layer.use_text(
+                            line,
+                            font_size,
+                            page_margin,
+                            Mm(y),
+                            &font,
+                        );
+                    }
+                    if let Some(line) = trans_lines.get(i) {
+                        current_layer.use_text(
+                            line,
+                            font_size,
+                            page_margin + col_width + col_gap,
+                            Mm(y),
+                            &font,
+                        );
+                    }
+                    y -= line_height.0;
+                }
+            },
+            BilingualPdfLayout::Interleaved => {
+                let orig_full = wrap_text(&page.original_text, font_size);
+                let trans_full = wrap_text(&page.translated_text, font_size);
+
+                // Original (label + lines)
+                if y < page_margin.0 + line_height.0 * 2.0 {
+                    y = start_new_page(&doc, &mut first_page, &mut current_layer);
+                }
+                current_layer.use_text("[原文]", font_size - 1.0, page_margin, Mm(y), &font);
+                y -= line_height.0;
+                for line in &orig_full {
+                    if y < page_margin.0 + line_height.0 {
+                        y = start_new_page(&doc, &mut first_page, &mut current_layer);
+                    }
+                    current_layer.use_text(line, font_size, page_margin, Mm(y), &font);
+                    y -= line_height.0;
+                }
+                y -= line_height.0 * 0.4;
+
+                // Translation (label + lines)
+                if y < page_margin.0 + line_height.0 * 2.0 {
+                    y = start_new_page(&doc, &mut first_page, &mut current_layer);
+                }
+                current_layer.use_text("[译文]", font_size - 1.0, page_margin, Mm(y), &font);
+                y -= line_height.0;
+                for line in &trans_full {
+                    if y < page_margin.0 + line_height.0 {
+                        y = start_new_page(&doc, &mut first_page, &mut current_layer);
+                    }
+                    current_layer.use_text(line, font_size, page_margin, Mm(y), &font);
+                    y -= line_height.0;
+                }
+                y -= line_height.0 * 0.8;
+            },
+        }
+    }
+
+    let out = std::fs::File::create(output_path)
+        .map_err(|e| format!("Failed to create output PDF: {}", e))?;
+    doc.save(&mut std::io::BufWriter::new(out))
+        .map_err(|e| format!("Failed to save PDF: {}", e))?;
+    tracing::info!("[PDF export] Bilingual PDF saved: {}", output_path);
+    Ok(())
+}
+
+/// Naive text wrapper: splits on existing newlines, then hard-wraps long
+/// lines by character count. CJK chars are counted as 1 unit; this is a
+/// rough heuristic — printpdf doesn't measure glyph advance, so we can't
+/// do real width-based wrapping without a shaping engine. Good enough for
+/// readable bilingual output.
+fn wrap_text(text: &str, font_size: f32) -> Vec<String> {
+    if text.trim().is_empty() {
+        return vec![String::new()];
+    }
+    // Rough chars-per-line estimate: A4 col width ~90mm, font_size 10pt.
+    // Average char width ≈ font_size * 0.5pt ≈ 1.76mm for Latin, CJK ≈ font_size pt ≈ 3.53mm.
+    // Use a conservative mixed estimate: ~38 chars per 90mm column at 10pt.
+    let chars_per_line = ((90.0 / (font_size * 0.5 * 0.3528)) as usize).max(20);
+    let mut out = Vec::new();
+    for paragraph in text.split('\n') {
+        if paragraph.is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        let chars: Vec<char> = paragraph.chars().collect();
+        let mut start = 0;
+        while start < chars.len() {
+            let end = (start + chars_per_line).min(chars.len());
+            // Try to break on a space if possible (Latin text)
+            let mut break_at = end;
+            if end < chars.len() {
+                // Look back up to 15 chars for a space
+                for i in (end.saturating_sub(15)..end).rev() {
+                    if chars[i] == ' ' {
+                        break_at = i + 1;
+                        break;
+                    }
+                }
+            }
+            let line: String = chars[start..break_at].iter().collect();
+            out.push(line);
+            start = break_at;
+            // Skip the space we broke on
+            if start < chars.len() && chars[start] == ' ' {
+                start += 1;
+            }
+        }
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
+}
+
+/// P9: Write a translated PDF file in Mono or Dual mode.
+///
+/// - `Mono`: each page contains only the translated text (replaces original).
+/// - `Dual`: each original page is followed by an interleaved translation page,
+///   producing a bilingual PDF where original and translation alternate.
+///
+/// Uses the same CJK font resolution and wrap_text helper as `write_bilingual_pdf`.
+pub fn write_translated_pdf(
+    output_path: &str,
+    pages: &[TranslatedPage],
+    mode: crate::pdf_il::PdfOutputMode,
+) -> Result<(), String> {
+    use crate::pdf_il::PdfOutputMode;
+    use printpdf::{BuiltinFont, PdfDocument as PdfDoc, Mm};
+
+    let title = match mode {
+        PdfOutputMode::Mono => "Moon Translator - Translated PDF",
+        PdfOutputMode::Dual => "Moon Translator - Dual PDF",
+    };
+    let (doc, page1, layer1) = PdfDoc::new(
+        title,
+        Mm(210.0),
+        Mm(297.0),
+        "Layer 1",
+    );
+
+    let font = match resolve_cjk_font() {
+        Some(font_path) => {
+            let font_data = std::fs::read(&font_path)
+                .map_err(|e| format!("Failed to read font {:?}: {}", font_path, e))?;
+            doc.add_external_font(font_data.as_slice())
+                .map_err(|e| format!("Failed to load CJK font: {}", e))?
+        },
+        None => {
+            tracing::warn!("[PDF export] No CJK font found; falling back to Helvetica (Latin only)");
+            doc.add_builtin_font(BuiltinFont::Helvetica)
+                .map_err(|e| format!("Failed to load builtin font: {}", e))?
+        },
+    };
+
+    let page_margin = Mm(15.0);
+    let page_width = Mm(210.0);
+    let page_height = Mm(297.0);
+    let line_height = Mm(5.5);
+    let font_size = 10.0;
+
+    let mut current_layer = doc.get_page(page1).get_layer(layer1);
+    #[allow(unused_assignments)]
+    let mut y: f32 = 0.0;
+    let mut first_page = true;
+
+    let start_new_page = |doc: &printpdf::PdfDocumentReference,
+                          first_page: &mut bool,
+                          current_layer: &mut printpdf::PdfLayerReference|
+     -> f32 {
+        if *first_page {
+            *first_page = false;
+            (page_height - page_margin).0
+        } else {
+            let (p, l) = doc.add_page(page_width, page_height, "Layer 1");
+            *current_layer = doc.get_page(p).get_layer(l);
+            (page_height - page_margin).0
+        }
+    };
+
+    let render_text_block = |doc: &printpdf::PdfDocumentReference,
+                             first_page: &mut bool,
+                             current_layer: &mut printpdf::PdfLayerReference,
+                             y: &mut f32,
+                             header: &str,
+                             text: &str| {
+        // Page header
+        *y = start_new_page(doc, first_page, current_layer);
+        if !header.is_empty() {
+            current_layer.use_text(header, font_size + 2.0, page_margin, Mm(*y), &font);
+            *y -= line_height.0 * 1.6;
+        }
+        let lines = wrap_text(text, font_size);
+        for line in &lines {
+            if *y < page_margin.0 + line_height.0 {
+                *y = start_new_page(doc, first_page, current_layer);
+            }
+            current_layer.use_text(line, font_size, page_margin, Mm(*y), &font);
+            *y -= line_height.0;
+        }
+    };
+
+    match mode {
+        PdfOutputMode::Mono => {
+            // Each page: translated text only (original replaced)
+            for page in pages {
+                render_text_block(
+                    &doc,
+                    &mut first_page,
+                    &mut current_layer,
+                    &mut y,
+                    &format!("Page {}", page.page_number),
+                    &page.translated_text,
+                );
+            }
+        },
+        PdfOutputMode::Dual => {
+            // Each original page followed by its translation page (interleaved)
+            for page in pages {
+                // Original page
+                render_text_block(
+                    &doc,
+                    &mut first_page,
+                    &mut current_layer,
+                    &mut y,
+                    &format!("Page {} (Original)", page.page_number),
+                    &page.original_text,
+                );
+                // Force a new page for the translation
+                first_page = false;
+                render_text_block(
+                    &doc,
+                    &mut first_page,
+                    &mut current_layer,
+                    &mut y,
+                    &format!("Page {} (Translation)", page.page_number),
+                    &page.translated_text,
+                );
+            }
+        },
+    }
+
+    let out = std::fs::File::create(output_path)
+        .map_err(|e| format!("Failed to create output PDF: {}", e))?;
+    doc.save(&mut std::io::BufWriter::new(out))
+        .map_err(|e| format!("Failed to save PDF: {}", e))?;
+    tracing::info!("[PDF export] Translated PDF ({:?}) saved: {}", mode, output_path);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -745,5 +1190,200 @@ mod tests {
     #[test]
     fn replacement_char_is_garbled() {
         assert!(is_text_garbled("hello \u{FFFD} world more text here ok"));
+    }
+
+    // ── S5-12: sidecar CLI resolution ────────────────────────────────────
+
+    #[test]
+    fn resolve_empty_cmd_fails() {
+        assert!(resolve_sidecar_cmd("").is_err());
+    }
+
+    #[test]
+    fn resolve_nonexistent_cmd_fails() {
+        // Pick a name unlikely to exist on any real system.
+        let err = resolve_sidecar_cmd("moontranslator_definitely_not_a_real_binary_xyz");
+        assert!(err.is_err(), "expected Err for nonexistent binary");
+        let msg = err.unwrap_err();
+        assert!(
+            msg.contains("not found"),
+            "error message should mention 'not found': got {msg}"
+        );
+    }
+
+    /// A bare name that does exist on PATH should resolve to an absolute path.
+    /// We use `cargo` (always present when running `cargo test`) and only
+    /// assert the path is absolute — we don't assert a specific location.
+    #[test]
+    fn resolve_known_cmd_returns_absolute_path() {
+        let resolved = resolve_sidecar_cmd("cargo");
+        // On some minimal CI images cargo may not be on PATH at test time,
+        // so treat absence as a skip rather than a failure.
+        match resolved {
+            Ok(path) => {
+                assert!(
+                    path.is_absolute(),
+                    "resolved path should be absolute, got {}",
+                    path.display()
+                );
+            },
+            Err(e) => {
+                eprintln!("[S5-12] cargo not on PATH — skipping: {e}");
+            },
+        }
+    }
+
+    /// An absolute path to a real file should resolve successfully; an
+    /// absolute path to a missing file should fail. This covers the
+    /// `sidecar.*_cmd` case where the user passes a full path.
+    #[test]
+    fn resolve_absolute_path() {
+        // Use this very source file as a known-existing absolute path.
+        let this_file = env!("CARGO_MANIFEST_DIR").to_string() + "/src/pdf.rs";
+        let path = PathBuf::from(&this_file);
+        assert!(path.is_file(), "test precondition: {this_file} must exist");
+
+        // `which` accepts absolute paths directly when the file exists.
+        // (It doesn't care about the executable bit on Windows.)
+        let resolved = resolve_sidecar_cmd(&this_file);
+        assert!(resolved.is_ok(), "absolute existing path should resolve");
+
+        let missing = this_file + ".does_not_exist";
+        assert!(
+            resolve_sidecar_cmd(&missing).is_err(),
+            "absolute missing path should fail"
+        );
+    }
+
+    // ── S5-1: bilingual PDF writer ──────────────────────────────────────
+
+    #[test]
+    fn test_write_bilingual_pdf_side_by_side() {
+        let tmp = std::env::temp_dir().join("moontranslator_s5-1_test_sbs.pdf");
+        let pages = vec![
+            TranslatedPage {
+                page_number: 1,
+                original_text: "Hello world.\nThis is a test of the bilingual PDF export.".to_string(),
+                translated_text: "你好，世界。\n这是双语 PDF 导出的测试。".to_string(),
+            },
+            TranslatedPage {
+                page_number: 2,
+                original_text: "The quick brown fox jumps over the lazy dog.".to_string(),
+                translated_text: "敏捷的棕色狐狸跳过那只懒狗。".to_string(),
+            },
+        ];
+        let result = write_bilingual_pdf(tmp.to_str().unwrap(), &pages, BilingualPdfLayout::SideBySide);
+        assert!(result.is_ok(), "write_bilingual_pdf SideBySide failed: {:?}", result.err());
+        assert!(tmp.is_file(), "output PDF file not created");
+        // Verify it's a valid PDF (magic header)
+        let header = std::fs::read(&tmp).unwrap();
+        assert!(header.starts_with(b"%PDF-"), "output is not a valid PDF");
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn test_write_bilingual_pdf_interleaved() {
+        let tmp = std::env::temp_dir().join("moontranslator_s5-1_test_interleaved.pdf");
+        let pages = vec![TranslatedPage {
+            page_number: 1,
+            original_text: "Interleaved layout test.".to_string(),
+            translated_text: "交错布局测试。".to_string(),
+        }];
+        let result = write_bilingual_pdf(tmp.to_str().unwrap(), &pages, BilingualPdfLayout::Interleaved);
+        assert!(result.is_ok(), "write_bilingual_pdf Interleaved failed: {:?}", result.err());
+        assert!(tmp.is_file(), "output PDF file not created");
+        let header = std::fs::read(&tmp).unwrap();
+        assert!(header.starts_with(b"%PDF-"), "output is not a valid PDF");
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn test_wrap_text_basic() {
+        let lines = wrap_text("Hello world this is a test", 10.0);
+        assert!(!lines.is_empty());
+        // Long line should be wrapped
+        let long = "a".repeat(100);
+        let wrapped = wrap_text(&long, 10.0);
+        assert!(wrapped.len() > 1, "long line should be wrapped into multiple lines");
+    }
+
+    #[test]
+    fn test_wrap_text_empty() {
+        let lines = wrap_text("", 10.0);
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].is_empty());
+    }
+
+    #[test]
+    fn test_wrap_text_preserves_newlines() {
+        let lines = wrap_text("line1\nline2\nline3", 10.0);
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "line1");
+        assert_eq!(lines[1], "line2");
+        assert_eq!(lines[2], "line3");
+    }
+
+    // ==================== P9 Tests ====================
+
+    #[test]
+    fn p9_write_translated_pdf_mono() {
+        let tmp = std::env::temp_dir().join("moontranslator_p9_mono.pdf");
+        let pages = vec![
+            TranslatedPage {
+                page_number: 1,
+                original_text: "Hello world.".to_string(),
+                translated_text: "你好世界。".to_string(),
+            },
+            TranslatedPage {
+                page_number: 2,
+                original_text: "Second page.".to_string(),
+                translated_text: "第二页。".to_string(),
+            },
+        ];
+        let result = write_translated_pdf(
+            tmp.to_str().unwrap(),
+            &pages,
+            crate::pdf_il::PdfOutputMode::Mono,
+        );
+        assert!(result.is_ok(), "write_translated_pdf Mono failed: {:?}", result.err());
+        assert!(tmp.is_file(), "output PDF file not created");
+        let header = std::fs::read(&tmp).unwrap();
+        assert!(header.starts_with(b"%PDF-"), "output is not a valid PDF");
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn p9_write_translated_pdf_dual() {
+        let tmp = std::env::temp_dir().join("moontranslator_p9_dual.pdf");
+        let pages = vec![TranslatedPage {
+            page_number: 1,
+            original_text: "Original text.".to_string(),
+            translated_text: "译文文本。".to_string(),
+        }];
+        let result = write_translated_pdf(
+            tmp.to_str().unwrap(),
+            &pages,
+            crate::pdf_il::PdfOutputMode::Dual,
+        );
+        assert!(result.is_ok(), "write_translated_pdf Dual failed: {:?}", result.err());
+        assert!(tmp.is_file(), "output PDF file not created");
+        let header = std::fs::read(&tmp).unwrap();
+        assert!(header.starts_with(b"%PDF-"), "output is not a valid PDF");
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn p9_write_translated_pdf_empty_pages() {
+        let tmp = std::env::temp_dir().join("moontranslator_p9_empty.pdf");
+        let pages: Vec<TranslatedPage> = vec![];
+        let result = write_translated_pdf(
+            tmp.to_str().unwrap(),
+            &pages,
+            crate::pdf_il::PdfOutputMode::Mono,
+        );
+        // Empty pages should still produce a valid (empty) PDF
+        assert!(result.is_ok(), "write_translated_pdf empty failed: {:?}", result.err());
+        assert!(tmp.is_file(), "output PDF file not created");
+        let _ = std::fs::remove_file(&tmp);
     }
 }

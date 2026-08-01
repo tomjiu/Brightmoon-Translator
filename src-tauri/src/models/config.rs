@@ -532,6 +532,11 @@ fn default_tm_threshold() -> f64 {
     0.8
 }
 
+/// S5-10: default cache TTL in hours (3 days). Used by TranslationCache.
+fn default_cache_ttl_hours() -> i64 {
+    72
+}
+
 fn default_http_timeout_secs() -> u64 {
     30
 }
@@ -887,6 +892,10 @@ pub struct AppConfig {
     /// Translation Memory: similarity threshold (0.0 - 1.0, default 0.8)
     #[serde(default = "default_tm_threshold")]
     pub tm_threshold: f64,
+    /// S5-10: Translation cache TTL in hours (default: 72 = 3 days).
+    /// Entries older than this are evicted on the next cache read.
+    #[serde(default = "default_cache_ttl_hours")]
+    pub cache_ttl_hours: i64,
     /// Furigana: add ruby annotations for Japanese kanji
     #[serde(default)]
     pub furigana_enabled: bool,
@@ -935,6 +944,16 @@ pub struct AppConfig {
     /// External vocabulary collection (Eudic / Anki / Shanbay / Youdao / Maimemo). Not FSRS learning.
     #[serde(default)]
     pub collection: CollectionConfig,
+    /// P6: Enable DocLayout-YOLO layout detection for PDF translation.
+    /// Default false — model (~50MB) is downloaded on demand when enabled.
+    #[serde(default)]
+    pub layout_detection_enabled: bool,
+    /// Tier4-6: Run WinRT OCR in a one-shot subprocess so the OS reclaims
+    /// the ONNX model memory when the child exits. Slower per-call (~200ms
+    /// spawn overhead) but bounded memory for occasional-OCR users.
+    /// Default false — in-process path is faster for heavy continuous OCR.
+    #[serde(default)]
+    pub winrt_ocr_use_subprocess: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1142,6 +1161,7 @@ mod tests {
         assert!(config.ocr_auto_bind_window);
         assert!(!config.tm_enabled);
         assert_eq!(config.tm_threshold, 0.8);
+        assert_eq!(config.cache_ttl_hours, 72);
         assert!(!config.furigana_enabled);
         assert!(!config.tts_auto_play);
         assert_eq!(config.http_timeout_secs, 30);
@@ -1567,6 +1587,7 @@ impl Default for AppConfig {
             hook: HookConfig::default(),
             tm_enabled: false,
             tm_threshold: 0.8,
+            cache_ttl_hours: default_cache_ttl_hours(),
             furigana_enabled: false,
             tts_auto_play: false,
             tts_voice: String::new(),
@@ -1583,6 +1604,8 @@ impl Default for AppConfig {
             edge_tts_token: default_edge_tts_token(),
             sync: SyncConfig::default(),
             collection: CollectionConfig::default(),
+            layout_detection_enabled: false,
+            winrt_ocr_use_subprocess: false,
         }
     }
 }

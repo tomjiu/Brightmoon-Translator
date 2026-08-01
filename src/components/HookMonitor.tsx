@@ -56,6 +56,27 @@ interface CapturedText {
   timestamp: number;
 }
 
+/** Hook IAT hit statistics reported by the injected DLL. */
+interface HookStats {
+  modulesScanned: number;
+  iatHits: number;
+  lateLoadedPatched: number;
+  sendTextCalls: number;
+  sendTextFiltered: number;
+  sendTextEjectBlocked: number;
+  inlineHooks: number;
+  hooksInstalled: boolean;
+  ldrCookie: boolean;
+}
+
+/** Result of an H-Code inline hook installation attempt. */
+interface HookInstallResult {
+  exitCode: number;
+  resolvedAddr: number;
+  success: boolean;
+  message: string;
+}
+
 const formatTime = (timestamp: number, browserLocale: string) => {
   const date = new Date(timestamp);
   return date.toLocaleTimeString(browserLocale, {
@@ -213,6 +234,9 @@ function HookMonitor() {
   const [hcodeStatus, setHcodeStatus] = useState<HookStatus | null>(null);
   const [hcodeLoading, setHcodeLoading] = useState(false);
   const [hcodeMessages, setHcodeMessages] = useState<CapturedText[]>([]);
+  const [hookStats, setHookStats] = useState<HookStats | null>(null);
+  const [hCodeInput, setHCodeInput] = useState('');
+  const [hCodeInstallMsg, setHCodeInstallMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const hcodePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [showProcessPicker, setShowProcessPicker] = useState(false);
   const [dllAvailable, setDllAvailable] = useState<boolean | null>(null);
@@ -345,6 +369,8 @@ function HookMonitor() {
     hcodePollRef.current = setInterval(async () => {
       const [status] = await safeInvoke<HookStatus>('hook_status', undefined, { silent: true });
       if (status) setHcodeStatus(status);
+      const [stats] = await safeInvoke<HookStats>('hook_get_stats', undefined, { silent: true });
+      if (stats) setHookStats(stats);
     }, 2000);
 
     let unlisten: (() => void) | null = null;
@@ -456,12 +482,37 @@ function HookMonitor() {
       await invokeOrThrow('hook_eject');
       setHcodeStatus(null);
       setHcodeMessages([]);
+      setHookStats(null);
+      setHCodeInstallMsg(null);
     } catch (err) {
       console.error('H-Code eject failed:', err);
     } finally {
       setHcodeLoading(false);
     }
   }, []);
+
+  // H-Code: Install inline hook from H-Code string
+  const handleInstallHCode = useCallback(async () => {
+    const code = hCodeInput.trim();
+    if (!code) return;
+    setHcodeLoading(true);
+    setHCodeInstallMsg(null);
+    try {
+      const result = await invokeOrThrow<HookInstallResult>('hook_install_h_code', {
+        hCode: code,
+      });
+      setHCodeInstallMsg({
+        ok: result.success,
+        text: result.success
+          ? `Hook installed at 0x${result.resolvedAddr.toString(16)}`
+          : `Failed (code ${result.exitCode}): ${result.message}`,
+      });
+    } catch (err) {
+      setHCodeInstallMsg({ ok: false, text: String(err) });
+    } finally {
+      setHcodeLoading(false);
+    }
+  }, [hCodeInput]);
 
   const toggleOverlay = useCallback(() => {
     const next = !showOverlay;
@@ -695,6 +746,82 @@ function HookMonitor() {
                   {hcodeMessages.length > 20 && (
                     <div className="text-[10px] text-text-secondary text-center">
                       ... {hcodeMessages.length} {t('hook.items')}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Hook IAT Stats */}
+              {hookStats && hcodeStatus?.injected && (
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] bg-bg-primary border border-border rounded p-2">
+                  <div className="flex justify-between">
+                    <span className="text-text-secondary">IAT hits</span>
+                    <span className="text-text-primary font-mono">{hookStats.iatHits}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-secondary">Modules scanned</span>
+                    <span className="text-text-primary font-mono">{hookStats.modulesScanned}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-secondary">Late-loaded patched</span>
+                    <span className="text-text-primary font-mono">{hookStats.lateLoadedPatched}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-secondary">Inline hooks</span>
+                    <span className="text-text-primary font-mono">{hookStats.inlineHooks}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-secondary">SendText calls</span>
+                    <span className="text-text-primary font-mono">{hookStats.sendTextCalls}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-secondary">Filtered (noise)</span>
+                    <span className="text-text-primary font-mono">{hookStats.sendTextFiltered}</span>
+                  </div>
+                  <div className="flex justify-between col-span-2">
+                    <span className="text-text-secondary">LDR cookie / hooks installed</span>
+                    <span className="font-mono">
+                      <span className={hookStats.ldrCookie ? 'text-success' : 'text-text-secondary'}>
+                        {hookStats.ldrCookie ? 'yes' : 'no'}
+                      </span>
+                      <span className="text-text-secondary"> / </span>
+                      <span className={hookStats.hooksInstalled ? 'text-success' : 'text-text-secondary'}>
+                        {hookStats.hooksInstalled ? 'yes' : 'no'}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* H-Code Inline Hook Input */}
+              {hcodeStatus?.injected && (
+                <div className="space-y-1.5">
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={hCodeInput}
+                      onChange={(e) => setHCodeInput(e.target.value)}
+                      placeholder="/HW-4@12345:game.exe"
+                      className="flex-1 px-2 py-1 text-[11px] font-mono bg-bg-primary border border-border rounded focus:outline-none focus:border-accent"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleInstallHCode();
+                      }}
+                    />
+                    <button
+                      className="px-2.5 py-1 rounded text-[11px] font-medium bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50"
+                      onClick={handleInstallHCode}
+                      disabled={hcodeLoading || !hCodeInput.trim()}
+                    >
+                      {t('hook.hcode.installHook')}
+                    </button>
+                  </div>
+                  {hCodeInstallMsg && (
+                    <div
+                      className={`text-[10px] font-mono ${
+                        hCodeInstallMsg.ok ? 'text-success' : 'text-error'
+                      }`}
+                    >
+                      {hCodeInstallMsg.text}
                     </div>
                   )}
                 </div>

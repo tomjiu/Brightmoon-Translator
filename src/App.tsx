@@ -82,6 +82,27 @@ function MainApp() {
     loadConfig();
   }, [isTauri, loadConfig]);
 
+  // S5-fix: reply to theme-sync-request from sub-windows (ocr-region-frame, etc.)
+  // Sub-windows may not share localStorage in WebView2, so they default to 'dark'
+  // and miss the earlier theme-changed broadcast. On request, reply with current theme.
+  useEffect(() => {
+    if (!isTauri) return;
+    let unlisten: (() => void) | undefined;
+    void import('@tauri-apps/api/event')
+      .then(({ listen, emit }) =>
+        listen('theme-sync-request', () => {
+          void emit('theme-sync-reply', theme);
+        }),
+      )
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch(() => undefined);
+    return () => {
+      unlisten?.();
+    };
+  }, [isTauri, theme]);
+
   // ECDICT missing → non-blocking toast (hover dict may be empty)
   useEffect(() => {
     if (!isTauri) return;

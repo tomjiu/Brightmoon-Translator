@@ -158,8 +158,8 @@ export default function DocumentsViewer() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="max-w-lg mx-auto space-y-5">
+    <div className="h-full overflow-y-auto p-6 flex flex-col">
+      <div className="max-w-2xl mx-auto space-y-5 w-full flex-1 flex flex-col justify-center">
         <PageHeader
           title="文档翻译"
           description="选择文件后自动识别类型并处理，无需切换多个入口。"
@@ -173,7 +173,7 @@ export default function DocumentsViewer() {
             type="button"
             disabled={picking || !isTauri}
             onClick={() => void openFile()}
-            className="w-full flex flex-col items-center justify-center gap-3 py-10 rounded-xl border border-dashed border-border-strong hover:bg-bg-tertiary transition-colors disabled:opacity-50"
+            className="w-full flex flex-col items-center justify-center gap-3 py-8 rounded-xl border border-dashed border-border-strong hover:bg-bg-tertiary transition-colors disabled:opacity-50"
           >
             {picking ? (
               <Loader2 className="w-8 h-8 animate-spin text-primary" />

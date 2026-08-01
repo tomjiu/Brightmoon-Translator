@@ -131,11 +131,50 @@
   }
 
   // ==================== Tooltip ====================
+  //
+  // Tier4-2: Closed Shadow DOM isolation — same rationale as the selection
+  // popup. Host-page CSS cannot leak into the tooltip. Internal elements
+  // are queried via the captured `tooltipShadow` reference.
+
+  const TOOLTIP_STYLE = `
+    :host {
+      position: absolute;
+      z-index: 2147483647;
+      max-width: 400px;
+      min-width: 100px;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #333;
+      pointer-events: auto;
+      user-select: none;
+      transition: opacity 0.15s ease;
+      display: block;
+    }
+    .mht-content { padding: 10px 14px; }
+    .mht-loading { display: flex; align-items: center; gap: 8px; color: #666; font-size: 13px; }
+    .mht-spinner {
+      width: 16px; height: 16px;
+      border: 2px solid #e0e0e0; border-top-color: #4a90d9;
+      border-radius: 50%; animation: mht-spin 0.6s linear infinite;
+    }
+    @keyframes mht-spin { to { transform: rotate(360deg); } }
+    .mht-result { color: #222; font-size: 14px; word-break: break-word; }
+    .mht-error { color: #d32f2f; font-size: 12px; }
+  `;
+
+  let tooltipShadow = null; // captured reference into closed shadow root
 
   function createTooltip() {
     const el = document.createElement("div");
     el.id = "moon-hover-tooltip";
-    el.innerHTML = `
+    tooltipShadow = el.attachShadow({ mode: "closed" });
+    tooltipShadow.innerHTML = `
+      <style>${TOOLTIP_STYLE}</style>
       <div class="mht-content">
         <div class="mht-loading">
           <div class="mht-spinner"></div>
@@ -168,10 +207,10 @@
     }
 
     // Reset state
-    tooltip.querySelector(".mht-loading").style.display = "flex";
-    tooltip.querySelector(".mht-result").style.display = "none";
-    tooltip.querySelector(".mht-error").style.display = "none";
-    tooltip.querySelector(".mht-loading span").textContent = t("loading");
+    tooltipShadow.querySelector(".mht-loading").style.display = "flex";
+    tooltipShadow.querySelector(".mht-result").style.display = "none";
+    tooltipShadow.querySelector(".mht-error").style.display = "none";
+    tooltipShadow.querySelector(".mht-loading span").textContent = t("loading");
 
     // Position tooltip
     const scrollX = window.scrollX;
@@ -304,8 +343,8 @@
       if (cached && !isTranslating) return;
 
       if (cached) {
-        tooltip.querySelector(".mht-loading").style.display = "none";
-        const resultDiv = tooltip.querySelector(".mht-result");
+        tooltipShadow.querySelector(".mht-loading").style.display = "none";
+        const resultDiv = tooltipShadow.querySelector(".mht-result");
         const primary = cached.primary || (cached.results && cached.results[0]);
         if (primary) {
           resultDiv.textContent = primary.text;
@@ -325,10 +364,10 @@
 
       if (!isTranslating) return;
 
-      tooltip.querySelector(".mht-loading").style.display = "none";
+      tooltipShadow.querySelector(".mht-loading").style.display = "none";
 
       if (response.success) {
-        const resultDiv = tooltip.querySelector(".mht-result");
+        const resultDiv = tooltipShadow.querySelector(".mht-result");
         const primary = response.primary || (response.results && response.results[0]);
         if (primary) {
           resultDiv.textContent = primary.text;
@@ -339,18 +378,18 @@
             cache.set(text, config.sourceLang, config.targetLang, null, response);
           }
         } else {
-          tooltip.querySelector(".mht-error").textContent = t("noResult");
-          tooltip.querySelector(".mht-error").style.display = "block";
+          tooltipShadow.querySelector(".mht-error").textContent = t("noResult");
+          tooltipShadow.querySelector(".mht-error").style.display = "block";
         }
       } else {
-        tooltip.querySelector(".mht-error").textContent = response.error || t("failed");
-        tooltip.querySelector(".mht-error").style.display = "block";
+        tooltipShadow.querySelector(".mht-error").textContent = response.error || t("failed");
+        tooltipShadow.querySelector(".mht-error").style.display = "block";
       }
     } catch (err) {
       if (!isTranslating) return;
-      tooltip.querySelector(".mht-loading").style.display = "none";
-      tooltip.querySelector(".mht-error").textContent = t("requestFailed");
-      tooltip.querySelector(".mht-error").style.display = "block";
+      tooltipShadow.querySelector(".mht-loading").style.display = "none";
+      tooltipShadow.querySelector(".mht-error").textContent = t("requestFailed");
+      tooltipShadow.querySelector(".mht-error").style.display = "block";
     }
   }
 

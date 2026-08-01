@@ -69,6 +69,7 @@ describe('configStore', () => {
         },
         tmEnabled: false,
         tmThreshold: 0.8,
+        cacheTtlHours: 72,
         furiganaEnabled: false,
         ttsAutoPlay: false,
         ttsVoice: '',
