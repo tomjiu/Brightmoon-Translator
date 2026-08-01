@@ -230,12 +230,22 @@ mod tests {
         // with 2:2:1 distribution of target paragraphs
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].source, "First paragraph.");
-        assert!(result[0].target.contains("第一段"));
         assert_eq!(result[1].source, "Second paragraph.");
-        assert!(result[1].target.contains("第二段A"));
-        assert!(result[1].target.contains("第二段B"));
         assert_eq!(result[2].source, "Third paragraph.");
-        assert!(result[2].target.contains("第三段A"));
+        // 2:2:1 proportional distribution (see align_by_ratio / test_align_3_to_5_proportional)
+        assert_eq!(result[0].target.lines().count(), 2);
+        assert_eq!(result[1].target.lines().count(), 2);
+        assert_eq!(result[2].target.lines().count(), 1);
+        // All target paragraphs are preserved across the aligned segments
+        let combined: Vec<&str> = result
+            .iter()
+            .flat_map(|r| r.target.lines())
+            .collect();
+        assert!(combined.contains(&"第一段。"));
+        assert!(combined.contains(&"第二段A。"));
+        assert!(combined.contains(&"第二段B。"));
+        assert!(combined.contains(&"第三段A。"));
+        assert!(combined.contains(&"第三段B。"));
     }
 
     #[test]

@@ -357,7 +357,10 @@ mod tests {
             patch_id: "test".to_string(),
             target_field: "mnemonic".to_string(),
             operation: PatchOperation::Replace,
-            proposed_value: serde_json::json!({}),
+            proposed_value: serde_json::json!({
+                "content": "a visual memory aid for the word",
+                "mnemonic_type": "visual"
+            }),
             reasoning: "test".to_string(),
             confidence: 0.9,
             generated_by: "gpt-4".to_string(),

@@ -157,6 +157,8 @@ pub fn is_ui_chrome_word(w: &str) -> bool {
             | "start"
             | "search"
             | "settings"
+            | "windows"
+            | "administrator"
             | "file"
             | "edit"
             | "view"
@@ -213,6 +215,20 @@ pub fn looks_like_app_or_process_name(w: &str) -> bool {
     false
 }
 
+/// True if `s` is a run of > 4 CJK characters (a phrase/sentence, not a short headword).
+fn is_long_cjk_run(s: &str) -> bool {
+    let cjk_count = s
+        .chars()
+        .filter(|c| {
+            matches!(
+                c,
+                '\u{4e00}'..='\u{9fff}' | '\u{3400}'..='\u{4dbf}' | '\u{f900}'..='\u{faff}'
+            )
+        })
+        .count();
+    cjk_count > 4 && cjk_count * 2 >= s.chars().count()
+}
+
 fn extract_word_candidate_inner(t: &str) -> Option<String> {
     // Reject whole-window titles like "Administrator: Windows PowerShell"
     let lower = t.to_ascii_lowercase();
@@ -224,7 +240,24 @@ fn extract_word_candidate_inner(t: &str) -> Option<String> {
         // Still try to find a real token inside, but skip chrome tokens
     }
 
-    if dictionary::is_single_word(t) && t.chars().count() <= 40 && !is_ui_chrome_word(t) {
+    // Whole-token fast path: a single Latin/digit word, or a short CJK phrase
+    // (≤ 4 chars). Longer CJK runs must go through the short-window logic below so
+    // we return a dictionary headword window instead of a whole sentence.
+    let cjk_total: usize = t
+        .chars()
+        .filter(|c| {
+            matches!(
+                c,
+                '\u{4e00}'..='\u{9fff}' | '\u{3400}'..='\u{4dbf}' | '\u{f900}'..='\u{faff}'
+            )
+        })
+        .count();
+    let is_short_cjk = cjk_total > 0 && cjk_total <= 4;
+    if dictionary::is_single_word(t)
+        && t.chars().count() <= 40
+        && !is_ui_chrome_word(t)
+        && (cjk_total == 0 || is_short_cjk)
+    {
         return Some(t.to_string());
     }
 
@@ -235,12 +268,16 @@ fn extract_word_candidate_inner(t: &str) -> Option<String> {
     if !tokens.is_empty() {
         let mid = tokens[tokens.len() / 2];
         let mid = mid.trim_matches(|c: char| !c.is_alphanumeric());
-        if dictionary::is_single_word(mid) && mid.chars().count() <= 40 && !is_ui_chrome_word(mid) {
+        if dictionary::is_single_word(mid)
+            && mid.chars().count() <= 40
+            && !is_ui_chrome_word(mid)
+            && !is_long_cjk_run(mid)
+        {
             return Some(mid.to_string());
         }
         for part in tokens {
             let p = part.trim_matches(|c: char| !c.is_alphanumeric());
-            if p.is_empty() || is_ui_chrome_word(p) {
+            if p.is_empty() || is_ui_chrome_word(p) || is_long_cjk_run(p) {
                 continue;
             }
             if dictionary::is_single_word(p) && p.chars().count() <= 40 {

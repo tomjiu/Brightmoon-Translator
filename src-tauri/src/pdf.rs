@@ -117,11 +117,23 @@ pub fn is_text_garbled(text: &str) -> bool {
         return true;
     }
 
-    // 2. High ratio of 2–3 char alphabetic fragments
+    // 2. High ratio of 2–3 char alphabetic fragments.
+    // Exclude common English function words (the/for/on/of...) so ordinary
+    // text isn't misclassified; only unusual short fragments count as garbling.
+    const COMMON_SHORT_WORDS: &[&str] = &[
+        "a", "an", "as", "at", "be", "by", "do", "go", "he", "if", "in", "is", "it", "me",
+        "my", "no", "of", "on", "or", "so", "to", "up", "us", "we", "am", "and", "are",
+        "but", "can", "for", "get", "had", "has", "her", "him", "his", "how", "its", "let",
+        "may", "new", "not", "now", "old", "out", "own", "per", "put", "say", "she", "the",
+        "too", "two", "use", "was", "who", "you", "all", "any", "did", "few", "off", "our",
+        "see", "try", "one", "day", "yet",
+    ];
     let fragments = words
         .iter()
         .filter(|w| {
-            (2..=3).contains(&w.len()) && w.chars().all(|c| c.is_ascii_alphabetic())
+            (2..=3).contains(&w.len())
+                && w.chars().all(|c| c.is_ascii_alphabetic())
+                && !COMMON_SHORT_WORDS.contains(&w.to_ascii_lowercase().as_str())
         })
         .count();
     let total_words = words.len().max(1);
