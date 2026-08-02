@@ -151,6 +151,16 @@ S 分支 = **与 PR #8 平行的独立轨道**（merge-base = `33d5241` = master
 - ⛔ **`0e2c2b4`（extension Tier1 B1-B8）跳过**：与 HEAD extension 架构语义冲突——S 分支是旧代码上完全重写 page-translator.js（586 行），HEAD 已演进到 Tier4（1074 行含 specialRules/Main container）。强行合并会覆盖 HEAD 功能。需单独架构评审。
 - **验证：tsc ✅、vitest 311 passed（src 173 + extension 138）✅、eslint 0 errors ✅**
 
+**R7.1 补充 — `0e2c2b4` extension 架构评审结论（2026-08-02，只读研究）：**
+- HEAD 的 `page-translator.js` 已吸收 **B1-B6 全部**（nodesToRestore / dual-language clone / filter / dualStyle / generation guard / piece splitting），并为 **B7/B8 预留完整前端调用点**但 **backend 实现缺失**：
+  - **B7**：`translateBatch` 用 `cache.getSync`（462）→ `await cache.get`（464）→ `cache.setSync`（488/505/520），但 `translation-cache.js` 仍是两级缓存、无 `getSync`/`setSync` → 调用会 `undefined` 崩溃或静默降级
+  - **B8**：`translateBatchLLM` 前端（530）发 `translateBatchLLM` 消息并解析 `{index, translated}`，但 `service-worker.js` **无 `translateBatchLLM` 处理器** → 消息无响应、走 fallback 逐条翻译
+- **结论**：不整提交 cherry-pick（会覆盖 HEAD 868 行 → 586 行，丢失 Tier4 增强）。建议按独立提交抽取 S 分支的 backend 增量：
+  1. `translation-cache.js` 升级三级缓存（Memory→sessionStorage→IndexedDB，含 `getSync`/`setSync` 保持 HEAD 调用兼容）
+  2. `service-worker.js` 加 `translateBatchWithLLM`（`[[idx]]` separator）+ 消息处理器
+  3. `bilingual-styles.css` + popup 整页翻译配置 UI（如 HEAD 缺）
+  - 前置：需先跑 extension 测试确认 HEAD 当前 `getSync` 调用是否已失效（潜在 bug）
+
 **R7.2 执行记录（2026-08-01）：**
 - ✅ cherry-pick `cc4651f`（S2 资源管理 12 项）——cache.rs 冲突保留 HEAD 版 `with_ttl`（ttl<=0 回退默认，S2 的 max(1) 丢弃）
 - ✅ cherry-pick `1f0b725`（S3-backend 28 项）——clipboard.rs 冲突保留 HEAD 的 `probe_clipboard` Result 签名（S5-6 改进）
