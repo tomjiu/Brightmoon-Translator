@@ -1102,12 +1102,16 @@ pub async fn close_ocr_region_frame(app: tauri::AppHandle) -> Result<(), String>
 
 /// Show or hide the OCR region frame window.
 /// Used to hide the frame before capturing screenshots to avoid capturing the frame itself.
+/// M3: `id` selects which region frame (default → bare legacy label).
 #[command]
 pub async fn set_ocr_region_frame_visible(
     app: tauri::AppHandle,
     visible: bool,
+    id: Option<String>,
 ) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("ocr-region-frame") {
+    let id = id.unwrap_or_else(|| crate::commands::region_session::DEFAULT_REGION_ID.to_string());
+    let label = crate::commands::region_session::region_label(&id);
+    if let Some(window) = app.get_webview_window(&label) {
         if visible {
             let _ = window.set_always_on_top(true);
             // C3+C4: show without stealing focus from the target app.
@@ -1122,7 +1126,7 @@ pub async fn set_ocr_region_frame_visible(
     Ok(())
 }
 
-/// Exclude/include OCR region frame from screen capture without hide/show flash (I1).
+/// Exclude/include OCR region frame(s) from screen capture without hide/show flash (I1).
 /// Uses Win32 `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` so BitBlt/DXGI skip this HWND
 /// while the user still sees the frame. Falls back to hide/show if affinity fails.
 ///
@@ -1131,12 +1135,30 @@ pub async fn set_ocr_region_frame_visible(
 ///
 /// When clearing sampling (`sampling=false`), does **not** force-show if the window is already
 /// hidden (e.g. mid-session re-snip) — avoids popping the region frame over the selector.
+///
+/// M3: `id` selects which region frame to affect. `None`/`"default"` → the legacy
+/// bare `"ocr-region-frame"` label (M0/M1/M2 behavior, zero caller change).
+/// M3.4: for a non-default id, sampling excludes **all** active region frames
+/// (I1 multi-frame — one region's tick must not capture sibling frames).
 #[command]
 pub async fn set_ocr_region_frame_sampling(
     app: tauri::AppHandle,
     sampling: bool,
+    id: Option<String>,
 ) -> Result<bool, String> {
-    let Some(window) = app.get_webview_window("ocr-region-frame") else {
+    let id = id.unwrap_or_else(|| crate::commands::region_session::DEFAULT_REGION_ID.to_string());
+
+    // M3.4: multi-region sampling uses the global exclusion set so sibling
+    // frames never appear in a region's screenshot. The legacy default path
+    // keeps the single-window affinity behavior below (byte-identical).
+    if id != crate::commands::region_session::DEFAULT_REGION_ID {
+        return Ok(crate::commands::region_session::set_all_regions_exclude_from_capture(
+            &app, sampling,
+        ));
+    }
+
+    let label = crate::commands::region_session::region_label(&id);
+    let Some(window) = app.get_webview_window(&label) else {
         return Ok(false);
     };
 
@@ -1200,12 +1222,16 @@ pub async fn set_ocr_region_frame_sampling(
 
 /// Click-through the OCR region frame so hwnd_from_point hits content underneath (I6 follow bind).
 /// Does not hide the window — less flash than set_visible(false).
+/// M3: `id` selects which region frame (default → bare legacy label).
 #[command]
 pub async fn set_ocr_region_frame_click_through(
     app: tauri::AppHandle,
     ignore: bool,
+    id: Option<String>,
 ) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("ocr-region-frame") {
+    let id = id.unwrap_or_else(|| crate::commands::region_session::DEFAULT_REGION_ID.to_string());
+    let label = crate::commands::region_session::region_label(&id);
+    if let Some(window) = app.get_webview_window(&label) {
         window
             .set_ignore_cursor_events(ignore)
             .map_err(|e| format!("set_ignore_cursor_events: {e}"))?;

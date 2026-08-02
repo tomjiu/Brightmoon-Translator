@@ -198,6 +198,12 @@ fn get_clipboard_selection() -> Result<Option<(String, String)>, ClipboardOpenEr
 
 #[cfg(target_os = "windows")]
 fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOpenError> {
+    // M4-03: serialize with other clipboard readers/writers (replace paste,
+    // hook monitor) for the Ctrl+C capture window.
+    let _clip_lock = crate::clipboard_dedupe::clipboard_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
     use std::mem::size_of;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,

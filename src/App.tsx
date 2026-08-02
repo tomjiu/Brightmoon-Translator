@@ -46,13 +46,16 @@ interface NavItem {
 }
 
 const windowMode = new URLSearchParams(window.location.search).get('window');
+const regionIdParam = new URLSearchParams(window.location.search).get('regionId');
 
 function App() {
   if (windowMode === 'ocr-screenshot') {
     return <OcrScreenshotSelector />;
   }
   if (windowMode === 'ocr-region-frame') {
-    return <OcrRegionFrame />;
+    // M3: `?window=ocr-region-frame&regionId={id}` → per-region frame.
+    // No regionId param → legacy default single-frame behavior.
+    return <OcrRegionFrame regionId={regionIdParam ?? undefined} />;
   }
 
   return <MainApp />;

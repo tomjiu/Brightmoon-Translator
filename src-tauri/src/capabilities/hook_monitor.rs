@@ -530,6 +530,10 @@ thread_local! {
 /// Read text from clipboard in CF_UNICODETEXT format.
 /// SAFETY: Win32 clipboard API calls. OpenClipboard/CloseClipboard bracket the operation.
 fn read_clipboard_text() -> Option<String> {
+    // M4-03: don't read while a writer (replace paste) holds the clipboard open.
+    let _clip_lock = crate::clipboard_dedupe::clipboard_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     unsafe {
         use windows::Win32::Foundation::HGLOBAL;
         use windows::Win32::System::DataExchange::{

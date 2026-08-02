@@ -9,6 +9,42 @@ import type { OcrLineResult } from './ocr';
 export const OCR_REGION_LABEL = 'ocr-region-frame';
 export const OCR_MAIN_LABEL = 'main';
 
+/**
+ * Reserved legacy single-frame region id (M3). Its window label degrades to the
+ * bare `OCR_REGION_LABEL` (no suffix) so M0/M1/M2 zero-change shim works.
+ */
+export const DEFAULT_REGION_ID = 'default';
+
+/**
+ * M3: Resolve the window label for a region id.
+ * `"default"` → `ocr-region-frame` (legacy bare label); otherwise
+ * `ocr-region-frame-{id}`.
+ */
+export function regionLabel(id: string): string {
+  return id === DEFAULT_REGION_ID ? OCR_REGION_LABEL : `${OCR_REGION_LABEL}-${id}`;
+}
+
+/**
+ * M3: Per-region event name. For the default id, keeps the legacy base name
+ * (so the single-frame listeners stay unchanged); otherwise appends `-{id}`.
+ */
+export function regionEventName(base: string, id: string): string {
+  return id === DEFAULT_REGION_ID ? base : `${base}-${id}`;
+}
+
+/**
+ * M3: Per-region event name builders (BE→FE events). Default id keeps the
+ * legacy un-suffixed names; non-default ids use the design's renamed events
+ * (design §2.5): ready/text/error/mode. (Frame→main control events just get a
+ * plain `-{id}` suffix — see `regionEventName`.)
+ */
+export const REGION_EVENTS_BY_ID = {
+  ready: (id: string) => (id === DEFAULT_REGION_ID ? OcrMainEvents.frameReady : `ocr-region-ready-${id}`),
+  text: (id: string) => (id === DEFAULT_REGION_ID ? OcrRegionEvents.updateData : `ocr-region-text-${id}`),
+  error: (id: string) => regionEventName(OcrRegionEvents.error, id),
+  mode: (id: string) => regionEventName(OcrRegionEvents.mode, id),
+} as const;
+
 /** Events emitted toward the region frame window. */
 export const OcrRegionEvents = {
   updateData: 'ocr-region-update-data',
@@ -19,6 +55,8 @@ export const OcrRegionEvents = {
   hint: 'ocr-region-hint',
   pingReady: 'ocr-region-ping-ready',
   sessionReset: 'ocr-region-session-reset',
+  /** M3: per-region display mode push (image/source/translated). */
+  mode: 'ocr-region-mode',
 } as const;
 
 /** Events emitted from the region frame toward main. */
@@ -113,8 +151,21 @@ export const OCR_SCREENSHOT_READY_TIMEOUT_MS = 8000;
 
 // ── Emit helpers ───────────────────────────────────────────────────────────
 
+/**
+ * M3: Emit an event to a specific region frame window by region id.
+ * Resolves the window label via `regionLabel(id)`.
+ */
+export function emitToRegionId(
+  id: string,
+  event: string,
+  payload: unknown = null,
+): Promise<void> {
+  return emitTo(regionLabel(id), event, payload);
+}
+
+/** Emit toward the legacy default region frame window (bare label). */
 export function emitToRegion(event: OcrRegionEventName, payload: unknown = null): Promise<void> {
-  return emitTo(OCR_REGION_LABEL, event, payload);
+  return emitToRegionId(DEFAULT_REGION_ID, event, payload);
 }
 
 export function emitToMain(event: OcrMainEventName, payload: unknown = null): Promise<void> {

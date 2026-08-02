@@ -17,6 +17,9 @@ pub struct TranslationResult {
 pub struct TranslateResponse {
     pub results: Vec<TranslationResult>,
     pub detected_language: Option<String>,
+    /// Per-engine failure messages surfaced to the UI (empty on success).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<String>,
 }
 
 impl TranslateResponse {
@@ -261,6 +264,9 @@ pub struct BatchTranslationResult {
     pub index: usize,
     pub original: String,
     pub translated: String,
+    /// Set when this segment failed (translated stays empty); lets callers
+    /// distinguish "原文就是空" from "翻译失败" (M2-04).
+    pub error: Option<String>,
 }
 
 #[cfg(test)]
@@ -276,6 +282,7 @@ mod tests {
                 latency_ms: None,
             }],
             detected_language: Some("en".to_string()),
+            errors: vec![],
         };
 
         let json = serde_json::to_value(response).unwrap();
@@ -293,6 +300,7 @@ mod tests {
                 latency_ms: None,
             }],
             detected_language: None,
+            errors: vec![],
         };
         assert_eq!(single.display_text(), "你好");
 
@@ -315,11 +323,13 @@ mod tests {
                 },
             ],
             detected_language: None,
+            errors: vec![],
         };
         assert_eq!(multi.display_text(), "[google] 你好\n[deepl] 您好");
         assert!(TranslateResponse {
             results: vec![],
             detected_language: None,
+            errors: vec![],
         }
         .display_text()
         .is_empty());

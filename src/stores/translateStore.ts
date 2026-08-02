@@ -166,9 +166,13 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
 
     // All engines failed / empty payload — surface it
     if (!response.results.length || !response.results.some((r) => r.text.trim())) {
+      const detail =
+        response.errors && response.errors.length
+          ? `\n${response.errors.slice(0, 5).join('\n')}`
+          : '';
       set({
         results: response.results || [],
-        error: '翻译无结果：请检查已启用引擎、密钥与网络',
+        error: `翻译无结果：请检查已启用引擎、密钥与网络${detail}`,
         loading: false,
         detectedLang: response.detectedLanguage || '',
       });

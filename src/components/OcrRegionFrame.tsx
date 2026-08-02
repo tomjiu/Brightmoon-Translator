@@ -32,7 +32,8 @@ import {
 import {
   OcrRegionEvents,
   OcrMainEvents,
-  emitToMain,
+  REGION_EVENTS_BY_ID,
+  emitToMain as emitToMainBase,
   type OcrRegionUpdateData,
   type OcrRegionLoadingPayload,
   type OcrRegionErrorPayload,
@@ -184,9 +185,36 @@ function isEngineEnabled(
   return !!engines[key]?.enabled;
 }
 
-export default function OcrRegionFrame() {
+export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
   const { t } = useI18n();
   const win = getCurrentWindow();
+  // M3: regionId from URL. undefined / "default" → legacy single-frame behavior
+  // (bare label + un-suffixed event names). Other ids → per-region frame.
+  const rid = regionId ?? undefined;
+  const isDefaultRegion = !rid || rid === 'default';
+  const ev = useCallback(
+    (base: string) => (isDefaultRegion ? base : `${base}-${rid}`),
+    [isDefaultRegion, rid],
+  );
+  /**
+   * M3: Emit a frame→main event. Event NAME stays the legacy base name (main
+   * listens to base names only — simpler than per-region dynamic subscription);
+   * routing happens via the `regionId` stamped into the payload. The legacy
+   * default region is byte-identical (no stamping).
+   */
+  const emitMain = useCallback(
+    (event: (typeof OcrMainEvents)[keyof typeof OcrMainEvents], payload?: unknown) => {
+      if (isDefaultRegion) {
+        return emitToMainBase(event, payload ?? null);
+      }
+      const stamped =
+        payload && typeof payload === 'object'
+          ? { ...payload, regionId: rid }
+          : { regionId: rid };
+      return emitToMainBase(event, stamped);
+    },
+    [isDefaultRegion, rid],
+  );
   const engines = useConfigStore((s) => s.config.engines);
   const engineOrder = useConfigStore((s) => s.config.engineOrder);
   const primaryEngineId = (() => {
@@ -422,7 +450,7 @@ export default function OcrRegionFrame() {
             }
           : null,
       );
-      void emitToMain(OcrMainEvents.sessionResetAck, null).catch(() => undefined);
+      void emitMain(OcrMainEvents.sessionResetAck, null).catch(() => undefined);
     };
 
     armDataTimeout();
@@ -430,9 +458,9 @@ export default function OcrRegionFrame() {
     // Register all critical listeners, then emit ready once (no partial-listen race).
     void (async () => {
       try {
-        const unPing = await listen(OcrRegionEvents.pingReady, () => {
+        const unPing = await listen(REGION_EVENTS_BY_ID.ready(rid ?? 'default'), () => {
           if (cancelled) return;
-          void emitToMain(OcrMainEvents.frameReady, null).catch(() => undefined);
+          void emitMain(OcrMainEvents.frameReady, null).catch(() => undefined);
         });
         if (cancelled) {
           unPing();
@@ -440,7 +468,7 @@ export default function OcrRegionFrame() {
         }
         unlisteners.push(unPing);
 
-        const unReset = await listen(OcrRegionEvents.sessionReset, () => {
+        const unReset = await listen(ev(OcrRegionEvents.sessionReset), () => {
           if (cancelled) return;
           applySessionReset();
         });
@@ -450,7 +478,7 @@ export default function OcrRegionFrame() {
         }
         unlisteners.push(unReset);
 
-        const unData = await listen<OcrRegionData>(OcrRegionEvents.updateData, (event) => {
+        const unData = await listen<OcrRegionData>(REGION_EVENTS_BY_ID.text(rid ?? 'default'), (event) => {
           if (cancelled) return;
           const d = event.payload;
 
@@ -510,7 +538,7 @@ export default function OcrRegionFrame() {
         }
         unlisteners.push(unData);
 
-        void emitToMain(OcrMainEvents.frameReady, null).catch(() => undefined);
+        void emitMain(OcrMainEvents.frameReady, null).catch(() => undefined);
       } catch (e) {
         console.warn('[OcrRegionFrame] listener setup failed', e);
       }
@@ -533,7 +561,7 @@ export default function OcrRegionFrame() {
       raf2 = requestAnimationFrame(() => {
         if (cancelled) return;
         void getCaptureRegion()
-          .then((r) => emitToMain(OcrMainEvents.positionChanged, r))
+          .then((r) => emitMain(OcrMainEvents.positionChanged, r))
           .catch(() => undefined);
       });
     });
@@ -548,7 +576,7 @@ export default function OcrRegionFrame() {
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
-    void listen<OcrRegionEnabledPayload>(OcrRegionEvents.followState, (event) => {
+    void listen<OcrRegionEnabledPayload>(ev(OcrRegionEvents.followState), (event) => {
       if (cancelled) return;
       setFollowWindow(event.payload.enabled);
     }).then((fn) => {
@@ -565,7 +593,7 @@ export default function OcrRegionFrame() {
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
-    void listen<OcrRegionErrorPayload>(OcrRegionEvents.error, (event) => {
+    void listen<OcrRegionErrorPayload>(REGION_EVENTS_BY_ID.error(rid ?? 'default'), (event) => {
       if (cancelled) return;
       setError(event.payload.message || tf('ocr.noTextRecognized', 'OCR 没有识别到文本'));
       setLoading(false);
@@ -583,7 +611,7 @@ export default function OcrRegionFrame() {
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
-    void listen<OcrRegionLoadingPayload>(OcrRegionEvents.loading, (event) => {
+    void listen<OcrRegionLoadingPayload>(ev(OcrRegionEvents.loading), (event) => {
       if (cancelled) return;
       if (event.payload.loading) {
         setError(null);
@@ -605,7 +633,7 @@ export default function OcrRegionFrame() {
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
-    void listen<OcrRegionEnabledPayload>(OcrRegionEvents.continuousState, (event) => {
+    void listen<OcrRegionEnabledPayload>(ev(OcrRegionEvents.continuousState), (event) => {
       if (cancelled) return;
       setContinuous(!!event.payload.enabled);
     }).then((fn) => {
@@ -620,13 +648,13 @@ export default function OcrRegionFrame() {
 
   const pauseParentRefresh = useCallback(() => {
     if (continuous) {
-      void emitToMain(OcrMainEvents.continuous, { enabled: false });
+      void emitMain(OcrMainEvents.continuous, { enabled: false });
     }
   }, [continuous]);
 
   const restoreParentRefresh = useCallback(() => {
     if (continuous) {
-      void emitToMain(OcrMainEvents.continuous, { enabled: true });
+      void emitMain(OcrMainEvents.continuous, { enabled: true });
     }
   }, [continuous]);
 
@@ -642,7 +670,7 @@ export default function OcrRegionFrame() {
     pauseParentRefresh();
     try {
       await win.startDragging();
-      await emitToMain(OcrMainEvents.positionChanged, await getCaptureRegion());
+      await emitMain(OcrMainEvents.positionChanged, await getCaptureRegion());
     } catch {
       /* ignore */
     } finally {
@@ -677,7 +705,7 @@ export default function OcrRegionFrame() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       try {
-        await emitToMain(OcrMainEvents.sizeChanged, await getCaptureRegion());
+        await emitMain(OcrMainEvents.sizeChanged, await getCaptureRegion());
       } catch {
         /* ignore */
       } finally {
@@ -706,7 +734,7 @@ export default function OcrRegionFrame() {
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
-    void listen<OcrRegionHintPayload>(OcrRegionEvents.hint, (event) => {
+    void listen<OcrRegionHintPayload>(ev(OcrRegionEvents.hint), (event) => {
       if (cancelled) return;
       const msg = event.payload.message;
       if (msg) flashHint(msg);
@@ -725,13 +753,13 @@ export default function OcrRegionFrame() {
     setError(null);
     setLoading(true);
     flashHint(tf('ocrRegion.refreshing', '刷新中…'));
-    void emitToMain(OcrMainEvents.refresh, null);
+    void emitMain(OcrMainEvents.refresh, null);
   }, [flashHint, tf]);
 
   const handleToggleContinuous = useCallback(() => {
     const next = !continuous;
     setContinuous(next);
-    void emitToMain(OcrMainEvents.continuous, { enabled: next });
+    void emitMain(OcrMainEvents.continuous, { enabled: next });
     flashHint(
       next ? tf('ocrRegion.watchOn', '监视已开启') : tf('ocrRegion.watchOff', '监视已关闭'),
     );
@@ -741,7 +769,7 @@ export default function OcrRegionFrame() {
     // Just emit the close event — the main window will close this window
     // via the Rust `close_ocr_region_frame` command, then show itself.
     // This avoids both windows being visible at the same time.
-    void emitToMain(OcrMainEvents.close, null);
+    void emitMain(OcrMainEvents.close, null);
   }, []);
 
   const handleTogglePin = useCallback(async () => {
@@ -758,7 +786,7 @@ export default function OcrRegionFrame() {
   const handleToggleFollow = useCallback(() => {
     const next = !followWindow;
     setFollowWindow(next);
-    void emitToMain(OcrMainEvents.follow, { enabled: next });
+    void emitMain(OcrMainEvents.follow, { enabled: next });
     flashHint(next ? tf('ocrRegion.followOn', '跟随窗口') : tf('ocrRegion.followOff', '取消跟随'));
   }, [followWindow, flashHint, tf]);
 
@@ -802,7 +830,7 @@ export default function OcrRegionFrame() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        void emitToMain(OcrMainEvents.close, null);
+        void emitMain(OcrMainEvents.close, null);
         return;
       }
       const tag = (e.target as HTMLElement).tagName;
@@ -883,7 +911,7 @@ export default function OcrRegionFrame() {
       setTargetLang(value);
       targetLangRef.current = value;
     }
-    void emitToMain(OcrMainEvents.langChange, {
+    void emitMain(OcrMainEvents.langChange, {
       sourceLang: type === 'source' ? value : sourceLangRef.current,
       targetLang: type === 'target' ? value : targetLangRef.current,
     });
@@ -893,7 +921,7 @@ export default function OcrRegionFrame() {
     (engineId: string) => {
       if (!engineId) return;
       // Promote to primary + ensure enabled, then re-translate.
-      void emitToMain(OcrMainEvents.engineChange, {
+      void emitMain(OcrMainEvents.engineChange, {
         engineId,
         enabled: true,
         promote: true,
@@ -905,7 +933,7 @@ export default function OcrRegionFrame() {
 
   const handleEngineToggleEnabled = useCallback(
     (engineId: string, enabled: boolean) => {
-      void emitToMain(OcrMainEvents.engineChange, {
+      void emitMain(OcrMainEvents.engineChange, {
         engineId,
         enabled,
         promote: enabled,

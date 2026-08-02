@@ -9,6 +9,8 @@ export interface TranslationResult {
 export interface TranslateResponse {
   results: TranslationResult[];
   detectedLanguage?: string;
+  /** Per-engine failure messages surfaced to the UI (empty on success). */
+  errors?: string[];
 }
 
 // History types

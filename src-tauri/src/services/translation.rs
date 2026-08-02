@@ -423,6 +423,7 @@ impl TranslationService {
                             latency_ms: None,
                         }],
                         detected_language: None,
+                        errors: vec![],
                     });
                 }
             }
@@ -450,6 +451,7 @@ impl TranslationService {
                     return Ok(TranslateResponse {
                         results,
                         detected_language: None,
+                        errors: vec![],
                     });
                 }
             }
@@ -541,6 +543,7 @@ impl TranslationService {
                                 latency_ms: None,
                             }],
                             detected_language: None,
+                            errors: vec![],
                         },
                         Err(e) => {
                             tracing::warn!(
@@ -972,6 +975,7 @@ impl TranslationService {
                                     index: idx,
                                     original,
                                     translated,
+                                    error: None,
                                 });
                                 completed += 1;
                                 on_progress(completed, total);
@@ -1000,6 +1004,7 @@ impl TranslationService {
                                     index: idx,
                                     original,
                                     translated,
+                                    error: None,
                                 });
                                 completed += 1;
                                 on_progress(completed, total);
@@ -1089,6 +1094,7 @@ impl TranslationService {
                             index: *idx,
                             original: original.clone(),
                             translated,
+                            error: None,
                         });
                         completed += 1;
                         on_progress(completed, total);
@@ -1141,6 +1147,7 @@ impl TranslationService {
                                         index: idx,
                                         original,
                                         translated,
+                                        error: None,
                                     });
                                     completed += 1;
                                     on_progress(completed, total);
@@ -1169,6 +1176,7 @@ impl TranslationService {
                                         index: idx,
                                         original,
                                         translated,
+                                        error: None,
                                     });
                                     completed += 1;
                                     on_progress(completed, total);
@@ -1188,19 +1196,19 @@ impl TranslationService {
 
                         let handle = tokio::spawn(async move {
                             let router = router.read().await;
-                            let translated = if use_fallback {
+                            let (translated, error) = if use_fallback {
                                 match router
                                     .translate_fallback_string(&protected, &from_s, &to_s)
                                     .await
                                 {
-                                    Ok(t) => t,
+                                    Ok(t) => (t, None),
                                     Err(e) => {
                                         tracing::warn!(
                                             "[translate_batch] OCR fallback failed for segment {}: {}",
                                             idx,
                                             e
                                         );
-                                        String::new()
+                                        (String::new(), Some(e.to_string()))
                                     },
                                 }
                             } else {
@@ -1213,14 +1221,14 @@ impl TranslationService {
                                     )
                                     .await
                                 {
-                                    Ok(t) => t,
+                                    Ok(t) => (t, None),
                                     Err(e) => {
                                         tracing::warn!(
                                             "[translate_batch] Translation failed for segment {}: {}",
                                             idx,
                                             e
                                         );
-                                        String::new()
+                                        (String::new(), Some(e.to_string()))
                                     },
                                 }
                             };
@@ -1232,6 +1240,7 @@ impl TranslationService {
                                 translated,
                                 prepared.blacklist,
                                 protected_for_cache,
+                                error,
                             )
                         });
 
@@ -1239,7 +1248,21 @@ impl TranslationService {
                     }
 
                     for handle in handles {
-                        if let Ok((idx, original, raw, blacklist, prepared_key)) = handle.await {
+                        if let Ok((idx, original, raw, blacklist, prepared_key, error)) =
+                            handle.await
+                        {
+                            if let Some(e) = error {
+                                // M2-04: surface per-segment failure instead of silent empty text.
+                                results.push(BatchTranslationResult {
+                                    index: idx,
+                                    original,
+                                    translated: String::new(),
+                                    error: Some(e),
+                                });
+                                completed += 1;
+                                on_progress(completed, total);
+                                continue;
+                            }
                             let translated =
                                 self.finalize(&raw, &original, from, to, &blacklist).await;
                             if !ocr_fallback && !translated.trim().is_empty() {
@@ -1265,6 +1288,7 @@ impl TranslationService {
                                 index: idx,
                                 original,
                                 translated,
+                                error: None,
                             });
                             completed += 1;
                             on_progress(completed, total);

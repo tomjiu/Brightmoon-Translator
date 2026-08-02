@@ -116,6 +116,12 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
         SendInput, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VK_CONTROL, VK_V,
     };
 
+    // M4-03: serialize with other clipboard readers/writers (hook monitor,
+    // selection Ctrl+C) for the whole save→set→paste→restore window.
+    let _clip_lock = crate::clipboard_dedupe::clipboard_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
     const CF_UNICODETEXT: u32 = 13;
 
     extern "system" {

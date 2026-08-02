@@ -176,6 +176,7 @@ pub fn mock_handle_browser_request(
             latency_ms: None,
         }],
         detected_language: Some("en".to_string()),
+        errors: vec![],
     };
 
     // For full-page mode, build per-segment translations
@@ -296,6 +297,7 @@ pub async fn handle_browser_request(
                         latency_ms: None,
                     }],
                     detected_language: None,
+                    errors: vec![],
                 },
                 overlay_shown: request.show_overlay,
                 replaced_inline: request.replace_inline,
