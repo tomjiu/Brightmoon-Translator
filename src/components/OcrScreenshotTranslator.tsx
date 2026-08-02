@@ -363,8 +363,9 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         }
 
         // I5 natural size + OCR in parallel (faster first paint).
-        // M4: per-region engine override ('' = global config.ocrEngine).
-        const ocrEngine = st.engine || ocrEngineRef.current || 'winrt';
+        // OCR engine is GLOBAL (config.ocrEngine) — st.engine is a per-region
+        // TRANSLATE engine and must never feed the OCR pipeline (P0 fix).
+        const ocrEngine = ocrEngineRef.current || 'winrt';
         let imageNatural = { width: 0, height: 0 };
         let ocrResult: OcrResultDetailed;
         const tr = tRef.current;
@@ -537,6 +538,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
                     from: effectiveSourceLang,
                     to: effectiveTargetLang,
                     channel: 'ocr',
+                    // M4: per-region translate engine override ('' = global primary).
+                    engine: st.engine || undefined,
                   },
                 });
                 const out = response.results[0]?.text?.trim() || sourcePieces[0];
@@ -554,6 +557,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
                   from: effectiveSourceLang,
                   to: effectiveTargetLang,
                   channel: 'ocr',
+                  // M4: per-region translate engine override ('' = global primary).
+                  engine: st.engine || undefined,
                 });
                 if (st.frameClosed || sessionId !== st.sessionId) return;
                 // Prefer batch lineNumber order; on count mismatch pack via ocrLineAlign.
@@ -1273,7 +1278,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         refreshIntervalMs: ocrIntervalMsRef.current,
       }).catch(() => undefined);
 
-      const frameReady = await waitForOcrRegionFrameReady(OCR_FRAME_READY_TIMEOUT_MS);
+      const frameReady = await waitForOcrRegionFrameReady(OCR_FRAME_READY_TIMEOUT_MS, selRegionId);
       if (!frameReady) {
         console.warn('[OCR] region frame ready timeout — retrying create once');
         try {
@@ -1284,7 +1289,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
             height: screenH,
           });
           await safeInvoke('set_ocr_region_frame_visible', { visible: true }, { silent: true });
-          const ready2 = await waitForOcrRegionFrameReady(OCR_FRAME_READY_TIMEOUT_MS);
+          const ready2 = await waitForOcrRegionFrameReady(OCR_FRAME_READY_TIMEOUT_MS, selRegionId);
           if (!ready2) {
             throw new Error('OCR 区域窗口未就绪，请重试');
           }

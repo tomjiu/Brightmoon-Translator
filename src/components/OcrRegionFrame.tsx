@@ -466,7 +466,11 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
     // Register all critical listeners, then emit ready once (no partial-listen race).
     void (async () => {
       try {
-        const unPing = await listen(REGION_EVENTS_BY_ID.ready(rid ?? 'default'), () => {
+        // P0 fix: main pings via OcrRegionEvents.pingReady (same base name for
+        // every region). M3 renamed the ready event for non-default ids, but
+        // main never emits ocr-region-ready-{id} — listening on pingReady
+        // restores the handshake for both default and per-region frames.
+        const unPing = await listen(OcrRegionEvents.pingReady, () => {
           if (cancelled) return;
           void emitMain(OcrMainEvents.frameReady, null).catch(() => undefined);
         });

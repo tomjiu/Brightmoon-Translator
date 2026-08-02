@@ -132,6 +132,11 @@ pub struct TranslateRequest {
     /// Pre-split segments for batch mode; if empty, `text` is split by lines.
     #[serde(default)]
     pub segments: Vec<(usize, String)>,
+    /// M4: per-region translate engine override ('' = global router primary).
+    /// When set, the full/primary path uses this named engine instead of the
+    /// router's primary. Mirrors `BatchConfig.engine` semantics (translate_named).
+    #[serde(default)]
+    pub engine: Option<String>,
 }
 
 fn default_concurrency() -> usize {
@@ -150,6 +155,7 @@ impl Default for TranslateRequest {
             batch_id: None,
             concurrency: 3,
             segments: Vec::new(),
+            engine: None,
         }
     }
 }

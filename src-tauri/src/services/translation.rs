@@ -146,9 +146,28 @@ impl TranslationService {
         async {
             match req.mode {
                 TranslationMode::Full => {
-                    let r = self
-                        .translate(req.channel, &req.text, &req.from, &req.to)
-                        .await?;
+                    let r = if let Some(engine) = req.engine.as_deref().filter(|e| !e.trim().is_empty()) {
+                        // M4: per-region engine override — use the named engine
+                        // instead of the router's primary for this request.
+                        let raw = self
+                            .translate_named_engine(engine, &req.text, &req.from, &req.to)
+                            .await
+                            .map_err(|e| TranslationError::EngineError {
+                                engine: engine.to_string(),
+                                message: e,
+                            })?;
+                        TranslateResponse {
+                            results: vec![TranslationResult {
+                                engine: engine.to_string(),
+                                text: raw,
+                                latency_ms: None,
+                            }],
+                            detected_language: None,
+                            errors: vec![],
+                        }
+                    } else {
+                        self.translate(req.channel, &req.text, &req.from, &req.to).await?
+                    };
                     Ok(TranslateOutcome::Full(r))
                 },
                 TranslationMode::Primary => {
@@ -168,9 +187,21 @@ impl TranslationService {
                     } else {
                         req.segments.iter().map(|(i, s)| (*i, s.as_str())).collect()
                     };
-                    let r = self
-                        .translate_batch(req.channel, &lines, &req.from, &req.to, req.concurrency)
-                        .await;
+                    let r = if let Some(engine) = req.engine.as_deref().filter(|e| !e.trim().is_empty()) {
+                        // M4: per-region engine override for batch — run each
+                        // line through the named engine instead of the router.
+                        self.translate_batch_named_engine(
+                            engine,
+                            &lines,
+                            &req.from,
+                            &req.to,
+                            req.concurrency,
+                        )
+                        .await
+                    } else {
+                        self.translate_batch(req.channel, &lines, &req.from, &req.to, req.concurrency)
+                            .await
+                    };
                     Ok(TranslateOutcome::Batch(r))
                 },
                 TranslationMode::Context => {
@@ -299,6 +330,20 @@ impl TranslationService {
         to: &str,
         concurrency: usize,
     ) -> Vec<BatchTranslationResult> {
+        self.run_batch_with_engine(channel, lines, from, to, concurrency, None)
+            .await
+    }
+
+    /// Batch-mode run with an optional per-region engine override.
+    pub async fn run_batch_with_engine(
+        &self,
+        channel: TranslateChannel,
+        lines: &[(usize, &str)],
+        from: &str,
+        to: &str,
+        concurrency: usize,
+        engine: Option<String>,
+    ) -> Vec<BatchTranslationResult> {
         let segments: Vec<(usize, String)> =
             lines.iter().map(|(i, s)| (*i, (*s).to_string())).collect();
         match self
@@ -310,6 +355,7 @@ impl TranslationService {
                 to: to.to_string(),
                 concurrency: concurrency.max(1).min(10),
                 segments,
+                engine,
                 ..Default::default()
             })
             .await
@@ -1343,6 +1389,43 @@ impl TranslationService {
             |_completed, _total| {},
         )
         .await
+    }
+
+    /// M4: Batch translate with a per-region engine override. Translates each
+    /// line via the named engine (shared `translate_named_engine` path, which
+    /// already handles cache + glossary + blacklist). Simpler than the full
+    /// batch core (no LLM pack / context window) — per-region OCR frames are
+    /// short text segments where that complexity is unnecessary. Sequential to
+    /// keep lifetimes simple (self is &self, not Arc).
+    pub async fn translate_batch_named_engine(
+        &self,
+        engine_id: &str,
+        lines: &[(usize, &str)],
+        from: &str,
+        to: &str,
+        _concurrency: usize,
+    ) -> Vec<BatchTranslationResult> {
+        let mut results = Vec::with_capacity(lines.len());
+        for (idx, original) in lines.iter().copied() {
+            match self
+                .translate_named_engine(engine_id, original, from, to)
+                .await
+            {
+                Ok(translated) => results.push(BatchTranslationResult {
+                    index: idx,
+                    original: original.to_string(),
+                    translated,
+                    error: None,
+                }),
+                Err(e) => results.push(BatchTranslationResult {
+                    index: idx,
+                    original: original.to_string(),
+                    translated: String::new(),
+                    error: Some(e),
+                }),
+            }
+        }
+        results
     }
 
     /// Translate text lines for embedded/subtitle with progress callback
