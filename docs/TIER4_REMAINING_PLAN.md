@@ -151,10 +151,18 @@ S 分支 = **与 PR #8 平行的独立轨道**（merge-base = `33d5241` = master
 - ⛔ **`0e2c2b4`（extension Tier1 B1-B8）跳过**：与 HEAD extension 架构语义冲突——S 分支是旧代码上完全重写 page-translator.js（586 行），HEAD 已演进到 Tier4（1074 行含 specialRules/Main container）。强行合并会覆盖 HEAD 功能。需单独架构评审。
 - **验证：tsc ✅、vitest 311 passed（src 173 + extension 138）✅、eslint 0 errors ✅**
 
-**决策建议（R7.1 → R7.3 顺序）：**
-1. **R7.1 C 类** ✅ 已完成（除 `0e2c2b4` extension 因架构冲突跳过）
-2. **R7.2** cherry-pick B 类中与 capture.rs 无关的项（S2 资源管理、S3-backend 非 capture 部分）
-3. **R7.3** capture.rs 相关（S0+S1 死代码清理 + WinRT OCR 重构）需人工比对 PR #8 新功能后再定；建议在 PR #8 合并后做
+**R7.2 执行记录（2026-08-01）：**
+- ✅ cherry-pick `cc4651f`（S2 资源管理 12 项）——cache.rs 冲突保留 HEAD 版 `with_ttl`（ttl<=0 回退默认，S2 的 max(1) 丢弃）
+- ✅ cherry-pick `1f0b725`（S3-backend 28 项）——clipboard.rs 冲突保留 HEAD 的 `probe_clipboard` Result 签名（S5-6 改进）
+- ✅ cherry-pick `f30c9ed`（S3-frontend 18 项）——App.tsx 合并（保留 regionId + 加 Suspense）、themeStore/translateStore 保留 HEAD（S5-fix / R5 errors）
+- ✅ cherry-pick `a9468cc`（S3-followup）——migration 003 为 S 分支新增文档文件，取 theirs
+- ✅ 补 1 个类型修复提交：S3 给 modelProvider 加必填 apiFormat，补 types/index.ts + AiSettings 兼容
+- **验证：cargo check --all ✅、全量 548 passed / 0 failed ✅、vitest 311 passed ✅、tsc ✅、eslint 0 errors ✅**
+
+**R7.1 → R7.3 状态：**
+1. **R7.1 C 类** ✅ 已完成（除 `0e2c2b4` extension 因架构冲突跳过，需单独评审）
+2. **R7.2 B 类非 capture** ✅ 已完成（S2/S3-backend/S3-frontend/S3-followup）
+3. **R7.3**（`e4bcc62` S0+S1 capture.rs 死代码清理 + WinRT OCR 重构）待 PR #8 合并后比对，暂缓
 
 ---
 
