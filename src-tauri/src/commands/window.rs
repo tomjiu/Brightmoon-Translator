@@ -633,6 +633,11 @@ pub async fn update_overlay_position(
 
 /// Create (or re-use) the OCR region frame window at the specified screen position.
 /// Reuses existing webview when possible (no destroy/100ms sleep) — faster re-snip.
+///
+/// M3/M4: `id` selects the per-region window. `None`/"default" keeps the legacy
+/// single-frame label (`ocr-region-frame`, URL without regionId); non-default ids
+/// use `region_label(id)` and stamp `regionId` in the URL so OcrRegionFrame reads
+/// its own id from the query string.
 #[command]
 pub async fn create_ocr_region_frame(
     app: tauri::AppHandle,
@@ -640,7 +645,15 @@ pub async fn create_ocr_region_frame(
     y: f64,
     width: f64,
     height: f64,
+    id: Option<String>,
 ) -> Result<(), String> {
+    let region_id = id.unwrap_or_default();
+    let label = crate::commands::region_session::region_label(&region_id);
+    let url = if region_id.is_empty() || region_id == crate::commands::region_session::DEFAULT_REGION_ID {
+        "index.html?window=ocr-region-frame&v=ocr2".to_string()
+    } else {
+        format!("index.html?window=ocr-region-frame&regionId={region_id}&v=ocr2")
+    };
     let scale_factor = monitor_scale_for_physical_rect(&app, x, y, width, height);
     // Keep in sync with src/components/ocrRegionGeometry.ts (I2/I3).
     use crate::ocr_region_consts::{OCR_MIN_FRAME_CSS_W, OCR_TOOLBAR_CSS_PX};
@@ -659,13 +672,13 @@ pub async fn create_ocr_region_frame(
     let initial_logical_h = (window_h as f64 / scale_factor).max(80.0);
 
     tracing::info!(
-        "Creating OCR region frame for capture ({}, {}) {}x{} (window physical: ({}, {}) {}x{}, scale: {}, expand_x: {})",
-        x, y, width, height, window_x, window_y, window_w, window_h, scale_factor, expand_x
+        "Creating OCR region frame for capture ({}, {}) {}x{} (window physical: ({}, {}) {}x{}, scale: {}, expand_x: {}, id: {})",
+        x, y, width, height, window_x, window_y, window_w, window_h, scale_factor, expand_x, region_id
     );
 
     // Reuse existing frame: reposition only (no webview reload / label churn).
     // Pin CLIENT rect to capture (same DWM-pad fix as screenshot selector).
-    if let Some(existing) = app.get_webview_window("ocr-region-frame") {
+    if let Some(existing) = app.get_webview_window(&label) {
         #[cfg(target_os = "windows")]
         {
             if let Err(e) = force_hwnd_cover_physical(
@@ -728,8 +741,8 @@ pub async fn create_ocr_region_frame(
 
         match WebviewWindowBuilder::new(
             &app,
-            "ocr-region-frame",
-            WebviewUrl::App("index.html?window=ocr-region-frame&v=ocr2".into()),
+            &label,
+            WebviewUrl::App(url.as_str().into()),
         )
         .title("OCR Region")
         .inner_size(initial_logical_w, initial_logical_h)
