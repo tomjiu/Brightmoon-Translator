@@ -544,7 +544,11 @@ impl LlmEngine {
             .await
     }
 
-    /// Streaming uses the first endpoint only; non-openai formats fall back to non-stream.
+    /// Streaming endpoints are tried in order with failover: each endpoint
+    /// streams into a private channel, and only a fully-successful endpoint's
+    /// tokens are relayed to the caller's channel (P0#6 fix — partial tokens
+    /// from a failed endpoint are never mixed into the output). Non-openai
+    /// formats fall back to non-streaming.
     async fn stream_llm(
         &self,
         messages: Vec<Message>,
