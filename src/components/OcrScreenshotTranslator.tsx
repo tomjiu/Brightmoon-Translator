@@ -108,6 +108,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     followEnabled: boolean;
     movingFrame: boolean;
     windowBinding: WindowBindingManager | null;
+    /** M4: per-region OCR engine override ('' = use global config.ocrEngine). */
+    engine: string;
   }
 
   const regionsRef = useRef<Map<string, RegionState>>(new Map());
@@ -132,6 +134,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       followEnabled: false,
       movingFrame: false,
       windowBinding: null,
+      engine: '',
     }),
     [config.defaultFrom, config.defaultTo],
   );
@@ -214,6 +217,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         sourceLang: st.sourceLang,
         targetLang: st.targetLang,
         detectedLang: detectedLangName,
+        engine: st.engine || undefined,
         refreshIntervalMs: ocrIntervalMsRef.current,
         imageWidth: imageNatural?.width,
         imageHeight: imageNatural?.height,
@@ -359,7 +363,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         }
 
         // I5 natural size + OCR in parallel (faster first paint).
-        const ocrEngine = ocrEngineRef.current || 'winrt';
+        // M4: per-region engine override ('' = global config.ocrEngine).
+        const ocrEngine = st.engine || ocrEngineRef.current || 'winrt';
         let imageNatural = { width: 0, height: 0 };
         let ocrResult: OcrResultDetailed;
         const tr = tRef.current;
@@ -898,44 +903,58 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     void registerListener<OcrRegionEngineChangePayload>(OcrMainEvents.engineChange, (event) => {
       const { engineId, enabled, promote } = event.payload || {};
       if (!engineId) return;
-      updateConfig((prev) => {
-        const engines = { ...prev.engines } as AppConfig['engines'] &
-          Record<string, { enabled?: boolean }>;
-        const keyMap: Record<string, keyof AppConfig['engines']> = {
-          google: 'google',
-          youdao: 'youdao',
-          baidu: 'baidu',
-          deepl: 'deepl',
-          deeplx: 'deeplx',
-          microsoft: 'microsoft',
-          yandex: 'yandex',
-          offline: 'offline',
-          caiyun: 'caiyun',
-          tatoeba: 'tatoeba',
-          baidu_web: 'baiduWeb',
-          caiyun_web: 'caiyunWeb',
-          volcengine_web: 'volcengineWeb',
-          transmart: 'transmart',
-          papago: 'papago',
-        };
-        // Only known engine keys (llm lives on config.llm, not engines).
-        const cfgKey = keyMap[engineId];
-        if (cfgKey) {
-          const cur = engines[cfgKey] as { enabled?: boolean };
-          engines[cfgKey] = {
-            ...cur,
-            enabled: enabled === undefined ? true : enabled,
-          } as never;
-        }
-        let engineOrder = [...(prev.engineOrder || [])];
-        if (promote) {
-          engineOrder = [engineId, ...engineOrder.filter((id) => id !== engineId)];
-        }
-        return { ...prev, engines, engineOrder };
-      });
-      void saveConfig();
       const rid = (event.payload as { regionId?: string }).regionId ?? DEFAULT_REGION_ID;
       const st = getRegionState(rid);
+      // M4: per-region engine selection — the frame's engine dropdown chooses
+      // THIS region's engine (independent of the global default). Global
+      // enable/promote stays global for engine management, but selecting an
+      // engine in a region never clobbers the global primary order.
+      const perRegion = (event.payload as { perRegion?: boolean }).perRegion === true;
+      if (perRegion) {
+        st.engine = engineId;
+        // Mirror to backend RegionSession so `ocr_region_list` exposes it.
+        void invokeOrThrow('ocr_region_set_engine', {
+          id: rid,
+          engine: engineId,
+        }).catch((e: unknown) => console.warn('[OCR] sync per-region engine failed:', e));
+      } else {
+        updateConfig((prev) => {
+          const engines = { ...prev.engines } as AppConfig['engines'] &
+            Record<string, { enabled?: boolean }>;
+          const keyMap: Record<string, keyof AppConfig['engines']> = {
+            google: 'google',
+            youdao: 'youdao',
+            baidu: 'baidu',
+            deepl: 'deepl',
+            deeplx: 'deeplx',
+            microsoft: 'microsoft',
+            yandex: 'yandex',
+            offline: 'offline',
+            caiyun: 'caiyun',
+            tatoeba: 'tatoeba',
+            baidu_web: 'baiduWeb',
+            caiyun_web: 'caiyunWeb',
+            volcengine_web: 'volcengineWeb',
+            transmart: 'transmart',
+            papago: 'papago',
+          };
+          // Only known engine keys (llm lives on config.llm, not engines).
+          const cfgKey = keyMap[engineId];
+          if (cfgKey) {
+            const cur = engines[cfgKey] as { enabled?: boolean };
+            engines[cfgKey] = {
+              ...cur,
+              enabled: enabled === undefined ? true : enabled,
+            } as never;
+          }
+          let engineOrder = [...(prev.engineOrder || [])];
+          if (promote) {
+            engineOrder = [engineId, ...engineOrder.filter((id) => id !== engineId)];
+          }
+          return { ...prev, engines, engineOrder };
+        });
+        void saveConfig();
+      }
       st.lastOcrText = '';
       st.lastImageFp = '';
       if (st.region) {

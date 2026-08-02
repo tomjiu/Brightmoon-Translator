@@ -99,6 +99,8 @@ pub struct RegionSession {
     pub last_text: Option<String>,
     /// Whether this region is currently in sampling-excluded state.
     pub sampling: bool,
+    /// M4: per-region OCR engine override ('' = use global default).
+    pub engine: String,
     pub created_at: Instant,
     pub created_at_ms: u64,
 }
@@ -119,6 +121,7 @@ impl RegionSession {
             last_image_fp: None,
             last_text: None,
             sampling: false,
+            engine: String::new(),
             created_at,
             created_at_ms,
         }
@@ -136,6 +139,7 @@ pub struct RegionSessionInfo {
     pub continuous: bool,
     pub follow_hwnd: Option<isize>,
     pub sampling: bool,
+    pub engine: String,
     pub created_at_ms: u64,
 }
 
@@ -244,6 +248,7 @@ impl RegionSessionManager {
                 continuous: s.continuous,
                 follow_hwnd: s.follow_hwnd,
                 sampling: s.sampling,
+                engine: s.engine.clone(),
                 created_at_ms: s.created_at_ms,
             })
             .collect();
@@ -488,6 +493,20 @@ pub fn ocr_region_list() -> Result<Vec<RegionSessionInfo>, String> {
         .lock()
         .map_err(|e| format!("RegionManager lock: {e}"))?;
     Ok(mgr.list_info())
+}
+
+/// M4: Set per-region OCR engine override ('' resets to global default).
+/// Mirrors the frontend `RegionState.engine` so `ocr_region_list` exposes the
+/// per-region engine choice. No-op for unknown regions (frame not yet created).
+#[tauri::command]
+pub fn ocr_region_set_engine(id: String, engine: String) -> Result<(), String> {
+    let mut mgr = region_manager()
+        .lock()
+        .map_err(|e| format!("RegionManager lock: {e}"))?;
+    if let Some(session) = mgr.get_mut(&id) {
+        session.engine = engine;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

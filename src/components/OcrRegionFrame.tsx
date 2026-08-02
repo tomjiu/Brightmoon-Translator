@@ -116,7 +116,7 @@ const TranslationLine = memo(
 
     return (
       <div
-        className="absolute group"
+        className="absolute"
         style={{
           left,
           top,
@@ -127,29 +127,34 @@ const TranslationLine = memo(
           ),
         }}
       >
+        {/* M5: near-opaque cover — the translation REPLACES the source text
+            (kivio-style) instead of overlaying it translucent. Background is
+            content-sized (not absolute inset-0) so long translations fully
+            hide what's underneath. */}
         <div
-          className="absolute inset-0 rounded-md"
+          className="relative rounded-md"
           style={{
             minWidth: width,
-            background: 'var(--ocr-overlay-bg-strong)',
+            background: 'var(--ocr-overlay-bg-solid)',
             backdropFilter: 'blur(6px)',
             WebkitBackdropFilter: 'blur(6px)',
             boxShadow: '0 1px 6px rgba(0,0,0,0.35)',
           }}
-        />
-        <div
-          className="relative font-medium whitespace-pre-wrap break-words px-1.5 py-0.5 select-text cursor-text"
-          style={{
-            minWidth: rect.width,
-            fontSize: `${fontSize}px`,
-            lineHeight: `${Math.max(height, fontSize + 2)}px`,
-            color: 'var(--ocr-overlay-text)',
-            textShadow: 'var(--ocr-overlay-text-shadow)',
-            userSelect: 'text',
-            WebkitUserSelect: 'text',
-          }}
         >
-          {translation}
+          <div
+            className="font-medium whitespace-pre-wrap break-words px-1.5 py-0.5 select-text cursor-text"
+            style={{
+              minWidth: rect.width,
+              fontSize: `${fontSize}px`,
+              lineHeight: `${Math.max(height, fontSize + 2)}px`,
+              color: 'var(--ocr-overlay-text)',
+              textShadow: 'var(--ocr-overlay-text-shadow)',
+              userSelect: 'text',
+              WebkitUserSelect: 'text',
+            }}
+          >
+            {translation}
+          </div>
         </div>
       </div>
     );
@@ -217,12 +222,6 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
   );
   const engines = useConfigStore((s) => s.config.engines);
   const engineOrder = useConfigStore((s) => s.config.engineOrder);
-  const primaryEngineId = (() => {
-    const order =
-      engineOrder && engineOrder.length > 0 ? engineOrder : (DEFAULT_ENGINE_ORDER as string[]);
-    const eng = engines as unknown as Record<string, { enabled?: boolean } | undefined>;
-    return order.find((id) => isEngineEnabled(eng, id)) || order[0] || 'youdao';
-  })();
 
   const getLangName = useCallback(
     (code: string) => {
@@ -241,6 +240,15 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
     [t],
   );
   const [data, setData] = useState<OcrRegionData | null>(null);
+  // M4: engine dropdown shows THIS region's engine (data.engine from main) —
+  // fall back to the global primary enabled engine when not set.
+  const primaryEngineId = (() => {
+    if (data?.engine) return data.engine;
+    const order =
+      engineOrder && engineOrder.length > 0 ? engineOrder : (DEFAULT_ENGINE_ORDER as string[]);
+    const eng = engines as unknown as Record<string, { enabled?: boolean } | undefined>;
+    return order.find((id) => isEngineEnabled(eng, id)) || order[0] || 'youdao';
+  })();
   const [continuous, setContinuous] = useState(false); // Default OFF — continuous hide/OCR/show flickers
   const [displayMode, setDisplayMode] = useState<DisplayMode>('translation');
   const [loading, setLoading] = useState(true);
@@ -925,29 +933,33 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
   const handleEngineSelect = useCallback(
     (engineId: string) => {
       if (!engineId) return;
-      // Promote to primary + ensure enabled, then re-translate.
+      // M4: engine dropdown = THIS region's engine choice (per-region). Does
+      // not touch the global primary order / enabled flags.
       void emitMain(OcrMainEvents.engineChange, {
         engineId,
         enabled: true,
-        promote: true,
+        promote: false,
+        perRegion: true,
       });
       flashHint(tf('ocrRegion.engineSwitched', '已切换引擎'));
     },
-    [flashHint, tf],
+    [emitMain, flashHint, tf],
   );
 
   const handleEngineToggleEnabled = useCallback(
     (engineId: string, enabled: boolean) => {
+      // Global engine enable/disable (management), not per-region.
       void emitMain(OcrMainEvents.engineChange, {
         engineId,
         enabled,
         promote: enabled,
+        perRegion: false,
       });
       flashHint(
         enabled ? tf('ocrRegion.engineOn', '引擎已启用') : tf('ocrRegion.engineOff', '引擎已关闭'),
       );
     },
-    [flashHint, tf],
+    [emitMain, flashHint, tf],
   );
 
   // ---- Compute text area bounds from OCR lines (CSS space) ----

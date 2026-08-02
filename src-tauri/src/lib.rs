@@ -654,6 +654,7 @@ pub fn run() {
             commands::region_session::ocr_end_session,
             commands::region_session::ocr_region_set_mode,
             commands::region_session::ocr_region_list,
+            commands::region_session::ocr_region_set_engine,
             commands::window::pin_translation_card,
             commands::window::dismiss_pinned_card,
             commands::window::dismiss_all_pinned_cards,

@@ -98,6 +98,8 @@ export interface OcrRegionUpdateData {
   sourceLang: string;
   targetLang: string;
   detectedLang?: string;
+  /** M4: per-region OCR/translate engine override ('' / undefined = global). */
+  engine?: string;
   refreshIntervalMs?: number;
   /** Crop / OCR image size in pixels — set early so lines align before img onLoad. */
   imageWidth?: number;
@@ -133,6 +135,8 @@ export interface OcrRegionEngineChangePayload {
   engineId: string;
   enabled?: boolean;
   promote?: boolean;
+  /** M4: true = per-region engine selection (dropdown), false = global engine management. */
+  perRegion?: boolean;
 }
 
 export type OcrRegionPositionPayload = OcrRegionRect;
