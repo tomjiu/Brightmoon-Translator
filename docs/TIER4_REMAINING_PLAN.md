@@ -23,13 +23,13 @@
 | 编号 | 项 | 严重度 | 阻塞 | 依据 | 状态 |
 |------|-----|--------|------|------|------|
 | R1 | M3 设计评审（§7 Q1-Q4 拍板）→ M3.1-M3.5 编码 | 高 | 需用户评审 | `docs/M3_MULTI_SESSION_DESIGN.md`（Draft） | **M3.1-M3.5 全部完成**（后端骨架+事件路由+前端 Map 化+exclusion set+边界）；Q1-Q4 拍板后只调常量 |
-| R2 | M4：每框 continuous / follow / 引擎（per-regionId） | 中 | 依赖 R1（M3.1+） | `OCR_STRATEGY.md` L121 | 待 R1 后 |
-| R3 | M5：替换译（画在原位） | 中 | 独立轨道，可与 M4 并行 | `OCR_STRATEGY.md` L122 | 待排期 |
+| R2 | M4：每框 continuous / follow / 引擎（per-regionId） | 中 | 依赖 R1（M3.1+） | `OCR_STRATEGY.md` L121 | **M4 引擎完成**（per-region engine，2026-08-02） |
+| R3 | M5：替换译（画在原位） | 中 | 独立轨道，可与 M4 并行 | `OCR_STRATEGY.md` L122 | **核心已完成**（不透明遮盖增强，2026-08-02）；kivio 批量 id/替换几何可选 |
 | R4 | OCR 残留修复 M1-17~20 | 低-中 | 无 | `.pi-subagents/artifacts/outputs/fixplan/ocr.md` | **已 DONE**（全部复核已修） |
 | R5 | 引擎残留 M2-03/04 + M5-04 | 低-中 | 无 | `.pi-subagents/artifacts/outputs/fixplan/engine.md` | **已 DONE**（M2-03/04 已修，M5-04 原已修） |
 | R6 | M4-03 剪贴板竞态 / M4-02 DPI 定位 / M3-05 UIA 间隔 | 低-中 | 无 | fixplan/overlay.md + hook.md | **已 DONE**（M4-03 已修；M4-02/M3-05/hook low 复核已缓解/已修） |
-| R7 | 处理 `feature/next-stage-optimization` 分支 S0-S4（10 提交） | 高 | 需评估 | git 分支 | OPEN |
-| R8 | PR #8 合并决策（合并到 master 或继续在分支推进） | 高 | 需用户决策 | git/PR | 待决策 |
+| R7 | 处理 `feature/next-stage-optimization` 分支 S0-S4（10 提交） | 高 | 需评估 | git 分支 | OPEN（R7.1/R7.2/R7.3 死代码完成，见 §6） |
+| R8 | PR #8 合并决策（合并到 master 或继续在分支推进） | 高 | 需用户决策 | git/PR | 待决策（云端审核中） |
 
 ---
 
@@ -162,18 +162,26 @@ S 分支 = **与 PR #8 平行的独立轨道**（merge-base = `33d5241` = master
 **R7.1 → R7.3 状态：**
 1. **R7.1 C 类** ✅ 已完成（除 `0e2c2b4` extension 因架构冲突跳过，需单独评审）
 2. **R7.2 B 类非 capture** ✅ 已完成（S2/S3-backend/S3-frontend/S3-followup）
-3. **R7.3**（`e4bcc62` S0+S1 capture.rs 死代码清理 + WinRT OCR 重构）待 PR #8 合并后比对，暂缓
+3. **R7.3 死代码清理** ✅ 已完成（2026-08-02，提交 `d3c104a`）：删 `capture_full_screen` / `system_ocr` / `TextRegion`+`detect_text_regions`+`system_ocr_detailed_inner`+`build_region`（全部未注册、零调用，-448 行）。验证：cargo check ✅、全量 548 passed ✅。
+4. **R7.3 剩余（暂缓）**：`system_ocr_detailed` 统一到 `run_winrt_ocr_raw` + spawn_blocking 卸载——S 分支版本用 `join("\n")` 会**回退当前 HEAD 的 `join_text_regions`（P2 布局合并）**，且依赖 PR #8 合并后比对，暂缓。
+
+**M4/M5 状态（2026-08-02，提交 `33e48e5`）：**
+- **M4 per-region 引擎** ✅：`RegionState.engine` + `captureAndTranslate` 用 `st.engine`；`engineChange` 拆分 `perRegion` 标志（下拉=本 region 选择，机按钮=全局 enable/promote）；`OcrRegionUpdateData.engine` 推送到 frame（frame 下拉显示 region 引擎）；后端 `RegionSession.engine` + `ocr_region_set_engine` 命令镜像。验证：tsc ✅、vitest 173 ✅、cargo 548 ✅、eslint 0 errors ✅。
+- **M5 画在原位增强** ✅：`TranslationLine` 背景从 `bg-strong`（半透明）改为 `bg-solid`（近不透明），kivio 式替换原文；背景 `relative` 内容自适应，长翻译完全遮盖。剩余可选：kivio 批量 id / 替换几何高级特性。
+- **未做**：多框 window 创建接线（`ocr_begin_session` 非 default 只注册 session 未建窗，见 §2 备注）。
 
 ---
 
 ## 7. 执行顺序建议
 
 1. ~~**R4/R5/R6 快速修**~~ ✅ **已全部完成**（2026-08-01，见各节，测试 535 passed）
-2. **R1 M3.1-M3.3** ✅ **已完成**（544 lib tests + 173 FE tests）；**M3.4 可继续**（后端 exclusion set，风险中低）或等 Q1-Q4 拍板
-3. **R7.1 cherry-pick C 类**（docs/S4/i18n/extension）——低风险、独立文件面
-4. **R7.2 cherry-pick B 类非 capture 项**（S2 资源管理、S3-backend 非 capture 部分）
-5. **R8 PR #8 合并** + **R7.3**（capture.rs 相关，需 PR #8 合并后比对）
-6. **R2/R3**（M4/M5 开发，M4 依赖 R1）
+2. ~~**R1 M3.1-M3.5**~~ ✅ **全部完成**（544 lib tests + 173 FE tests，Q1-Q4 待拍板只调常量）
+3. ~~**R7.1 cherry-pick C 类**~~ ✅（docs/S4/i18n 已完成，`0e2c2b4` extension 跳过待单独评审）
+4. ~~**R7.2 cherry-pick B 类非 capture 项**~~ ✅（S2 资源管理、S3-backend 非 capture 部分）
+5. ~~**M4 per-region 引擎**~~ ✅ + ~~**M5 画在原位增强**~~ ✅（2026-08-02）
+6. ~~**R7.3 死代码清理**~~ ✅（2026-08-02，-448 行）
+7. **R8 PR #8 合并**（云端审核中）+ **R7.3 剩余**（WinRT OCR 统一，需 PR #8 合并后比对）
+8. **多框 window 创建接线**（`ocr_begin_session` 非 default 建窗，M4/M5 之后的真正功能增量）
 
 ---
 
