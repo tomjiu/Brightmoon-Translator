@@ -41,7 +41,7 @@
 - **Q1.** `MAX_REGIONS` 上限：建议 8（snow-shot 对齐，内存 240-480MB）；备选 12（PinWindowManager::MAX_POOL_SIZE）。是否 settings 可调？
 - **Q2.** 新建 region 默认显示模式：建议沿用 `translated`（与单框一致）。是否 settings 可配？
 - **Q3.** continuous per-region 独立开关 vs 加全局 pause-all：倾向 per-region + 可选全局暂停。
-- **Q4.** 翻译缓存是否跨 region 共享：建议 deferred 到 M4（M3 非目标）。
+- **Q4.** 翻译缓存是否跨 region 共享：建议 deferred 到 M4（M3 非目标）。**已完成（8e2432c）**：前端 `sharedTranslationCacheRef`（from:to:engine:text LRU 缓存），单段/批段路径共享去重。
 
 批准后的编码阶段（M3.1-M3.5，见设计 §5）：
 - **M3.1 ✅ 已完成（2026-08-01）**：`commands/region_session.rs` — `RegionSessionManager`（`OnceLock<Mutex<..>>` 单例）+ `OcrRegionRect`/`RegionMode`/`RegionSessionInfo` + `region_label()` + `MAX_REGIONS=8` + 5 命令（`ocr_begin_session`/`ocr_end_session`/`ocr_region_set_mode`/`ocr_region_list` 新增；`set_ocr_region_frame_sampling` 扩展 `id: Option<String>` 缺省 default）。default 委托现有 `ocr_begin_session_hide_main`/`ocr_end_session_show_main`/`close_ocr_region_frame`，不重写 baton。9 单测。**验证：cargo check --all ✅，cargo test --lib 544 passed / 0 failed / 2 ignored ✅**。
