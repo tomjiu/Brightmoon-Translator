@@ -13,6 +13,7 @@ import {
   Pin,
   Link2,
   Download,
+  Plus,
 } from 'lucide-react';
 import type { OcrLineResult } from '../services/ocr';
 import { safeInvoke } from '../services/invoke';
@@ -1302,6 +1303,19 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
         </button>
 
         <span className="w-2 flex-shrink-0" />
+
+        {/* Multi-frame: add another region (starts a new selector selection) */}
+        <button
+          type="button"
+          className={`${btnBase} text-[var(--ocr-overlay-text-soft)] hover:text-emerald-300 hover:bg-emerald-400/15`}
+          onClick={() => {
+            void emitMain(OcrMainEvents.addRegion, null).catch(() => undefined);
+            flashHint(tf('ocrRegion.addRegionHint', '框选新的翻译区域'));
+          }}
+          title={tf('ocrRegion.addRegion', '新建区域')}
+        >
+          <Plus size={12} />
+        </button>
 
         {/* Close — always available */}
         <button

@@ -71,6 +71,8 @@ export const OcrMainEvents = {
   engineChange: 'ocr-region-engine-change',
   positionChanged: 'ocr-region-position-changed',
   sizeChanged: 'ocr-region-size-changed',
+  /** Multi-frame: frame toolbar asks main to start a NEW region selection. */
+  addRegion: 'ocr-region-add-region',
 } as const;
 
 export type OcrRegionEventName = (typeof OcrRegionEvents)[keyof typeof OcrRegionEvents];

@@ -1007,6 +1007,28 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       ).catch(() => undefined);
     });
 
+    // Multi-frame: frame toolbar "add region" → start a new selection for a
+    // fresh region id (existing region frames keep running).
+    void registerListener<{ regionId?: string }>(OcrMainEvents.addRegion, (event) => {
+      const sourceRid = event.payload?.regionId ?? DEFAULT_REGION_ID;
+      // Stop the source region's continuous watch so its live frame never
+      // interferes with the new selector (mirrors startScreenshotTranslate).
+      const srcSt = getRegionState(sourceRid);
+      if (srcSt.continuous) {
+        srcSt.continuous = false;
+        srcSt.consecutiveSkip = 0;
+        void emitToRegionId(
+          sourceRid,
+          regionEventName(OcrRegionEvents.continuousState, sourceRid),
+          { enabled: false },
+        ).catch(() => undefined);
+      }
+      const newId = String(nextRegionIdRef.current++);
+      void startScreenshotTranslateRef.current?.(newId).catch((e: unknown) =>
+        console.warn('[OCR] add-region start failed:', e),
+      );
+    });
+
     return () => {
       cancelled = true;
       if (resizeOcrTimer) window.clearTimeout(resizeOcrTimer);
@@ -1205,8 +1227,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       const screenH = Math.round(cropH);
 
       const region: RegionRect = { x: screenX, y: screenY, width: screenW, height: screenH };
-      // M3: selection creates the legacy default region session.
-      const selRegionId = DEFAULT_REGION_ID;
+      // Multi-frame: selection lands on the target region (default = legacy).
+      const selRegionId = selectionTargetRegionIdRef.current;
       const selSt = getRegionState(selRegionId);
       selSt.region = region;
 
@@ -1235,6 +1257,8 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           y: screenY,
           width: screenW,
           height: screenH,
+          // Multi-frame: create the per-region window (default → legacy label).
+          id: selRegionId,
         });
         const [img] = await Promise.all([cropPromise, framePromise]);
         image = img;
@@ -1287,6 +1311,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
             y: screenY,
             width: screenW,
             height: screenH,
+            id: selRegionId,
           });
           await safeInvoke('set_ocr_region_frame_visible', { visible: true }, { silent: true });
           const ready2 = await waitForOcrRegionFrameReady(OCR_FRAME_READY_TIMEOUT_MS, selRegionId);
@@ -1349,6 +1374,14 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
 
   // Guard ref to prevent concurrent startScreenshotTranslate calls
   const startingRef = useRef(false);
+  /** Multi-frame: which region the current selector selection should land on.
+   *  Set by startScreenshotTranslate(regionId); read by the selector callback
+   *  (default = legacy single-frame behavior). */
+  const selectionTargetRegionIdRef = useRef(DEFAULT_REGION_ID);
+  /** Multi-frame: monotonic id counter for new regions. */
+  const nextRegionIdRef = useRef(2);
+  /** Multi-frame: latest startScreenshotTranslate (ref avoids TDZ in listeners). */
+  const startScreenshotTranslateRef = useRef<((regionId?: string) => Promise<void>) | null>(null);
   /** Stuck-selector watchdog — cleared on selection done / cancel / next start. */
   const selectorSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1397,13 +1430,18 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
   //   selector visible → user selects
   //   result show+focus → destroy selector (result takes baton)
   //   session end (close/cancel) → main show
-  const startScreenshotTranslate = useCallback(async () => {
-    if (!isTauri) return;
-    if (startingRef.current) return;
-    startingRef.current = true;
+  const startScreenshotTranslate = useCallback(
+    async (regionId?: string) => {
+      if (!isTauri) return;
+      if (startingRef.current) return;
+      startingRef.current = true;
 
-    // M3: session start resets the legacy default region session.
-    const st = getRegionState(DEFAULT_REGION_ID);
+      // Multi-frame: the target region for this selection (default = legacy).
+      const targetRegionId = regionId || DEFAULT_REGION_ID;
+      selectionTargetRegionIdRef.current = targetRegionId;
+
+      // M3: session start resets the legacy default region session.
+      const st = getRegionState(targetRegionId);
     st.continuous = false;
     st.frameClosed = true;
     st.sessionId += 1;
@@ -1442,6 +1480,20 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     clearSelectorSafetyTimer();
 
     try {
+      // Multi-frame: while the selector is up, exclude ALL live region frames
+      // from capture so the new selection never screenshots an existing frame.
+      // Non-default id routes to the global exclusion set (M3.4); default keeps
+      // the legacy single-window path below.
+      const anyLiveRegion = [...regionsRef.current.keys()].find(
+        (rid) => rid !== DEFAULT_REGION_ID && regionsRef.current.get(rid)?.region,
+      );
+      if (anyLiveRegion) {
+        await safeInvoke(
+          'set_ocr_region_frame_sampling',
+          { sampling: true, id: anyLiveRegion },
+          { silent: true },
+        );
+      }
       await safeInvoke(
         'set_ocr_region_frame_sampling',
         { sampling: false, id: DEFAULT_REGION_ID },
@@ -1458,6 +1510,14 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       st.frameClosed = true;
 
       // STranslate: collapse main for whole OCR session (not just capture).
+      if (targetRegionId !== DEFAULT_REGION_ID) {
+        // Multi-frame: register the per-region session so the backend knows it.
+        await safeInvoke(
+          'ocr_begin_session',
+          { id: targetRegionId, rect: null, snapshot: null },
+          { silent: true },
+        );
+      }
       await safeInvoke('ocr_begin_session_hide_main', undefined, { silent: true });
       await new Promise((resolve) => setTimeout(resolve, 32));
 
@@ -1536,6 +1596,9 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       startingRef.current = false;
     }
   }, [isTauri, t, clearSelectorSafetyTimer, getRegionState]);
+  // Multi-frame: keep the latest startScreenshotTranslate for the addRegion
+  // listener (defined earlier in the file) via a ref.
+  startScreenshotTranslateRef.current = startScreenshotTranslate;
 
   useEffect(() => {
     if (launchNonce <= 0) return;
