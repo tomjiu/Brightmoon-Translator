@@ -167,7 +167,7 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     // All engines failed / empty payload — surface it
     if (!response.results.length || !response.results.some((r) => r.text.trim())) {
       const detail =
-        response.errors && response.errors.length
+        response.errors?.length
           ? `\n${response.errors.slice(0, 5).join('\n')}`
           : '';
       set({
