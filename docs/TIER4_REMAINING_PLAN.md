@@ -145,8 +145,14 @@ S 分支 = **与 PR #8 平行的独立轨道**（merge-base = `33d5241` = master
 - `system_ocr_detailed` 仍注册保留（S 分支未删）
 - S 分支与 PR #8 在 capture.rs 的 diff：S 删 579 行，PR #8 加 365 行 → 需逐一比对避免删掉 PR #8 新功能
 
+**R7.1 执行记录（2026-08-01）：**
+- ✅ cherry-pick `7836c4f`（docs v2 审计计划书）、`3964c2c`（S4 工程化：eslint/CI/release）、`7c9be02`（i18n en/ja/ko 四语）、`4548d4e`（enginesMeta nameZh 移除 + OCR 下拉 i18n，OcrRegionFrame 自动合并保留 M3.3 regionId 逻辑）
+- ✅ 补 1 个 lint 修复提交（translateStore.ts optional chain，S4 eslint 严格规则暴露）
+- ⛔ **`0e2c2b4`（extension Tier1 B1-B8）跳过**：与 HEAD extension 架构语义冲突——S 分支是旧代码上完全重写 page-translator.js（586 行），HEAD 已演进到 Tier4（1074 行含 specialRules/Main container）。强行合并会覆盖 HEAD 功能。需单独架构评审。
+- **验证：tsc ✅、vitest 311 passed（src 173 + extension 138）✅、eslint 0 errors ✅**
+
 **决策建议（R7.1 → R7.3 顺序）：**
-1. **R7.1** cherry-pick C 类（docs/S4/i18n/extension）——低风险、立即可做
+1. **R7.1 C 类** ✅ 已完成（除 `0e2c2b4` extension 因架构冲突跳过）
 2. **R7.2** cherry-pick B 类中与 capture.rs 无关的项（S2 资源管理、S3-backend 非 capture 部分）
 3. **R7.3** capture.rs 相关（S0+S1 死代码清理 + WinRT OCR 重构）需人工比对 PR #8 新功能后再定；建议在 PR #8 合并后做
 
