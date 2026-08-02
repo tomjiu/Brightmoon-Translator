@@ -25,6 +25,8 @@ export interface HistoryItem {
 }
 
 // Config types
+type LlmApiFormat = 'openai' | 'anthropic' | 'gemini';
+
 interface LlmProviderEntry {
   id: string;
   name: string;
@@ -34,6 +36,8 @@ interface LlmProviderEntry {
   priority: number;
   enabled: boolean;
   models: string[];
+  /** Wire format for chat + model list. Mirrors modelProvider.LlmProviderEntry (S3). */
+  apiFormat?: LlmApiFormat;
 }
 
 interface LlmConfig {
