@@ -90,6 +90,11 @@ pub fn extract_text_from_docx(file_path: &str) -> Result<DocxDocument, String> {
                 is_heading,
                 heading_level,
             });
+        } else if let docx_rs::DocumentChild::Table(table) = child {
+            // D-fix: include table cell paragraphs in the translation index so
+            // they are not silently skipped. Traversal order must match
+            // write_translated_docx exactly (row → cell → paragraph, in order).
+            total_words += collect_table_paragraphs(table, &mut paragraphs);
         }
     }
 
@@ -118,6 +123,38 @@ fn extract_paragraph_text(para: &Paragraph) -> String {
     }
 
     text
+}
+
+/// D-fix: Collect translatable paragraphs inside a table, in document order
+/// (row → cell → paragraph). MUST stay in lockstep with
+/// `patch_table_paragraphs` used by `write_translated_docx` so the
+/// `index` values line up. Returns the number of words collected.
+fn collect_table_paragraphs(table: &docx_rs::Table, out: &mut Vec<DocxParagraph>) -> usize {
+    let mut words = 0usize;
+    for child in &table.rows {
+        let docx_rs::TableChild::TableRow(row) = child;
+        for cell_child in &row.cells {
+            let docx_rs::TableRowChild::TableCell(cell) = cell_child;
+            for content in &cell.children {
+                if let docx_rs::TableCellContent::Paragraph(para) = content {
+                    let text = extract_paragraph_text(para);
+                    if text.trim().is_empty() {
+                        continue;
+                    }
+                    words += count_words(&text);
+                    let (style, is_heading, heading_level) = detect_paragraph_style(para);
+                    out.push(DocxParagraph {
+                        index: out.len(),
+                        text,
+                        style,
+                        is_heading,
+                        heading_level,
+                    });
+                }
+            }
+        }
+    }
+    words
 }
 
 /// Detect paragraph style
@@ -234,9 +271,16 @@ pub fn write_translated_docx(
 
                 para_index += 1;
             }
-            docx_rs::DocumentChild::Table(table) => {
-                // Best-effort: re-attach tables so they are not silently dropped.
-                // Cell text is not rewritten in this pass (known fidelity limit).
+            docx_rs::DocumentChild::Table(mut table) => {
+                // D-fix: translate table cell paragraphs in place. Traversal
+                // order must match collect_table_paragraphs (extract side).
+                let (count, words) = patch_table_paragraphs(
+                    &mut table,
+                    &translation_map,
+                    &mut para_index,
+                );
+                paragraphs_translated += count;
+                words_translated += words;
                 new_doc = new_doc.add_table(*table);
             }
             _ => {
@@ -349,6 +393,40 @@ fn create_translated_paragraph(original: &Paragraph, translated_text: &str) -> P
     new_para
 }
 
+/// D-fix: Translate paragraphs inside a table in place. Consumes the same
+/// `para_index` sequence as `collect_table_paragraphs` (extract side) so the
+/// lookup map lines up. Returns (translated_count, words_count).
+fn patch_table_paragraphs(
+    table: &mut docx_rs::Table,
+    translation_map: &std::collections::HashMap<usize, &String>,
+    para_index: &mut usize,
+) -> (usize, usize) {
+    let mut translated = 0usize;
+    let mut words = 0usize;
+    for child in &mut table.rows {
+        let docx_rs::TableChild::TableRow(row) = child;
+        for cell_child in &mut row.cells {
+            let docx_rs::TableRowChild::TableCell(cell) = cell_child;
+            for content in &mut cell.children {
+                if let docx_rs::TableCellContent::Paragraph(para) = content {
+                    let text = extract_paragraph_text(para);
+                    if text.trim().is_empty() {
+                        continue;
+                    }
+                    if let Some(translated_text) = translation_map.get(para_index) {
+                        let new_para = create_translated_paragraph(para, translated_text);
+                        *para = new_para;
+                        translated += 1;
+                        words += count_words(&text);
+                    }
+                    *para_index += 1;
+                }
+            }
+        }
+    }
+    (translated, words)
+}
+
 /// Translate DOCX file
 pub async fn translate_docx_file(
     input_path: &str,
@@ -416,5 +494,51 @@ mod tests {
         assert!(style.is_empty());
         assert!(!is_heading);
         assert_eq!(level, 0);
+    }
+
+    /// D-fix: table cell paragraphs get indexes and are patched in lockstep.
+    #[test]
+    fn test_table_cell_paragraph_index_alignment() {
+        let cell1 = docx_rs::TableCell::new()
+            .add_paragraph(Paragraph::new().add_run(Run::new().add_text("Hello")));
+        let cell2 = docx_rs::TableCell::new()
+            .add_paragraph(Paragraph::new().add_run(Run::new().add_text("World")));
+        let table = docx_rs::Table::new(vec![docx_rs::TableRow::new(vec![cell1, cell2])]);
+
+        let mut out: Vec<DocxParagraph> = Vec::new();
+        let words = collect_table_paragraphs(&table, &mut out);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].index, 0);
+        assert_eq!(out[1].index, 1);
+        assert_eq!(out[0].text, "Hello");
+        assert_eq!(out[1].text, "World");
+        assert!(words >= 2);
+
+        let mut map = std::collections::HashMap::new();
+        map.insert(0usize, "你好".to_string());
+        let map_ref: std::collections::HashMap<usize, &String> =
+            map.iter().map(|(k, v)| (*k, v)).collect();
+
+        let mut patched = table;
+        let mut idx = 0usize;
+        let (count, w) = patch_table_paragraphs(&mut patched, &map_ref, &mut idx);
+        assert_eq!(count, 1);
+        assert_eq!(idx, 2);
+        assert!(w >= 1);
+
+        // Cell 0 paragraph replaced with translation, cell 1 kept.
+        let docx_rs::TableChild::TableRow(row) = &patched.rows[0];
+        let docx_rs::TableRowChild::TableCell(c0) = &row.cells[0];
+        let docx_rs::TableRowChild::TableCell(c1) = &row.cells[1];
+        let p0 = match &c0.children[0] {
+            docx_rs::TableCellContent::Paragraph(p) => p,
+            _ => panic!("expected paragraph"),
+        };
+        let p1 = match &c1.children[0] {
+            docx_rs::TableCellContent::Paragraph(p) => p,
+            _ => panic!("expected paragraph"),
+        };
+        assert_eq!(extract_paragraph_text(p0), "你好");
+        assert_eq!(extract_paragraph_text(p1), "World");
     }
 }
