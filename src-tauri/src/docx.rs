@@ -1,4 +1,4 @@
-use docx_rs::{Docx, Paragraph, Run};
+use docx_rs::{Docx, Paragraph, Run, RunProperty};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 
@@ -272,38 +272,78 @@ pub fn write_translated_docx(
     })
 }
 
-/// Create a new paragraph with translated text, preserving original formatting
+/// Create a new paragraph with translated text, preserving original formatting.
+///
+/// P0#7 fix: when the original paragraph has MULTIPLE runs with different
+/// formatting (e.g. "Hello **bold** world"), the translated text is split back
+/// across the same run count, each run keeping its own run_property — instead
+/// of collapsing everything into the first run's format. Split is proportional
+/// to each original run's text length, so the formatting skeleton (bold /
+/// italic / color per segment) survives the translation.
 fn create_translated_paragraph(original: &Paragraph, translated_text: &str) -> Paragraph {
     let mut new_para = Paragraph::new();
 
     // Copy paragraph properties
     new_para.property = original.property.clone();
 
-    if original.children.is_empty() {
-        // If no runs, create a simple run with translated text
-        let run = Run::new().add_text(translated_text);
-        new_para = new_para.add_run(run);
-    } else {
-        // Preserve first run's formatting for translated text
-        let first_run = original.children.iter().find_map(|child| {
+    let original_runs: Vec<(RunProperty, String)> = original
+        .children
+        .iter()
+        .filter_map(|child| {
             if let docx_rs::ParagraphChild::Run(run) = child {
-                Some(run)
+                let text: String = run
+                    .children
+                    .iter()
+                    .filter_map(|rc| match rc {
+                        docx_rs::RunChild::Text(t) => Some(t.text.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                if text.is_empty() {
+                    None
+                } else {
+                    Some((run.run_property.clone(), text))
+                }
             } else {
                 None
             }
-        });
+        })
+        .collect();
 
-        if let Some(run_template) = first_run {
-            let mut new_run = Run::new().add_text(translated_text);
+    if original_runs.is_empty() {
+        // No textual runs — simple run with translated text.
+        new_para = new_para.add_run(Run::new().add_text(translated_text));
+        return new_para;
+    }
 
-            // Copy run properties
-            new_run.run_property = run_template.run_property.clone();
+    if original_runs.len() == 1 {
+        // Single run — keep its formatting for the whole translation.
+        let (prop, _) = &original_runs[0];
+        let mut new_run = Run::new().add_text(translated_text);
+        new_run.run_property = prop.clone();
+        new_para = new_para.add_run(new_run);
+        return new_para;
+    }
 
-            new_para = new_para.add_run(new_run);
+    // Multi-run: split translated text proportionally to original run lengths.
+    let total_len: usize = original_runs.iter().map(|(_, t)| t.chars().count()).sum();
+    let translated_chars = translated_text.chars().count();
+    let mut consumed = 0usize;
+    for (i, (prop, text)) in original_runs.iter().enumerate() {
+        let run_chars = text.chars().count();
+        let is_last = i + 1 == original_runs.len();
+        let slice: String = if is_last {
+            translated_text.chars().skip(consumed).collect()
         } else {
-            let run = Run::new().add_text(translated_text);
-            new_para = new_para.add_run(run);
-        }
+            let ratio = if total_len > 0 { run_chars as f64 / total_len as f64 } else { 0.0 };
+            let take = ((translated_chars as f64) * ratio).round() as usize;
+            let end = (consumed + take).min(translated_chars);
+            translated_text.chars().skip(consumed).take(end - consumed).collect()
+        };
+        consumed += slice.chars().count();
+        let mut new_run = Run::new().add_text(slice);
+        new_run.run_property = prop.clone();
+        new_para = new_para.add_run(new_run);
     }
 
     new_para

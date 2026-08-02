@@ -112,12 +112,13 @@ static std::atomic<bool> g_ejecting{false};
 #pragma pack(push, 1)
 struct SharedMemoryHeader {
     uint32_t magic;           // 0x4D4F4F4E ("MOON")
-    uint32_t version;         // 1
+    uint32_t version;         // 2 (read_offset introduced)
     uint32_t write_offset;    // Current write position
     uint32_t buffer_size;     // Total buffer size
     uint32_t sequence;        // Sequence number for new messages
+    uint32_t read_offset;     // Reader's consumed position (P0#4/#5)
     char     process_name[64]; // Target process name
-    uint8_t  reserved[40];    // Reserved for future use
+    uint8_t  reserved[36];    // Reserved for future use
 };
 
 struct TextMessage {
@@ -236,9 +237,10 @@ static bool InitSharedMemory() {
     if (g_shared_data->magic != SHARED_MEMORY_MAGIC) {
         memset(g_shared_data, 0, SHARED_MEMORY_SIZE);
         g_shared_data->magic = SHARED_MEMORY_MAGIC;
-        g_shared_data->version = 1;
+        g_shared_data->version = 2;
         g_shared_data->buffer_size = SHARED_MEMORY_SIZE;
         g_shared_data->write_offset = sizeof(SharedMemoryHeader);
+        g_shared_data->read_offset = sizeof(SharedMemoryHeader);
 
         // Store process name
         char proc_name[MAX_PATH];
@@ -290,12 +292,24 @@ static void SendTextToHost(const char* utf8_text, size_t len, int x, int y, UINT
 
     uint32_t msg_size = sizeof(TextMessage) + (uint32_t)len;
     uint32_t total_size = msg_size;
+    const uint32_t header_size = (uint32_t)sizeof(SharedMemoryHeader);
 
     // Check if we need to wrap around
     uint32_t end_offset = g_shared_data->write_offset + total_size;
     if (end_offset > g_shared_data->buffer_size) {
-        // Wrap to after header
-        g_shared_data->write_offset = sizeof(SharedMemoryHeader);
+        // P0#4/#5: if the reader has not consumed everything yet (read_offset
+        // is past the header), wrapping to the head would overwrite unread
+        // messages — and a reader mid-scan could see a torn half-message.
+        // Drop this message instead of corrupting the buffer. The reader is
+        // the host pump (fast); losing one text draw under burst is better
+        // than re-reading stale text or a torn frame.
+        if (g_shared_data->read_offset > header_size) {
+            g_stats.send_text_eject_blocked.fetch_add(1, std::memory_order_relaxed);
+            LeaveCriticalSection(&g_write_lock);
+            return;
+        }
+        // Safe to wrap: reader has consumed everything so far.
+        g_shared_data->write_offset = header_size;
         g_shared_data->sequence++;
     }
 

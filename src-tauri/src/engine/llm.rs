@@ -559,8 +559,21 @@ impl LlmEngine {
 
         for (attempt, ep) in self.endpoints.iter().enumerate() {
             let label = crate::security::sanitize_log_message(&ep.label);
-            match self.stream_one_endpoint(ep, &messages, &tx).await {
-                Ok(text) => return Ok(text),
+            // P0 fix: each endpoint streams into a PRIVATE channel first. If the
+            // endpoint fails partway (HTTP error / mid-stream), its partial tokens
+            // are DISCARDED — never forwarded to the caller's channel. Only a
+            // fully-successful endpoint's tokens are relayed to `tx`. This prevents
+            // "Hello, " (endpoint 1) + "World" (endpoint 2) concatenation in the
+            // consumer when failover kicks in mid-stream.
+            let (inner_tx, mut inner_rx) = mpsc::channel::<String>(100);
+            match self.stream_one_endpoint(ep, &messages, &inner_tx).await {
+                Ok(text) => {
+                    drop(inner_tx);
+                    while let Some(token) = inner_rx.recv().await {
+                        let _ = tx.send(token).await;
+                    }
+                    return Ok(text);
+                },
                 Err(e) => {
                     last_error = format!("{}", e);
                     tracing::warn!(

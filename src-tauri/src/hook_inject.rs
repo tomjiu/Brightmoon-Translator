@@ -47,8 +47,9 @@ struct SharedMemoryHeader {
     write_offset: u32,
     buffer_size: u32,
     sequence: u32,
+    read_offset: u32,
     process_name: [u8; 64],
-    reserved: [u8; 40],
+    reserved: [u8; 36],
 }
 
 #[repr(C, packed)]
@@ -486,61 +487,74 @@ impl HookManager {
         // - Message length is validated (0 < length <= 65536)
         // - Buffer bounds are checked before reading text
         unsafe {
-            let header = &*self.shared_data;
+            let header = &mut *self.shared_data;
 
             // Check if new data is available
             if header.magic != SHARED_MEMORY_MAGIC {
                 return messages;
             }
 
-            // Simple sequence-based check
-            if header.sequence == self.last_sequence {
-                return messages;
-            }
-
-            // Read messages from shared memory
+            // P0#4 fix: consume from read_offset (our position) up to
+            // write_offset, instead of re-reading the whole buffer each time.
+            // P0#5 fix: because the writer refuses to wrap over unread data,
+            // read_offset <= write_offset normally; when the reader is behind
+            // after a wrap (read_offset > write_offset), read the tail first
+            // then the wrapped head.
+            let header_size = std::mem::size_of::<SharedMemoryHeader>();
             let buffer = self.shared_data as *const u8;
-            let mut offset = std::mem::size_of::<SharedMemoryHeader>();
+            let buffer_size = header.buffer_size as usize;
+            let read_from = (header.read_offset as usize).max(header_size);
+            let write_to = (header.write_offset as usize).min(buffer_size);
 
-            while offset + std::mem::size_of::<TextMessage>() < header.write_offset as usize {
-                let msg = &*(buffer.add(offset) as *const TextMessage);
-                if msg.length == 0 || msg.length > 65536 {
-                    break; // Invalid message
-                }
-
-                let text_offset = offset + std::mem::size_of::<TextMessage>();
-                if text_offset + msg.length as usize > header.buffer_size as usize {
-                    break; // Out of bounds
-                }
-
-                let text_bytes =
-                    std::slice::from_raw_parts(buffer.add(text_offset), msg.length as usize);
-
-                if let Ok(text) = std::str::from_utf8(text_bytes) {
-                    // 4a-marker: the DLL sends late-loaded DLL basenames through
-                    // shared memory with a reserved code_page sentinel so the
-                    // host can route them to a debug channel instead of treating
-                    // them as captured text (which would pollute the translation
-                    // pipeline with filenames like "d3d9.dll").
-                    if msg.code_page == LATE_LOADED_MARKER_CODE_PAGE {
-                        tracing::debug!(
-                            "[hook] late-loaded module patched by Ldr callback: {}",
-                            text
-                        );
-                    } else {
-                        messages.push(CapturedText {
-                            text: text.to_string(),
-                            code_page: msg.code_page,
-                            x: msg.x,
-                            y: msg.y,
-                            timestamp: msg.timestamp,
-                        });
+            let read_span = |from: usize, to: usize, out: &mut Vec<CapturedText>| {
+                let mut offset = from.max(header_size);
+                while offset + std::mem::size_of::<TextMessage>() < to {
+                    let msg = &*(buffer.add(offset) as *const TextMessage);
+                    if msg.length == 0 || msg.length > 65536 {
+                        break; // Invalid message
                     }
+                    let text_offset = offset + std::mem::size_of::<TextMessage>();
+                    if text_offset + msg.length as usize > buffer_size {
+                        break; // Out of bounds
+                    }
+                    let text_bytes =
+                        std::slice::from_raw_parts(buffer.add(text_offset), msg.length as usize);
+                    if let Ok(text) = std::str::from_utf8(text_bytes) {
+                        // 4a-marker: the DLL sends late-loaded DLL basenames through
+                        // shared memory with a reserved code_page sentinel so the
+                        // host can route them to a debug channel instead of treating
+                        // them as captured text (which would pollute the translation
+                        // pipeline with filenames like "d3d9.dll").
+                        if msg.code_page == LATE_LOADED_MARKER_CODE_PAGE {
+                            tracing::debug!(
+                                "[hook] late-loaded module patched by Ldr callback: {}",
+                                text
+                            );
+                        } else {
+                            out.push(CapturedText {
+                                text: text.to_string(),
+                                code_page: msg.code_page,
+                                x: msg.x,
+                                y: msg.y,
+                                timestamp: msg.timestamp,
+                            });
+                        }
+                    }
+                    offset = text_offset + msg.length as usize;
                 }
+            };
 
-                offset = text_offset + msg.length as usize;
+            if read_from <= write_to {
+                read_span(read_from, write_to, &mut messages);
+            } else {
+                // Reader is behind after a wrap: consume the tail (old messages)
+                // then the wrapped head (new messages).
+                read_span(read_from, buffer_size, &mut messages);
+                read_span(header_size, write_to, &mut messages);
             }
 
+            // P0#4: advance our consumption position.
+            header.read_offset = header.write_offset;
             self.last_sequence = header.sequence;
             self.messages_read += messages.len() as u64;
         }

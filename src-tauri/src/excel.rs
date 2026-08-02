@@ -1,9 +1,11 @@
 use calamine::{open_workbook_auto, Data, Reader, Sheets};
-use rust_xlsxwriter::{Format, Workbook};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Read as IoRead, Write as IoWrite};
+use zip::read::ZipArchive;
+use zip::write::SimpleFileOptions;
+use zip::ZipWriter;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -229,102 +231,66 @@ pub fn write_translated_excel(
     output_path: &str,
     translations: &HashMap<(String, u32, u32), String>,
 ) -> Result<ExcelTranslationResult, String> {
-    // Re-read the original workbook to preserve formatting
-    let mut workbook: Sheets<BufReader<File>> =
-        open_workbook_auto(input_path).map_err(|e| format!("Failed to open Excel file: {}", e))?;
+    // P0#8 fix: instead of rebuilding the workbook with a write-only writer
+    // (rust_xlsxwriter), rewrite the xlsx ZIP in place — copy every entry
+    // verbatim and only patch the matching <c> cells in xl/worksheets/sheetN.xml.
+    // This preserves merged cells, column widths, rich styles and charts.
+    let input_file =
+        File::open(input_path).map_err(|e| format!("Failed to open Excel file: {}", e))?;
+    let mut archive =
+        ZipArchive::new(input_file).map_err(|e| format!("Failed to read Excel archive: {}", e))?;
 
-    let mut output_workbook = Workbook::new();
+    let output_file =
+        File::create(output_path).map_err(|e| format!("Failed to create output file: {}", e))?;
+    let mut zip_writer = ZipWriter::new(output_file);
+
+    // sheet name → worksheet file path (xl/worksheets/sheetN.xml)
+    let sheet_map = xlsx_sheet_name_to_file(&mut archive)?;
+
     let mut cells_translated = 0;
     let mut words_translated = 0;
 
-    let sheet_names = workbook.sheet_names().to_vec();
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read archive entry: {}", e))?;
+        let name = entry.name().to_string();
+        let mut content = Vec::new();
+        entry
+            .read_to_end(&mut content)
+            .map_err(|e| format!("Failed to read entry content: {}", e))?;
 
-    for sheet_name in &sheet_names {
-        let range = workbook
-            .worksheet_range(sheet_name)
-            .map_err(|e| format!("Failed to read sheet '{}': {}", sheet_name, e))?;
-
-        let worksheet = output_workbook.add_worksheet();
-        worksheet
-            .set_name(sheet_name)
-            .map_err(|e| format!("Failed to set sheet name: {}", e))?;
-
-        // Create a format for wrapped text
-        let wrap_format = Format::new().set_text_wrap();
-
-        for (row_idx, row) in range.rows().enumerate() {
-            for (col_idx, cell) in row.iter().enumerate() {
-                let original_text = data_to_string(cell);
-                if original_text.is_empty() {
-                    continue;
-                }
-
-                let key = (sheet_name.clone(), row_idx as u32, col_idx as u32);
-
-                if let Some(translated) = translations.get(&key) {
-                    // Write translated text
-                    worksheet
-                        .write_string_with_format(
-                            row_idx as u32,
-                            col_idx as u16,
-                            translated,
-                            &wrap_format,
-                        )
-                        .map_err(|e| format!("Failed to write cell: {}", e))?;
-
-                    cells_translated += 1;
-                    words_translated += count_words(&original_text);
-                } else {
-                    // Write original value (preserve non-translatable cells)
-                    match cell {
-                        Data::Empty => {},
-                        Data::String(s) => {
-                            worksheet
-                                .write_string(row_idx as u32, col_idx as u16, s)
-                                .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        },
-                        Data::Float(f) => {
-                            worksheet
-                                .write_number(row_idx as u32, col_idx as u16, *f)
-                                .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        },
-                        Data::Int(i) => {
-                            worksheet
-                                .write_number(row_idx as u32, col_idx as u16, *i as f64)
-                                .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        },
-                        Data::Bool(b) => {
-                            worksheet
-                                .write_boolean(row_idx as u32, col_idx as u16, *b)
-                                .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        },
-                        Data::Error(_) => {
-                            // Skip error cells
-                        },
-                        Data::DateTime(dt) => {
-                            worksheet
-                                .write_number(row_idx as u32, col_idx as u16, dt.as_f64())
-                                .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        },
-                        Data::DateTimeIso(s) => {
-                            worksheet
-                                .write_string(row_idx as u32, col_idx as u16, s)
-                                .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        },
-                        Data::DurationIso(s) => {
-                            worksheet
-                                .write_string(row_idx as u32, col_idx as u16, s)
-                                .map_err(|e| format!("Failed to write cell: {}", e))?;
-                        },
-                    }
-                }
+        // Patch worksheet XML files that contain translated cells.
+        if let Some(sheet_name) = sheet_map.iter().find(|(_, file)| *file == &name).map(|(n, _)| n) {
+            let xml = String::from_utf8(content.clone())
+                .map_err(|e| format!("Invalid UTF-8 in worksheet: {}", e))?;
+            let (patched, count, words) =
+                patch_worksheet_cells(&xml, sheet_name, translations)?;
+            if count > 0 {
+                cells_translated += count;
+                words_translated += words;
             }
+            let out_bytes = patched.into_bytes();
+            zip_writer
+                .start_file(&name, SimpleFileOptions::default())
+                .map_err(|e| format!("Failed to write to archive: {}", e))?;
+            zip_writer
+                .write_all(&out_bytes)
+                .map_err(|e| format!("Failed to write worksheet content: {}", e))?;
+        } else {
+            // Copy all other entries verbatim (styles, charts, merges, etc).
+            zip_writer
+                .start_file(&name, SimpleFileOptions::default())
+                .map_err(|e| format!("Failed to write to archive: {}", e))?;
+            zip_writer
+                .write_all(&content)
+                .map_err(|e| format!("Failed to write entry content: {}", e))?;
         }
     }
 
-    output_workbook
-        .save(output_path)
-        .map_err(|e| format!("Failed to save Excel file: {}", e))?;
+    zip_writer
+        .finish()
+        .map_err(|e| format!("Failed to finalize Excel file: {}", e))?;
 
     Ok(ExcelTranslationResult {
         input_path: input_path.to_string(),
@@ -332,12 +298,186 @@ pub fn write_translated_excel(
         cells_translated,
         words_translated,
         success: true,
-        // calamine + rust_xlsxwriter rebuild loses merges, column widths, rich text, charts
-        error_message: Some(
-            "Excel export rewrites values only; merged cells, styles, charts may be lost"
-                .to_string(),
-        ),
+        error_message: None,
     })
+}
+
+/// Build sheet name → worksheet file path map by reading workbook.xml
+/// and the workbook relationships (xl/_rels/workbook.xml.rels).
+fn xlsx_sheet_name_to_file(archive: &mut ZipArchive<File>) -> Result<HashMap<String, String>, String> {
+    let mut map = HashMap::new();
+    let workbook_xml = read_entry(archive, "xl/workbook.xml")?;
+    // Collect sheet names in document order with their r:id.
+    let mut names: Vec<(String, String)> = Vec::new();
+    for cap in workbook_xml.split("<sheet ").skip(1) {
+        // name="..." sheetId="N" r:id="rIdX"
+        let name = extract_attr(cap, "name");
+        let rid = extract_attr(cap, "r:id");
+        if let (Some(name), Some(rid)) = (name, rid) {
+            names.push((name, rid));
+        }
+    }
+    // Read rels to map rId → target (worksheets/sheet1.xml).
+    let rels_xml = read_entry(archive, "xl/_rels/workbook.xml.rels")?;
+    let mut rid_to_target = HashMap::new();
+    for rel in rels_xml.split("<Relationship ").skip(1) {
+        let id = extract_attr(rel, "Id");
+        let target = extract_attr(rel, "Target");
+        if let (Some(id), Some(target)) = (id, target) {
+            // Normalize target: "worksheets/sheet1.xml" or "/xl/worksheets/sheet1.xml"
+            let t = target.trim_start_matches('/');
+            let t = t.strip_prefix("xl/").unwrap_or(t);
+            rid_to_target.insert(id, format!("xl/{}", t.trim_start_matches('/')));
+        }
+    }
+    for (name, rid) in names {
+        if let Some(target) = rid_to_target.get(&rid) {
+            map.insert(name, target.clone());
+        }
+    }
+    Ok(map)
+}
+
+fn read_entry(archive: &mut ZipArchive<File>, path: &str) -> Result<String, String> {
+    let mut entry = archive
+        .by_name(path)
+        .map_err(|_| format!("Missing entry: {path}"))?;
+    let mut content = Vec::new();
+    entry
+        .read_to_end(&mut content)
+        .map_err(|e| format!("Failed to read {path}: {e}"))?;
+    String::from_utf8(content).map_err(|e| format!("Invalid UTF-8 in {path}: {e}"))
+}
+
+fn extract_attr(xml: &str, attr: &str) -> Option<String> {
+    let needle = format!("{attr}=\"");
+    let start = xml.find(&needle)? + needle.len();
+    let end = xml[start..].find('"')? + start;
+    Some(xml[start..end].to_string())
+}
+
+/// Convert an Excel cell ref like "A1" / "BC12" into 0-based (row, col).
+fn cell_ref_to_rc(ref_: &str) -> Option<(u32, u32)> {
+    let bytes = ref_.as_bytes();
+    let mut col: u32 = 0;
+    let mut row_start = 0;
+    for (i, b) in bytes.iter().enumerate() {
+        if b.is_ascii_alphabetic() {
+            col = col * 26 + (*b as u32) - if b.is_ascii_uppercase() { 'A' as u32 } else { 'a' as u32 } + 1;
+        } else {
+            row_start = i;
+            break;
+        }
+    }
+    if row_start == 0 || row_start >= bytes.len() {
+        return None;
+    }
+    let row = bytes[row_start..]
+        .iter()
+        .filter(|b| b.is_ascii_digit())
+        .collect::<Vec<_>>();
+    let row: String = row.into_iter().map(|&b| b as char).collect();
+    let row: u32 = row.parse().ok()?;
+    Some((row - 1, col - 1))
+}
+
+/// Escape text for XML text node content.
+fn xml_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Rewrite a worksheet XML, replacing matching cell values with translated
+/// text as inline strings. Returns (patched_xml, cells_patched, words_patched).
+fn patch_worksheet_cells(
+    xml: &str,
+    sheet_name: &str,
+    translations: &HashMap<(String, u32, u32), String>,
+) -> Result<(String, usize, usize), String> {
+    let mut out = String::with_capacity(xml.len());
+    let mut rest = xml;
+    let mut patched = 0usize;
+    let mut words = 0usize;
+    // Find each <c ...>...</c> cell element.
+    while let Some(c_start) = rest.find("<c ") {
+        let tag_end = rest[c_start..].find('>').map(|p| c_start + p).ok_or_else(|| "malformed cell tag".to_string())?;
+        let is_self_closing = rest[tag_end - 1..tag_end] == *"/";
+        let open_tag = &rest[c_start..=tag_end];
+        // Parse r="A1"
+        let r_attr = extract_attr(open_tag, "r");
+        // Emit everything before the cell.
+        out.push_str(&rest[..c_start]);
+        if is_self_closing {
+            out.push_str(open_tag);
+            rest = &rest[tag_end + 1..];
+            continue;
+        }
+        // Find the matching close tag </c>.
+        let close_marker = "</c>";
+        let close_pos = rest[tag_end + 1..].find(close_marker).map(|p| tag_end + 1 + p).ok_or_else(|| "unterminated cell".to_string())?;
+        let cell_body_end = close_pos + close_marker.len();
+        let cell_full = &rest[c_start..cell_body_end];
+        // Check translation for this cell.
+        let mut replaced = false;
+        if let Some(r) = r_attr {
+            if let Some((row, col)) = cell_ref_to_rc(&r) {
+                if let Some(translated) = translations.get(&(sheet_name.to_string(), row, col)) {
+                    // Compute original word count from cell body text (best effort).
+                    if let Some(orig) = cell_body_text(cell_full) {
+                        words += count_words(&orig);
+                    }
+                    out.push_str(&format!(
+                        "<c r=\"{}\" t=\"inlineStr\"><is><t xml:space=\"preserve\">{}</t></is></c>",
+                        xml_escape(&r),
+                        xml_escape(translated)
+                    ));
+                    replaced = true;
+                    patched += 1;
+                }
+            }
+        }
+        if !replaced {
+            out.push_str(cell_full);
+        }
+        rest = &rest[cell_body_end..];
+    }
+    out.push_str(rest);
+    Ok((out, patched, words))
+}
+
+/// Best-effort extraction of the raw text inside a <c>…</c> cell for word counting.
+fn cell_body_text(cell_xml: &str) -> Option<String> {
+    let mut text = String::new();
+    let mut start = 0;
+    while let Some(rel) = cell_xml[start..].find("<t") {
+        let t_start = start + rel;
+        let tag_end_rel = cell_xml[t_start..].find('>')?;
+        let tag_end = t_start + tag_end_rel;
+        // Skip if self-closing (<t .../> with no text).
+        if cell_xml[tag_end - 1..tag_end] == *"/" {
+            start = tag_end + 1;
+            continue;
+        }
+        let after = &cell_xml[tag_end + 1..];
+        let t_end = after.find("</t>")?;
+        text.push_str(&after[..t_end]);
+        start = tag_end + 1 + t_end + 4;
+    }
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 /// Translate Excel file
@@ -458,5 +598,46 @@ mod tests {
         assert_eq!(data_to_string(&Data::Float(3.0)), "3");
         assert_eq!(data_to_string(&Data::Int(42)), "42");
         assert_eq!(data_to_string(&Data::Bool(true)), "true");
+    }
+
+    #[test]
+    fn test_cell_ref_to_rc() {
+        assert_eq!(cell_ref_to_rc("A1"), Some((0, 0)));
+        assert_eq!(cell_ref_to_rc("B2"), Some((1, 1)));
+        assert_eq!(cell_ref_to_rc("AA10"), Some((9, 26)));
+        assert_eq!(cell_ref_to_rc("BC12"), Some((11, 54)));
+        assert_eq!(cell_ref_to_rc("1"), None);
+        assert_eq!(cell_ref_to_rc(""), None);
+    }
+
+    #[test]
+    fn test_xml_escape() {
+        assert_eq!(xml_escape("a&b<c>d\"e'f"), "a&amp;b&lt;c&gt;d&quot;e&apos;f");
+        assert_eq!(xml_escape("plain"), "plain");
+        assert_eq!(xml_escape(""), "");
+    }
+
+    #[test]
+    fn test_patch_worksheet_cells_inline() {
+        let xml = r#"<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><v>5</v></c></row></sheetData></worksheet>"#;
+        let mut translations = HashMap::new();
+        translations.insert(("Sheet1".to_string(), 0, 0), "你好".to_string());
+        let (out, count, _words) =
+            patch_worksheet_cells(xml, "Sheet1", &translations).unwrap();
+        assert_eq!(count, 1);
+        // A1 replaced with inline string; B1 untouched.
+        assert!(out.contains(r#"<c r="A1" t="inlineStr"><is><t xml:space="preserve">你好</t></is></c>"#));
+        assert!(out.contains(r#"<c r="B1"><v>5</v></c>"#));
+    }
+
+    #[test]
+    fn test_patch_worksheet_cells_no_match() {
+        let xml = r#"<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>"#;
+        let mut translations = HashMap::new();
+        translations.insert(("Sheet1".to_string(), 1, 0), "x".to_string());
+        let (out, count, _words) =
+            patch_worksheet_cells(xml, "Sheet1", &translations).unwrap();
+        assert_eq!(count, 0);
+        assert!(out.contains(r#"<c r="A1" t="s"><v>0</v></c>"#));
     }
 }
