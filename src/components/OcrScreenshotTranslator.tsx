@@ -113,6 +113,11 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
   }
 
   const regionsRef = useRef<Map<string, RegionState>>(new Map());
+  /** Q4: cross-region translation cache — same (from:to:engine:text) is
+   *  translated once and reused by any region. Keyed on normalized text;
+   *  LRU-capped so it can't grow unbounded. */
+  const sharedTranslationCacheRef = useRef<Map<string, string>>(new Map());
+  const SHARED_CACHE_MAX = 512;
   const createRegionState = useCallback(
     (_regionId: string): RegionState => ({
       region: null,
@@ -148,6 +153,40 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       return st;
     },
     [createRegionState],
+  );
+
+  // ---- Q4: cross-region translation cache ----
+  const sharedCacheKey = useCallback(
+    (text: string, from: string, to: string, engine: string) =>
+      `${from}:${to}:${engine || 'any'}:${text.trim().toLowerCase().replace(/\s+/g, ' ')}`,
+    [],
+  );
+  const sharedCacheGet = useCallback(
+    (text: string, from: string, to: string, engine: string): string | undefined => {
+      const cache = sharedTranslationCacheRef.current;
+      const key = sharedCacheKey(text, from, to, engine);
+      const hit = cache.get(key);
+      if (hit !== undefined) {
+        // Refresh LRU position.
+        cache.delete(key);
+        cache.set(key, hit);
+      }
+      return hit;
+    },
+    [sharedCacheKey],
+  );
+  const sharedCacheSet = useCallback(
+    (text: string, from: string, to: string, engine: string, result: string) => {
+      const cache = sharedTranslationCacheRef.current;
+      const key = sharedCacheKey(text, from, to, engine);
+      cache.delete(key);
+      cache.set(key, result);
+      if (cache.size > SHARED_CACHE_MAX) {
+        const oldest = cache.keys().next().value;
+        if (oldest !== undefined) cache.delete(oldest);
+      }
+    },
+    [sharedCacheKey],
   );
 
   const snapshotInfoRef = useRef<ScreenshotSnapshotInfo | null>(null);
@@ -532,17 +571,38 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
               // Batch path (translate_embedded → run_batch): one IPC, concurrent segments.
               // Avoid N× full translate for ≤5 lines and fragile whole-blob align for many lines.
               if (!dictHit && sourcePieces.length === 1) {
-                const response = await invokeOrThrow<TranslateResponse>('translate', {
-                  request: {
-                    text: sourcePieces[0].trim(),
-                    from: effectiveSourceLang,
-                    to: effectiveTargetLang,
-                    channel: 'ocr',
-                    // M4: per-region translate engine override ('' = global primary).
-                    engine: st.engine || undefined,
-                  },
-                });
-                const out = response.results[0]?.text?.trim() || sourcePieces[0];
+                const singleText = sourcePieces[0].trim();
+                const engineKey = st.engine || '';
+                // Q4: cross-region cache hit — skip the engine call entirely.
+                const cachedOut = sharedCacheGet(
+                  singleText,
+                  effectiveSourceLang,
+                  effectiveTargetLang,
+                  engineKey,
+                );
+                let out: string;
+                if (cachedOut !== undefined) {
+                  out = cachedOut;
+                } else {
+                  const response = await invokeOrThrow<TranslateResponse>('translate', {
+                    request: {
+                      text: singleText,
+                      from: effectiveSourceLang,
+                      to: effectiveTargetLang,
+                      channel: 'ocr',
+                      // M4: per-region translate engine override ('' = global primary).
+                      engine: st.engine || undefined,
+                    },
+                  });
+                  out = response.results[0]?.text?.trim() || singleText;
+                  sharedCacheSet(
+                    singleText,
+                    effectiveSourceLang,
+                    effectiveTargetLang,
+                    engineKey,
+                    out,
+                  );
+                }
                 if (st.frameClosed || sessionId !== st.sessionId) return;
                 lineTranslations[nonEmptyIdx[0]] = out;
                 translatedText = out;
@@ -552,26 +612,47 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
                   original: string;
                   translated: string;
                 }
-                const batch = await invokeOrThrow<EmbeddedLine[]>('translate_embedded', {
-                  text: sourcePieces.map((s) => s.trim()).join('\n'),
-                  from: effectiveSourceLang,
-                  to: effectiveTargetLang,
-                  channel: 'ocr',
-                  // M4: per-region translate engine override ('' = global primary).
-                  engine: st.engine || undefined,
-                });
-                if (st.frameClosed || sessionId !== st.sessionId) return;
-                // Prefer batch lineNumber order; on count mismatch pack via ocrLineAlign.
-                const byOrder = [...batch].sort((a, b) => a.lineNumber - b.lineNumber);
-                const batchLines = byOrder.map((b) => b.translated.trim() || '');
+                const batchText = sourcePieces.map((s) => s.trim()).join('\n');
+                const engineKey = st.engine || '';
+                // Q4: cross-region cache hit for the whole batch.
+                let batchLines: string[] | null = null;
+                const cachedBatch = sharedCacheGet(
+                  batchText,
+                  effectiveSourceLang,
+                  effectiveTargetLang,
+                  engineKey,
+                );
+                if (cachedBatch !== undefined) {
+                  batchLines = cachedBatch.split('\n');
+                } else {
+                  const batch = await invokeOrThrow<EmbeddedLine[]>('translate_embedded', {
+                    text: batchText,
+                    from: effectiveSourceLang,
+                    to: effectiveTargetLang,
+                    channel: 'ocr',
+                    // M4: per-region translate engine override ('' = global primary).
+                    engine: st.engine || undefined,
+                  });
+                  if (st.frameClosed || sessionId !== st.sessionId) return;
+                  // Prefer batch lineNumber order; on count mismatch pack via ocrLineAlign.
+                  const byOrder = [...batch].sort((a, b) => a.lineNumber - b.lineNumber);
+                  const rawLines = byOrder.map((b) => b.translated.trim() || '');
+                  batchLines = rawLines;
+                  sharedCacheSet(
+                    batchText,
+                    effectiveSourceLang,
+                    effectiveTargetLang,
+                    engineKey,
+                    rawLines.join('\n'),
+                  );
+                }
                 const sourcePiecesTrim = sourcePieces.map((s) => s.trim());
                 const aligned =
                   batchLines.length === sourcePiecesTrim.length
                     ? batchLines
                     : alignTranslationToLines(
                         sourcePiecesTrim,
-                        batchLines.filter(Boolean).join('\n') ||
-                          byOrder.map((b) => b.translated || '').join('\n'),
+                        batchLines.filter(Boolean).join('\n'),
                       );
                 for (let p = 0; p < nonEmptyIdx.length; p++) {
                   const tLine = aligned[p]?.trim() || '';
