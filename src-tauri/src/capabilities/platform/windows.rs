@@ -93,6 +93,8 @@ fn release_modifiers() {
         .iter()
         .map(|vk| make_key_input(*vk, KEYEVENTF_KEYUP))
         .collect();
+    // SAFETY: SendInput takes a slice of INPUT structs of known length and
+    // the correct struct size. No preconditions beyond a valid pointer.
     unsafe {
         let _ = SendInput(
             &inputs,
@@ -115,6 +117,12 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VK_CONTROL, VK_V,
     };
+
+    // M4-03: serialize with other clipboard readers/writers (hook monitor,
+    // selection Ctrl+C) for the whole save→set→paste→restore window.
+    let _clip_lock = crate::clipboard_dedupe::clipboard_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     const CF_UNICODETEXT: u32 = 13;
 
@@ -295,6 +303,8 @@ pub fn type_text_via_sendinput(
         }
         // Surrogate pairs need down/up for each code unit.
         let inputs = [unicode_input(ch, false), unicode_input(ch, true)];
+        // SAFETY: SendInput takes a 2-element INPUT slice with the correct
+        // struct size. Stack-allocated, no preconditions.
         let sent = unsafe { SendInput(&inputs, size_of::<INPUT>() as i32) };
         if sent == 0 {
             return Err("SendInput type failed".to_string());

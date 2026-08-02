@@ -5,7 +5,8 @@
  * Host-side pump translates shared-memory messages without requiring the Hook UI.
  */
 use crate::error::AppError;
-use crate::hook_inject::{CapturedText, HookManager, HookStatus};
+use crate::hook_code::{parse_h_code, HookCode};
+use crate::hook_inject::{CapturedText, HookInstallResult, HookManager, HookStats, HookStatus};
 use crate::selection::hover_pick::is_ui_chrome_word;
 use crate::AppState;
 use std::collections::VecDeque;
@@ -13,6 +14,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
+
+#[cfg(target_os = "windows")]
+extern "system" {
+    fn GetACP() -> u32;
+}
 
 /// Recent hook captures for dedup (text + coarse time window).
 struct HookDedup {
@@ -251,6 +257,9 @@ pub async fn hook_inject(
         {
             use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
             use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+            // SAFETY: GetForegroundWindow returns an HWND (or null, in which
+            // case GetWindowThreadProcessId returns 0). process_id is a stack
+            // &mut u32. Both are pure Win32 queries with no preconditions.
             unsafe {
                 let hwnd = GetForegroundWindow();
                 let mut process_id = 0u32;
@@ -314,23 +323,52 @@ pub async fn hook_dll_path(state: State<'_, HookState>) -> Result<Option<String>
     Ok(manager.dll_path())
 }
 
-/// Read new text messages from the hooked process (no translate).
-/// Prefer host pump + events when injected; this remains for diagnostics.
+/// Query hook statistics from the injected DLL (IAT hits, late-loaded patches,
+/// send_text counters, inline hooks installed).
+///
+/// Calls the remote `HookGetStats` export via CreateRemoteThread +
+/// ReadProcessMemory, parses the returned JSON into [`HookStats`].
+/// Returns `HookStats::default()` when not injected (no-op).
 #[tauri::command]
-pub async fn hook_read_messages(
-    state: State<'_, HookState>,
-) -> Result<Vec<CapturedText>, AppError> {
-    let mut manager = state.manager.lock()?;
-    Ok(manager.read_messages())
+pub async fn hook_get_stats(state: State<'_, HookState>) -> Result<HookStats, AppError> {
+    let manager = state.manager.lock()?;
+    manager
+        .get_stats()
+        .map_err(|e| AppError::Hook(format!("get_stats failed: {e}")))
 }
 
-/// Read H-Code shared-memory messages and run them through TranslationService.
-/// Host pump calls the same path automatically after inject.
+/// Parse an H-Code string and install an inline hook in the remote process.
+///
+/// Accepts a Luna Hook H-Code (e.g. `/HW-4@12345:game.exe`) and an optional
+/// ANSI code page override. When the code page is omitted, the system ANSI
+/// code page (`GetACP()`) is used — 932 for Japanese, 936 for Simplified
+/// Chinese, etc.
+///
+/// Returns the resolved hook address and exit code from the DLL.
 #[tauri::command]
-pub async fn hook_process_messages(
-    hook_state: State<'_, HookState>,
-    app_state: State<'_, AppState>,
-    app: AppHandle,
-) -> Result<Vec<CapturedText>, AppError> {
-    process_hook_messages_once(&hook_state, &app_state, &app).await
+pub async fn hook_install_h_code(
+    state: State<'_, HookState>,
+    h_code: String,
+    ansi_code_page: Option<u32>,
+) -> Result<HookInstallResult, AppError> {
+    let code: HookCode = parse_h_code(&h_code)
+        .map_err(|e| AppError::Hook(format!("invalid H-Code '{h_code}': {e}")))?;
+
+    // Default to the system ANSI code page if not specified.
+    let default_cp = ansi_code_page.unwrap_or_else(|| {
+        #[cfg(target_os = "windows")]
+        {
+            // SAFETY: GetACP is a pure kernel32 query with no preconditions.
+            unsafe { GetACP() }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            932 // Shift-JIS default on non-Windows (dev/test only)
+        }
+    });
+
+    let manager = state.manager.lock()?;
+    manager
+        .install_h_code(&code, default_cp)
+        .map_err(|e| AppError::Hook(format!("install_h_code failed: {e}")))
 }

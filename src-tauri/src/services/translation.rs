@@ -146,9 +146,28 @@ impl TranslationService {
         async {
             match req.mode {
                 TranslationMode::Full => {
-                    let r = self
-                        .translate(req.channel, &req.text, &req.from, &req.to)
-                        .await?;
+                    let r = if let Some(engine) = req.engine.as_deref().filter(|e| !e.trim().is_empty()) {
+                        // M4: per-region engine override — use the named engine
+                        // instead of the router's primary for this request.
+                        let raw = self
+                            .translate_named_engine(engine, &req.text, &req.from, &req.to)
+                            .await
+                            .map_err(|e| TranslationError::EngineError {
+                                engine: engine.to_string(),
+                                message: e,
+                            })?;
+                        TranslateResponse {
+                            results: vec![TranslationResult {
+                                engine: engine.to_string(),
+                                text: raw,
+                                latency_ms: None,
+                            }],
+                            detected_language: None,
+                            errors: vec![],
+                        }
+                    } else {
+                        self.translate(req.channel, &req.text, &req.from, &req.to).await?
+                    };
                     Ok(TranslateOutcome::Full(r))
                 },
                 TranslationMode::Primary => {
@@ -168,9 +187,21 @@ impl TranslationService {
                     } else {
                         req.segments.iter().map(|(i, s)| (*i, s.as_str())).collect()
                     };
-                    let r = self
-                        .translate_batch(req.channel, &lines, &req.from, &req.to, req.concurrency)
-                        .await;
+                    let r = if let Some(engine) = req.engine.as_deref().filter(|e| !e.trim().is_empty()) {
+                        // M4: per-region engine override for batch — run each
+                        // line through the named engine instead of the router.
+                        self.translate_batch_named_engine(
+                            engine,
+                            &lines,
+                            &req.from,
+                            &req.to,
+                            req.concurrency,
+                        )
+                        .await
+                    } else {
+                        self.translate_batch(req.channel, &lines, &req.from, &req.to, req.concurrency)
+                            .await
+                    };
                     Ok(TranslateOutcome::Batch(r))
                 },
                 TranslationMode::Context => {
@@ -299,6 +330,20 @@ impl TranslationService {
         to: &str,
         concurrency: usize,
     ) -> Vec<BatchTranslationResult> {
+        self.run_batch_with_engine(channel, lines, from, to, concurrency, None)
+            .await
+    }
+
+    /// Batch-mode run with an optional per-region engine override.
+    pub async fn run_batch_with_engine(
+        &self,
+        channel: TranslateChannel,
+        lines: &[(usize, &str)],
+        from: &str,
+        to: &str,
+        concurrency: usize,
+        engine: Option<String>,
+    ) -> Vec<BatchTranslationResult> {
         let segments: Vec<(usize, String)> =
             lines.iter().map(|(i, s)| (*i, (*s).to_string())).collect();
         match self
@@ -310,6 +355,7 @@ impl TranslationService {
                 to: to.to_string(),
                 concurrency: concurrency.max(1).min(10),
                 segments,
+                engine,
                 ..Default::default()
             })
             .await
@@ -343,6 +389,14 @@ impl TranslationService {
             | TranslateChannel::Replace => configured,
             _ => configured,
         }
+    }
+
+    /// S5-4: Returns true if this channel should skip TM/cache (the "lean" path).
+    /// Only realtime screenshot OCR is lean; document OCR (Document channel)
+    /// and image translation (Image channel) go through the full pipeline with
+    /// TM + cache enabled. See the decision rationale in `translate_batch_core`.
+    fn is_lean_ocr_channel(channel: TranslateChannel) -> bool {
+        matches!(channel, TranslateChannel::Ocr)
     }
 
     /// Translate text with full pipeline: pre-process -> glossary -> blacklist -> TM -> cache -> engine -> restore -> cache -> history
@@ -415,6 +469,7 @@ impl TranslationService {
                             latency_ms: None,
                         }],
                         detected_language: None,
+                        errors: vec![],
                     });
                 }
             }
@@ -442,6 +497,7 @@ impl TranslationService {
                     return Ok(TranslateResponse {
                         results,
                         detected_language: None,
+                        errors: vec![],
                     });
                 }
             }
@@ -533,6 +589,7 @@ impl TranslationService {
                                 latency_ms: None,
                             }],
                             detected_language: None,
+                            errors: vec![],
                         },
                         Err(e) => {
                             tracing::warn!(
@@ -884,7 +941,22 @@ impl TranslationService {
     where
         F: FnMut(usize, usize),
     {
-        let ocr_fallback = matches!(channel, TranslateChannel::Ocr);
+        // S5-4 decision: only the realtime screenshot OCR channel (Ocr) stays
+        // lean — no TM/cache. Document OCR (PDF via OCR engine) and image
+        // translation go through `Document` / `Image` channels, which are NOT
+        // matched here, so they already enjoy full TM + cache parity with the
+        // regular batch path. Rationale for keeping realtime OCR lean:
+        //   1. Realtime OCR frames capture dynamic screen content; the same
+        //      text region may show different text moments later (video,
+        //      scrolling, animations). A stale cache hit would show the wrong
+        //      translation for the current frame.
+        //   2. Realtime OCR prioritises latency; cache lookups (history lock +
+        //      fuzzy match) add overhead for little reuse benefit since
+        //      identical exact-screen-content recurs rarely.
+        //   3. The fallback-on-error routing for Ocr already gives resilience
+        //      without needing cache. Document OCR is batch + idempotent, so
+        //      cache is safe and beneficial there.
+        let ocr_fallback = Self::is_lean_ocr_channel(channel);
         let span = info_span!(
             "translate_batch",
             channel = ?channel,
@@ -949,6 +1021,7 @@ impl TranslationService {
                                     index: idx,
                                     original,
                                     translated,
+                                    error: None,
                                 });
                                 completed += 1;
                                 on_progress(completed, total);
@@ -977,6 +1050,7 @@ impl TranslationService {
                                     index: idx,
                                     original,
                                     translated,
+                                    error: None,
                                 });
                                 completed += 1;
                                 on_progress(completed, total);
@@ -1066,6 +1140,7 @@ impl TranslationService {
                             index: *idx,
                             original: original.clone(),
                             translated,
+                            error: None,
                         });
                         completed += 1;
                         on_progress(completed, total);
@@ -1086,7 +1161,8 @@ impl TranslationService {
                         let prepared = self.prepare(text, from, to).await;
                         let original = text.to_string();
 
-                        // TM + cache (skip for OCR channel — keep OCR path lean / unchanged)
+                        // S5-4: TM + cache enabled for Document/Image/batch;
+                        // skipped for realtime Ocr channel (see rationale above).
                         if !ocr_fallback {
                             if tm_enabled {
                                 let history = self.history.lock().await;
@@ -1117,6 +1193,7 @@ impl TranslationService {
                                         index: idx,
                                         original,
                                         translated,
+                                        error: None,
                                     });
                                     completed += 1;
                                     on_progress(completed, total);
@@ -1145,6 +1222,7 @@ impl TranslationService {
                                         index: idx,
                                         original,
                                         translated,
+                                        error: None,
                                     });
                                     completed += 1;
                                     on_progress(completed, total);
@@ -1164,19 +1242,19 @@ impl TranslationService {
 
                         let handle = tokio::spawn(async move {
                             let router = router.read().await;
-                            let translated = if use_fallback {
+                            let (translated, error) = if use_fallback {
                                 match router
                                     .translate_fallback_string(&protected, &from_s, &to_s)
                                     .await
                                 {
-                                    Ok(t) => t,
+                                    Ok(t) => (t, None),
                                     Err(e) => {
                                         tracing::warn!(
                                             "[translate_batch] OCR fallback failed for segment {}: {}",
                                             idx,
                                             e
                                         );
-                                        String::new()
+                                        (String::new(), Some(e.to_string()))
                                     },
                                 }
                             } else {
@@ -1189,14 +1267,14 @@ impl TranslationService {
                                     )
                                     .await
                                 {
-                                    Ok(t) => t,
+                                    Ok(t) => (t, None),
                                     Err(e) => {
                                         tracing::warn!(
                                             "[translate_batch] Translation failed for segment {}: {}",
                                             idx,
                                             e
                                         );
-                                        String::new()
+                                        (String::new(), Some(e.to_string()))
                                     },
                                 }
                             };
@@ -1208,6 +1286,7 @@ impl TranslationService {
                                 translated,
                                 prepared.blacklist,
                                 protected_for_cache,
+                                error,
                             )
                         });
 
@@ -1215,7 +1294,21 @@ impl TranslationService {
                     }
 
                     for handle in handles {
-                        if let Ok((idx, original, raw, blacklist, prepared_key)) = handle.await {
+                        if let Ok((idx, original, raw, blacklist, prepared_key, error)) =
+                            handle.await
+                        {
+                            if let Some(e) = error {
+                                // M2-04: surface per-segment failure instead of silent empty text.
+                                results.push(BatchTranslationResult {
+                                    index: idx,
+                                    original,
+                                    translated: String::new(),
+                                    error: Some(e),
+                                });
+                                completed += 1;
+                                on_progress(completed, total);
+                                continue;
+                            }
                             let translated =
                                 self.finalize(&raw, &original, from, to, &blacklist).await;
                             if !ocr_fallback && !translated.trim().is_empty() {
@@ -1241,6 +1334,7 @@ impl TranslationService {
                                 index: idx,
                                 original,
                                 translated,
+                                error: None,
                             });
                             completed += 1;
                             on_progress(completed, total);
@@ -1297,6 +1391,43 @@ impl TranslationService {
         .await
     }
 
+    /// M4: Batch translate with a per-region engine override. Translates each
+    /// line via the named engine (shared `translate_named_engine` path, which
+    /// already handles cache + glossary + blacklist). Simpler than the full
+    /// batch core (no LLM pack / context window) — per-region OCR frames are
+    /// short text segments where that complexity is unnecessary. Sequential to
+    /// keep lifetimes simple (self is &self, not Arc).
+    pub async fn translate_batch_named_engine(
+        &self,
+        engine_id: &str,
+        lines: &[(usize, &str)],
+        from: &str,
+        to: &str,
+        _concurrency: usize,
+    ) -> Vec<BatchTranslationResult> {
+        let mut results = Vec::with_capacity(lines.len());
+        for (idx, original) in lines.iter().copied() {
+            match self
+                .translate_named_engine(engine_id, original, from, to)
+                .await
+            {
+                Ok(translated) => results.push(BatchTranslationResult {
+                    index: idx,
+                    original: original.to_string(),
+                    translated,
+                    error: None,
+                }),
+                Err(e) => results.push(BatchTranslationResult {
+                    index: idx,
+                    original: original.to_string(),
+                    translated: String::new(),
+                    error: Some(e),
+                }),
+            }
+        }
+        results
+    }
+
     /// Translate text lines for embedded/subtitle with progress callback
     pub async fn translate_embedded_batch<F>(
         &self,
@@ -1319,5 +1450,47 @@ impl TranslationService {
 
         self.translate_batch_core(channel, &lines, from, to, concurrency, on_progress)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::translation::TranslateChannel;
+
+    /// S5-4: Verify that only the realtime screenshot OCR channel is "lean"
+    /// (skips TM/cache). Document OCR and image translation must go through
+    /// the full pipeline so that repeated document/image translations can
+    /// reuse cached results.
+    #[test]
+    fn ocr_channel_leanness_decision() {
+        // Lean: realtime screenshot OCR only.
+        assert!(
+            TranslationService::is_lean_ocr_channel(TranslateChannel::Ocr),
+            "realtime OCR channel must be lean (no TM/cache)"
+        );
+
+        // Full pipeline: document OCR, image translation, and all other channels.
+        let full_pipeline = [
+            TranslateChannel::Ui,
+            TranslateChannel::Selection,
+            TranslateChannel::Replace,
+            TranslateChannel::Hook,
+            TranslateChannel::Clipboard,
+            TranslateChannel::Document,
+            TranslateChannel::Subtitle,
+            TranslateChannel::Image,
+            TranslateChannel::Http,
+            TranslateChannel::Browser,
+            TranslateChannel::Plugin,
+            TranslateChannel::Unknown,
+        ];
+        for ch in full_pipeline {
+            assert!(
+                !TranslationService::is_lean_ocr_channel(ch),
+                "{:?} must NOT be lean — document/image/batch paths need TM + cache",
+                ch
+            );
+        }
     }
 }

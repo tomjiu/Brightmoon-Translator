@@ -19,6 +19,14 @@ static WATCHER_RUNNING: AtomicBool = AtomicBool::new(false);
 pub struct SelectionAutoWatch {
     config: Arc<Mutex<SelectionUxConfig>>,
     stop: Arc<AtomicBool>,
+    /// S2-2: stored so `stop_and_wait` can await the run_loop task instead of
+    /// fire-and-forget. Previously the JoinHandle was discarded, making it
+    /// impossible to know when the watcher actually stopped.
+    ///
+    /// Note: we use `tauri::async_runtime::JoinHandle` (not `tokio::task::JoinHandle`)
+    /// because `start()` spawns via `tauri::async_runtime::spawn`, which returns
+    /// the former. The two are distinct types — mixing them is a compile error.
+    task_handle: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>>,
 }
 
 impl SelectionAutoWatch {
@@ -26,6 +34,7 @@ impl SelectionAutoWatch {
         Self {
             config: Arc::new(Mutex::new(config)),
             stop: Arc::new(AtomicBool::new(false)),
+            task_handle: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -47,14 +56,36 @@ impl SelectionAutoWatch {
         let cfg = Arc::clone(&self.config);
         crate::overlay::window_manager::hide_overlay_window(&app);
         let _ = super::pop_button::dismiss(&app);
-        tauri::async_runtime::spawn(async move {
+        let handle = tauri::async_runtime::spawn(async move {
             run_loop(app, cfg, stop).await;
             WATCHER_RUNNING.store(false, Ordering::SeqCst);
         });
+        // S2-2: store the JoinHandle so stop_and_wait can await it.
+        if let Ok(mut slot) = self.task_handle.try_lock() {
+            *slot = Some(handle);
+        }
     }
 
     pub fn request_stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
+    }
+
+    /// S2-2: request stop and await the watcher task with a 500ms timeout.
+    /// If the task doesn't finish in time, abort it so the tokio runtime
+    /// can reclaim the resource. The moon-hook-bridge std::thread exits on
+    /// its own when the mouse hook channel closes (uninstall is called at
+    /// the end of run_loop), so it does not need explicit joining.
+    pub async fn stop_and_wait(&self) {
+        self.stop.store(true, Ordering::SeqCst);
+        let handle = { self.task_handle.lock().await.take() };
+        if let Some(h) = handle {
+            match tokio::time::timeout(std::time::Duration::from_millis(500), h).await {
+                Ok(_) => {},
+                Err(_) => {
+                    tracing::warn!("[selection_ux] run_loop did not exit within 500ms, aborting");
+                },
+            }
+        }
     }
 }
 
@@ -420,7 +451,7 @@ async fn handle_hook_event(
                         }
                     },
                     _ => {
-                        tracing::debug!("[selection_ux] gesture: no selection text");
+                        tracing::trace!("[selection_ux] gesture: no selection text");
                     },
                 }
             });
@@ -436,6 +467,8 @@ fn left_button_down() -> bool {
     #[cfg(windows)]
     {
         use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+        // SAFETY: GetAsyncKeyState is a pure Win32 query (i32 vk → i16) with
+        // no preconditions; the high bit of the return indicates current state.
         unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000 != 0 }
     }
     #[cfg(not(windows))]
@@ -445,28 +478,17 @@ fn left_button_down() -> bool {
 }
 
 fn cursor_pos() -> (f64, f64) {
-    #[cfg(windows)]
-    {
-        use windows::Win32::Foundation::POINT;
-        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
-        let mut pt = POINT::default();
-        unsafe {
-            if GetCursorPos(&mut pt).is_ok() {
-                return (pt.x as f64, pt.y as f64);
-            }
-        }
-        (0.0, 0.0)
-    }
-    #[cfg(not(windows))]
-    {
-        (0.0, 0.0)
-    }
+    // S1-6: delegate to the shared crate::win::cursor_pos() instead of a
+    // local GetCursorPos wrapper.
+    crate::win::cursor_pos()
 }
 
 fn is_own_window_foreground(app: &AppHandle) -> bool {
     #[cfg(windows)]
     {
         use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+        // SAFETY: GetForegroundWindow is a pure Win32 query (no args, returns
+        // HWND). Returned handle is only compared against stored values.
         let fg = unsafe { GetForegroundWindow() };
         let fg_raw = fg.0 as isize;
         if fg_raw == 0 {

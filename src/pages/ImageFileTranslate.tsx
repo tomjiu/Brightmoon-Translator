@@ -160,7 +160,7 @@ function ImageFileTranslate() {
           已写出: {resultPath}
         </p>
       )}
-      <div className="flex-1 overflow-auto rounded-lg border border-border bg-bg-secondary p-4">
+      <div className="flex-1 overflow-auto min-h-0 rounded-lg border border-border bg-bg-secondary p-4">
         {!filePath && (
           <p className="text-sm text-text-secondary">选择图片文件 → OCR 预览或翻译叠字导出 PNG。</p>
         )}

@@ -1,15 +1,14 @@
 {
   "app": {
-    "name": "Moon Translator"
+    "name": "Moon Translator",
+    "dictNotLoadedWarning": "ローカル辞書が読み込まれていません。ホバー辞書が利用できない場合があります",
+    "dictNotLoadedPath": "パス: {path}"
   },
   "nav": {
     "translator": "翻訳",
-    "batch": "バッチ翻訳",
     "hook": "Hook翻訳",
     "documents": "文書",
     "vocabulary": "語彙",
-    "plugins": "プラグイン",
-    "marketplace": "プラグインマーケット",
     "metrics": "指標",
     "tm": "翻訳メモリ",
     "settings": "設定"
@@ -43,6 +42,8 @@
     "dictionary": "辞書",
     "copy": "コピー",
     "copied": "コピー済み",
+    "pin": "ピン留め",
+    "pinned": "ピン留め済み",
     "speak": "読み上げ",
     "speaking": "読み上げ中",
     "showOriginal": "原文を表示",
@@ -60,7 +61,12 @@
     "embeddedEmpty": "インライン翻訳結果なし",
     "embeddedEmptyHint": "テキストを入力して翻訳ボタンをクリック",
     "startListening": "音声入力開始",
-    "stopListening": "音声入力停止"
+    "stopListening": "音声入力停止",
+    "collect": "保存",
+    "collected": "保存済み",
+    "collectToWordbook": "単語帳に保存（外部連携あり）",
+    "collectedWithExport": "保存済み（外部連携あり）",
+    "noResultError": "翻訳結果なし：有効なエンジン、APIキー、ネットワークを確認してください"
   },
   "history": {
     "title": "翻訳履歴",
@@ -330,6 +336,7 @@
     "configImportFailed": "設定のインポートに失敗しました",
     "save": "設定を保存",
     "saved": "保存済み",
+    "configSaveFailed": "設定の保存に失敗しました: {message}",
     "nav": {
       "groups": {
         "translate": "翻訳",
@@ -452,6 +459,15 @@
       "pdfOcrmypdf": "ocrmypdf (searchable layer for scans)",
       "pdfHint": "pdf-extract for most digital PDFs; auto OCR on garble/crash. ocr needs no extra tools. mineru/marker need pip install.",
       "sidecarPath": "Sidecar CLI path (empty = command on PATH)",
+      "layoutTitle": "PDF layout detection",
+      "layoutDesc": "DocLayout-YOLO model identifies title/body/figure/table/formula regions, improving translation quality for complex-layout PDFs",
+      "layoutEnable": "Enable layout detection",
+      "layoutEnableHint": "Off by default. When enabled, downloads a ~50MB ONNX model on demand; falls back to plain text extraction if unavailable",
+      "layoutModelReady": "Model ready",
+      "layoutModelNotReady": "Model not downloaded",
+      "layoutDownload": "Download model",
+      "layoutRemove": "Remove model",
+      "layoutNote": "Model stored in app_data_dir/models/. Retry on failure; removing re-downloads when re-enabled",
       "paramsTitle": "OCR parameters",
       "paramsDesc": "Region watch behavior",
       "interval": "Region watch interval (ms)",
@@ -540,7 +556,12 @@
       "proxyEnable": "Enable proxy",
       "proxyEnableHint": "Applies to proxy-capable requests (LLM, Google fallback, etc.)",
       "proxyHost": "Host",
-      "proxyPort": "Port"
+      "proxyPort": "Port",
+      "cacheTitle": "翻訳キャッシュ",
+      "cacheDesc": "翻訳済みコンテンツはローカルにキャッシュされ、繰り返し翻訳時に直接返されます",
+      "cacheTtlLabel": "キャッシュ有効時間（時間）",
+      "cacheTtlHint": "この時間を超えたエントリは次回読み取り時に自動クリアされます。デフォルト72時間（3日）。変更はアプリ再起動後に有効になります。",
+      "cacheTtlInvalid": "1〜720 の整数を入力してください"
     },
     "enginePage": {
       "title": "翻訳エンジン",
@@ -616,6 +637,25 @@
       "transmartName": "Tencent Transmart",
       "transmartDesc": "transmart.qq.com; empty credentials allowed",
       "papagoDesc": "Naver Papago web API",
+      "shortLabels": {
+        "llm": "LLM",
+        "google": "Google",
+        "youdao": "有道",
+        "caiyun": "彩雲",
+        "deepl": "DeepL",
+        "deeplx": "DeepLX",
+        "baidu": "百度",
+        "microsoft": "Microsoft",
+        "yandex": "Yandex",
+        "offline": "オフライン",
+        "tatoeba": "Tatoeba",
+        "baidu_web": "百度",
+        "caiyun_web": "彩雲",
+        "volc": "火山",
+        "volcengine_web": "火山",
+        "transmart": "Tencent",
+        "papago": "Papago"
+      },
       "noModel": "No model set",
       "statusConfigured": "Status: configured ({provider} / {model})",
       "statusNeedKey": "Status: API key not configured",
@@ -772,7 +812,9 @@
   "documents": {
     "pdf": "PDF",
     "epub": "EPUB",
-    "subtitle": "字幕"
+    "subtitle": "字幕",
+    "openInDesktop": "デスクトップアプリでファイルを開いてください",
+    "translatableDocs": "翻訳可能な文書"
   },
   "pdf": {
     "title": "PDF翻訳",
@@ -827,42 +869,6 @@
     "original": "原文",
     "translation": "翻訳",
     "notTranslated": "未翻訳"
-  },
-  "plugins": {
-    "title": "プラグイン管理",
-    "refresh": "更新",
-    "directory": "プラグインディレクトリ",
-    "openDir": "ディレクトリを開く",
-    "howTo": "プラグインの追加方法",
-    "howToHint": "プラグインディレクトリにサブフォルダを作成し、各フォルダにmanifest.jsonファイルを含めてください。",
-    "manifestExample": "manifest.jsonフォーマット",
-    "apiFormat": "APIフォーマット",
-    "noPlugins": "プラグインがありません",
-    "addHint": "プラグインをディレクトリに入れて更新をクリック",
-    "author": "作者",
-    "restartHint": "プラグインの有効化・無効化後はアプリの再起動が必要です",
-    "typeTranslation": "翻訳",
-    "typeOcr": "OCR",
-    "typeTts": "TTS"
-  },
-  "marketplace": {
-    "title": "プラグインマーケット",
-    "searchPlaceholder": "プラグインを検索...",
-    "catAll": "すべて",
-    "catTranslation": "翻訳エンジン",
-    "catTextProcessing": "テキスト処理",
-    "catUiEnhancement": "UI拡張",
-    "catOther": "その他",
-    "noResults": "一致するプラグインがありません",
-    "install": "インストール",
-    "uninstall": "アンインストール",
-    "update": "アップデート",
-    "updateAvailable": "アップデート可能",
-    "installedTitle": "インストール済みプラグイン",
-    "author": "作者",
-    "description": "説明",
-    "permissions": "権限",
-    "versionHistory": "バージョン履歴"
   },
   "ocr": {
     "title": "OCR領域監視",
@@ -975,7 +981,8 @@
       "noDllFound": "moon_hook.dllが見つかりません",
       "injectSuccess": "インジェクト成功",
       "injectFailed": "インジェクト失敗",
-      "ejectSuccess": "DLLエジェクト完了"
+      "ejectSuccess": "DLLエジェクト完了",
+      "installHook": "フック設置"
     },
     "processPicker": {
       "title": "プロセスを選択",
@@ -997,27 +1004,6 @@
     "empty": "テキストを入力して比較開始",
     "emptyHint": "Ctrl+Enterで素早く翻訳",
     "copy": "コピー"
-  },
-  "batch": {
-    "title": "バッチ翻訳",
-    "description": "複数行のテキストを入力し、各行を独立した段落として翻訳。バルク処理と並行翻訳に対応。",
-    "concurrency": "並行数:",
-    "continueOnError": "エラー時も続行",
-    "segmentCount": "全 {count} セグメント",
-    "start": "翻訳開始",
-    "stop": "停止",
-    "pause": "一時停止",
-    "resume": "再開",
-    "retry": "失敗リトライ",
-    "reset": "リセット",
-    "copyAll": "すべてコピー",
-    "export": "エクスポート",
-    "completed": "完了",
-    "failed": "失敗",
-    "noResults": "翻訳結果がありません",
-    "noResultsHint": "テキストを入力して「翻訳開始」をクリック",
-    "progress": "{completed}/{total}",
-    "failedCount": "({count} 件失敗)"
   },
   "tm": {
     "title": "翻訳メモリ",

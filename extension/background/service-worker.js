@@ -309,6 +309,85 @@ async function translateWithLLM(text, from, to, config) {
   };
 }
 
+// B8 (audit gap): LLM batch translation with [[idx]] separator protocol.
+// Merges multiple segments into one LLM request to cut API call count. The
+// model echoes each segment back prefixed by its [[idx]], which we parse with
+// a tolerant regex ([[0]] / [0] / multiline variants).
+async function translateBatchWithLLM(texts, from, to, config) {
+  if (!config.engines.llm.apiKey) {
+    throw new Error("请先配置LLM API Key");
+  }
+
+  const langMap = {
+    zh: "中文", en: "English", ja: "日本語", ko: "한국어",
+    fr: "Français", de: "Deutsch", es: "Español", ru: "Русский",
+    pt: "Português", it: "Italiano", ar: "العربية", th: "ไทย", vi: "Tiếng Việt"
+  };
+  const fromLang = langMap[from] || from;
+  const toLang = langMap[to] || to;
+
+  const combined = texts
+    .map((t, i) => `[[${i}]]\n${t}`)
+    .join("\n\n");
+
+  const systemPrompt = `你是一个专业的翻译专家。请遵循以下规则：
+1. 准确传达原文含义，保持自然流畅
+2. 专业术语使用标准译法
+3. 保持原文的语气和风格
+4. 只返回翻译结果，不要添加任何解释
+5. 输入由多个段落组成，每段以 [[序号]] 开头
+6. 输出必须为每段单独一行，以 [[序号]] 开头（与输入序号一致），不要合并或遗漏段落
+
+源语言：${fromLang}
+目标语言：${toLang}`;
+
+  const response = await fetch(`${config.engines.llm.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${config.engines.llm.apiKey}`
+    },
+    body: JSON.stringify({
+      model: config.engines.llm.model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: combined }
+      ],
+      temperature: 0.3,
+      max_tokens: 8192
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`LLM API错误: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const raw = data.choices[0].message.content || "";
+  const results = new Array(texts.length).fill(null);
+
+  // Tolerant parse: "[[0]] 译文" / "[0] 译文" / "0. 译文" per line.
+  const lineRe = /(?:\[{1,2})\s*(\d+)\s*\]{1,2}\s*[:：]?\s*(.+)/;
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(lineRe);
+    if (!m) continue;
+    const idx = parseInt(m[1], 10);
+    const translated = m[2].trim();
+    if (idx >= 0 && idx < texts.length && translated) {
+      results[idx] = translated;
+    }
+  }
+  // Fallback: if the model returned no separators but a single block and
+  // there was exactly one input, take the whole content.
+  if (texts.length === 1 && results[0] === null) {
+    results[0] = raw.trim();
+  }
+
+  return results
+    .map((text, i) => ({ index: i, translated: text }))
+    .filter(r => r.translated);
+}
+
 // Youdao Translate (free, CDN-based key)
 async function translateWithYoudao(text, from, to) {
   // Map language codes
@@ -929,6 +1008,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then(translations => sendResponse({ success: true, translations }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
+  }
+
+  // B8 (audit gap): LLM batch translation with [[idx]] separator protocol.
+  // Content script sends texts; we merge into one LLM request and split back.
+  if (message.type === "translateBatchLLM") {
+    getConfig().then(config => {
+      if (!config.engines?.llm?.enabled || !config.engines?.llm?.apiKey) {
+        sendResponse({ success: false, error: "LLM not enabled" });
+        return null;
+      }
+      return translateBatchWithLLM(
+        message.texts,
+        message.from || "auto",
+        message.to || "zh",
+        config
+      );
+    }).then(translations => {
+      if (translations) {
+        sendResponse({ success: true, translations });
+      }
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true; // Keep channel open for async
   }
 
   // Desktop connection status query (for popup)

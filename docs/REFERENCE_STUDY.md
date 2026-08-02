@@ -18,6 +18,14 @@ Follow-up to [FULL_PROJECT_AUDIT.md](./FULL_PROJECT_AUDIT.md) §6 — previously
 | **AiNiee** | Missing | **2026-07-27** zip extract + A1–A3 ports (symbol repair, response check, numbered parse) — §6 |
 | youdao-dict | Policy only | Unchanged |
 | **Easydict / QTranslate / MTT / YomiNinja** | — | **2026-07-28** 克隆 + 划词深读 → [REFERENCE_SELECTION_UX.md](./REFERENCE_SELECTION_UX.md) |
+| **snow-shot** | — | **2026-07-30** hot-load pool / ONNX hot_start / set_exclude_from_capture / 多屏并行 / ResizeWindowService — §9 in [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) |
+| **capcap** | — | **2026-07-30** PinWindowManager / stackedOrigin / 滚动拼接 Vision 配准 + 粘性元素排除 / hotkey 冲突检测 — §10 |
+| **BabelDOC** | — | **2026-07-30** IL 中间层 / scale-down+box-expansion reflow / passthrough 兜底 / 三信号公式识别 / DocLayout-YOLO — §11 |
+| **PDFMathTranslate** | — | **2026-07-30** 逐字 Tm 绝对定位 / `{vN}` 占位符 / `obj_patch` q/Q 隔离 / SQLite+WAL 缓存 / v2_bridge 子进程模式 — §12 |
+| **kivio** | — | **2026-07-30** NSPanel 重分类 / 冻结帧 / 几何抽象层 / 选择三态 / take-once 复位 / 一次性子进程 OCR worker — §13 |
+| **old-immersive-translate** | dist-only | **2026-07-30** 克隆归档开源版 → `<font>` 包装 / 双语克隆 / piece 切分 / fooCount 代次防污染 / IndexedDB+SHA-1 / LLM 批量分隔符 — §14 |
+
+**Full synthesis and prioritized roadmap:** [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) — absorption matrix + Tier 1 (browser bilingual) / Tier 1.5 (PDF layout) / Tier 2 (OCR M2 multi-pin) / Tier 2.5 (capture quality) / 12-week sequence + verification gates + risks.
 
 ---
 

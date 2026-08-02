@@ -1,6 +1,6 @@
 // Data IO Service - 学习数据导入导出 API
 
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from './invoke';
 
 export interface ExportCard {
   word: string;
@@ -42,23 +42,23 @@ export interface ImportResult {
 }
 
 export async function exportLearningDataJson(): Promise<ExportData> {
-  return invoke('export_learning_data_json');
+  return invokeOrThrow('export_learning_data_json');
 }
 
 export async function exportAnkiTsv(): Promise<AnkiNote[]> {
-  return invoke('export_anki_tsv');
+  return invokeOrThrow('export_anki_tsv');
 }
 
 export async function importLearningDataJson(filePath: string): Promise<ImportResult> {
-  return invoke('import_learning_data_json', { filePath });
+  return invokeOrThrow('import_learning_data_json', { filePath });
 }
 
 export async function importWordlistCsv(filePath: string): Promise<ImportResult> {
-  return invoke('import_wordlist_csv', { filePath });
+  return invokeOrThrow('import_wordlist_csv', { filePath });
 }
 
 export async function autoBackup(backupDir: string): Promise<string> {
-  return invoke('auto_backup', { backupDir });
+  return invokeOrThrow('auto_backup', { backupDir });
 }
 
 /// 将 Anki Note 列表转为 TSV 文本
@@ -69,5 +69,5 @@ export function ankiNotesToTsv(notes: AnkiNote[]): string {
 }
 
 export async function writeFileContent(filePath: string, content: string): Promise<void> {
-  return invoke('write_file_content', { filePath, content });
+  return invokeOrThrow('write_file_content', { filePath, content });
 }

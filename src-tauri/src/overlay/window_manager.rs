@@ -1,8 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-use super::html_builder;
-use super::{OverlayContent, OverlayLevel};
+// S1-3: `html_builder`, `OverlayContent`, `OverlayLevel` were only used by the
+// removed `create_overlay_window_via_http` and `update_overlay_content_via_shell`
+// dead functions. Both were zero-caller dead code, so the imports are gone too.
 
 /// FE theme for overlay cards (false = dark, true = light).
 static OVERLAY_LIGHT: AtomicBool = AtomicBool::new(false);
@@ -86,14 +87,14 @@ pub fn create_overlay_window_ex(
             .replace('\\', "\\\\")
             .replace('`', "\\`")
             .replace('$', "\\$");
-        let js = format!(
-            r#"
-            document.open();
-            document.write(`{}`);
-            document.close();
-            "#,
-            escaped
-        );
+        // S2-4: document.open()/write()/close() after load leaks memory in
+        // WebView2 (each call grows the DOM and JS heap without reclaiming
+        // the previous document). Switch to documentElement.innerHTML which
+        // replaces the page content atomically without the write-after-load
+        // memory leak. The HTML builders emit full <html>…</html> pages, so
+        // setting innerHTML on documentElement (the <html> node) reproduces
+        // the same visual result as document.write.
+        let js = format!("document.documentElement.innerHTML = `{escaped}`;");
         let _ = window.eval(&js);
         let _ = window.show();
         #[cfg(windows)]
@@ -183,90 +184,6 @@ pub fn overlay_screen_bounds(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     ))
 }
 
-/// Create overlay window using the HTTP server for content delivery.
-/// This is the optimized path that avoids data URI encoding overhead.
-pub fn create_overlay_window_via_http(
-    app: &AppHandle,
-    http_base_url: &str,
-    content: &OverlayContent,
-    level: OverlayLevel,
-    dismiss_ms: u64,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-    always_on_top: bool,
-) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("overlay") {
-        let _ = window.hide();
-        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-            x.max(0.0) as i32,
-            y.max(0.0) as i32,
-        )));
-        let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-            width.max(200.0) as u32,
-            height.max(50.0) as u32,
-        )));
-        let _ = window.set_always_on_top(always_on_top);
-        let js = html_builder::build_update_script(
-            &content.source,
-            &content.translated,
-            level,
-            dismiss_ms,
-        );
-        let _ = window.eval(&js);
-        let _ = window.show();
-        note_overlay_shown();
-        return Ok(());
-    }
-
-    // Create invisible first — never flash at (0,0)
-    let overlay_url_str = format!("{}/overlay", http_base_url);
-    let overlay_url = tauri::Url::parse(&overlay_url_str)
-        .map_err(|e| format!("Failed to parse overlay URL: {}", e))?;
-
-    let w = width.max(200.0);
-    let h = height.max(50.0);
-    let window = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::External(overlay_url))
-        .title("Translation")
-        .inner_size(w, h)
-        .decorations(false)
-        .transparent(false)
-        .always_on_top(always_on_top)
-        .skip_taskbar(true)
-        .resizable(false)
-        .focused(false)
-        .visible(false)
-        .background_color(tauri::window::Color(18, 18, 20, 255))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-        x.max(0.0) as i32,
-        y.max(0.0) as i32,
-    )));
-    let _ = window.show();
-    note_overlay_shown();
-
-    // Give the webview a moment to load the shell, then update with actual content
-    let content_clone = content.clone();
-    let app_clone = app.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        if let Some(w) = app_clone.get_webview_window("overlay") {
-            let js = html_builder::build_update_script(
-                &content_clone.source,
-                &content_clone.translated,
-                level,
-                dismiss_ms,
-            );
-            let _ = w.eval(&js);
-        }
-    });
-
-    Ok(())
-}
-
 /// Close/hide the overlay. Prefer hide to avoid recreate flash at (0,0).
 pub fn close_overlay_window(app: &AppHandle) {
     hide_overlay_window(app);
@@ -280,19 +197,21 @@ pub fn hide_overlay_window(app: &AppHandle) {
     if let Ok(mut g) = OVERLAY_SHOWN_AT.lock() {
         *g = None;
     }
-}
-
-/// Show a previously hidden overlay window (no focus steal — terminal multi-window safe)
-pub fn show_overlay_window(app: &AppHandle) -> bool {
-    if let Some(window) = app.get_webview_window("overlay") {
-        let _ = window.show();
-        #[cfg(windows)]
-        if let Ok(hwnd) = window.hwnd() {
-            crate::selection::win_noactivate::apply_no_activate(hwnd.0 as isize);
+    // S2-5: schedule a deferred destroy. Hidden overlay webviews still hold
+    // memory (DOM + JS heap + WebView2 resources). If the overlay is not
+    // reshown within 5 minutes, destroy the window so the OS reclaims the
+    // memory. The next create_overlay_window_ex call will recreate it.
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+        // Only destroy if still hidden (no new show happened).
+        if let Some(window) = app2.get_webview_window("overlay") {
+            if !window.is_visible().unwrap_or(false) {
+                tracing::info!("[overlay] destroying idle hidden overlay (5min unused) to reclaim memory");
+                let _ = window.close();
+            }
         }
-        return true;
-    }
-    false
+    });
 }
 
 /// Move overlay to a new position
@@ -348,24 +267,6 @@ pub fn update_overlay_content(
         "#
     );
 
-    window.eval(&js).map_err(|e| e.to_string())?;
-    Ok(true)
-}
-
-/// Update overlay content using the RAF-based shell update mechanism
-pub fn update_overlay_content_via_shell(
-    app: &AppHandle,
-    source: &str,
-    translated: &str,
-    level: OverlayLevel,
-    dismiss_ms: u64,
-) -> Result<bool, String> {
-    let window = match app.get_webview_window("overlay") {
-        Some(w) => w,
-        None => return Ok(false),
-    };
-
-    let js = html_builder::build_update_script(source, translated, level, dismiss_ms);
     window.eval(&js).map_err(|e| e.to_string())?;
     Ok(true)
 }

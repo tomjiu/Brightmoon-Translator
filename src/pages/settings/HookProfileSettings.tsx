@@ -1,6 +1,6 @@
 // HookProfileSettings - Hook profile management (Phase 3.1)
 import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from '../../services/invoke';
 import { Plus, Trash2, Check, Monitor, Clock, Edit3, X } from 'lucide-react';
 import Card from '../../components/Card';
 import { useI18n } from '../../i18n';
@@ -208,8 +208,8 @@ export default function HookProfileSettings() {
   const loadProfiles = useCallback(async () => {
     try {
       const [allProfiles, active] = await Promise.all([
-        invoke<HookProfile[]>('get_hook_profiles'),
-        invoke<HookProfile | null>('get_active_hook_profile'),
+        invokeOrThrow<HookProfile[]>('get_hook_profiles'),
+        invokeOrThrow<HookProfile | null>('get_active_hook_profile'),
       ]);
       setProfiles(allProfiles);
       setActiveId(active?.id ?? null);
@@ -224,11 +224,11 @@ export default function HookProfileSettings() {
 
   const handleCreate = async (data: HookProfileFormData) => {
     try {
-      await invoke('create_hook_profile', {
+      await invokeOrThrow('create_hook_profile', {
         name: data.name.trim(),
         hookConfig: DEFAULT_HOOK_CONFIG,
       });
-      const allProfiles = await invoke<HookProfile[]>('get_hook_profiles');
+      const allProfiles = await invokeOrThrow<HookProfile[]>('get_hook_profiles');
       const created = allProfiles[allProfiles.length - 1];
       if (created) {
         const updates: HookProfileUpdate = {};
@@ -238,7 +238,7 @@ export default function HookProfileSettings() {
         if (data.sourceLang) updates.sourceLang = data.sourceLang;
         if (data.targetLang) updates.targetLang = data.targetLang;
         if (Object.keys(updates).length > 0) {
-          await invoke('update_hook_profile', { id: created.id, updates });
+          await invokeOrThrow('update_hook_profile', { id: created.id, updates });
         }
       }
       setShowCreateForm(false);
@@ -250,7 +250,7 @@ export default function HookProfileSettings() {
 
   const handleDelete = async (id: string) => {
     try {
-      await invoke('delete_hook_profile', { id });
+      await invokeOrThrow('delete_hook_profile', { id });
       await loadProfiles();
     } catch (err) {
       console.error('Failed to delete profile:', err);
@@ -259,7 +259,7 @@ export default function HookProfileSettings() {
 
   const handleActivate = async (id: string | null) => {
     try {
-      await invoke('activate_hook_profile', { id });
+      await invokeOrThrow('activate_hook_profile', { id });
       await loadProfiles();
     } catch (err) {
       console.error('Failed to activate profile:', err);
@@ -268,7 +268,7 @@ export default function HookProfileSettings() {
 
   const handleUpdate = async (id: string, data: HookProfileFormData) => {
     try {
-      await invoke('update_hook_profile', {
+      await invokeOrThrow('update_hook_profile', {
         id,
         updates: {
           name: data.name,

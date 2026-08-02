@@ -124,11 +124,24 @@
       return null;
     }
 
+    // P0 fix (audit B7 gap): the page translator calls getSync for the fast
+    // synchronous layers (L1+L2). Add the alias so it does not throw
+    // TypeError; stays in sync with `get` (no IndexedDB tier in HEAD).
+    getSync(text, from, to, engine) {
+      return this.get(text, from, to, engine);
+    }
+
     // Store translation result
     set(text, from, to, engine, result) {
       const key = this._makeKey(text, from, to, engine);
       this.memory.set(key, result);
       this.session.set(key, result);
+    }
+
+    // P0 fix (audit B7 gap): synchronous write alias used by the page
+    // translator after each batch/failure-path translation.
+    setSync(text, from, to, engine, result) {
+      this.set(text, from, to, engine, result);
     }
 
     // Check if translation exists in cache

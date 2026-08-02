@@ -34,6 +34,8 @@ pub fn modifier_key_satisfied(key: &str) -> bool {
         use windows::Win32::UI::Input::KeyboardAndMouse::{
             GetAsyncKeyState, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_RCONTROL, VK_RMENU, VK_RSHIFT,
         };
+        // SAFETY: GetAsyncKeyState is a pure Win32 query (i32 vk → i16) with
+        // no preconditions. Captured by the closure for each call below.
         let down = |vk: i32| unsafe { GetAsyncKeyState(vk) as u16 & 0x8000 != 0 };
         match k.as_str() {
             "shift" | "lshift" | "rshift" => down(VK_LSHIFT.0 as i32) || down(VK_RSHIFT.0 as i32),

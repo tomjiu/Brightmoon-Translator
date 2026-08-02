@@ -96,9 +96,10 @@ describe('Type definitions', () => {
         engines: {
           google: { enabled: true },
           baidu: { enabled: false, appId: '', secret: '' },
-          youdao: { enabled: false, useAi: false },
+          youdao: { enabled: false, useAi: false, ocrAppKey: '', ocrAppSecret: '' },
           deepl: { enabled: false, apiKey: '', pro: false },
           deeplx: { enabled: false, pro: false },
+          caiyun: { enabled: false, apiToken: '' },
           microsoft: { enabled: false },
           yandex: { enabled: false },
         },

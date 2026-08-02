@@ -17,6 +17,9 @@ pub struct TranslationResult {
 pub struct TranslateResponse {
     pub results: Vec<TranslationResult>,
     pub detected_language: Option<String>,
+    /// Per-engine failure messages surfaced to the UI (empty on success).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<String>,
 }
 
 impl TranslateResponse {
@@ -129,6 +132,11 @@ pub struct TranslateRequest {
     /// Pre-split segments for batch mode; if empty, `text` is split by lines.
     #[serde(default)]
     pub segments: Vec<(usize, String)>,
+    /// M4: per-region translate engine override ('' = global router primary).
+    /// When set, the full/primary path uses this named engine instead of the
+    /// router's primary. Mirrors `BatchConfig.engine` semantics (translate_named).
+    #[serde(default)]
+    pub engine: Option<String>,
 }
 
 fn default_concurrency() -> usize {
@@ -147,6 +155,7 @@ impl Default for TranslateRequest {
             batch_id: None,
             concurrency: 3,
             segments: Vec::new(),
+            engine: None,
         }
     }
 }
@@ -261,6 +270,9 @@ pub struct BatchTranslationResult {
     pub index: usize,
     pub original: String,
     pub translated: String,
+    /// Set when this segment failed (translated stays empty); lets callers
+    /// distinguish "原文就是空" from "翻译失败" (M2-04).
+    pub error: Option<String>,
 }
 
 #[cfg(test)]
@@ -276,6 +288,7 @@ mod tests {
                 latency_ms: None,
             }],
             detected_language: Some("en".to_string()),
+            errors: vec![],
         };
 
         let json = serde_json::to_value(response).unwrap();
@@ -293,6 +306,7 @@ mod tests {
                 latency_ms: None,
             }],
             detected_language: None,
+            errors: vec![],
         };
         assert_eq!(single.display_text(), "你好");
 
@@ -315,11 +329,13 @@ mod tests {
                 },
             ],
             detected_language: None,
+            errors: vec![],
         };
         assert_eq!(multi.display_text(), "[google] 你好\n[deepl] 您好");
         assert!(TranslateResponse {
             results: vec![],
             detected_language: None,
+            errors: vec![],
         }
         .display_text()
         .is_empty());

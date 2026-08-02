@@ -1,14 +1,24 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, lazy, Suspense } from 'react';
 import { FileUp, Loader2, Book } from 'lucide-react';
 import { isTauriRuntime } from '../services/tauriRuntime';
 import { setPendingDocPath } from '../services/docHandoff';
+import { useI18n } from '../i18n';
 import PageHeader from '../components/PageHeader';
-import Glossary from './Glossary';
-import PdfViewer from './PdfViewer';
-import EpubViewer from './EpubViewer';
-import SubtitleViewer from './SubtitleViewer';
-import { DocxViewer, ExcelViewer, PptxViewer } from './OfficeViewer';
-import ImageFileTranslate from './ImageFileTranslate';
+// S3-12: viewer subpages lazy-loaded so opening DocumentsViewer doesn't pull
+// in PdfViewer/EpubViewer/OfficeViewer/etc. until the user picks a file type.
+// Each viewer pulls in heavy deps (pdfium, epub.js, mammoth, xlsx) that are
+// wasted payload if the user only ever opens, say, PDFs.
+const Glossary = lazy(() => import('./Glossary'));
+const PdfViewer = lazy(() => import('./PdfViewer'));
+const EpubViewer = lazy(() => import('./EpubViewer'));
+const SubtitleViewer = lazy(() => import('./SubtitleViewer'));
+// OfficeViewer exports DocxViewer/ExcelViewer/PptxViewer as named exports.
+// React.lazy only accepts a default export, so we adapt via .then(). The
+// bundler still produces a single chunk for OfficeViewer.
+const DocxViewer = lazy(() => import('./OfficeViewer').then((m) => ({ default: m.DocxViewer })));
+const ExcelViewer = lazy(() => import('./OfficeViewer').then((m) => ({ default: m.ExcelViewer })));
+const PptxViewer = lazy(() => import('./OfficeViewer').then((m) => ({ default: m.PptxViewer })));
+const ImageFileTranslate = lazy(() => import('./ImageFileTranslate'));
 
 type DocKind = 'pdf' | 'epub' | 'subtitle' | 'docx' | 'excel' | 'pptx' | 'image';
 
@@ -36,6 +46,7 @@ const SUPPORT_HINT = 'PDF · EPUB · Word(.docx) · Excel · PowerPoint · 字�
 /** Single upload entry — auto-detect format, hand path to existing viewers. */
 export default function DocumentsViewer() {
   const isTauri = isTauriRuntime();
+  const { t } = useI18n();
   const [mode, setMode] = useState<'home' | DocKind | 'glossary'>('home');
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
@@ -43,7 +54,7 @@ export default function DocumentsViewer() {
 
   const openFile = useCallback(async () => {
     if (!isTauri) {
-      setError('请在桌面应用中打开文件');
+      setError(t('documents.openInDesktop'));
       return;
     }
     setError(null);
@@ -54,7 +65,7 @@ export default function DocumentsViewer() {
         multiple: false,
         filters: [
           {
-            name: '可翻译文档',
+            name: t('documents.translatableDocs'),
             extensions: [
               'pdf',
               'epub',
@@ -92,7 +103,7 @@ export default function DocumentsViewer() {
     } finally {
       setPicking(false);
     }
-  }, [isTauri]);
+  }, [isTauri, t]);
 
   const backHome = () => {
     setMode('home');
@@ -114,7 +125,9 @@ export default function DocumentsViewer() {
           <span className="ui-caption">术语表</span>
         </div>
         <div className="flex-1 overflow-hidden">
-          <Glossary />
+          <Suspense fallback={<div className="flex items-center justify-center h-full text-text-secondary"><Loader2 className="animate-spin" /></div>}>
+            <Glossary />
+          </Suspense>
         </div>
       </div>
     );
@@ -145,21 +158,23 @@ export default function DocumentsViewer() {
           </button>
         </div>
         <div className="flex-1 overflow-hidden min-h-0">
-          {mode === 'pdf' && <PdfViewer />}
-          {mode === 'epub' && <EpubViewer />}
-          {mode === 'subtitle' && <SubtitleViewer />}
-          {mode === 'docx' && <DocxViewer />}
-          {mode === 'excel' && <ExcelViewer />}
-          {mode === 'pptx' && <PptxViewer />}
-          {mode === 'image' && <ImageFileTranslate />}
+          <Suspense fallback={<div className="flex items-center justify-center h-full text-text-secondary"><Loader2 className="animate-spin" /></div>}>
+            {mode === 'pdf' && <PdfViewer />}
+            {mode === 'epub' && <EpubViewer />}
+            {mode === 'subtitle' && <SubtitleViewer />}
+            {mode === 'docx' && <DocxViewer />}
+            {mode === 'excel' && <ExcelViewer />}
+            {mode === 'pptx' && <PptxViewer />}
+            {mode === 'image' && <ImageFileTranslate />}
+          </Suspense>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="max-w-lg mx-auto space-y-5">
+    <div className="h-full overflow-y-auto p-6 flex flex-col">
+      <div className="max-w-2xl mx-auto space-y-5 w-full flex-1 flex flex-col justify-center">
         <PageHeader
           title="文档翻译"
           description="选择文件后自动识别类型并处理，无需切换多个入口。"
@@ -173,7 +188,7 @@ export default function DocumentsViewer() {
             type="button"
             disabled={picking || !isTauri}
             onClick={() => void openFile()}
-            className="w-full flex flex-col items-center justify-center gap-3 py-10 rounded-xl border border-dashed border-border-strong hover:bg-bg-tertiary transition-colors disabled:opacity-50"
+            className="w-full flex flex-col items-center justify-center gap-3 py-8 rounded-xl border border-dashed border-border-strong hover:bg-bg-tertiary transition-colors disabled:opacity-50"
           >
             {picking ? (
               <Loader2 className="w-8 h-8 animate-spin text-primary" />

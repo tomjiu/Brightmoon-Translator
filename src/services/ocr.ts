@@ -280,14 +280,64 @@ export async function ocrImagePreferNativeDetailed(
   }
 }
 
+/** Layout-aware OCR: runs DocLayout-YOLO region detection first (when enabled
+ *  in config), filtering figure/table/formula regions, then OCRs each text
+ *  region separately and merges results. Falls back to full-image OCR when
+ *  layout detection is disabled, the model is missing, or the feature is not
+ *  compiled.
+ *
+ *  `ocrBackend`: "winrt" or "offline". The backend's `ocr_with_layout_detection`
+ *  checks `layout_detection_enabled` config internally, so this is safe to call
+ *  unconditionally — when disabled it just delegates to the raw OCR path.
+ */
+export async function ocrImageWithLayout(
+  imageDataUrl: string,
+  lang = 'auto',
+  ocrBackend: 'winrt' | 'offline' = 'winrt',
+): Promise<OcrResultDetailed> {
+  return await invokeOrThrow<OcrResultDetailed>('ocr_image_with_layout', {
+    base64Data: imageDataUrl,
+    lang,
+    ocrBackend,
+  });
+}
+
 /** OCR with configurable engine preference.
  *  engine: "auto" | "winrt" | "youdao" | "tesseract" | "rapid" | "paddle"
+ *
+ *  When `layoutDetectionEnabled` is true in config, winrt/rapid/paddle/auto
+ *  engines route through the layout-detection pipeline (DocLayout-YOLO region
+ *  filtering → per-region OCR → merged results). Youdao (cloud service with
+ *  own region detection) and tesseract (in-browser) always use their direct
+ *  paths.
  */
 export async function ocrWithEngine(
   imageDataUrl: string,
   engine = 'auto',
   lang = 'auto',
 ): Promise<OcrResultDetailed> {
+  const cfg = useConfigStore.getState().config;
+  const useLayout = cfg.layoutDetectionEnabled === true;
+
+  if (useLayout) {
+    switch (engine) {
+      case 'winrt':
+        return await ocrImageWithLayout(imageDataUrl, lang, 'winrt');
+
+      case 'rapid':
+      case 'paddle':
+        return await ocrImageWithLayout(imageDataUrl, lang, 'offline');
+
+      case 'auto':
+      default:
+        // Layout pipeline with winrt backend; the region filtering improves
+        // accuracy enough that the youdao/tesseract fallback chain is rarely
+        // needed. If winrt fails entirely, ocrImageWithLayout returns an error
+        // which the caller can handle.
+        return await ocrImageWithLayout(imageDataUrl, lang, 'winrt');
+    }
+  }
+
   switch (engine) {
     case 'winrt':
       return await ocrImageDetailed(imageDataUrl, lang);

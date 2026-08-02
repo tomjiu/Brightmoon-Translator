@@ -1,10 +1,10 @@
 // OCR screenshot helper utilities — extracted from OcrScreenshotTranslator
 import { listen } from '@tauri-apps/api/event';
-import { emitToRegion, OcrMainEvents, OcrRegionEvents } from './ocrRegionProtocol';
+import { emitToRegion, emitToRegionId, OcrMainEvents, OcrRegionEvents } from './ocrRegionProtocol';
 import type { DictionaryResult } from '../types';
 
 /** true = frame listeners registered; false = timeout (do not OCR blindly). */
-export function waitForOcrRegionFrameReady(timeoutMs: number): Promise<boolean> {
+export function waitForOcrRegionFrameReady(timeoutMs: number, regionId?: string): Promise<boolean> {
   return new Promise((resolve) => {
     let done = false;
     let unlisten: (() => void) | undefined;
@@ -16,13 +16,20 @@ export function waitForOcrRegionFrameReady(timeoutMs: number): Promise<boolean> 
       resolve(ok);
     };
     const timer = window.setTimeout(() => finish(false), timeoutMs);
+    // P0 fix: the frame answers `pingReady` (base event name for every region).
+    // M3 renamed the ready event for non-default regions, but main always
+    // pings via pingReady — frame must listen on pingReady, and main must ping
+    // the REGION's window (not just the legacy default window).
     void listen(OcrMainEvents.frameReady, () => finish(true)).then((fn) => {
       unlisten = fn;
       if (done) {
         fn();
         return;
       }
-      void emitToRegion(OcrRegionEvents.pingReady).catch(() => undefined);
+      const ping = regionId
+        ? emitToRegionId(regionId, OcrRegionEvents.pingReady)
+        : emitToRegion(OcrRegionEvents.pingReady);
+      void ping.catch(() => undefined);
     });
   });
 }

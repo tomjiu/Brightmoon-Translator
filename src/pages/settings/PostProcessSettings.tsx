@@ -1,6 +1,6 @@
 // PostProcessSettings - translation post-process + quality checks
 import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from '../../services/invoke';
 import { Plus, Trash2, Play, ToggleLeft, ToggleRight, Regex, Type } from 'lucide-react';
 import Card from '../../components/Card';
 import { useI18n } from '../../i18n';
@@ -35,7 +35,7 @@ export default function PostProcessSettings() {
 
   const loadConfig = useCallback(async () => {
     try {
-      const data = await invoke<PostProcessConfig>('get_post_process_config');
+      const data = await invokeOrThrow<PostProcessConfig>('get_post_process_config');
       setConfig({
         ...data,
         symbolRepair: data.symbolRepair ?? true,
@@ -53,7 +53,7 @@ export default function PostProcessSettings() {
 
   const saveConfig = async (updated: PostProcessConfig) => {
     try {
-      await invoke('update_post_process_config', { config: updated });
+      await invokeOrThrow('update_post_process_config', { config: updated });
       setConfig(updated);
     } catch (err) {
       console.error('Failed to save post-process config:', err);
@@ -70,7 +70,7 @@ export default function PostProcessSettings() {
   const handleAddRule = async () => {
     if (!newPattern) return;
     try {
-      await invoke('add_replacement_rule', {
+      await invokeOrThrow('add_replacement_rule', {
         pattern: newPattern,
         replacement: newReplacement,
         isRegex: newIsRegex,
@@ -87,7 +87,7 @@ export default function PostProcessSettings() {
 
   const handleDeleteRule = async (id: string) => {
     try {
-      await invoke('remove_replacement_rule', { id });
+      await invokeOrThrow('remove_replacement_rule', { id });
       await loadConfig();
     } catch (err) {
       console.error('Failed to delete rule:', err);
@@ -96,7 +96,7 @@ export default function PostProcessSettings() {
 
   const handleToggleRule = async (rule: ReplacementRule) => {
     try {
-      await invoke('update_replacement_rule', {
+      await invokeOrThrow('update_replacement_rule', {
         id: rule.id,
         pattern: rule.pattern,
         replacement: rule.replacement,
@@ -112,7 +112,7 @@ export default function PostProcessSettings() {
   const handleTest = async () => {
     if (!testInput) return;
     try {
-      const result = await invoke<string>('test_post_process', { text: testInput });
+      const result = await invokeOrThrow<string>('test_post_process', { text: testInput });
       setTestOutput(result);
     } catch (err) {
       console.error('Failed to test post-process:', err);

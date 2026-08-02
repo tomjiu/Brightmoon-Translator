@@ -8,13 +8,13 @@ describe('themeStore', () => {
     vi.clearAllMocks();
 
     // Reset classList mock
-    document.documentElement.classList.add.mockClear();
-    document.documentElement.classList.remove.mockClear();
+    vi.mocked(document.documentElement.classList.add).mockClear();
+    vi.mocked(document.documentElement.classList.remove).mockClear();
   });
 
   describe('initial state', () => {
     it('should default to dark theme when no stored theme', () => {
-      localStorage.getItem.mockReturnValue(null);
+      vi.mocked(localStorage.getItem).mockReturnValue(null);
 
       // Need to re-import to get fresh state
       const { theme } = useThemeStore.getState();
@@ -22,7 +22,7 @@ describe('themeStore', () => {
     });
 
     it('should use stored theme from localStorage', () => {
-      localStorage.getItem.mockReturnValue('light');
+      vi.mocked(localStorage.getItem).mockReturnValue('light');
 
       // The store reads from localStorage on creation
       // Since we can't re-create the store, we test the behavior

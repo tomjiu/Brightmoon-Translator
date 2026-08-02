@@ -1,7 +1,7 @@
 // VocabularyLearning - 词汇学习主页面
 
 import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow, safeInvoke } from '../services/invoke';
 import { useVocabularyStore } from '../stores/vocabularyStore';
 import { LearningStatsPanel, WelcomeGuide } from '../components/vocabulary';
 import {
@@ -90,8 +90,8 @@ export default function VocabularyLearning() {
   const loadData = useCallback(async () => {
     try {
       const [exams, myPlans] = await Promise.all([
-        invoke<ExamWordlist[]>('get_exam_wordlists'),
-        invoke<PlanSummary[]>('get_learning_plans'),
+        invokeOrThrow<ExamWordlist[]>('get_exam_wordlists'),
+        invokeOrThrow<PlanSummary[]>('get_learning_plans'),
       ]);
       setExamWordlists(exams);
       setPlans(myPlans);
@@ -108,7 +108,7 @@ export default function VocabularyLearning() {
     setBusy(true);
     setStatusMsg('正在创建计划...');
     try {
-      await invoke('create_learning_plan', { exam, dailyTarget: 30 });
+      await invokeOrThrow('create_learning_plan', { exam, dailyTarget: 30 });
       await loadData();
       setStatusMsg('');
     } catch (err) {
@@ -126,7 +126,7 @@ export default function VocabularyLearning() {
     setBusy(true);
     setStatusMsg('正在导入...');
     try {
-      await invoke('import_wordlist_from_file', {
+      await invokeOrThrow('import_wordlist_from_file', {
         filePath: importFilePath,
         planName: importName.trim(),
         dailyTarget: importDaily,
@@ -151,7 +151,7 @@ export default function VocabularyLearning() {
     setBusy(true);
     setStatusMsg('正在导入...');
     try {
-      await invoke('import_wordlist_from_text', {
+      await invokeOrThrow('import_wordlist_from_text', {
         text: importText,
         planName: importName.trim(),
         dailyTarget: importDaily,
@@ -195,7 +195,7 @@ export default function VocabularyLearning() {
 
   const handleStartStudy = async (planId: string) => {
     try {
-      const words = await invoke<string[]>('get_plan_today_words', { planId });
+      const words = await invokeOrThrow<string[]>('get_plan_today_words', { planId });
       if (words.length === 0) {
         setStatusMsg('今日已完成！');
         return;
@@ -216,7 +216,7 @@ export default function VocabularyLearning() {
     setWordDetail(null);
     try {
       // 用 study_word 一站式命令：查词典 + 创建卡牌 + 准备 AI 内容
-      const data = await invoke<WordDetail & { phonetic?: string }>('study_word', { word });
+      const data = await invokeOrThrow<WordDetail & { phonetic?: string }>('study_word', { word });
       setWordDetail({
         word: data.word,
         phonetics: data.phonetic ? [{ text: data.phonetic, source: 'ECDICT' }] : [],
@@ -234,16 +234,16 @@ export default function VocabularyLearning() {
     } catch (err) {
       console.error('study_word failed:', err);
       // fallback
-      try {
-        interface LookupMeaning {
-          partOfSpeech: string;
-          definitions: Array<{ definition: string }>;
-        }
-        const basic = await invoke<{
-          word: string;
-          phonetic?: string;
-          meanings?: LookupMeaning[];
-        }>('lookup_word_detail', { word });
+      interface LookupMeaning {
+        partOfSpeech: string;
+        definitions: Array<{ definition: string }>;
+      }
+      const [basic] = await safeInvoke<{
+        word: string;
+        phonetic?: string;
+        meanings?: LookupMeaning[];
+      }>('lookup_word_detail', { word }, { silent: true });
+      if (basic) {
         setWordDetail({
           word: basic.word,
           phonetics: basic.phonetic ? [{ text: basic.phonetic, source: 'ECDICT' }] : [],
@@ -258,7 +258,7 @@ export default function VocabularyLearning() {
           examples: [],
           sources: ['ECDICT'],
         });
-      } catch {
+      } else {
         setWordDetail(null);
       }
     }
@@ -266,7 +266,7 @@ export default function VocabularyLearning() {
 
   const handleKnow = async () => {
     if (activePlanId && todayWords[currentIdx]) {
-      await invoke('mark_word_learned', { planId: activePlanId, word: todayWords[currentIdx] });
+      await safeInvoke('mark_word_learned', { planId: activePlanId, word: todayWords[currentIdx] });
     }
     goNext();
   };
@@ -291,7 +291,7 @@ export default function VocabularyLearning() {
   const handleDelete = async (id: string) => {
     // eslint-disable-next-line no-alert -- destructive confirm; no dialog component available
     if (!confirm('确定删除？')) return;
-    await invoke('delete_learning_plan', { planId: id });
+    await safeInvoke('delete_learning_plan', { planId: id });
     await loadData();
   };
 

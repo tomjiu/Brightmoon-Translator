@@ -2,8 +2,20 @@
 //! Also suppresses monitors during synthetic Ctrl+C / paste used by selection + replace.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+/// Process-wide lock serializing all Win32 OpenClipboard sections.
+///
+/// The clipboard is a single OS-wide resource: a write (replace paste) while a
+/// monitor thread holds the clipboard open makes the second OpenClipboard fail
+/// or read a half-updated buffer (M4-03). All clipboard-touching call sites
+/// (replace, hook clipboard listener, selection Ctrl+C) must take this lock for
+/// the duration of their OpenClipboard..CloseClipboard window.
+pub fn clipboard_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 static LAST: Mutex<Option<(String, Instant)>> = Mutex::new(None);
 static SYNTHETIC_DEPTH: AtomicU64 = AtomicU64::new(0);

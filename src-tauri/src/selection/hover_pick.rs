@@ -157,6 +157,8 @@ pub fn is_ui_chrome_word(w: &str) -> bool {
             | "start"
             | "search"
             | "settings"
+            | "windows"
+            | "administrator"
             | "file"
             | "edit"
             | "view"
@@ -213,6 +215,20 @@ pub fn looks_like_app_or_process_name(w: &str) -> bool {
     false
 }
 
+/// True if `s` is a run of > 4 CJK characters (a phrase/sentence, not a short headword).
+fn is_long_cjk_run(s: &str) -> bool {
+    let cjk_count = s
+        .chars()
+        .filter(|c| {
+            matches!(
+                c,
+                '\u{4e00}'..='\u{9fff}' | '\u{3400}'..='\u{4dbf}' | '\u{f900}'..='\u{faff}'
+            )
+        })
+        .count();
+    cjk_count > 4 && cjk_count * 2 >= s.chars().count()
+}
+
 fn extract_word_candidate_inner(t: &str) -> Option<String> {
     // Reject whole-window titles like "Administrator: Windows PowerShell"
     let lower = t.to_ascii_lowercase();
@@ -224,7 +240,24 @@ fn extract_word_candidate_inner(t: &str) -> Option<String> {
         // Still try to find a real token inside, but skip chrome tokens
     }
 
-    if dictionary::is_single_word(t) && t.chars().count() <= 40 && !is_ui_chrome_word(t) {
+    // Whole-token fast path: a single Latin/digit word, or a short CJK phrase
+    // (≤ 4 chars). Longer CJK runs must go through the short-window logic below so
+    // we return a dictionary headword window instead of a whole sentence.
+    let cjk_total: usize = t
+        .chars()
+        .filter(|c| {
+            matches!(
+                c,
+                '\u{4e00}'..='\u{9fff}' | '\u{3400}'..='\u{4dbf}' | '\u{f900}'..='\u{faff}'
+            )
+        })
+        .count();
+    let is_short_cjk = cjk_total > 0 && cjk_total <= 4;
+    if dictionary::is_single_word(t)
+        && t.chars().count() <= 40
+        && !is_ui_chrome_word(t)
+        && (cjk_total == 0 || is_short_cjk)
+    {
         return Some(t.to_string());
     }
 
@@ -235,12 +268,16 @@ fn extract_word_candidate_inner(t: &str) -> Option<String> {
     if !tokens.is_empty() {
         let mid = tokens[tokens.len() / 2];
         let mid = mid.trim_matches(|c: char| !c.is_alphanumeric());
-        if dictionary::is_single_word(mid) && mid.chars().count() <= 40 && !is_ui_chrome_word(mid) {
+        if dictionary::is_single_word(mid)
+            && mid.chars().count() <= 40
+            && !is_ui_chrome_word(mid)
+            && !is_long_cjk_run(mid)
+        {
             return Some(mid.to_string());
         }
         for part in tokens {
             let p = part.trim_matches(|c: char| !c.is_alphanumeric());
-            if p.is_empty() || is_ui_chrome_word(p) {
+            if p.is_empty() || is_ui_chrome_word(p) || is_long_cjk_run(p) {
                 continue;
             }
             if dictionary::is_single_word(p) && p.chars().count() <= 40 {
@@ -412,6 +449,8 @@ fn is_editable_control_focused_win() -> bool {
         UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_ValuePatternId,
     };
 
+    // SAFETY: COM init + UIA calls on this thread. All COM objects returned
+    // are reference-counted and released automatically by the `windows` crate.
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL) {
@@ -469,16 +508,16 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
         CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, IUIAutomationElement};
-    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
+    // S1-6: use shared cursor reader instead of a local GetCursorPos FFI block.
+    let (px, py) = crate::win::cursor_pos_raw()?;
+    let pt = POINT { x: px, y: py };
+    let cx = pt.x as f64;
+    let cy = pt.y as f64;
+
+    // SAFETY: COM init + UIA calls on this thread. All COM objects are
+    // reference-counted; pt is a valid screen POINT from cursor_pos_raw.
     unsafe {
-        let mut pt = POINT::default();
-        if GetCursorPos(&mut pt).is_err() {
-            return None;
-        }
-        let cx = pt.x as f64;
-        let cy = pt.y as f64;
-
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL).ok()?;
 
@@ -558,6 +597,8 @@ fn element_is_chrome_only(
         UIA_PaneControlTypeId, UIA_TabControlTypeId, UIA_TabItemControlTypeId,
         UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId, UIA_WindowControlTypeId,
     };
+    // SAFETY: Read-only property access on a borrowed IUIAutomationElement.
+    // The COM pointer is valid for the lifetime of `element`.
     unsafe {
         if let Ok(ct) = element.CurrentControlType() {
             let id = ct.0;
@@ -591,6 +632,8 @@ fn value_pattern_text_if_editable(
         IUIAutomationValuePattern, UIA_DocumentControlTypeId, UIA_EditControlTypeId,
         UIA_ValuePatternId,
     };
+    // SAFETY: Read-only UIA property/pattern queries on a borrowed element.
+    // COM pointers from GetCurrentPattern are reference-counted.
     unsafe {
         let is_edit = element
             .CurrentControlType()
@@ -638,6 +681,8 @@ fn try_text_pattern_at_point(
         IUIAutomationTextPattern, TextUnit_Paragraph, TextUnit_Word, UIA_TextPatternId,
     };
 
+    // SAFETY: Read-only UIA pattern/range queries on a borrowed element.
+    // COM pointers are reference-counted; pt was obtained from cursor_pos_raw.
     unsafe {
         let pat = element.GetCurrentPattern(UIA_TextPatternId).ok()?;
         let text_pattern: IUIAutomationTextPattern = pat.cast().ok()?;
@@ -736,6 +781,8 @@ fn element_is_image_like(
         IUIAutomationTextPattern, UIA_GroupControlTypeId, UIA_ImageControlTypeId,
         UIA_PaneControlTypeId, UIA_TextPatternId,
     };
+    // SAFETY: Read-only UIA property/pattern queries on a borrowed element.
+    // COM pointers from GetCurrentPattern are reference-counted.
     unsafe {
         // TextPattern present → not image-like for OCR sizing (text path preferred)
         if let Ok(pat) = element.GetCurrentPattern(UIA_TextPatternId) {
@@ -768,6 +815,8 @@ fn element_is_ocr_chrome(
         UIA_TabItemControlTypeId, UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId,
         UIA_WindowControlTypeId,
     };
+    // SAFETY: Read-only CurrentControlType query on a borrowed element.
+    // The COM pointer is valid for the lifetime of `element`.
     unsafe {
         if let Ok(ct) = element.CurrentControlType() {
             let id = ct.0;
@@ -793,13 +842,14 @@ fn uia_element_at_cursor() -> Option<(
         CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, IUIAutomationElement};
-    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
+    // S1-6: use shared cursor reader instead of a local GetCursorPos FFI block.
+    let (px, py) = crate::win::cursor_pos_raw()?;
+    let pt = POINT { x: px, y: py };
+
+    // SAFETY: COM init + UIA ElementFromPoint on a valid screen POINT.
+    // Returned COM objects are reference-counted.
     unsafe {
-        let mut pt = POINT::default();
-        if GetCursorPos(&mut pt).is_err() {
-            return None;
-        }
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL).ok()?;
         let element: IUIAutomationElement = automation.ElementFromPoint(pt).ok()?;
@@ -810,35 +860,32 @@ fn uia_element_at_cursor() -> Option<(
 #[cfg(windows)]
 fn pick_word_near_cursor_ocr_win(half_w: i32, half_h: i32) -> Option<HoverPick> {
     use windows::Win32::Foundation::POINT;
-    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
     let mut half_w = half_w;
     let mut half_h = half_h;
-    let mut pt = POINT::default();
+    let pt;
 
     // Probe UIA under cursor: skip pure chrome; enlarge strip for image-like controls.
     if let Some((cursor_pt, element)) = uia_element_at_cursor() {
         pt = cursor_pt;
         if element_is_ocr_chrome(&element) {
-            tracing::debug!("[hover_pick] OCR strip skipped: chrome control under cursor");
+            tracing::trace!("[hover_pick] OCR strip skipped: chrome control under cursor");
             return None;
         }
         if element_is_image_like(&element) {
             // Slightly larger strip over images/canvas (still line-ish, not a square blob)
             half_w = half_w.max(110);
             half_h = half_h.max(22);
-            tracing::debug!(
+            tracing::trace!(
                 "[hover_pick] OCR strip image-like → larger {}x{}",
                 half_w * 2,
                 half_h * 2
             );
         }
     } else {
-        unsafe {
-            if GetCursorPos(&mut pt).is_err() {
-                return None;
-            }
-        }
+        // S1-6: fall back to shared cursor reader (UIA path failed entirely).
+        let (x, y) = crate::win::cursor_pos_raw()?;
+        pt = POINT { x, y };
     }
 
     // Prefer wide-and-short (text line). Allow tall only if caller asks / image-like bump.

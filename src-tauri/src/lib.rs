@@ -23,6 +23,7 @@ pub mod error;
 pub mod excel;
 pub mod furigana;
 pub mod glossary;
+pub mod hook_code;
 pub mod hook_inject;
 pub mod hook_profile;
 pub mod hotkey;
@@ -32,10 +33,19 @@ pub mod memory;
 pub mod metrics;
 pub mod models;
 pub mod ocr_engine;
+pub mod ocr_layout_pipeline;
 pub mod ocr_offline;
+pub mod ocr_postprocess;
 pub mod ocr_region_consts;
+pub mod ocr_worker;
 pub mod overlay;
 pub mod pdf;
+pub mod pdf_il;
+pub mod pdf_il_extract;
+pub mod capture_geometry;
+pub mod font_subset;
+pub mod layout_detection;
+pub mod layout_model_download;
 pub mod post_process;
 pub mod pptx;
 pub mod pre_process;
@@ -50,6 +60,7 @@ pub mod sync;
 pub mod tbx;
 pub mod tmx;
 pub mod tts;
+pub mod win;
 
 use app_context::Contexts;
 use batch::BatchManager;
@@ -144,27 +155,42 @@ pub struct AppState {
 }
 
 /// Resolve ecdict.db for both packaged and dev layouts.
+///
+/// S0-8: three-tier resolution — (1) exe sibling (release/portable bundle,
+/// incl. `resources/` subdir used by Tauri bundling), (2) compile-time
+/// `CARGO_MANIFEST_DIR` (dev runs from repo). The previous CWD-relative
+/// candidates (`dictionaries/ecdict.db`, `ecdict.db`) were fragile and broke
+/// in release installs where the CWD is not the repo root, so they are gone.
 pub(crate) fn resolve_ecdict_db_path() -> Option<std::path::PathBuf> {
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
     if let Some(ref dir) = exe_dir {
+        // Tier 1: release / portable layouts.
         candidates.push(dir.join("dictionaries").join("ecdict.db"));
         candidates.push(dir.join("resources").join("dictionaries").join("ecdict.db"));
         candidates.push(dir.join("ecdict.db"));
-        candidates.push(dir.join("resources").join("ecdict.db"));
     }
-    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // Tier 2: dev layout (cargo run) — repo-root dictionaries/ and src-tauri/dictionaries/.
     candidates.push(manifest.join("..").join("dictionaries").join("ecdict.db"));
     candidates.push(manifest.join("dictionaries").join("ecdict.db"));
-    candidates.push(std::path::PathBuf::from("dictionaries").join("ecdict.db"));
-    candidates.push(std::path::PathBuf::from("ecdict.db"));
-    for c in candidates {
+    for c in &candidates {
         if c.is_file() {
-            return Some(c.canonicalize().unwrap_or(c));
+            // S5-fix: avoid canonicalize() on Windows — it returns a UNC path
+            // with `\\?\` prefix, which corrupts the sqlite connection string
+            // (`sqlite://?/E:/...` is invalid). The candidate `c` is already
+            // absolute (derived from current_exe() or CARGO_MANIFEST_DIR),
+            // so no canonicalization is needed.
+            return Some(c.clone());
         }
     }
+    tracing::warn!(
+        "[paths] ecdict.db not found; searched {} candidates: {:?}",
+        candidates.len(),
+        candidates
+    );
     None
 }
 
@@ -489,9 +515,16 @@ pub fn run() {
             // Spawns a background task 1 second after startup to pre-capture and cache screen
             // This eliminates the 1-2 second lag when user clicks OCR button
             {
+                let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     // Wait 1 second to avoid slowing down app startup
                     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+                    // O5: preload the OCR region frame webview hidden so the
+                    // first OCR session skips WebView2 create cost.
+                    if let Err(e) = commands::window::preload_ocr_region_frame(&app_handle) {
+                        tracing::warn!("[O5] OCR region frame preload failed (non-fatal): {}", e);
+                    }
 
                     tracing::info!("[OCR Warmup] Starting screenshot cache warmup...");
                     // Warmup may use cache later; force_refresh=None keeps smart cache path
@@ -503,6 +536,11 @@ pub fn run() {
                             tracing::warn!("[OCR Warmup] Failed to warmup screenshot cache: {}", e);
                         }
                     }
+
+                    // O7: hot-start the WinRT OCR engine so the first real
+                    // OCR call doesn't pay the ONNX model load cost
+                    // (200–800 ms on cold cache). Best-effort, non-fatal.
+                    ocr_engine::hot_start_winrt_ocr(None).await;
                 });
             }
 
@@ -572,13 +610,11 @@ pub fn run() {
             commands::translate::translate_embedded,
             commands::translate::start_clipboard_monitor,
             commands::translate::stop_clipboard_monitor,
-            commands::translate::translate_selection_with_text,
             commands::translate::replace_translate,
             commands::translate::replace_text_in_app,
             commands::translate::back_translate,
             commands::translate::polish_translation,
             commands::translate::query_tm,
-            commands::translate::compare_translate,
             commands::translate::detect_language,
             commands::translate::lookup_dictionary,
             commands::window::create_overlay,
@@ -614,6 +650,22 @@ pub fn run() {
             commands::window::set_ocr_region_frame_sampling,
             commands::window::set_ocr_region_frame_click_through,
             commands::window::move_ocr_region_frame,
+            commands::region_session::ocr_begin_session,
+            commands::region_session::ocr_end_session,
+            commands::region_session::ocr_region_set_mode,
+            commands::region_session::ocr_region_list,
+            commands::region_session::ocr_region_set_engine,
+            commands::window::pin_translation_card,
+            commands::window::dismiss_pinned_card,
+            commands::window::dismiss_all_pinned_cards,
+            commands::window::update_pinned_card_size,
+            commands::window::compute_aspect_resize,
+            commands::window::list_pinned_cards,
+            commands::window::pinned_card_count,
+            commands::window::is_layout_model_ready,
+            commands::window::download_layout_model,
+            commands::window::remove_layout_model,
+            commands::window::layout_model_size,
             commands::config_cmd::get_config,
             commands::config_cmd::get_default_config,
             commands::config_cmd::save_config,
@@ -631,11 +683,10 @@ pub fn run() {
             commands::cache_cmd::clear_cache,
             commands::cache_cmd::cache_size,
             commands::capture::capture_screen,
-            commands::capture::capture_full_screen,
-            commands::capture::system_ocr,
             commands::capture::system_ocr_detailed,
             commands::capture::youdao_ocr,
             commands::capture::offline_ocr,
+            commands::capture::ocr_image_with_layout,
             commands::capture::prepare_screenshot_snapshot,
             commands::capture::load_screenshot_snapshot,
             commands::capture::crop_screenshot_snapshot,
@@ -645,14 +696,13 @@ pub fn run() {
             commands::capture::hwnd_from_point,
             commands::capture::get_window_rect_cmd,
             commands::capture::get_window_title_cmd,
-            commands::capture::detect_text_regions,
             commands::hook_inject_cmd::hook_inject,
             commands::hook_inject_cmd::hook_eject,
             commands::hook_inject_cmd::hook_status,
             commands::hook_inject_cmd::hook_dll_available,
             commands::hook_inject_cmd::hook_dll_path,
-            commands::hook_inject_cmd::hook_read_messages,
-            commands::hook_inject_cmd::hook_process_messages,
+            commands::hook_inject_cmd::hook_get_stats,
+            commands::hook_inject_cmd::hook_install_h_code,
             commands::process_list::get_process_list,
             commands::glossary_cmd::get_glossary,
             commands::glossary_cmd::get_all_glossary,
@@ -663,8 +713,6 @@ pub fn run() {
             commands::glossary_cmd::import_glossary_tbx,
             commands::glossary_cmd::export_glossary_tbx,
             commands::glossary_cmd::align_text,
-            commands::tools_cmd::transform_variable_name,
-            commands::tools_cmd::cycle_variable_name,
             commands::tts_cmd::text_to_speech,
             commands::tts_cmd::get_tts_voices,
             commands::collection_cmd::collection_push,
@@ -680,6 +728,12 @@ pub fn run() {
             commands::pdf_cmd::open_pdf,
             commands::pdf_cmd::translate_pdf,
             commands::pdf_cmd::ocr_scanned_pdf,
+            commands::pdf_cmd::save_bilingual_pdf,
+            commands::pdf_cmd::save_translated_pdf,
+            commands::pdf_cmd::pdf_cache_count,
+            commands::pdf_cmd::pdf_cache_clear,
+            commands::pdf_cmd::pdf_cache_evict,
+            commands::pdf_cmd::pdf_cache_lookup,
             commands::epub_cmd::open_epub,
             commands::epub_cmd::translate_epub,
             commands::epub_cmd::save_bilingual_epub,
@@ -742,7 +796,6 @@ pub fn run() {
             commands::ai_cmd::ai_polish_translation,
             commands::ai_cmd::ai_extract_terms,
             commands::ai_cmd::ai_learn_style,
-            commands::ai_cmd::ai_context_translate,
             commands::ai_cmd::ai_multi_round_translate,
             commands::offline_cmd::get_offline_models,
             commands::offline_cmd::download_offline_model,

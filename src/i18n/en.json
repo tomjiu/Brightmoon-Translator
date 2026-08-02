@@ -1,15 +1,14 @@
 {
   "app": {
-    "name": "Moon Translator"
+    "name": "Moon Translator",
+    "dictNotLoadedWarning": "Local dictionary not loaded, hover dictionary may be unavailable",
+    "dictNotLoadedPath": "Path: {path}"
   },
   "nav": {
     "translator": "Translate",
-    "batch": "Batch Translate",
     "hook": "Hook Translate",
     "documents": "Documents",
     "vocabulary": "Vocabulary",
-    "plugins": "Plugins",
-    "marketplace": "Plugin Marketplace",
     "metrics": "Metrics",
     "tm": "Translation Memory",
     "settings": "Settings"
@@ -43,6 +42,8 @@
     "dictionary": "Dictionary",
     "copy": "Copy",
     "copied": "Copied",
+    "pin": "Pin",
+    "pinned": "Pinned",
     "speak": "Speak",
     "speaking": "Speaking",
     "showOriginal": "Show Original",
@@ -60,7 +61,12 @@
     "embeddedEmpty": "No embedded translation results",
     "embeddedEmptyHint": "Enter text and click translate button",
     "startListening": "Start Voice Input",
-    "stopListening": "Stop Voice Input"
+    "stopListening": "Stop Voice Input",
+    "collect": "Save",
+    "collected": "Saved",
+    "collectToWordbook": "Save to wordbook (with export)",
+    "collectedWithExport": "Saved (with export)",
+    "noResultError": "No translation result: please check enabled engines, API keys and network"
   },
   "history": {
     "title": "Translation History",
@@ -330,6 +336,7 @@
     "configImportFailed": "Config import failed",
     "save": "Save Settings",
     "saved": "Saved",
+    "configSaveFailed": "Config save failed: {message}",
     "nav": {
       "groups": {
         "translate": "Translate",
@@ -452,6 +459,15 @@
       "pdfOcrmypdf": "ocrmypdf (searchable layer for scans)",
       "pdfHint": "pdf-extract for most digital PDFs; auto OCR on garble/crash. ocr needs no extra tools. mineru/marker need pip install.",
       "sidecarPath": "Sidecar CLI path (empty = command on PATH)",
+      "layoutTitle": "PDF layout detection",
+      "layoutDesc": "DocLayout-YOLO model identifies title/body/figure/table/formula regions, improving translation quality for complex-layout PDFs",
+      "layoutEnable": "Enable layout detection",
+      "layoutEnableHint": "Off by default. When enabled, downloads a ~50MB ONNX model on demand; falls back to plain text extraction if unavailable",
+      "layoutModelReady": "Model ready",
+      "layoutModelNotReady": "Model not downloaded",
+      "layoutDownload": "Download model",
+      "layoutRemove": "Remove model",
+      "layoutNote": "Model stored in app_data_dir/models/. Retry on failure; removing re-downloads when re-enabled",
       "paramsTitle": "OCR parameters",
       "paramsDesc": "Region watch behavior",
       "interval": "Region watch interval (ms)",
@@ -540,7 +556,12 @@
       "proxyEnable": "Enable proxy",
       "proxyEnableHint": "Applies to proxy-capable requests (LLM, Google fallback, etc.)",
       "proxyHost": "Host",
-      "proxyPort": "Port"
+      "proxyPort": "Port",
+      "cacheTitle": "Translation Cache",
+      "cacheDesc": "Translated content is cached locally and returned directly on repeat translations",
+      "cacheTtlLabel": "Cache TTL (hours)",
+      "cacheTtlHint": "Entries older than this are auto-evicted on next read. Default 72 hours (3 days). Changes take effect on app restart.",
+      "cacheTtlInvalid": "Please enter an integer between 1 and 720"
     },
     "enginePage": {
       "title": "Translation engines",
@@ -616,6 +637,25 @@
       "transmartName": "Tencent Transmart",
       "transmartDesc": "transmart.qq.com; empty credentials allowed",
       "papagoDesc": "Naver Papago web API",
+      "shortLabels": {
+        "llm": "LLM",
+        "google": "Google",
+        "youdao": "Youdao",
+        "caiyun": "Caiyun",
+        "deepl": "DeepL",
+        "deeplx": "DeepLX",
+        "baidu": "Baidu",
+        "microsoft": "Microsoft",
+        "yandex": "Yandex",
+        "offline": "Offline",
+        "tatoeba": "Tatoeba",
+        "baidu_web": "Baidu",
+        "caiyun_web": "Caiyun",
+        "volc": "Volc",
+        "volcengine_web": "Volc",
+        "transmart": "Transmart",
+        "papago": "Papago"
+      },
       "noModel": "No model set",
       "statusConfigured": "Status: configured ({provider} / {model})",
       "statusNeedKey": "Status: API key not configured",
@@ -772,7 +812,9 @@
   "documents": {
     "pdf": "PDF",
     "epub": "EPUB",
-    "subtitle": "Subtitle"
+    "subtitle": "Subtitle",
+    "openInDesktop": "Please open files in the desktop app",
+    "translatableDocs": "Translatable documents"
   },
   "pdf": {
     "title": "PDF Translate",
@@ -827,42 +869,6 @@
     "original": "Original",
     "translation": "Translation",
     "notTranslated": "Not yet translated"
-  },
-  "plugins": {
-    "title": "Plugin Manager",
-    "refresh": "Refresh",
-    "directory": "Plugins Directory",
-    "openDir": "Open Directory",
-    "howTo": "How to Add Plugins",
-    "howToHint": "Create subfolders in the plugins directory, each containing a manifest.json file.",
-    "manifestExample": "manifest.json Format",
-    "apiFormat": "API Format",
-    "noPlugins": "No plugins yet",
-    "addHint": "Place plugins in the plugins directory and click Refresh",
-    "author": "Author",
-    "restartHint": "Restart the app after enabling or disabling plugins",
-    "typeTranslation": "Translation",
-    "typeOcr": "OCR",
-    "typeTts": "TTS"
-  },
-  "marketplace": {
-    "title": "Plugin Marketplace",
-    "searchPlaceholder": "Search plugins...",
-    "catAll": "All",
-    "catTranslation": "Translation Engine",
-    "catTextProcessing": "Text Processing",
-    "catUiEnhancement": "UI Enhancement",
-    "catOther": "Other",
-    "noResults": "No matching plugins found",
-    "install": "Install",
-    "uninstall": "Uninstall",
-    "update": "Update",
-    "updateAvailable": "Update available",
-    "installedTitle": "Installed Plugins",
-    "author": "Author",
-    "description": "Description",
-    "permissions": "Permissions",
-    "versionHistory": "Version History"
   },
   "ocr": {
     "title": "OCR Region Monitor",
@@ -975,7 +981,8 @@
       "noDllFound": "moon_hook.dll not found",
       "injectSuccess": "Injection successful",
       "injectFailed": "Injection failed",
-      "ejectSuccess": "DLL ejected"
+      "ejectSuccess": "DLL ejected",
+      "installHook": "Install Hook"
     },
     "processPicker": {
       "title": "Select process",
@@ -997,27 +1004,6 @@
     "empty": "Enter text to start comparing",
     "emptyHint": "Press Ctrl+Enter to translate quickly",
     "copy": "Copy"
-  },
-  "batch": {
-    "title": "Batch Translate",
-    "description": "Enter multi-line text, each line will be translated as an independent paragraph. Supports bulk processing and concurrent translation.",
-    "concurrency": "Concurrency:",
-    "continueOnError": "Continue on error",
-    "segmentCount": "{count} segments total",
-    "start": "Start Translate",
-    "stop": "Stop",
-    "pause": "Pause",
-    "resume": "Resume",
-    "retry": "Retry Failed",
-    "reset": "Reset",
-    "copyAll": "Copy All",
-    "export": "Export",
-    "completed": "Completed",
-    "failed": "Failed",
-    "noResults": "No translation results yet",
-    "noResultsHint": "Enter text and click \"Start Translate\"",
-    "progress": "{completed}/{total}",
-    "failedCount": "({count} failed)"
   },
   "tm": {
     "title": "Translation Memory",

@@ -10,12 +10,14 @@ use std::thread;
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetAncestor, GetMessageW, SetWindowsHookExW,
-    TranslateMessage, UnhookWindowsHookEx, WindowFromPoint, GA_PARENT, GA_ROOT, HHOOK,
-    KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN,
-    WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_SYSKEYDOWN,
+    CallNextHookEx, DispatchMessageW, GetAncestor, GetMessageW, PostThreadMessageW,
+    SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, WindowFromPoint, GA_PARENT, GA_ROOT,
+    HHOOK, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN,
+    WM_SYSKEYDOWN,
 };
 
 /// Match clipboard synthetic marker — keyboard hook ignores our Ctrl+C.
@@ -46,6 +48,11 @@ struct HookState {
     mouse: isize,
     keyboard: isize,
     tx: Sender<MouseHookEvent>,
+    /// S2-1: thread ID of the message-loop thread. Stored so `uninstall()`
+    /// can `PostThreadMessageW(WM_QUIT)` to break the blocking `GetMessageW`
+    /// loop — previously the thread leaked because GetMessageW never returns
+    /// without a posted message, even after the hooks were unhooked.
+    thread_id: u32,
 }
 
 static HOOK_STATE: Mutex<Option<HookState>> = Mutex::new(None);
@@ -196,6 +203,9 @@ fn is_pop_click(pt: POINT) -> bool {
     if pop == 0 {
         return false;
     }
+    // SAFETY: WindowFromPoint/GetAncestor take a POINT by value and return HWNDs
+    // that are only compared (never dereferenced). No preconditions beyond a
+    // valid POINT.
     unsafe {
         let at = WindowFromPoint(pt);
         if at.0.is_null() {
@@ -377,6 +387,9 @@ pub fn install() -> Option<Receiver<MouseHookEvent>> {
 
     let join = thread::Builder::new()
         .name("moon-mouse-hook".into())
+        // SAFETY: All Win32 calls inside use handles created in this thread and
+        // released before exit (UnhookWindowsHookEx on both hooks). GetMessageW
+        // is woken by PostThreadMessageW(WM_QUIT) from uninstall().
         .spawn(move || unsafe {
             let dct = GetDoubleClickTime();
             DOUBLE_CLICK_MS.store(if dct == 0 { 500 } else { dct }, Ordering::SeqCst);
@@ -414,6 +427,7 @@ pub fn install() -> Option<Receiver<MouseHookEvent>> {
                     mouse: mouse.0 as isize,
                     keyboard: keyboard.0 as isize,
                     tx,
+                    thread_id: GetCurrentThreadId(),
                 });
             }
             tracing::info!("[mouse_hook] WH_MOUSE_LL + WH_KEYBOARD_LL installed");
@@ -451,6 +465,11 @@ pub fn uninstall() {
             unsafe {
                 let _ = UnhookWindowsHookEx(hook_from_isize(s.mouse));
                 let _ = UnhookWindowsHookEx(hook_from_isize(s.keyboard));
+                // S2-1: break the blocking GetMessageW loop in the hook thread
+                // so it can exit and the OS can reclaim the thread. Without this
+                // the thread stayed alive (blocked in GetMessageW) even after
+                // UnhookWindowsHookEx, leaking one thread per install/uninstall cycle.
+                let _ = PostThreadMessageW(s.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
             }
         }
     }

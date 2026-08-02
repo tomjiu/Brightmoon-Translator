@@ -1,7 +1,7 @@
 // VocabularyReview - 完整的FSRS复习系统
 
 import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from '../services/invoke';
 import { useVocabularyStore } from '../stores/vocabularyStore';
 import {
   RefreshCw,
@@ -78,7 +78,7 @@ export default function VocabularyReview() {
   const loadDueCards = useCallback(async () => {
     setLoading(true);
     try {
-      const cards = await invoke<CardInfo[]>('get_due_cards');
+      const cards = await invokeOrThrow<CardInfo[]>('get_due_cards');
       setDueCards(cards);
       setSession({
         totalCards: cards.length,
@@ -161,7 +161,7 @@ export default function VocabularyReview() {
   // 加载单词详情
   const loadWordDetail = async (word: string) => {
     try {
-      const data = await invoke<WordDetailData>('study_word', { word });
+      const data = await invokeOrThrow<WordDetailData>('study_word', { word });
       setWordDetail(data);
     } catch (error) {
       console.error('加载单词详情失败:', error);
@@ -174,7 +174,7 @@ export default function VocabularyReview() {
 
     setSubmitting(true);
     try {
-      await invoke('submit_review', {
+      await invokeOrThrow('submit_review', {
         cardId: dueCards[currentIndex].id,
         rating,
       });

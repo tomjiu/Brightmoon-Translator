@@ -358,12 +358,14 @@ impl Router {
     /// Translate with all engines except the primary (for when primary is handled separately)
     pub async fn translate_rest(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
         let mut results = Vec::new();
+        let mut errors = Vec::new();
         let engines: Vec<_> = self.engines.iter().skip(1).collect();
 
         if engines.is_empty() {
             return TranslateResponse {
                 results,
                 detected_language: None,
+                errors,
             };
         }
 
@@ -380,28 +382,37 @@ impl Router {
             handles.push(tokio::spawn(async move {
                 let name = engine.name().to_string();
                 match engine.translate(&text, &from, &to).await {
-                    Ok(translated) => Some(TranslationResult {
+                    Ok(translated) => Some((TranslationResult {
                         engine: name,
                         text: translated,
                         latency_ms: None,
-                    }),
+                    }, None)),
                     Err(e) => {
                         tracing::warn!("[Router] Engine {} failed: {}", name, e);
-                        None
+                        Some((TranslationResult {
+                            engine: name.clone(),
+                            text: String::new(),
+                            latency_ms: None,
+                        }, Some(format!("{name}: {e}"))))
                     },
                 }
             }));
         }
 
         for handle in handles {
-            if let Ok(Some(result)) = handle.await {
-                results.push(result);
+            if let Ok(Some((result, err))) = handle.await {
+                if let Some(e) = err {
+                    errors.push(e);
+                } else {
+                    results.push(result);
+                }
             }
         }
 
         TranslateResponse {
             results,
             detected_language: None,
+            errors,
         }
     }
 
@@ -420,6 +431,7 @@ impl Router {
                             latency_ms: None,
                         }],
                         detected_language: None,
+                        errors: vec![],
                     }
                 },
                 Err(e) => {
@@ -427,6 +439,7 @@ impl Router {
                     TranslateResponse {
                         results: vec![],
                         detected_language: None,
+                        errors: vec![format!("{name}: {e}")],
                     }
                 },
             }
@@ -435,12 +448,14 @@ impl Router {
             TranslateResponse {
                 results: vec![],
                 detected_language: None,
+                errors: vec!["No translation engine available".to_string()],
             }
         }
     }
 
     /// Strategy: Fallback on Error - try each engine until one succeeds
     async fn translate_with_fallback(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
+        let mut errors = Vec::new();
         for engine in &self.engines {
             let name = engine.name().to_string();
             tracing::info!("[Router] Trying engine: {}", name);
@@ -454,10 +469,12 @@ impl Router {
                             latency_ms: None,
                         }],
                         detected_language: None,
+                        errors: vec![],
                     };
                 },
                 Err(e) => {
                     tracing::warn!("[Router] Engine {} failed: {}, trying next...", name, e);
+                    errors.push(format!("{name}: {e}"));
                     continue;
                 },
             }
@@ -467,6 +484,7 @@ impl Router {
         TranslateResponse {
             results: vec![],
             detected_language: None,
+            errors,
         }
     }
 
@@ -492,14 +510,18 @@ impl Router {
             let handle = tokio::spawn(async move {
                 let name = engine.name().to_string();
                 match engine.translate(&text, &from, &to).await {
-                    Ok(translated) => Some(TranslationResult {
+                    Ok(translated) => Some((TranslationResult {
                         engine: name,
                         text: translated,
                         latency_ms: None,
-                    }),
+                    }, None)),
                     Err(e) => {
                         tracing::warn!("Engine {} error: {}", name, e);
-                        None
+                        Some((TranslationResult {
+                            engine: name.clone(),
+                            text: String::new(),
+                            latency_ms: None,
+                        }, Some(format!("{name}: {e}"))))
                     },
                 }
             });
@@ -508,21 +530,28 @@ impl Router {
         }
 
         let mut results = Vec::new();
+        let mut errors = Vec::new();
         for handle in handles {
-            if let Ok(Some(result)) = handle.await {
-                results.push(result);
+            if let Ok(Some((result, err))) = handle.await {
+                if let Some(e) = err {
+                    errors.push(e);
+                } else {
+                    results.push(result);
+                }
             }
         }
 
         TranslateResponse {
             results,
             detected_language: None,
+            errors,
         }
     }
 
     /// Strategy: Cost Aware - prefer free engines (Google, Youdao, DeepLX, Offline)
     async fn translate_cost_aware(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
         const FREE_ENGINES: &[&str] = &["Google", "Youdao", "DeepLX", "Offline"];
+        let mut errors = Vec::new();
 
         // Try free engines first
         for engine in &self.engines {
@@ -537,10 +566,12 @@ impl Router {
                                 latency_ms: None,
                             }],
                             detected_language: None,
+                            errors: vec![],
                         };
                     },
                     Err(e) => {
                         tracing::warn!("Free engine {} failed: {}", name, e);
+                        errors.push(format!("{name}: {e}"));
                         continue;
                     },
                 }
@@ -560,10 +591,12 @@ impl Router {
                                 latency_ms: None,
                             }],
                             detected_language: None,
+                            errors: vec![],
                         };
                     },
                     Err(e) => {
                         tracing::warn!("Paid engine {} failed: {}", name, e);
+                        errors.push(format!("{name}: {e}"));
                         continue;
                     },
                 }
@@ -573,6 +606,7 @@ impl Router {
         TranslateResponse {
             results: vec![],
             detected_language: None,
+            errors,
         }
     }
 
@@ -581,7 +615,7 @@ impl Router {
         let text: Arc<str> = Arc::from(text);
         let from: Arc<str> = Arc::from(from);
         let to: Arc<str> = Arc::from(to);
-
+        let mut errors = Vec::new();
         let mut handles = Vec::new();
 
         for engine in &self.engines {
@@ -596,15 +630,19 @@ impl Router {
                 match engine.translate(&text, &from, &to).await {
                     Ok(translated) => {
                         let elapsed = start.elapsed();
-                        Some(TranslationResult {
+                        Some((TranslationResult {
                             engine: name,
                             text: translated,
                             latency_ms: Some(elapsed.as_millis() as u64),
-                        })
+                        }, None))
                     },
                     Err(e) => {
                         tracing::warn!("Engine {} error: {}", name, e);
-                        None
+                        Some((TranslationResult {
+                            engine: name.clone(),
+                            text: String::new(),
+                            latency_ms: None,
+                        }, Some(format!("{name}: {e}"))))
                     },
                 }
             });
@@ -619,10 +657,15 @@ impl Router {
             let (result, _index, rest) = futures::future::select_all(remaining).await;
             remaining = rest;
 
-            if let Ok(Some(translation_result)) = result {
+            if let Ok(Some((translation_result, err))) = result {
+                if let Some(e) = err {
+                    errors.push(e);
+                    continue;
+                }
                 return TranslateResponse {
                     results: vec![translation_result],
                     detected_language: None,
+                    errors: vec![],
                 };
             }
         }
@@ -630,6 +673,7 @@ impl Router {
         TranslateResponse {
             results: vec![],
             detected_language: None,
+            errors,
         }
     }
 

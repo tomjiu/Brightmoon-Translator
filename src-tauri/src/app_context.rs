@@ -69,7 +69,7 @@ pub async fn build_contexts() -> Contexts {
     let pre_processor = PreProcessor::load();
     let glossary = Glossary::load().await;
     let engine_router = Arc::new(RwLock::new(engine::Router::new(&config)));
-    let cache = Arc::new(TranslationCache::new(1000));
+    let cache = Arc::new(TranslationCache::new(1000).with_ttl(config.cache_ttl_hours));
     let metrics = Arc::new(MetricsCollector::new());
 
     let config_arc = Arc::new(Mutex::new(config));

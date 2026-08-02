@@ -500,6 +500,8 @@ async fn clipboard_monitor_task(
             }
             last_clip = trimmed.clone();
 
+            // SAFETY: GetForegroundWindow returns an HWND (or null, handled by
+            // helpers). Title/process_name helpers internally null-check.
             let (window_title, process_name) = tokio::task::spawn_blocking(|| unsafe {
                 let hwnd = GetForegroundWindow();
                 (get_window_title(hwnd), get_process_name(hwnd))
@@ -530,6 +532,10 @@ thread_local! {
 /// Read text from clipboard in CF_UNICODETEXT format.
 /// SAFETY: Win32 clipboard API calls. OpenClipboard/CloseClipboard bracket the operation.
 fn read_clipboard_text() -> Option<String> {
+    // M4-03: don't read while a writer (replace paste) holds the clipboard open.
+    let _clip_lock = crate::clipboard_dedupe::clipboard_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     unsafe {
         use windows::Win32::Foundation::HGLOBAL;
         use windows::Win32::System::DataExchange::{
@@ -783,6 +789,8 @@ async fn win_event_hook_task(
             }
             last_text = trimmed.clone();
 
+            // SAFETY: hwnd_raw was validated as a non-null foreground HWND
+            // earlier in the loop; get_process_name null-checks internally.
             let process_name = tokio::task::spawn_blocking(move || unsafe {
                 get_process_name(HWND(hwnd_raw as *mut _))
             })

@@ -84,6 +84,9 @@ pub async fn lookup_word_multi_source(
     let vocab_db = state.event_store.as_ref().map(|s| s.pool());
 
     // 并行查询 ECDICT + DictionaryAPI.dev + 有道
+    // v2 S2-8: share a single MultiSourceDictionary instance across both online
+    // branches instead of constructing twice (duplicates HTTP client + config).
+    let online_dict = MultiSourceDictionary::new();
     let (ecdict_result, online_result, youdao_result) = tokio::join!(
         async {
             match pool {
@@ -92,8 +95,7 @@ pub async fn lookup_word_multi_source(
             }
         },
         async {
-            let dict = MultiSourceDictionary::new();
-            dict.lookup(&word).await.ok().and_then(|mut v| {
+            online_dict.lookup(&word).await.ok().and_then(|mut v| {
                 if v.is_empty() {
                     None
                 } else {
@@ -102,8 +104,7 @@ pub async fn lookup_word_multi_source(
             })
         },
         async {
-            let dict = MultiSourceDictionary::new();
-            parse_youdao(&dict, &word).await
+            parse_youdao(&online_dict, &word).await
         }
     );
 
@@ -250,7 +251,101 @@ pub async fn lookup_word_multi_source(
         });
     }
 
+    // 记录查词历史（非阻塞，失败不影响查询结果）
+    if let Some(p) = vocab_db {
+        let w = word.clone();
+        let pool = p.clone();
+        tokio::spawn(async move {
+            // v2 S2-7: log failures instead of silently swallowing, so that
+            // missing history rows can be diagnosed.
+            if let Err(e) = sqlx::query(
+                r#"
+                INSERT INTO dictionary_history (word, lookup_count, first_looked_up, last_looked_up)
+                VALUES (?, 1, strftime('%s', 'now'), strftime('%s', 'now'))
+                ON CONFLICT(word) DO UPDATE SET
+                    lookup_count = lookup_count + 1,
+                    last_looked_up = strftime('%s', 'now')
+                "#,
+            )
+            .bind(&w)
+            .execute(&pool)
+            .await
+            {
+                tracing::warn!("dictionary history write failed for '{}': {}", w, e);
+            }
+        });
+    }
+
     Ok(entry)
+}
+
+/// 词典查词历史条目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DictionaryHistoryItem {
+    pub word: String,
+    pub lookup_count: i64,
+    pub first_looked_up: i64,
+    pub last_looked_up: i64,
+}
+
+/// 获取最近查词历史（默认 50 条，最多 200 条）
+#[tauri::command]
+pub async fn get_dictionary_history(
+    limit: Option<i32>,
+    state: State<'_, crate::AppState>,
+) -> Result<Vec<DictionaryHistoryItem>, String> {
+    let pool = state
+        .event_store
+        .as_ref()
+        .ok_or("数据库未初始化")?
+        .pool();
+
+    let limit = limit.unwrap_or(50).clamp(1, 200) as i64;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT word, lookup_count, first_looked_up, last_looked_up
+        FROM dictionary_history
+        ORDER BY last_looked_up DESC
+        LIMIT ?
+        "#,
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("查询历史失败: {}", e))?;
+
+    let items = rows
+        .into_iter()
+        .map(|r| DictionaryHistoryItem {
+            word: r.try_get("word").unwrap_or_default(),
+            lookup_count: r.try_get("lookup_count").unwrap_or(1),
+            first_looked_up: r.try_get("first_looked_up").unwrap_or(0),
+            last_looked_up: r.try_get("last_looked_up").unwrap_or(0),
+        })
+        .collect();
+
+    Ok(items)
+}
+
+/// 清空查词历史
+#[tauri::command]
+pub async fn clear_dictionary_history(
+    state: State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let pool = state
+        .event_store
+        .as_ref()
+        .ok_or("数据库未初始化")?
+        .pool();
+
+    sqlx::query("DELETE FROM dictionary_history")
+        .execute(pool)
+        .await
+        .map_err(|e| format!("清空历史失败: {}", e))?;
+
+    Ok(())
 }
 
 /// 解析有道词典 JSON
@@ -647,23 +742,10 @@ pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result
     let pool = store.pool();
     let ecdict_pool = state.ecdict_pool.as_ref().ok_or("ECDICT 未连接")?;
 
-    // 创建表（IF NOT EXISTS 保证幂等）
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS oxford_dict (word TEXT PRIMARY KEY, meaning TEXT NOT NULL)",
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS gpt_dict (word TEXT PRIMARY KEY, content TEXT NOT NULL)",
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-    sqlx::query("CREATE TABLE IF NOT EXISTS core_vocabulary (word TEXT PRIMARY KEY, frequency_rank INTEGER NOT NULL, frq INTEGER, bnc INTEGER, collins INTEGER, oxford INTEGER, tag TEXT)")
-        .execute(pool).await.map_err(|e| e.to_string())?;
-
-    // 跳过已导入的
+    // S1-2: tables (oxford_dict / gpt_dict / core_vocabulary) are now created
+    // by EventStore::init_schema at startup (and documented in migrations
+    // 001 / 005), so the import command no longer needs to run DDL. Keep the
+    // COUNT(*) preflight to skip re-importing already-loaded data.
     let existing_oxford: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM oxford_dict")
         .fetch_one(pool)
         .await

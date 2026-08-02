@@ -202,6 +202,36 @@ export default function AdvancedSettings() {
       )}
 
       <Card
+        title={t('settings.advanced.cacheTitle')}
+        description={t('settings.advanced.cacheDesc')}
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-2">
+              {t('settings.advanced.cacheTtlLabel')}
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="720"
+              value={config.cacheTtlHours ?? 72}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!Number.isNaN(v) && v >= 1 && v <= 720) {
+                  updateConfig((prev) => ({ ...prev, cacheTtlHours: v }));
+                }
+              }}
+              onBlur={() => void saveConfig()}
+              className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary outline-none"
+            />
+            <p className="text-xs text-text-secondary mt-1">
+              {t('settings.advanced.cacheTtlHint')}
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card
         title={t('settings.advanced.proxyTitle')}
         description={t('settings.advanced.proxyDesc')}
       >

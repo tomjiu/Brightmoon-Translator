@@ -8,29 +8,35 @@ export default {
   theme: {
     extend: {
       colors: {
+        // S5-fix: Use `rgb(var(--xxx-rgb) / <alpha-value>)` so Tailwind's
+        // opacity modifier (e.g. `bg-primary/5`) works. The CSS variables
+        // `--color-*-rgb` are defined as space-separated RGB triplets in
+        // index.css (e.g. `--color-primary-rgb: 245 245 245;`).
+        // The original hex variables (`--color-primary`) are retained for
+        // direct `var()` usage in inline styles and custom CSS.
         primary: {
-          DEFAULT: 'var(--color-primary)',
-          hover: 'var(--color-primary-hover)',
-          fg: 'var(--color-primary-fg)',
+          DEFAULT: 'rgb(var(--color-primary-rgb) / <alpha-value>)',
+          hover: 'rgb(var(--color-primary-hover-rgb) / <alpha-value>)',
+          fg: 'rgb(var(--color-primary-fg-rgb) / <alpha-value>)',
         },
-        accent: 'var(--color-accent)',
+        accent: 'rgb(var(--color-accent-rgb) / <alpha-value>)',
         bg: {
-          primary: 'var(--color-bg-primary)',
-          secondary: 'var(--color-bg-secondary)',
-          tertiary: 'var(--color-bg-tertiary)',
-          chrome: 'var(--color-bg-chrome)',
+          primary: 'rgb(var(--color-bg-primary-rgb) / <alpha-value>)',
+          secondary: 'rgb(var(--color-bg-secondary-rgb) / <alpha-value>)',
+          tertiary: 'rgb(var(--color-bg-tertiary-rgb) / <alpha-value>)',
+          chrome: 'rgb(var(--color-bg-chrome-rgb) / <alpha-value>)',
         },
         text: {
-          primary: 'var(--color-text-primary)',
-          secondary: 'var(--color-text-secondary)',
+          primary: 'rgb(var(--color-text-primary-rgb) / <alpha-value>)',
+          secondary: 'rgb(var(--color-text-secondary-rgb) / <alpha-value>)',
         },
         border: {
-          DEFAULT: 'var(--color-border)',
-          strong: 'var(--color-border-strong)',
+          DEFAULT: 'rgb(var(--color-border-rgb) / <alpha-value>)',
+          strong: 'rgb(var(--color-border-strong-rgb) / <alpha-value>)',
         },
-        success: 'var(--color-success)',
-        warning: 'var(--color-warning)',
-        error: 'var(--color-error)',
+        success: 'rgb(var(--color-success-rgb) / <alpha-value>)',
+        warning: 'rgb(var(--color-warning-rgb) / <alpha-value>)',
+        error: 'rgb(var(--color-error-rgb) / <alpha-value>)',
       },
       boxShadow: {
         elevated: 'var(--shadow-elevated)',

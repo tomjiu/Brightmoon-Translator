@@ -441,6 +441,8 @@ pub async fn translate_embedded(
     to: String,
     // Optional channel: "ocr" | "ui" | … (default ui for main embedded translator)
     channel: Option<String>,
+    // M4: per-region translate engine override ('' = global router primary).
+    engine: Option<String>,
 ) -> Result<Vec<EmbeddedLine>, AppError> {
     security::validate_text_length(&text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
     security::validate_language_code(&from)?;
@@ -470,7 +472,7 @@ pub async fn translate_embedded(
     let batch_results = state
         .translation
         .service
-        .run_batch(ch, &lines, &from, &to, 3)
+        .run_batch_with_engine(ch, &lines, &from, &to, 3, engine)
         .await;
 
     // Convert to EmbeddedLine format

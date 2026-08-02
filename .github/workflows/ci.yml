@@ -17,10 +17,10 @@ env:
 jobs:
   rust-check:
     name: Rust Check
-    runs-on: windows-2025-vs2026
+    runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -28,7 +28,7 @@ jobs:
           components: clippy
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -43,7 +43,7 @@ jobs:
         # version from package.json packageManager (avoid dual version error)
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
@@ -83,17 +83,17 @@ jobs:
 
   frontend-check:
     name: Frontend Check
-    runs-on: windows-2025-vs2026
+    runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         # version from package.json packageManager (avoid dual version error)
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
@@ -112,13 +112,13 @@ jobs:
 
   extension-check:
     name: Extension Check
-    runs-on: windows-2025-vs2026
+    runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
 

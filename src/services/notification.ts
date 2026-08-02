@@ -1,6 +1,6 @@
 // Notification Service - 学习提醒服务
 
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from './invoke';
 
 export interface NotificationSettings {
   enabled: boolean;
@@ -10,21 +10,21 @@ export interface NotificationSettings {
 }
 
 export async function sendDesktopNotification(title: string, body: string): Promise<void> {
-  return invoke('send_desktop_notification', { title, body });
+  return invokeOrThrow('send_desktop_notification', { title, body });
 }
 
 export async function checkDailyReminder(): Promise<void> {
-  return invoke('check_daily_reminder');
+  return invokeOrThrow('check_daily_reminder');
 }
 
 export async function checkDueCardsReminder(threshold: number): Promise<void> {
-  return invoke('check_due_cards_reminder', { threshold });
+  return invokeOrThrow('check_due_cards_reminder', { threshold });
 }
 
 export async function checkMilestoneCelebration(): Promise<void> {
-  return invoke('check_milestone_celebration');
+  return invokeOrThrow('check_milestone_celebration');
 }
 
 export async function checkPlanProgressReminder(planId: string): Promise<void> {
-  return invoke('check_plan_progress_reminder', { planId });
+  return invokeOrThrow('check_plan_progress_reminder', { planId });
 }

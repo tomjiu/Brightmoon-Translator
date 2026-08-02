@@ -1,6 +1,6 @@
 // FSRS Optimization Service - FSRS 算法优化 API
 
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from './invoke';
 
 export interface FsrsAnalysis {
   currentParams: number[];
@@ -36,21 +36,21 @@ export interface DifficultyBucket {
 }
 
 export async function getFsrsAnalysis(): Promise<FsrsAnalysis> {
-  return invoke('get_fsrs_analysis');
+  return invokeOrThrow('get_fsrs_analysis');
 }
 
 export async function getForgettingCurve(stability: number): Promise<ForgettingCurvePoint[]> {
-  return invoke('get_forgetting_curve', { stability });
+  return invokeOrThrow('get_forgetting_curve', { stability });
 }
 
 export async function getReviewForecast(days: number): Promise<ReviewForecast[]> {
-  return invoke('get_review_forecast', { days });
+  return invokeOrThrow('get_review_forecast', { days });
 }
 
 export async function getBestStudyTime(): Promise<StudyTimeSlot[]> {
-  return invoke('get_best_study_time');
+  return invokeOrThrow('get_best_study_time');
 }
 
 export async function getDifficultyDistribution(): Promise<DifficultyBucket[]> {
-  return invoke('get_difficulty_distribution');
+  return invokeOrThrow('get_difficulty_distribution');
 }

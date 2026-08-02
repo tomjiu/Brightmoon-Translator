@@ -1,6 +1,6 @@
 // PreProcessSettings - regex pre-process pipeline (Phase 2.4)
 import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from '../../services/invoke';
 import { Plus, Trash2, Play, ToggleLeft, ToggleRight, Regex, Type } from 'lucide-react';
 import Card from '../../components/Card';
 import { useI18n } from '../../i18n';
@@ -35,7 +35,7 @@ export default function PreProcessSettings() {
 
   const loadConfig = useCallback(async () => {
     try {
-      const data = await invoke<PreProcessConfig>('get_pre_process_config');
+      const data = await invokeOrThrow<PreProcessConfig>('get_pre_process_config');
       setConfig(data);
     } catch (err) {
       console.error('Failed to load pre-process config:', err);
@@ -48,7 +48,7 @@ export default function PreProcessSettings() {
 
   const saveConfig = async (updated: PreProcessConfig) => {
     try {
-      await invoke('update_pre_process_config', { config: updated });
+      await invokeOrThrow('update_pre_process_config', { config: updated });
       setConfig(updated);
     } catch (err) {
       console.error('Failed to save pre-process config:', err);
@@ -64,7 +64,7 @@ export default function PreProcessSettings() {
   const handleAddRule = async () => {
     if (!newPattern) return;
     try {
-      await invoke('add_pre_process_rule', {
+      await invokeOrThrow('add_pre_process_rule', {
         pattern: newPattern,
         replacement: newReplacement,
         isRegex: newIsRegex,
@@ -83,7 +83,7 @@ export default function PreProcessSettings() {
 
   const handleDeleteRule = async (id: string) => {
     try {
-      await invoke('remove_pre_process_rule', { id });
+      await invokeOrThrow('remove_pre_process_rule', { id });
       await loadConfig();
     } catch (err) {
       console.error('Failed to delete rule:', err);
@@ -92,7 +92,7 @@ export default function PreProcessSettings() {
 
   const handleToggleRule = async (rule: PreProcessRule) => {
     try {
-      await invoke('update_pre_process_rule', {
+      await invokeOrThrow('update_pre_process_rule', {
         id: rule.id,
         pattern: rule.pattern,
         replacement: rule.replacement,
@@ -109,7 +109,7 @@ export default function PreProcessSettings() {
   const handleTest = async () => {
     if (!testInput) return;
     try {
-      const result = await invoke<string>('test_pre_process', {
+      const result = await invokeOrThrow<string>('test_pre_process', {
         text: testInput,
         langPair: testLangPair || null,
       });

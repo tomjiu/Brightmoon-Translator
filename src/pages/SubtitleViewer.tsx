@@ -281,7 +281,7 @@ function SubtitleViewer() {
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-h-0">
         {!filePath ? (
           <div className="flex flex-col items-center justify-center h-full text-text-secondary">
             <Subtitles size={64} className="mb-4 opacity-50" />
@@ -329,7 +329,7 @@ function SubtitleViewer() {
             </div>
 
             {/* Subtitle Table */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto min-h-0">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">

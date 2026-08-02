@@ -72,6 +72,13 @@ impl TranslationCache {
         }
     }
 
+    pub fn with_ttl(mut self, ttl_hours: i64) -> Self {
+        if ttl_hours > 0 {
+            self.ttl_hours = ttl_hours;
+        }
+        self
+    }
+
     fn make_key(text: &str, from: &str, to: &str) -> String {
         format!("{}|{}|{}", from, to, text)
     }

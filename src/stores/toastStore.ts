@@ -19,6 +19,22 @@ interface ToastState {
 
 let toastCounter = 0;
 
+// S3-14: track per-toast timeout handles so removeToast/clearAll can clear
+// orphan timers. Previously the setTimeout in addToast was fire-and-forget —
+// if the user dismissed a toast (or clearAll ran) before the timer fired, the
+// orphan callback still executed and filtered the (already-absent) id. This
+// was harmless functionally but leaked timer slots and could race with a
+// reused id.
+const toastTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearToastTimer(id: string) {
+  const handle = toastTimers.get(id);
+  if (handle !== undefined) {
+    clearTimeout(handle);
+    toastTimers.delete(id);
+  }
+}
+
 export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
 
@@ -28,16 +44,26 @@ export const useToastStore = create<ToastState>((set) => ({
     set((state) => ({ toasts: [...state.toasts, newToast] }));
 
     // Auto-remove after duration
-    setTimeout(() => {
+    const handle = setTimeout(() => {
+      toastTimers.delete(id);
       set((state) => ({
         toasts: state.toasts.filter((t) => t.id !== id),
       }));
     }, toast.duration);
+    toastTimers.set(id, handle);
   },
 
   removeToast: (id) => {
+    clearToastTimer(id);
     set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
   },
 
-  clearAll: () => set({ toasts: [] }),
+  clearAll: () => {
+    for (const id of toastTimers.keys()) {
+      const handle = toastTimers.get(id);
+      if (handle !== undefined) clearTimeout(handle);
+    }
+    toastTimers.clear();
+    set({ toasts: [] });
+  },
 }));

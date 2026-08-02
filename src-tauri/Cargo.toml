@@ -60,6 +60,38 @@ image = "0.25"
 ab_glyph = "0.2"
 imageproc = "0.24"
 fsrs = "6"
+# S5-9: decode Shift-JIS / GBK / Big5 / UHC OEM clipboard text correctly.
+# Light, no_std-compatible, used by Firefox. Replaces `from_utf8_lossy` for
+# CF_OEMTEXT and CF_TEXT when the bytes aren't valid UTF-8.
+encoding_rs = "0.8"
+# S5-12: resolve PDF sidecar CLIs (magic-pdf / marker_single / ocrmypdf)
+# through PATH safely instead of spawning `cmd --help` to probe existence.
+# Returns a canonical absolute path, closing PATH-hijack and cwd-injection
+# vectors when `sidecar.*_cmd` is a bare name.
+which = "7"
+# S5-1: generate bilingual PDF output. Pure-Rust PDF writer; we load system
+# CJK fonts (e.g. Windows msyh.ttf) at runtime instead of embedding a font
+# subset, so the binary stays small.
+printpdf = "0.7"
+# P7: font subsetting for PDF export. Reduces embedded font size by keeping
+# only the glyphs used in the translated text (e.g. msyh.ttf 17MB → ~50KB
+# for a typical page). The subsetted font is CID-keyed (cmap removed), so
+# we embed it as a CID font in the PDF with a GID→CID identity mapping.
+subsetter = "0.2"
+# P7: parsing TTF/OTF cmap tables to map Unicode text → glyph IDs before
+# subsetting. Lightweight, no unsafe, already a transitive dep of printpdf.
+ttf-parser = "0.21"
+# P6: ONNX Runtime for DocLayout-YOLO layout detection. Optional — only
+# enabled via the `layout-detection` feature so the default build stays
+# light. Uses `load-dynamic` so the ONNX Runtime shared library is loaded
+# at runtime (like pdfium), not linked at build time.
+ort = { version = "2.0.0-rc.12", optional = true, features = ["load-dynamic"] }
+
+# P2: pdfium-render binds to Google's Pdfium C++ library at runtime for
+# high-fidelity PDF→IL extraction (per-character positions, fonts, encodings).
+# The Pdfium dynamic library (pdfium.dll / libpdfium.so / libpdfium.dylib)
+# must be distributed alongside the executable — we try exe dir, then system.
+pdfium-render = "0.9"
 
 [dependencies.windows]
 version = "0.58"
@@ -131,3 +163,6 @@ wildcard_imports = "allow"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+# P6: enable DocLayout-YOLO ONNX layout detection. Requires the ONNX Runtime
+# shared library (onnxruntime.dll) at runtime and a DocLayout-YOLO model file.
+layout-detection = ["dep:ort"]

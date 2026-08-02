@@ -182,6 +182,9 @@ fn foreground_process_win() -> Option<ForegroundProcess> {
     };
     use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 
+    // SAFETY: GetForegroundWindow returns HWND (or null, checked below).
+    // OpenProcess handle is closed via CloseHandle on every path; pid is a
+    // stack &mut u32. QueryFullProcessImageNameW writes into a stack buffer.
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd.0.is_null() {

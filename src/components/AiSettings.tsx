@@ -63,7 +63,11 @@ export default function AiSettings({ onTermsExtracted, onNavigate }: AiSettingsP
   };
   const providers: LlmProviderEntry[] =
     Array.isArray(llm.providers) && llm.providers.length
-      ? llm.providers
+      ? (llm.providers as Array<LlmProviderEntry & { apiFormat?: LlmApiFormat }>).map((p) => ({
+          ...p,
+          // S3: apiFormat is required in the wire contract; old configs lack it.
+          apiFormat: p.apiFormat ?? 'openai',
+        }))
       : llm.apiKey || llm.baseUrl
         ? [
             {

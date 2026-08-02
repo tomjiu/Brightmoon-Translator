@@ -1,10 +1,19 @@
 use super::{OverlayContent, OverlayLevel};
 
 /// Build overlay HTML — single solid card, fills window (no black chrome + white inset).
-pub fn build_html(content: &OverlayContent, level: OverlayLevel, dismiss_ms: u64) -> String {
+///
+/// `pin_label`: when Some, the HTML includes a resize event listener that
+/// reports the new window size back to the backend via the
+/// `update_pinned_card_size` Tauri command. Pass None for transient overlays.
+pub fn build_html(
+    content: &OverlayContent,
+    level: OverlayLevel,
+    dismiss_ms: u64,
+    pin_label: Option<&str>,
+) -> String {
     match level {
         OverlayLevel::Minimal => {
-            build_card_html(None, &content.translated, dismiss_ms.max(2000), true)
+            build_card_html(None, &content.translated, dismiss_ms.max(2000), true, pin_label)
         },
         OverlayLevel::Standard | OverlayLevel::Full => {
             let src = content.source.trim();
@@ -16,6 +25,7 @@ pub fn build_html(content: &OverlayContent, level: OverlayLevel, dismiss_ms: u64
                 &content.translated,
                 dismiss_ms.max(3500),
                 true,
+                pin_label,
             )
         },
     }
@@ -236,7 +246,13 @@ document.addEventListener('keydown', function(e) {{
     )
 }
 
-fn build_card_html(source: Option<&str>, translated: &str, dismiss_ms: u64, auto: bool) -> String {
+fn build_card_html(
+    source: Option<&str>,
+    translated: &str,
+    dismiss_ms: u64,
+    auto: bool,
+    pin_label: Option<&str>,
+) -> String {
     let body = html_escape::encode_text(translated);
     let src_html = source
         .map(|s| {
@@ -250,6 +266,31 @@ fn build_card_html(source: Option<&str>, translated: &str, dismiss_ms: u64, auto
         format!(
             "setTimeout(function(){{window.__TAURI__&&window.__TAURI__.core&&window.__TAURI__.core.invoke('close_overlay');}},{});",
             dismiss_ms
+        )
+    } else {
+        String::new()
+    };
+    // Tier4-3: resize listener for pinned cards. Reports new window size
+    // to the backend so PinSlot metadata stays in sync. Debounced 200ms
+    // to avoid flooding the backend during drag.
+    let resize_script = if let Some(label) = pin_label {
+        format!(
+            r#"(function(){{
+  var t=null;
+  function sendSize(){{
+    t=null;
+    var w=window.innerWidth||document.documentElement.clientWidth;
+    var h=window.innerHeight||document.documentElement.clientHeight;
+    if(window.__TAURI__&&window.__TAURI__.core){{
+      window.__TAURI__.core.invoke('update_pinned_card_size',{{label:{lbl},width:w,height:h}});
+    }}
+  }}
+  window.addEventListener('resize',function(){{
+    if(t)clearTimeout(t);
+    t=setTimeout(sendSize,200);
+  }});
+}})();"#,
+            lbl = serde_json::json!(label)
         )
     } else {
         String::new()
@@ -304,6 +345,7 @@ html, body {{
 </div>
 <script>
 {dismiss}
+{resize}
 document.addEventListener('keydown', function(e) {{
   if (e.key === 'Escape') window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke('close_overlay');
 }});
@@ -314,5 +356,6 @@ document.addEventListener('keydown', function(e) {{
         src = src_html,
         body = body,
         dismiss = dismiss,
+        resize = resize_script,
     )
 }

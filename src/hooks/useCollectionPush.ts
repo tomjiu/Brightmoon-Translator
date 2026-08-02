@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invokeOrThrow } from '../services/invoke';
 import type { CollectionPushReport } from '../types';
 import { useToastStore } from '../stores/toastStore';
 
@@ -20,7 +20,7 @@ export async function saveAndCollect(opts: {
   let report: CollectionPushReport;
 
   if (opts.localWordbook !== false) {
-    report = (await invoke<CollectionPushReport>('add_wordbook_entry', {
+    report = (await invokeOrThrow<CollectionPushReport>('add_wordbook_entry', {
       word: opts.word,
       translation: opts.translation,
       fromLang,
@@ -28,7 +28,7 @@ export async function saveAndCollect(opts: {
       note: note || null,
     })) ?? { results: [] };
   } else {
-    report = await invoke<CollectionPushReport>('collection_push', {
+    report = await invokeOrThrow<CollectionPushReport>('collection_push', {
       word: opts.word,
       translation: opts.translation,
       note: note || null,
@@ -52,7 +52,7 @@ export async function collectionPushOnly(opts: {
   toLang?: string;
   toast?: boolean;
 }): Promise<CollectionPushReport> {
-  const report = await invoke<CollectionPushReport>('collection_push', {
+  const report = await invokeOrThrow<CollectionPushReport>('collection_push', {
     word: opts.word,
     translation: opts.translation,
     note: opts.note ?? null,
@@ -66,7 +66,7 @@ export async function collectionPushOnly(opts: {
 }
 
 export async function collectionTestTarget(target: string): Promise<CollectionPushReport> {
-  return invoke<CollectionPushReport>('collection_test_target', { target });
+  return invokeOrThrow<CollectionPushReport>('collection_test_target', { target });
 }
 
 export function summarizeReport(report: CollectionPushReport): string {

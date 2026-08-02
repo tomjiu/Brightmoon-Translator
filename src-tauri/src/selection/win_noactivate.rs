@@ -14,6 +14,9 @@ pub fn apply_no_activate(hwnd: isize) {
     if hwnd == 0 {
         return;
     }
+    // SAFETY: hwnd was just checked for non-zero (caller-supplied Tauri HWND).
+    // GetWindowLongW/SetWindowLongW/SetWindowPos are standard Win32 APIs that
+    // only require a valid HWND; the new ex-style is a bitwise OR of constants.
     unsafe {
         let h = HWND(hwnd as *mut _);
         let ex = GetWindowLongW(h, GWL_EXSTYLE);

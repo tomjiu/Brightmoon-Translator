@@ -7,6 +7,9 @@ import {
   OCR_WATCH_INTERVAL_MIN_MS,
 } from '../../services/ocrConstants';
 import { useI18n } from '../../i18n';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { useEffect, useState } from 'react';
 
 type OcrEngineId = 'auto' | 'winrt' | 'youdao' | 'tesseract' | 'rapid' | 'paddle';
 
@@ -29,6 +32,61 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
   const config = useConfigStore((s) => s.config);
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
+
+  // P6: DocLayout-YOLO model state
+  const [modelReady, setModelReady] = useState<boolean | null>(null);
+  const [modelSize, setModelSize] = useState<number>(0);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadPct, setDownloadPct] = useState<number>(0);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    void (async () => {
+      try {
+        setModelReady(await invoke<boolean>('is_layout_model_ready'));
+        setModelSize(await invoke<number>('layout_model_size'));
+      } catch {
+        setModelReady(false);
+      }
+      try {
+        unlisten = await listen<{ percent: number }>(
+          'layout-model-download-progress',
+          (e) => setDownloadPct(e.payload.percent),
+        );
+      } catch {
+        // non-tauri or listener fail — ignore
+      }
+    })();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  const handleDownloadModel = async () => {
+    setDownloading(true);
+    setDownloadError(null);
+    setDownloadPct(0);
+    try {
+      await invoke<string>('download_layout_model');
+      setModelReady(true);
+      setModelSize(await invoke<number>('layout_model_size'));
+    } catch (e) {
+      setDownloadError(String(e));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleRemoveModel = async () => {
+    try {
+      await invoke<boolean>('remove_layout_model');
+      setModelReady(false);
+      setModelSize(0);
+    } catch (e) {
+      setDownloadError(String(e));
+    }
+  };
 
   const ocrEngines: OcrEngineOption[] = [
     {
@@ -326,6 +384,100 @@ export default function OcrSettings({ onNavigate }: OcrSettingsProps) {
                   className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
                 />
               )}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card
+        title={t('settings.ocr.layoutTitle')}
+        description={t('settings.ocr.layoutDesc')}
+      >
+        <div className="space-y-4">
+          <label className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              checked={config.layoutDetectionEnabled || false}
+              onChange={(e) => {
+                updateConfig((prev) => ({
+                  ...prev,
+                  layoutDetectionEnabled: e.target.checked,
+                }));
+                void saveConfig();
+              }}
+              className="rounded"
+            />
+            <div>
+              <p className="text-sm font-medium text-text-primary">
+                {t('settings.ocr.layoutEnable')}
+              </p>
+              <p className="ui-caption">{t('settings.ocr.layoutEnableHint')}</p>
+            </div>
+          </label>
+
+          {config.layoutDetectionEnabled && (
+            <div className="space-y-3 pl-8">
+              {/* Model status */}
+              <div className="flex items-center gap-2">
+                {modelReady ? (
+                  <>
+                    <CheckCircle size={16} className="text-success" />
+                    <span className="text-sm text-text-primary">
+                      {t('settings.ocr.layoutModelReady')}
+                    </span>
+                    {modelSize > 0 && (
+                      <Badge variant="success">
+                        {(modelSize / 1024 / 1024).toFixed(1)} MB
+                      </Badge>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-sm text-text-secondary">
+                    {t('settings.ocr.layoutModelNotReady')}
+                  </span>
+                )}
+              </div>
+
+              {/* Download / remove buttons */}
+              <div className="flex gap-2">
+                {!modelReady && !downloading && (
+                  <button
+                    type="button"
+                    onClick={() => void handleDownloadModel()}
+                    className="px-3 py-2 text-sm rounded-lg border border-border bg-bg-secondary hover:bg-bg-tertiary"
+                  >
+                    {t('settings.ocr.layoutDownload')}
+                  </button>
+                )}
+                {downloading && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-48 h-2 bg-bg-tertiary rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary transition-all"
+                        style={{ width: `${downloadPct}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-text-secondary">{downloadPct}%</span>
+                  </div>
+                )}
+                {modelReady && !downloading && (
+                  <button
+                    type="button"
+                    onClick={() => void handleRemoveModel()}
+                    className="px-3 py-2 text-sm rounded-lg border border-border bg-bg-secondary hover:bg-bg-tertiary"
+                  >
+                    {t('settings.ocr.layoutRemove')}
+                  </button>
+                )}
+              </div>
+
+              {downloadError && (
+                <p className="text-xs text-error">{downloadError}</p>
+              )}
+
+              <p className="ui-caption">
+                {t('settings.ocr.layoutNote')}
+              </p>
             </div>
           )}
         </div>
