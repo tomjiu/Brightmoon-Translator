@@ -215,3 +215,33 @@ S 分支 = **与 PR #8 平行的独立轨道**（merge-base = `33d5241` = master
 - `.pi-subagents/artifacts/outputs/fixplan/engine.md` — R5 依据
 - `.pi-subagents/artifacts/outputs/fixplan/overlay.md` / `hook.md` — R6 依据
 - `docs/CURRENT_FOCUS.md` — 现有工作清单（划词/hook 分区）
+
+---
+
+## 9. PR #8 云端审计整改记录（2026-08-02）
+
+云端审计（74.4% 真闭环 / 13.6% 半闭环 / 4.8% 未闭环 / 4.0% 声明不实）后逐项整改：
+
+**阻断 P0（已修，提交 abe1119 + f95dcf8）：**
+- P0#1 M4 per-region 引擎断裂（st.engine 翻译引擎被当 OCR 引擎）→ `TranslateRequest.engine` 透传
+- P0#2 pingReady 握手回归（M3 事件名错配）→ frame 改听 pingReady + helper 按 regionId ping
+- P0#3 volcengine_web i18n 错配 → 4 语补 shortLabel
+- P0#4 Hook reader 重读全部 → header 加 read_offset（v2）
+- P0#5 Hook wrap 无 sentinel → writer 拒绝覆盖未读数据
+- P0#6 stream_llm failover token 泄漏 → 私有 channel 转发成功端点
+- P0#7 DOCX 多 run 压扁 → 翻译按 run 比例切分保格式（表格 cell 翻译为已知限制）
+- P0#8 Excel 降级重建 → zip 原地重写只 patch cell
+
+**审计发现项（已修）：**
+- Extension B7 cache getSync/setSync TypeError + B8 translateBatchLLM 无处理器 → 补齐（1b6169c）
+- M3 后端命令零调用 → `create_ocr_region_frame` 加 id（1a69bbc），多框后端生命周期闭环
+- i18n ko/ja 缺 5 个 cache* key + nameZh 死数据 16 处 → 补 + 删（e93e145）
+
+**声明不实（文档已核实，代码现状为准）：**
+- S2 migrations/004 声称 → 实际仅 001/002/003（无 004 文件）
+- S3 SAFETY 注释数夸大（声称 42 实际 25）— 已按实际存在值处理
+- 4548d4e "nameZh 移除" 声明不实 → nameZh 现已在 enginesMeta.ts 真正删除
+
+**未做（记录）：**
+- 表格 cell 翻译（DOCX，fidelity 限制）
+- 前端多框创建 UI 入口（后端已就绪，属产品功能）
