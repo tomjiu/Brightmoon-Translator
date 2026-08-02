@@ -170,6 +170,17 @@ S 分支 = **与 PR #8 平行的独立轨道**（merge-base = `33d5241` = master
 - **M5 画在原位增强** ✅：`TranslationLine` 背景从 `bg-strong`（半透明）改为 `bg-solid`（近不透明），kivio 式替换原文；背景 `relative` 内容自适应，长翻译完全遮盖。剩余可选：kivio 批量 id / 替换几何高级特性。
 - **未做**：多框 window 创建接线（`ocr_begin_session` 非 default 只注册 session 未建窗，见 §2 备注）。
 
+### 多框 window 创建接线方案（2026-08-02 调研，审计后实现）
+
+**现状缺口**：`create_ocr_region_frame`（window.rs:637）硬编码 `"ocr-region-frame"` 标签 + URL `index.html?window=ocr-region-frame&v=ocr2`，无 `id` 参数；前端调用（OcrScreenshotTranslator.tsx:1228）只传 `x/y/width/height`。M3.3 frame 端已支持 `regionId` URL 参数，但建窗命令不传 id → 多 region 无法真正开多窗。
+
+**方案**：`create_ocr_region_frame` 加 `id: Option<String>`：
+- 缺省/`"default"` → 现有路径字节不变（`ocr-region-frame`）
+- 非 default → 标签 `region_label(id)`（`ocr-region-frame-{id}`）+ URL `index.html?window=ocr-region-frame&regionId={id}&v=ocr2`；新增独立建窗分支，不复用 default 窗；复用判断 `app.get_webview_window(&region_label(id))`
+- 前端 selector 定区后：先 `ocr_begin_session`（拿 id）→ `create_ocr_region_frame` 传 id → 后续 `set_ocr_region_frame_visible/click_through/sampling` 均带 id
+- 配套：`preload_ocr_region_frame` 仍只预热 default；`ocr_end_session` 非 default 关闭 `region_label(id)` 窗（已有路径）
+- 保持 I6（窗标题 "OCR Region"）不变；I1 排除捕获已在 M3.4 用 HWND 枚举覆盖
+
 ---
 
 ## 7. 执行顺序建议
