@@ -244,4 +244,4 @@ S 分支 = **与 PR #8 平行的独立轨道**（merge-base = `33d5241` = master
 
 **未做（记录）：**
 - 表格 cell 翻译（DOCX，fidelity 限制）→ **已修（416cf9a）**：`collect_table_paragraphs`/`patch_table_paragraphs` 索引对齐
-- 前端多框创建 UI 入口（后端已就绪，属产品功能）→ **后端已完成**（`create_ocr_region_frame` 支持 id），前端 UI 待独立功能分支开发
+- 前端多框创建 UI 入口（后端已就绪，属产品功能）→ **已完成（5632b3f）**：frame 工具栏"+"新建区域 + `addRegion` 事件 + `startScreenshotTranslate(regionId?)` 参数化 + selector 期间全局排除已有 frame
