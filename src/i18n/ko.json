@@ -556,7 +556,12 @@
       "proxyEnable": "Enable proxy",
       "proxyEnableHint": "Applies to proxy-capable requests (LLM, Google fallback, etc.)",
       "proxyHost": "Host",
-      "proxyPort": "Port"
+      "proxyPort": "Port",
+      "cacheTitle": "번역 캐시",
+      "cacheDesc": "번역된 내용은 로컬에 캐시되며, 반복 번역 시 즉시 반환됩니다",
+      "cacheTtlLabel": "캐시 유효 시간 (시간)",
+      "cacheTtlHint": "이 시간이 지난 항목은 다음 읽기에서 자동으로 정리됩니다. 기본 72시간(3일). 변경 사항은 앱 재시작 후 적용됩니다.",
+      "cacheTtlInvalid": "1에서 720 사이의 정수를 입력하세요"
     },
     "enginePage": {
       "title": "번역 엔진",

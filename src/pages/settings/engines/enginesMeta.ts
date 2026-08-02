@@ -69,7 +69,6 @@ export const DEFAULT_ENGINE_ORDER: EngineId[] = [
 
 export interface EngineMeta {
   id: EngineId;
-  nameZh: string;
   section: EngineSectionId;
   free?: boolean;
   needsCredentials: boolean;
@@ -80,15 +79,13 @@ export interface EngineMeta {
 export const ENGINE_META: EngineMeta[] = [
   {
     id: 'llm',
-    nameZh: 'LLM 大模型翻译',
     section: 'llm',
     needsCredentials: true,
     credentialHint: '需要 API Key',
   },
-  { id: 'google', nameZh: 'Google 翻译', section: 'official', free: true, needsCredentials: false },
+  { id: 'google', section: 'official', free: true, needsCredentials: false },
   {
     id: 'youdao',
-    nameZh: '有道翻译',
     section: 'web',
     free: true,
     needsCredentials: false,
@@ -96,21 +93,18 @@ export const ENGINE_META: EngineMeta[] = [
   },
   {
     id: 'caiyun',
-    nameZh: '彩云小译',
     section: 'official',
     needsCredentials: true,
     credentialHint: '需要 Token',
   },
   {
     id: 'deepl',
-    nameZh: 'DeepL',
     section: 'official',
     needsCredentials: true,
     credentialHint: '需要 API Key',
   },
   {
     id: 'deeplx',
-    nameZh: 'DeepLX',
     section: 'official',
     free: true,
     needsCredentials: false,
@@ -118,35 +112,30 @@ export const ENGINE_META: EngineMeta[] = [
   },
   {
     id: 'baidu',
-    nameZh: '百度翻译',
     section: 'official',
     needsCredentials: true,
     credentialHint: '需要 AppId',
   },
   {
     id: 'microsoft',
-    nameZh: 'Microsoft 翻译',
     section: 'official',
     free: true,
     needsCredentials: false,
   },
   {
     id: 'yandex',
-    nameZh: 'Yandex 翻译',
     section: 'official',
     free: true,
     needsCredentials: false,
   },
   {
     id: 'offline',
-    nameZh: '离线翻译',
     section: 'offline',
     free: true,
     needsCredentials: false,
   },
   {
     id: 'tatoeba',
-    nameZh: 'Tatoeba 例句',
     section: 'web',
     free: true,
     needsCredentials: false,
@@ -154,7 +143,6 @@ export const ENGINE_META: EngineMeta[] = [
   },
   {
     id: 'baidu_web',
-    nameZh: '百度（免配置）',
     section: 'web',
     free: true,
     needsCredentials: false,
@@ -162,7 +150,6 @@ export const ENGINE_META: EngineMeta[] = [
   },
   {
     id: 'caiyun_web',
-    nameZh: '彩云（免配置）',
     section: 'web',
     free: true,
     needsCredentials: false,
@@ -170,7 +157,6 @@ export const ENGINE_META: EngineMeta[] = [
   },
   {
     id: 'volcengine_web',
-    nameZh: '火山（免配置）',
     section: 'web',
     free: true,
     needsCredentials: false,
@@ -178,7 +164,6 @@ export const ENGINE_META: EngineMeta[] = [
   },
   {
     id: 'transmart',
-    nameZh: '腾讯交互翻译',
     section: 'web',
     free: true,
     needsCredentials: false,
@@ -186,7 +171,6 @@ export const ENGINE_META: EngineMeta[] = [
   },
   {
     id: 'papago',
-    nameZh: 'Papago',
     section: 'web',
     free: true,
     needsCredentials: false,

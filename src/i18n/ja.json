@@ -556,7 +556,12 @@
       "proxyEnable": "Enable proxy",
       "proxyEnableHint": "Applies to proxy-capable requests (LLM, Google fallback, etc.)",
       "proxyHost": "Host",
-      "proxyPort": "Port"
+      "proxyPort": "Port",
+      "cacheTitle": "翻訳キャッシュ",
+      "cacheDesc": "翻訳済みコンテンツはローカルにキャッシュされ、繰り返し翻訳時に直接返されます",
+      "cacheTtlLabel": "キャッシュ有効時間（時間）",
+      "cacheTtlHint": "この時間を超えたエントリは次回読み取り時に自動クリアされます。デフォルト72時間（3日）。変更はアプリ再起動後に有効になります。",
+      "cacheTtlInvalid": "1〜720 の整数を入力してください"
     },
     "enginePage": {
       "title": "翻訳エンジン",
