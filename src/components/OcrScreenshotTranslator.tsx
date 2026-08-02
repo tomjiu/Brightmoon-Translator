@@ -727,7 +727,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           if (st.frameClosed) {
             await safeInvoke(
               'set_ocr_region_frame_visible',
-              { visible: false },
+              { visible: false, id: regionId },
               { silent: true },
             );
           }
@@ -1081,11 +1081,19 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         { sampling: false, id: rid },
         { silent: true },
       );
-      await safeInvoke(
-        'ocr_end_session',
-        { id: rid },
-        { silent: true },
-      ).catch(() => undefined);
+      // Close the region frame window. Default uses the legacy close command
+      // (its session may not be registered — ocr_begin_session_hide_main only
+      // hides main, it never registers a default session). Non-default uses
+      // ocr_end_session which removes the session AND closes its labeled
+      // window; falling back to close_ocr_region_frame so the frame always
+      // closes even if the session was already gone.
+      if (rid === DEFAULT_REGION_ID) {
+        await safeInvoke('close_ocr_region_frame', undefined, { silent: true });
+      } else {
+        await safeInvoke('ocr_end_session', { id: rid }, { silent: true }).catch(
+          () => undefined,
+        );
+      }
     });
 
     // Multi-frame: frame toolbar "add region" → start a new selection for a
@@ -1351,13 +1359,20 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           { silent: true },
         );
         // Result takes foreground before selector dies (no empty-foreground gap).
-        await safeInvoke('set_ocr_region_frame_visible', { visible: true }, { silent: true });
+        await safeInvoke(
+          'set_ocr_region_frame_visible',
+          { visible: true, id: selRegionId },
+          { silent: true },
+        );
         await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
       } catch (err) {
         if (cancelled) return;
         ocrSessionActiveRef.current = false;
         await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
-        await safeInvoke('close_ocr_region_frame', undefined, { silent: true });
+        // Close the target region frame (default → legacy close; non-default → end session).
+        await safeInvoke('ocr_end_session', { id: selRegionId }, { silent: true }).catch(
+          () => undefined,
+        );
         await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
         console.error('[OCR] Failed to create region frame or crop:', err);
         return;
@@ -1394,7 +1409,11 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
             height: screenH,
             id: selRegionId,
           });
-          await safeInvoke('set_ocr_region_frame_visible', { visible: true }, { silent: true });
+          await safeInvoke(
+            'set_ocr_region_frame_visible',
+            { visible: true, id: selRegionId },
+            { silent: true },
+          );
           const ready2 = await waitForOcrRegionFrameReady(OCR_FRAME_READY_TIMEOUT_MS, selRegionId);
           if (!ready2) {
             throw new Error('OCR 区域窗口未就绪，请重试');
@@ -1489,6 +1508,16 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       selectionTakenRef.current = false;
       void (async () => {
         await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
+        // Ensure no leftover region frame survives a cancelled session (e.g.
+        // the preloaded O5 frame that create_ocr_region_frame may have shown).
+        const rid = selectionTargetRegionIdRef.current;
+        if (rid === DEFAULT_REGION_ID) {
+          await safeInvoke('close_ocr_region_frame', undefined, { silent: true });
+        } else {
+          await safeInvoke('ocr_end_session', { id: rid }, { silent: true }).catch(
+            () => undefined,
+          );
+        }
         await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
       })();
     }).then((fn) => {
@@ -1657,7 +1686,11 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
             selectionPhaseRef.current = 'idle';
             selectionTakenRef.current = false;
             await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
-            await safeInvoke('set_ocr_region_frame_visible', { visible: false }, { silent: true });
+            await safeInvoke(
+              'set_ocr_region_frame_visible',
+              { visible: false, id: targetRegionId },
+              { silent: true },
+            );
             await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
           } catch {
             /* ignore */

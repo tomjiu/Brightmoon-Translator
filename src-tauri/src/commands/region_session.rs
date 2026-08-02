@@ -295,20 +295,37 @@ pub async fn ocr_begin_session(
     }
 
     let was_empty;
-    let new_id = {
+    {
         let mut mgr = region_manager()
             .lock()
             .map_err(|e| format!("RegionManager lock: {e}"))?;
         was_empty = mgr.active_count() == 0;
-        let new_id = mgr.create(rect)?;
-        new_id
-    };
+        // M3/M4 fix: use the caller-provided id (frontend created the window
+        // with this label, e.g. ocr-region-frame-2). The old code ignored `id`
+        // and used the internal counter, so ocr_end_session(id) could never
+        // find the session → the frame could not be closed.
+        if mgr.get(&id).is_none() {
+            if mgr.sessions.len() >= MAX_REGIONS {
+                return Err(format!(
+                    "Region limit reached ({MAX_REGIONS}). Close an existing region first."
+                ));
+            }
+            // Ensure the monotonic counter stays ahead of any caller-supplied id.
+            if let Ok(n) = id.parse::<u64>() {
+                if n >= mgr.next_id {
+                    mgr.next_id = n + 1;
+                }
+            }
+            mgr.sessions
+                .insert(id.clone(), RegionSession::new(id.clone(), rect));
+        }
+    }
     if was_empty {
         // First live region hides main (matches single-frame session semantics).
         crate::commands::window::ocr_begin_session_hide_main(app).await?;
     }
     tracing::info!(
-        region_id = %new_id,
+        region_id = %id,
         "M3: OCR region session started"
     );
     // `snapshot` is reserved for M3.3+ (per-region screenshot pipeline).
