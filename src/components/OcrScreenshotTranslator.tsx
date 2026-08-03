@@ -1386,13 +1386,11 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           { ignore: false, id: selRegionId },
           { silent: true },
         );
-        // Result takes foreground before selector dies (no empty-foreground gap).
-        await safeInvoke(
-          'set_ocr_region_frame_visible',
-          { visible: true, id: selRegionId },
-          { silent: true },
-        );
-        await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
+        // P0 fix (PR9 V3): do NOT show the frame here. New region windows are
+        // cold WebView2 starts — showing before index.html paints flashes pure
+        // white. Show only after waitForOcrRegionFrameReady succeeds below.
+        // close_ocr_screenshot_selector also moves after that handshake so the
+        // selector stays as the foreground baton until the frame is rendered.
       } catch (err) {
         if (cancelled) return;
         ocrSessionActiveRef.current = false;
@@ -1437,11 +1435,6 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
             height: screenH,
             id: selRegionId,
           });
-          await safeInvoke(
-            'set_ocr_region_frame_visible',
-            { visible: true, id: selRegionId },
-            { silent: true },
-          );
           const ready2 = await waitForOcrRegionFrameReady(OCR_FRAME_READY_TIMEOUT_MS, selRegionId);
           if (!ready2) {
             throw new Error('OCR 区域窗口未就绪，请重试');
@@ -1455,6 +1448,16 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           return;
         }
       }
+      // P0 fix (PR9 V3): show the frame ONLY after the ready handshake —
+      // new region windows are cold WebView2 starts and show white until
+      // index.html paints. Then take the foreground baton and destroy the
+      // selector (frame is rendered, no empty-foreground gap).
+      await safeInvoke(
+        'set_ocr_region_frame_visible',
+        { visible: true, id: selRegionId },
+        { silent: true },
+      );
+      await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
       void emitToRegionId(
         selRegionId,
         regionEventName(OcrRegionEvents.continuousState, selRegionId),

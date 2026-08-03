@@ -12,6 +12,7 @@ export function waitForOcrRegionFrameReady(timeoutMs: number, regionId?: string)
       if (done) return;
       done = true;
       window.clearTimeout(timer);
+      window.clearInterval(pingTimer);
       unlisten?.();
       resolve(ok);
     };
@@ -20,16 +21,27 @@ export function waitForOcrRegionFrameReady(timeoutMs: number, regionId?: string)
     // M3 renamed the ready event for non-default regions, but main always
     // pings via pingReady — frame must listen on pingReady, and main must ping
     // the REGION's window (not just the legacy default window).
+    //
+    // PR9 V3: a freshly created region window is a cold WebView2 start — the
+    // ping can race ahead of the page mount, so retry periodically until the
+    // timeout instead of pinging once (cold windows would otherwise fall into
+    // the 1.2s timeout → create-retry path and show a white frame).
+    let pingTimer: ReturnType<typeof setInterval> | undefined;
+    const ping = () => {
+      if (done) return;
+      const p = regionId
+        ? emitToRegionId(regionId, OcrRegionEvents.pingReady)
+        : emitToRegion(OcrRegionEvents.pingReady);
+      void p.catch(() => undefined);
+    };
     void listen(OcrMainEvents.frameReady, () => finish(true)).then((fn) => {
       unlisten = fn;
       if (done) {
         fn();
         return;
       }
-      const ping = regionId
-        ? emitToRegionId(regionId, OcrRegionEvents.pingReady)
-        : emitToRegion(OcrRegionEvents.pingReady);
-      void ping.catch(() => undefined);
+      pingTimer = window.setInterval(ping, 200);
+      ping();
     });
   });
 }
