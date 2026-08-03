@@ -879,6 +879,11 @@ pub fn preload_ocr_region_frame(app: &tauri::AppHandle) -> Result<(), String> {
     if let Ok(h) = window.hwnd() {
         crate::win::set_window_no_activate(h.0 as isize, true);
     }
+    // P0 fix: explicitly hide after build. The builder's `visible(false)` can be
+    // lost to a DWM race on Windows (the hidden frame would appear as a fixed
+    // 320x80 empty popup). Force-hide so it never shows until `create_ocr_region_frame`
+    // reuses it for a real session.
+    let _ = window.hide();
     tracing::info!("[O5] OCR region frame preloaded (hidden, off-screen)");
     Ok(())
 }
