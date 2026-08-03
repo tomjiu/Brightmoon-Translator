@@ -679,6 +679,11 @@ pub async fn create_ocr_region_frame(
     // Reuse existing frame: reposition only (no webview reload / label churn).
     // Pin CLIENT rect to capture (same DWM-pad fix as screenshot selector).
     if let Some(existing) = app.get_webview_window(&label) {
+        tracing::debug!(
+            "create_ocr_region_frame: REUSE hit for label {} (is_visible={})",
+            label,
+            existing.is_visible().unwrap_or(false)
+        );
         // Hide first so the user never sees the stale frame at its old
         // position during reposition. FE will re-show via
         // set_ocr_region_frame_visible once crop data is ready.
@@ -891,7 +896,14 @@ pub fn preload_ocr_region_frame(app: &tauri::AppHandle) -> Result<(), String> {
     // 320x80 empty popup). Force-hide so it never shows until `create_ocr_region_frame`
     // reuses it for a real session.
     let _ = window.hide();
-    tracing::info!("[O5] OCR region frame preloaded (hidden, off-screen)");
+    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+        -32000, -32000,
+    )));
+    tracing::info!(
+        "[O5] OCR region frame preloaded (label=ocr-region-frame, hidden={}, pos_after={:?})",
+        !window.is_visible().unwrap_or(true),
+        window.outer_position().ok()
+    );
     Ok(())
 }
 
@@ -1056,8 +1068,14 @@ pub async fn close_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(), 
     if let Some(frame) = app.get_webview_window("ocr-region-frame") {
         let _ = frame.set_ignore_cursor_events(false);
         let _ = frame.set_always_on_top(true);
-        // C3+C4: show without activating so the target app retains focus.
-        crate::win::show_webview_no_activate(&frame);
+        // P0 fix (PR9 V2): only re-assert show if the frame is ALREADY visible.
+        // Callers that hide the frame (session start, cancel, stuck-selector)
+        // expect it to STAY hidden. Unconditionally showing it here painted the
+        // preloaded frame (320x80 loading veil) at its last position — the
+        // "fixed-position translate box" on first OCR click.
+        if frame.is_visible().unwrap_or(false) {
+            crate::win::show_webview_no_activate(&frame);
+        }
     }
     if let Some(window) = app.get_webview_window("ocr-screenshot") {
         let _ = window.hide();

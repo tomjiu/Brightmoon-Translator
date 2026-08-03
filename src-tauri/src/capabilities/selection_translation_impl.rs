@@ -48,7 +48,7 @@ impl DefaultSelectionTranslation {
     }
 
     /// Show the overlay window with translation result and start following.
-    fn show_overlay(
+    async fn show_overlay(
         &self,
         source_text: &str,
         translated_text: &str,
@@ -57,7 +57,8 @@ impl DefaultSelectionTranslation {
         bounds: Option<&crate::selection::SelectionBounds>,
         overlay_level: Option<u8>,
     ) -> Result<(), String> {
-        let config = self.config.blocking_lock();
+        // tokio Mutex: await — blocking_lock panics inside the async runtime.
+        let config = self.config.lock().await;
         let config_level = config.overlay_level;
         let dismiss_ms = config.overlay_auto_dismiss_ms;
         let overlay_follow_mode = config.overlay_follow_mode.clone();
@@ -224,14 +225,15 @@ impl SelectionTranslation for DefaultSelectionTranslation {
                     &window_title,
                     selection.bounds.as_ref(),
                     options.overlay_level,
-                );
+                )
+                .await;
             }
         }
 
-        let level: overlay::OverlayLevel = options
-            .overlay_level
-            .unwrap_or_else(|| self.config.blocking_lock().overlay_level)
-            .into();
+        let level: overlay::OverlayLevel = match options.overlay_level {
+            Some(l) => l.into(),
+            None => self.config.lock().await.overlay_level.into(),
+        };
 
         Ok(SelectionTranslationResult {
             source_text: selection.text,
@@ -278,15 +280,16 @@ impl SelectionTranslation for DefaultSelectionTranslation {
         if options.show_overlay {
             let display = response.display_text();
             if !display.is_empty() {
-                let _ =
-                    self.show_overlay(text, &display, "direct", "", None, options.overlay_level);
+                let _ = self
+                    .show_overlay(text, &display, "direct", "", None, options.overlay_level)
+                    .await;
             }
         }
 
-        let level: overlay::OverlayLevel = options
-            .overlay_level
-            .unwrap_or_else(|| self.config.blocking_lock().overlay_level)
-            .into();
+        let level: overlay::OverlayLevel = match options.overlay_level {
+            Some(l) => l.into(),
+            None => self.config.lock().await.overlay_level.into(),
+        };
 
         Ok(SelectionTranslationResult {
             source_text: text.to_string(),

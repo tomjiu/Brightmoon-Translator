@@ -11,6 +11,7 @@ pub async fn start_speech_recognition(
     let speech_state = state.speech_state.clone();
 
     speech::start_recognition(speech_state, &lang)
+        .await
         .map_err(|e| format!("Failed to start speech recognition: {}", e))?;
 
     Ok(())
@@ -22,6 +23,7 @@ pub async fn stop_speech_recognition(state: State<'_, AppState>) -> Result<(), S
     let speech_state = state.speech_state.clone();
 
     speech::stop_recognition(speech_state)
+        .await
         .map_err(|e| format!("Failed to stop speech recognition: {}", e))?;
 
     Ok(())

@@ -151,18 +151,15 @@ fn is_cjk_char(c: char) -> bool {
     )
 }
 
-fn hover_dict_source(app: &AppHandle) -> String {
-    app.try_state::<crate::AppState>()
-        .map(|s| {
-            s.system
-                .config
-                .blocking_lock()
-                .selection_ux
-                .hover_dict_source
-                .clone()
-        })
-        .unwrap_or_else(|| "auto".into())
-        .to_ascii_lowercase()
+async fn hover_dict_source(app: &AppHandle) -> String {
+    let source = if let Some(s) = app.try_state::<crate::AppState>() {
+        // tokio Mutex: await (never blocking_lock — that panics when called
+        // from inside the async runtime, see PR9 dev log).
+        s.system.config.lock().await.selection_ux.hover_dict_source.clone()
+    } else {
+        "auto".into()
+    };
+    source.to_ascii_lowercase()
 }
 
 /// ECDICT → DictionaryResult (shared by hover + selection word path).
@@ -283,7 +280,7 @@ pub async fn lookup_word(app: &AppHandle, text: &str) -> Option<DictCard> {
     if word.is_empty() || !dictionary::is_single_word(word) {
         return None;
     }
-    let source = hover_dict_source(app);
+    let source = hover_dict_source(app).await;
     let use_ecdict = matches!(source.as_str(), "auto" | "ecdict" | "local");
     let use_youdao = matches!(source.as_str(), "auto" | "youdao" | "online");
 
@@ -382,16 +379,12 @@ pub async fn present_dict_card(app: &AppHandle, card: &DictCard, pos: Option<(f6
     let (cx, cy) = pos.unwrap_or_else(cursor_pos);
     let place = overlay::OverlayPosition::at_cursor(cx, cy);
     let (w, h) = dict_card_size(card);
-    let dismiss = app
-        .try_state::<crate::AppState>()
-        .map(|s| {
-            s.system
-                .config
-                .blocking_lock()
-                .overlay_auto_dismiss_ms
-                .max(3500)
-        })
-        .unwrap_or(4500);
+    let dismiss = if let Some(s) = app.try_state::<crate::AppState>() {
+        // tokio Mutex: await — blocking_lock panics inside the async runtime.
+        s.system.config.lock().await.overlay_auto_dismiss_ms.max(3500)
+    } else {
+        4500
+    };
     let html = overlay::html_builder::build_dict_card_structured(card, dismiss);
     let _ = overlay::window_manager::create_overlay_window_ex(
         app, &html, place.x, place.y, w, h, true, false,
