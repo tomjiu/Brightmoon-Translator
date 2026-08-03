@@ -679,6 +679,10 @@ pub async fn create_ocr_region_frame(
     // Reuse existing frame: reposition only (no webview reload / label churn).
     // Pin CLIENT rect to capture (same DWM-pad fix as screenshot selector).
     if let Some(existing) = app.get_webview_window(&label) {
+        // Hide first so the user never sees the stale frame at its old
+        // position during reposition. FE will re-show via
+        // set_ocr_region_frame_visible once crop data is ready.
+        let _ = existing.hide();
         #[cfg(target_os = "windows")]
         {
             if let Err(e) = force_hwnd_cover_physical(
@@ -687,7 +691,7 @@ pub async fn create_ocr_region_frame(
                 window_y,
                 window_w as i32,
                 window_h as i32,
-                true,
+                false,
             ) {
                 tracing::warn!("OCR region frame force cover (reuse): {e}");
                 let _ = existing.set_position(tauri::Position::Physical(
@@ -721,11 +725,11 @@ pub async fn create_ocr_region_frame(
         let _ = existing.set_min_size(Some(tauri::Size::Physical(
             tauri::PhysicalSize::new(min_w_physical as u32, min_h_physical as u32),
         )));
-        // C3+C4: show without stealing focus from the target app (follow mode
-        // keeps keyboard focus on the source window). Buttons still work —
-        // WS_EX_NOACTIVATE only suppresses activation, not mouse input.
-        crate::win::show_webview_no_activate(&existing);
-        tracing::info!("OCR region frame reused (repositioned, no-activate)");
+        // P2 fix: do NOT auto-show on reuse. FE shows the frame via
+        // set_ocr_region_frame_visible(visible:true) AFTER crop data is ready
+        // (OcrScreenshotTranslator.tsx:1384), so the user never sees an empty
+        // loading veil at a stale position.
+        tracing::info!("OCR region frame reused (repositioned, hidden until FE shows)");
         return Ok(());
     }
 
@@ -879,6 +883,9 @@ pub fn preload_ocr_region_frame(app: &tauri::AppHandle) -> Result<(), String> {
     if let Ok(h) = window.hwnd() {
         crate::win::set_window_no_activate(h.0 as isize, true);
     }
+    // P0: re-assert skip_taskbar after build — builder flag can be lost to the
+    // same DWM race that affects visible(false) (885616f).
+    let _ = window.set_skip_taskbar(true);
     // P0 fix: explicitly hide after build. The builder's `visible(false)` can be
     // lost to a DWM race on Windows (the hidden frame would appear as a fixed
     // 320x80 empty popup). Force-hide so it never shows until `create_ocr_region_frame`

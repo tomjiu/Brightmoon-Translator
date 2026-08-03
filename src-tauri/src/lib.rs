@@ -493,6 +493,9 @@ pub fn run() {
                     {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
+                            // Defense-in-depth: clear skip_taskbar in case an OCR
+                            // session left it set (close-path bug fix).
+                            let _ = window.set_skip_taskbar(false);
                             let _ = window.show();
                             let _ = window.set_focus();
                         }

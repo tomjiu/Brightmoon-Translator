@@ -18,7 +18,13 @@ import { alignTranslationToLines } from '../services/ocrLineAlign';
 import { useConfigStore } from '../stores/configStore';
 import type { AppConfig, TranslateResponse, DetectionResult, DictionaryResult } from '../types';
 import { WindowBindingManager } from '../hooks/ocrWindowBinding';
-import { normalizeOcrText, textSimilarity, OCR_TEXT_SIMILARITY_SKIP } from '../hooks/ocrQuality';
+import { DEFAULT_ENGINE_ORDER } from '../pages/settings/engines/enginesMeta';
+import {
+  normalizeOcrText,
+  textSimilarity,
+  OCR_TEXT_SIMILARITY_SKIP,
+  imageFingerprint as imageFingerprintJs,
+} from '../hooks/ocrQuality';
 import {
   OCR_MIN_FRAME_WIDTH_CSS,
   OCR_SELECTION_PAD_PX,
@@ -383,12 +389,15 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         // Region watch: pixel fingerprint (Rust 24×24 luma) then JS fallback.
         // First capture always runs (empty fingerprint / empty last text).
         let fp = await imageDataUrlFingerprint(image);
-        // Rust fail → do not trust weak JS hash for skip (false match would freeze watch).
+        // Rust fail → fall back to JS hash (weaker but better than re-OCR every
+        // tick). The JS hash is prefixed with "js:" so it never matches a Rust
+        // hash, and the text-similarity check below still gates the skip.
         if (!fp) {
-          fp = '';
-          st.lastImageFp = '';
+          const jsFp = imageFingerprintJs(image);
+          fp = jsFp ? `js:${jsFp}` : '';
         }
-        if (st.lastImageFp && fp && fp === st.lastImageFp && st.lastOcrText) {
+        const fpMatch = !!fp && !!st.lastImageFp && fp === st.lastImageFp;
+        if (fpMatch && st.lastOcrText) {
           st.consecutiveSkip = Math.min(st.consecutiveSkip + 1, 8);
           return;
         }
@@ -1035,7 +1044,13 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           }
           let engineOrder = [...(prev.engineOrder || [])];
           if (promote) {
-            engineOrder = [engineId, ...engineOrder.filter((id) => id !== engineId)];
+            // P3 fix: reject unknown engineId so promote never pollutes
+            // engineOrder with invalid strings (causes position-number gaps).
+            if (DEFAULT_ENGINE_ORDER.includes(engineId as never)) {
+              engineOrder = [engineId, ...engineOrder.filter((id) => id !== engineId)];
+            } else {
+              console.warn('[OCR] engineChange promote rejected unknown engineId:', engineId);
+            }
           }
           return { ...prev, engines, engineOrder };
         });
@@ -1089,10 +1104,23 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       // closes even if the session was already gone.
       if (rid === DEFAULT_REGION_ID) {
         await safeInvoke('close_ocr_region_frame', undefined, { silent: true });
+        // P0: ocr_begin_session_hide_main set main.skip_taskbar(true) at session
+        // start. close_ocr_region_frame does NOT restore it — without this call
+        // the taskbar icon vanishes after closing the default OCR frame. Mirrors
+        // the cancel path (line ~1521).
+        await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
       } else {
         await safeInvoke('ocr_end_session', { id: rid }, { silent: true }).catch(
           () => undefined,
         );
+        // Fallback: if ocr_end_session errored (session not found) or the session
+        // was already gone, still restore main when no other live region remains.
+        const anyLive = Array.from(regionsRef.current.values()).some(
+          (s) => !s.frameClosed && s.region,
+        );
+        if (!anyLive) {
+          await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
+        }
       }
     });
 

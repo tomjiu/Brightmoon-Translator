@@ -59,9 +59,24 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
 
   // Merge saved order with any new engine ids
   const engineOrder = useMemo(() => {
-    const saved = config.engineOrder?.filter(Boolean) ?? [];
-    const base = saved.length > 0 ? saved : DEFAULT_ENGINE_ORDER;
-    const missing = DEFAULT_ENGINE_ORDER.filter((id) => !base.includes(id));
+    // P3 fix: filter invalid IDs + dedupe. filter(Boolean) only drops empty
+    // strings; it keeps typos like 'deepl_web' or 'Google' (wrong case) that
+    // cause position-number gaps in the UI.
+    const validIds = new Set<string>(DEFAULT_ENGINE_ORDER);
+    const saved = (config.engineOrder ?? []).filter(
+      (id): id is string => typeof id === 'string' && validIds.has(id),
+    );
+    // Dedupe (first occurrence wins to preserve user order)
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const id of saved) {
+      if (!seen.has(id)) {
+        deduped.push(id);
+        seen.add(id);
+      }
+    }
+    const base = deduped.length > 0 ? deduped : [...DEFAULT_ENGINE_ORDER];
+    const missing = DEFAULT_ENGINE_ORDER.filter((id) => !seen.has(id));
     return [...base, ...missing];
   }, [config.engineOrder]);
 
