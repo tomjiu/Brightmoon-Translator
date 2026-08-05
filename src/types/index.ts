@@ -96,6 +96,8 @@ export interface SelectionUxConfig {
   triggerMode: SelectionTriggerMode;
   /** Mouse dwell → dictionary popup (system-wide; phased) */
   hoverDictionary: boolean;
+  /** Whether hover also picks CJK (Chinese) words. Default off. */
+  hoverCjk?: boolean;
   hoverDwellMs: number;
   /** word | sentence — MTT-style unit; Alt held also forces sentence */
   hoverUnit?: string;

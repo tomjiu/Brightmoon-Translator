@@ -38,7 +38,13 @@ impl ForegroundProcess {
             return SelectionStrategy::Skip;
         }
         if self.is_terminal {
-            return SelectionStrategy::UiaOnly;
+            // Terminals: prefer UIA; fall back to clipboard (Ctrl+C) when UIA
+            // can't read a selection (WindowsTerminal TextPattern returns no
+            // ranges). The synthetic Ctrl+C in clipboard.rs uses SendInput with
+            // MOON_SYNTHETIC_KEY and restores the previous clipboard contents,
+            // so it is safe even in an interactive session — a selection copies,
+            // no selection is a no-op.
+            return SelectionStrategy::UiaThenClipboard;
         }
         if self.is_electron || self.is_browser {
             return SelectionStrategy::ClipboardThenUia;
@@ -262,7 +268,7 @@ mod tests {
             is_terminal: true,
             is_self: false,
         };
-        assert_eq!(term.strategy(&[]), SelectionStrategy::UiaOnly);
+        assert_eq!(term.strategy(&[]), SelectionStrategy::UiaThenClipboard);
 
         let elec = ForegroundProcess {
             process_name: "Code".into(),

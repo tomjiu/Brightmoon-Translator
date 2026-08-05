@@ -66,9 +66,17 @@ impl DefaultSelectionTranslation {
 
         let level: overlay::OverlayLevel = overlay_level.unwrap_or(config_level).into();
 
-        // Position overlay: prefer selection bounds, fall back to cursor
+        // Position overlay: prefer selection bounds (below, or above near the
+        // screen bottom), fall back to cursor.
         let (cursor_x, cursor_y) = get_cursor_position();
-        let pos = overlay::positioner::calculate_position(bounds, cursor_x, cursor_y);
+        let (mut w, h) = overlay::window_manager::estimate_mt_card_size(&translated_text);
+        let pos = if let Some(b) = bounds {
+            let (x, y) = overlay::positioner::place_near_bounds(b, w, h, cursor_x, cursor_y);
+            overlay::OverlayPosition::new(x, y, w, h)
+        } else {
+            overlay::positioner::calculate_position(bounds, cursor_x, cursor_y)
+        };
+        w = w.max(pos.width.min(460.0));
 
         let content = overlay::OverlayContent {
             source: source_text.to_string(),
@@ -76,8 +84,6 @@ impl DefaultSelectionTranslation {
             source_app: Some(source_app.to_string()),
             window_title: Some(window_title.to_string()),
         };
-        let (mut w, h) = overlay::window_manager::estimate_mt_card_size(&translated_text);
-        w = w.max(pos.width.min(460.0));
         let html = overlay::html_builder::build_html(&content, level, dismiss_ms, None);
         overlay::window_manager::create_overlay_window(
             &self.app_handle,

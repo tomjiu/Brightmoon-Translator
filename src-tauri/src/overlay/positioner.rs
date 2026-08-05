@@ -18,6 +18,36 @@ pub fn calculate_position(
     pos
 }
 
+/// Place a card of size (w, h) near `bounds` so it does not occlude the target
+/// word: below when there is room on the monitor work area, otherwise above.
+/// Returns the clamped top-left corner.
+pub fn place_near_bounds(
+    bounds: &SelectionBounds,
+    w: f64,
+    h: f64,
+    cursor_x: f64,
+    cursor_y: f64,
+) -> (f64, f64) {
+    let (wx, wy, ww, wh) = monitor_work_area(cursor_x, cursor_y);
+    let margin = 4.0;
+    let below_y = bounds.y + bounds.height + 8.0;
+    let above_y = bounds.y - h - 8.0;
+    // Center the card under the word horizontally when the word is narrow.
+    let pref_x = bounds.x + (bounds.width - w) / 2.0;
+    let x = pref_x.clamp(wx + margin, (wx + ww - w - margin).max(wx + margin));
+    let fits_below = below_y + h <= wy + wh - margin;
+    let fits_above = above_y >= wy + margin;
+    let y = if fits_below {
+        below_y
+    } else if fits_above {
+        above_y
+    } else {
+        // Neither fits: keep it below, clamped to the work area.
+        below_y.clamp(wy + margin, (wy + wh - h - margin).max(wy + margin))
+    };
+    (x, y)
+}
+
 /// Keep a floating rect inside the work area of the monitor that contains (cx, cy).
 pub fn clamp_rect_to_cursor_monitor(
     x: f64,
@@ -89,5 +119,38 @@ mod tests {
         assert!(y < 1080.0);
         assert!(x >= 0.0);
         assert!(y >= 0.0);
+    }
+
+    #[test]
+    fn place_near_bounds_prefers_below() {
+        // Word mid-screen (100,100,60,20), 300x200 card → placed below.
+        let b = crate::selection::SelectionBounds {
+            x: 100.0,
+            y: 100.0,
+            width: 60.0,
+            height: 20.0,
+        };
+        let (x, y) = place_near_bounds(&b, 300.0, 200.0, 130.0, 110.0);
+        assert!(y >= 100.0 + 20.0 + 8.0, "should be below the word, got y={y}");
+        assert!(y + 200.0 <= 1080.0);
+        // Card is wider than the word → centered position clamps to the work area.
+        assert!(x >= 4.0 && x <= 1616.0, "x inside work area, got x={x}");
+    }
+
+    #[test]
+    fn place_near_bounds_flips_above_near_bottom() {
+        // Word near the bottom of the synthetic 1080-tall work area.
+        let b = crate::selection::SelectionBounds {
+            x: 500.0,
+            y: 1020.0,
+            width: 60.0,
+            height: 20.0,
+        };
+        let (_, y) = place_near_bounds(&b, 300.0, 200.0, 530.0, 1030.0);
+        assert!(
+            y + 200.0 <= 1080.0,
+            "card must stay on screen, got y={y}"
+        );
+        assert!(y < 1020.0, "should flip above the word, got y={y}");
     }
 }

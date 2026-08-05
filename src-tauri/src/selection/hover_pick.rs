@@ -119,7 +119,12 @@ pub fn is_ui_chrome_word(w: &str) -> bool {
     }
     let n = t.to_ascii_lowercase();
     // Window titles: "App - Document", "Administrator: Windows PowerShell"
-    if (t.contains(" - ") || t.contains(" — ") || t.contains(':')) && t.chars().count() > 12 {
+    // P1: colon check only for chrome tokens (no spaces, short) —
+    // "Warning: ..." / "Note: ..." are real sentences, not chrome.
+    if (t.contains(" - ") || t.contains(" — ")) && t.chars().count() > 12 {
+        return true;
+    }
+    if t.contains(':') && !t.contains(' ') && t.chars().count() > 12 && t.chars().count() < 40 {
         return true;
     }
     if n.ends_with(".exe") || n.contains(".exe ") {
@@ -463,11 +468,23 @@ fn is_editable_control_focused_win() -> bool {
         };
         if let Ok(ct) = focused.CurrentControlType() {
             let id = ct.0;
-            if id == UIA_EditControlTypeId.0
-                || id == UIA_DocumentControlTypeId.0
-                || id == UIA_ComboBoxControlTypeId.0
-            {
+            // P1 fix: Document controls (PDF viewer, Word, browser doc) should
+            // allow hover — only block truly editable Edit/ComboBox. Document
+            // was wrongly blocked, making hover dead on PDF/Word/browser pages.
+            if id == UIA_EditControlTypeId.0 || id == UIA_ComboBoxControlTypeId.0 {
                 return true;
+            }
+            if id == UIA_DocumentControlTypeId.0 {
+                // Only block when the doc is editable (ValuePattern not read-only);
+                // a read-only document is a reading surface → allow hover.
+                if let Ok(pat) = focused.GetCurrentPattern(UIA_ValuePatternId) {
+                    if let Ok(vp) = pat.cast::<IUIAutomationValuePattern>() {
+                        if let Ok(ro) = vp.CurrentIsReadOnly() {
+                            return !ro.as_bool();
+                        }
+                    }
+                }
+                return false; // readonly or unknown → allow hover
             }
         }
         if let Ok(pat) = focused.GetCurrentPattern(UIA_ValuePatternId) {
@@ -726,15 +743,20 @@ fn try_text_pattern_at_point(
         if looks_like_app_or_process_name(word) {
             return None;
         }
-        let bounds = element
-            .CurrentBoundingRectangle()
-            .ok()
-            .map(|r| SelectionBounds {
-                x: r.left as f64,
-                y: r.top as f64,
-                width: (r.right - r.left).max(0) as f64,
-                height: (r.bottom - r.top).max(0) as f64,
-            });
+        // P0: place the card near the *word*, not the whole element — the
+        // element's bounding rect (a paragraph / full control) put cards far
+        // from the hovered token. The expanded range's own rect is the token.
+        let bounds = super::uiautomation::text_range_bounds(&range).or_else(|| {
+            element
+                .CurrentBoundingRectangle()
+                .ok()
+                .map(|r| SelectionBounds {
+                    x: r.left as f64,
+                    y: r.top as f64,
+                    width: (r.right - r.left).max(0) as f64,
+                    height: (r.bottom - r.top).max(0) as f64,
+                })
+        });
         Some(HoverPick {
             word: word.to_string(),
             x: cx,

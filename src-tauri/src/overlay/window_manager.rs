@@ -21,8 +21,11 @@ pub fn overlay_theme_is_light() -> bool {
 /// use this so card dimensions stay consistent regardless of trigger path.
 /// CJK-aware: characters >= U+3000 are ~15px wide, others ~8px (matches dict_card_size).
 pub fn estimate_mt_card_size(display_text: &str) -> (f64, f64) {
+    // Match build_card_html metrics: padding 22px + optional source ~24px +
+    // each rendered line ~24px (13px*1.5lh + 4px mt). Generous so long engine
+    // results fit without an internal scrollbar.
     let line_n = display_text.lines().count().max(1) as f64;
-    let h = (56.0 + line_n * 22.0).clamp(72.0, 320.0);
+    let h = (46.0 + line_n * 24.0).clamp(72.0, 420.0);
     let longest = display_text
         .lines()
         .map(|l| {
@@ -64,15 +67,30 @@ pub fn create_overlay_window_ex(
     always_on_top: bool,
     steal_focus: bool,
 ) -> Result<(), String> {
-    // Tight bounds — oversized empty window looked like "blank lower half"
-    let w = width.clamp(120.0, 480.0);
-    let h = height.clamp(48.0, 320.0);
+    // Tight bounds — oversized empty window looked like "blank lower half".
+    // Raised the height cap (420→720) so long machine-translation cards fit
+    // without clipping (the JS fit script grows it further up to 720). The
+    // monitor clamp keeps them on-screen.
+    let w = width.clamp(120.0, 620.0);
+    let h = height.clamp(48.0, 720.0);
     // Multi-monitor: keep card on the monitor under the placement point (QTranslate)
     let (cx, cy) = crate::overlay::positioner::clamp_rect_to_cursor_monitor(x, y, w, h, x, y);
     let px = cx.max(0.0) as i32;
     let py = cy.max(0.0) as i32;
 
-    // Reuse: hide → move/size → write content → show (no destroy, no corner flash)
+    let encoded = urlencoding::encode(html);
+    let overlay_url_str = format!("data:text/html,{}", encoded);
+    let overlay_url = tauri::Url::parse(&overlay_url_str)
+        .map_err(|e| format!("Failed to parse overlay URL: {}", e))?;
+
+    // Reuse: hide → move/size → navigate to fresh data URL → show.
+    // P0 (Fix C): navigation (not `document.documentElement.innerHTML = <full
+    // <html> doc>`) — injecting a complete document into documentElement nests
+    // <html>/<head>/<body>, breaking .card rendering into an empty dark blob,
+    // and the hide→eval→show async race crashes WebView2 (Error 1412,
+    // ERROR_HOOK_NEEDS_HMOD at Chrome_WidgetWin unregister). A real navigation
+    // replaces the document cleanly (no nesting, no eval race, no doc.write
+    // memory leak) with no visible corner flash.
     if let Some(window) = app.get_webview_window("overlay") {
         let _ = window.hide();
         let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
@@ -82,20 +100,18 @@ pub fn create_overlay_window_ex(
             w as u32, h as u32,
         )));
         let _ = window.set_always_on_top(always_on_top);
-
-        let escaped = html
-            .replace('\\', "\\\\")
-            .replace('`', "\\`")
-            .replace('$', "\\$");
-        // S2-4: document.open()/write()/close() after load leaks memory in
-        // WebView2 (each call grows the DOM and JS heap without reclaiming
-        // the previous document). Switch to documentElement.innerHTML which
-        // replaces the page content atomically without the write-after-load
-        // memory leak. The HTML builders emit full <html>…</html> pages, so
-        // setting innerHTML on documentElement (the <html> node) reproduces
-        // the same visual result as document.write.
-        let js = format!("document.documentElement.innerHTML = `{escaped}`;");
-        let _ = window.eval(&js);
+        match window.navigate(overlay_url.clone()) {
+            Ok(_) => {
+                tracing::info!(
+                    "[overlay] reused window -> navigated {}x{} @ ({},{})",
+                    w,
+                    h,
+                    px,
+                    py
+                );
+            },
+            Err(e) => tracing::error!("[overlay] navigate failed: {e}"),
+        }
         let _ = window.show();
         #[cfg(windows)]
         if let Ok(hwnd) = window.hwnd() {
@@ -105,13 +121,20 @@ pub fn create_overlay_window_ex(
             let _ = window.set_focus();
         }
         note_overlay_shown();
+        // MOONDIAG: poll the webview document.title ~600ms after show; the card
+        // JS writes diagnostic values there so we can see (without IPC) whether
+        // inline scripts ran and what they measured.
+        let probe_window = window.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+            if let Ok(title) = probe_window.title() {
+                if title.starts_with("MOONDIAG") {
+                    tracing::info!("[overlay] JS DIAG title={title}");
+                }
+            }
+        });
         return Ok(());
     }
-
-    let encoded = urlencoding::encode(html);
-    let overlay_url_str = format!("data:text/html,{}", encoded);
-    let overlay_url = tauri::Url::parse(&overlay_url_str)
-        .map_err(|e| format!("Failed to parse overlay URL: {}", e))?;
 
     // Create invisible off-cursor, then physical move, then show once.
     let window = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::External(overlay_url))
@@ -139,6 +162,14 @@ pub fn create_overlay_window_ex(
         w as u32, h as u32,
     )));
     let _ = window.show();
+    tracing::info!(
+        "[overlay] created new window {}x{} @ ({},{}) light={}",
+        w,
+        h,
+        px,
+        py,
+        overlay_theme_is_light()
+    );
     #[cfg(windows)]
     if let Ok(hwnd) = window.hwnd() {
         crate::selection::win_noactivate::apply_no_activate(hwnd.0 as isize);

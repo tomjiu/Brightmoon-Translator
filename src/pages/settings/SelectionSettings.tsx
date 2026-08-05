@@ -9,8 +9,9 @@ import { isTauriRuntime } from '../../services/tauriRuntime';
 import { useI18n } from '../../i18n';
 
 const DEFAULT_UX: SelectionUxConfig = {
-  triggerMode: 'pop_button',
+  triggerMode: 'auto_on_select',
   hoverDictionary: false,
+  hoverCjk: false,
   hoverDwellMs: 400,
   hoverUnit: 'word',
   hoverDictSource: 'auto',
@@ -204,6 +205,17 @@ export default function SelectionSettings() {
         </div>
         {ux.hoverDictionary && (
           <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-text-primary">
+                  {t('settings.selection.hoverCjk')}
+                </p>
+                <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
+                  {t('settings.selection.hoverCjkHint')}
+                </p>
+              </div>
+              <Switch checked={!!ux.hoverCjk} onChange={(v) => patchUx({ hoverCjk: v })} />
+            </div>
             <div>
               <label className="block text-sm font-medium text-text-primary mb-2">
                 {t('settings.selection.hoverDwell')}

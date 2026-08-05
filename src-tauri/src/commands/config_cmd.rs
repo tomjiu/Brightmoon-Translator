@@ -37,7 +37,7 @@ pub async fn save_config(
 
     // Hot-reload selection UX (auto-on-select / hover / pop button)
     if let Some(watch) = state.selection_auto_watch.get() {
-        watch.update_config(config.selection_ux.clone()).await;
+        watch.update_config(config.selection_ux.clone(), &app).await;
     }
 
     // Re-register global hotkeys so settings apply without restart

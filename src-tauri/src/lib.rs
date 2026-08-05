@@ -328,8 +328,16 @@ pub fn run() {
                             w,
                             h
                         );
-                        let _ = window.center();
-                    }
+            let _ = window.center();
+            }
+
+            // TEMP theme debug: forward `theme-dbg` events from webviews to stdout
+            {
+                use tauri::Listener;
+                app.listen("__theme_dbg", move |event| {
+                    tracing::warn!("[THEME-DBG] {}", event.payload());
+                });
+            }
                 }
 
                 let _ = window.unminimize();

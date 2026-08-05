@@ -51,8 +51,9 @@ const INITIAL_CONFIG: AppConfig = {
     dictionaryLookup: '',
   },
   selectionUx: {
-    triggerMode: 'pop_button',
+    triggerMode: 'auto_on_select',
     hoverDictionary: false,
+    hoverCjk: false,
     hoverDwellMs: 400,
     hoverUnit: 'word',
     hoverDictSource: 'auto',

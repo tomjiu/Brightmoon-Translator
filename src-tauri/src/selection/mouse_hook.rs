@@ -274,7 +274,9 @@ fn process_mouse(message: u32, pt: POINT) {
                     det.multi_gen = det.multi_gen.wrapping_add(1);
                     let gen = det.multi_gen;
                     drop(det);
-                    let delay = dct as u64 + 50;
+                    // P1 fix: cap at 300ms — dct+50 (700ms+ total) was too slow,
+                    // users thought double-click had no response.
+                    let delay = (dct as u64).min(300);
                     let sp = ScreenPoint { x: pt.x, y: pt.y };
                     thread::spawn(move || {
                         thread::sleep(Duration::from_millis(delay));

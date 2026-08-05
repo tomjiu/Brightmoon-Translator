@@ -365,7 +365,13 @@ pub async fn ocr_end_session(app: tauri::AppHandle, id: String) -> Result<(), St
         .lock()
         .map(|mgr| mgr.has_live_regions())
         .unwrap_or(false);
-    if !any_live {
+    // The default region frame is NOT tracked in this manager (the frontend
+    // registers non-default sessions only; the default goes through the legacy
+    // close_ocr_region_frame path). If its window still exists it is live, so
+    // closing one non-default region must not resurrect main while the default
+    // frame is still open (multi-frame B5).
+    let default_live = app.get_webview_window("ocr-region-frame").is_some();
+    if !any_live && !default_live {
         crate::commands::window::ocr_end_session_show_main(app).await?;
     }
     Ok(())

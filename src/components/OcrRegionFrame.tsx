@@ -365,7 +365,14 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
     s.textContent =
       'html,body,#root{background:transparent!important;margin:0!important;outline:none!important}' +
       '*{outline:none!important}' +
-      '::selection{background:rgba(255,255,255,0.15)!important}';
+      // Selection highlight must stay readable on BOTH themes. The global
+      // ::selection colors selected text with var(--color-primary-fg) — that
+      // flips to black-on-dark (dark theme) or white-on-light (light theme)
+      // over the translucent OCR overlay, making selected text unreadable.
+      // Override with theme-scoped, high-contrast pairs: dark overlay bg is
+      // near-black (→ light chip), light overlay bg is near-white (→ dark chip).
+      '.dark ::selection{background:rgba(255,255,255,0.85)!important;color:#0a0a0a!important;text-shadow:none!important}' +
+      '.light ::selection{background:rgba(10,10,10,0.85)!important;color:#fafafa!important;text-shadow:none!important}';
     document.head.appendChild(s);
     document.documentElement.style.background = 'transparent';
     document.body.style.backgroundColor = 'transparent';

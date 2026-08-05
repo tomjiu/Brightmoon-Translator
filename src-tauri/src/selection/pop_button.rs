@@ -7,9 +7,10 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const LABEL: &str = "selection-pop";
-const AUTO_DISMISS_MS: u64 = 5000; // Easydict AutoDismissMs
-const BTN_W: f64 = 28.0;
-const BTN_H: f64 = 28.0;
+// P1 (Fix 14): 5s was too short for hesitant users; 28px too small at high DPI.
+const AUTO_DISMISS_MS: u64 = 8000; // Easydict AutoDismissMs
+const BTN_W: f64 = 32.0;
+const BTN_H: f64 = 32.0;
 
 struct Pending {
     text: String,
@@ -112,6 +113,25 @@ pub fn show(app: &AppHandle, text: String, screen_x: f64, screen_y: f64) -> Resu
             };
             super::mouse_hook::set_pop_rect(rx, ry, rw.max(1), rh.max(1));
         }
+        // P0 fix (Fix 4): reuse path must reschedule auto_dismiss too. Without
+        // this, only the FIRST show() spawns a dismiss task; selecting again
+        // within the window updated PENDING.shown_at but no new task existed →
+        // the pop button could stay forever after the first timer elapsed.
+        let app2 = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(AUTO_DISMISS_MS)).await;
+            let expired = PENDING
+                .lock()
+                .ok()
+                .and_then(|g| {
+                    g.as_ref()
+                        .map(|p| p.shown_at.elapsed() >= Duration::from_millis(AUTO_DISMISS_MS - 50))
+                })
+                .unwrap_or(false);
+            if expired {
+                let _ = dismiss(&app2);
+            }
+        });
         return Ok(());
     }
 

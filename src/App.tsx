@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, lazy, Suspense, useMemo } from 'react';
+import { useCallback, useState, useEffect, lazy, Suspense, useMemo, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { safeInvoke, invokeOrThrow } from './services/invoke';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -101,13 +101,24 @@ function MainApp() {
   // S5-fix: reply to theme-sync-request from sub-windows (ocr-region-frame, etc.)
   // Sub-windows may not share localStorage in WebView2, so they default to 'dark'
   // and miss the earlier theme-changed broadcast. On request, reply with current theme.
+  // Register ONCE (not on every theme change) and read the latest theme via a ref:
+  // re-registering with `theme` in deps left a stale duplicate listener whose old
+  // closure replied with an outdated theme, which the main window then re-applied
+  // to itself via the theme-sync-reply echo (light session flipping back to dark).
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
   useEffect(() => {
     if (!isTauri) return;
     let unlisten: (() => void) | undefined;
     void import('@tauri-apps/api/event')
       .then(({ listen, emit }) =>
         listen('theme-sync-request', () => {
-          void emit('theme-sync-reply', theme);
+          const current = themeRef.current;
+          console.error('[T-DBG] App.tsx received theme-sync-request, replying', current, 'from main');
+          void import('@tauri-apps/api/event').then(({ emit }) =>
+            emit('__theme_dbg', `App.tsx theme-sync-request => reply ${current}`),
+          );
+          void emit('theme-sync-reply', current);
         }),
       )
       .then((fn) => {
@@ -117,7 +128,7 @@ function MainApp() {
     return () => {
       unlisten?.();
     };
-  }, [isTauri, theme]);
+  }, [isTauri]);
 
   // ECDICT missing → non-blocking toast (hover dict may be empty)
   useEffect(() => {

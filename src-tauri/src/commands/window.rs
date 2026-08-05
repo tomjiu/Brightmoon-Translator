@@ -413,7 +413,7 @@ pub async fn trigger_dictionary_lookup(
         return Err("No text selected".to_string());
     }
 
-    crate::selection::present::present_selection(&app, &text).await;
+    crate::selection::present::present_selection(&app, &text, None).await;
     Ok(())
 }
 
@@ -426,6 +426,7 @@ pub async fn set_overlay_click_through(app: tauri::AppHandle, ignore: bool) -> R
 #[command]
 pub async fn set_overlay_theme(theme: String) -> Result<(), String> {
     let light = theme.eq_ignore_ascii_case("light");
+    tracing::warn!("[THEME-DBG] set_overlay_theme called theme={} light={}", theme, light);
     crate::overlay::window_manager::set_overlay_theme_light(light);
     Ok(())
 }
@@ -443,6 +444,7 @@ pub async fn move_overlay(app: tauri::AppHandle, x: f64, y: f64) -> Result<(), S
 
 #[command]
 pub async fn resize_overlay(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
+    tracing::info!("[overlay] JS resize_overlay -> {}x{}", width, height);
     crate::overlay::window_manager::resize_overlay_window(&app, width, height);
     Ok(())
 }
