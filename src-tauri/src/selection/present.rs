@@ -7,7 +7,9 @@ use crate::commands::dictionary_cmd::{
 };
 use crate::dictionary;
 use crate::models::dictionary::{Definition, DictionaryResult, Meaning};
+use crate::models::translation::TranslateResponse;
 use crate::overlay;
+use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use std::time::Duration;
 
@@ -21,21 +23,24 @@ pub enum TextClass {
 }
 
 /// One POS block on a dictionary card.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DictMeaning {
     pub pos: String,
     pub defs: Vec<String>,
 }
 
 /// Bilingual example shown under a word (en + zh pair).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DictExample {
     pub en: String,
     pub zh: String,
 }
 
 /// One Collins entry block (英英释义 + 双语例句).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DictCollins {
     pub pos: String,
     pub pos_cn: String,
@@ -44,7 +49,8 @@ pub struct DictCollins {
 }
 
 /// Structured dictionary card (no pure-text re-parse for HTML).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DictCard {
     pub word: String,
     pub phonetic: Option<String>,
@@ -582,6 +588,8 @@ fn dict_card_size(card: &DictCard) -> (f64, f64) {
     //   def 13px*1.5lh + 4px mt ≈ 24px/rendered line
     //   section header ≈ 31px; example en/zh ≈ 19.5px each line + 5px mt
     //   collins ≈ 19.5px/line + 5px mt; sources ≈ 20px
+    // Deliberately generous: an underestimate clips the translation (the whole
+    // point of the card), and the JS fit script only ever grows the window.
     let mut h = 22.0 + 21.0 + 26.0;
     let mut total_defs = 0usize;
     for m in &card.meanings {
@@ -591,8 +599,8 @@ fn dict_card_size(card: &DictCard) -> (f64, f64) {
             }
             // POS badge sits inline before the def (~30px), reducing wrap width.
             let badge = if m.pos.is_empty() { 0.0 } else { 30.0 };
-            let lines = rendered_lines(&d, (content_w - badge).max(60.0));
-            h += lines as f64 * 24.0;
+            let lines = rendered_lines(d, (content_w - badge).max(60.0));
+            h += (lines as f64 * 24.0).max(26.0);
             total_defs += 1;
         }
         if total_defs >= 8 {
@@ -611,20 +619,20 @@ fn dict_card_size(card: &DictCard) -> (f64, f64) {
             } else {
                 rendered_lines(&e.zh, content_w)
             };
-            h += (en_l + zh_l) as f64 * 19.5 + 5.0;
+            h += (en_l + zh_l).max(1) as f64 * 21.5 + 5.0;
         }
     }
     if !card.collins.is_empty() {
         h += 31.0;
         for c in card.collins.iter().take(2) {
             let lines = rendered_lines(&c.english_def, content_w - 30.0);
-            h += lines as f64 * 19.5 + 5.0;
+            h += lines as f64 * 21.5 + 5.0;
         }
     }
     if !card.sources.is_empty() {
-        h += 20.0;
+        h += 22.0;
     }
-    let h = h.clamp(110.0, 420.0);
+    let h = h.clamp(110.0, 720.0);
     (w, h)
 }
 
@@ -632,11 +640,14 @@ fn dict_card_size(card: &DictCard) -> (f64, f64) {
 /// `bounds`: when present, the card is placed near the word (below, or above
 /// when the word is near the screen bottom) instead of at the cursor, so it
 /// doesn't occlude the word being hovered (Fix 16).
+/// `steal_focus`: false for hover/dict (never steals focus); true for
+/// user-initiated lookups.
 pub async fn present_dict_card(
     app: &AppHandle,
     card: &DictCard,
     pos: Option<(f64, f64)>,
     bounds: Option<&crate::selection::SelectionBounds>,
+    steal_focus: bool,
 ) {
     let (w, h) = dict_card_size(card);
     let place = if let Some(b) = bounds {
@@ -647,49 +658,71 @@ pub async fn present_dict_card(
         let (cx, cy) = pos.unwrap_or_else(cursor_pos);
         overlay::OverlayPosition::at_cursor(cx, cy)
     };
-    let dismiss = if let Some(s) = app.try_state::<crate::AppState>() {
-        // tokio Mutex: await — blocking_lock panics inside the async runtime.
-        // P1 (Fix 18): 3500ms was too short for phonetic + POS + multiple defs.
-        s.system.config.lock().await.overlay_auto_dismiss_ms.max(8000)
-    } else {
-        8000
-    };
-    let html = overlay::html_builder::build_dict_card_structured(card, dismiss);
-    let _ = overlay::window_manager::create_overlay_window_ex(
-        app, &html, place.x, place.y, w, h, true, false,
+    let payload = overlay::translate_card::TranslateCardData::Dict(
+        overlay::translate_card::DictCardData { card: card.clone() },
     );
+    // No-focus cards placed near bounds (hover) keep the hovered word alive so
+    // parking on it doesn't dismiss the card. Focus cards close on blur instead.
+    let keep_alive = if steal_focus {
+        None
+    } else {
+        bounds.cloned()
+    };
+    if let Err(e) = overlay::translate_card::show_translate_card(
+        app,
+        &payload,
+        place.x,
+        place.y,
+        w,
+        h,
+        overlay::translate_card::TranslateCardOptions {
+            steal_focus,
+            keep_alive,
+        },
+    )
+    .await
+    {
+        tracing::warn!("[present] dict card failed: {e}");
+    }
 }
 
 /// Machine-translate card (source + translation).
 /// `bounds`: when present, the card is placed below the selection instead of
 /// at the cursor — fixes cards appearing at the (moved) cursor after the
 /// 1-2s translate delay.
+/// `steal_focus`: false for hover (dict miss fallback); true for
+/// user-initiated selection/pop.
 pub async fn present_mt_card(
     app: &AppHandle,
     source: &str,
     pos: Option<(f64, f64)>,
     bounds: Option<&crate::selection::SelectionBounds>,
+    steal_focus: bool,
 ) {
     let Some(state) = app.try_state::<crate::AppState>() else {
         return;
     };
-    let (from, to, dismiss) = {
+    let (from, to) = {
         let c = state.system.config.lock().await;
-        (
-            c.default_from.clone(),
-            c.default_to.clone(),
-            c.overlay_auto_dismiss_ms,
-        )
+        (c.default_from.clone(), c.default_to.clone())
     };
     let source = source.trim();
     if source.is_empty() {
         return;
     }
+    let opts = overlay::translate_card::TranslateCardOptions {
+        steal_focus,
+        // No-focus (hover) MT cards placed near the hovered word keep the word
+        // alive: parking the cursor on it must not dismiss the card. Focus
+        // cards close on blur instead.
+        keep_alive: if steal_focus { None } else { bounds.cloned() },
+    };
+    let total_engines = state.translation.service.enabled_engine_count().await;
 
     match state
         .translation
         .service
-        .run_full(
+        .run_quick(
             crate::models::translation::TranslateChannel::Selection,
             source,
             &from,
@@ -708,36 +741,45 @@ pub async fn present_mt_card(
             };
             let (w, h) = overlay::window_manager::estimate_mt_card_size(&display);
             let place = mt_place(pos, bounds, w, h);
-            let content = overlay::OverlayContent {
-                source: source.to_string(),
-                translated: display,
-                source_app: Some("selection".into()),
-                window_title: None,
-            };
-            let html = overlay::html_builder::build_html(
-                &content,
-                overlay::OverlayLevel::Standard,
-                dismiss.max(5000),
-                None,
-            );
-            let _ = overlay::window_manager::create_overlay_window_ex(
-                app, &html, place.x, place.y, w, h, true, false,
-            );
+            let payload =
+                overlay::translate_card::TranslateCardData::Mt(overlay::translate_card::MtCardData {
+                    source: source.to_string(),
+                    from: from.clone(),
+                    to: to.clone(),
+                    response: resp,
+                    total_engines,
+                });
+            if let Err(e) = overlay::translate_card::show_translate_card(
+                app, &payload, place.x, place.y, w, h, opts,
+            )
+            .await
+            {
+                tracing::warn!("[present] mt card failed: {e}");
+            }
         },
         Err(e) => {
             tracing::warn!("[present] mt failed: {e}");
-            let content = overlay::OverlayContent {
-                source: source.to_string(),
-                translated: format!("翻译失败：{e}"),
-                source_app: Some("selection".into()),
-                window_title: None,
-            };
-            let html =
-                overlay::html_builder::build_html(&content, overlay::OverlayLevel::Minimal, 4000, None);
-            let place = mt_place(pos, bounds, 320.0, 120.0);
-            let _ = overlay::window_manager::create_overlay_window_ex(
-                app, &html, place.x, place.y, 320.0, 120.0, true, false,
+            let payload = overlay::translate_card::TranslateCardData::Mt(
+                overlay::translate_card::MtCardData {
+                    source: source.to_string(),
+                    from: from.clone(),
+                    to: to.clone(),
+                    response: TranslateResponse {
+                        results: vec![],
+                        detected_language: None,
+                        errors: vec![format!("{e}")],
+                    },
+                    total_engines,
+                },
             );
+            let place = mt_place(pos, bounds, 320.0, 120.0);
+            if let Err(e2) = overlay::translate_card::show_translate_card(
+                app, &payload, place.x, place.y, 320.0, 120.0, opts,
+            )
+            .await
+            {
+                tracing::warn!("[present] mt fail card failed: {e2}");
+            }
         },
     }
 }
@@ -788,32 +830,37 @@ pub async fn present_hover_dictionary(
         },
         TextClass::Sentence | TextClass::Phrase if !dictionary::is_single_word(word) => {
             // Sentence hover is routed by caller to present_selection; defensive.
-            present_selection(app, word, bounds).await;
+            present_selection(app, word, bounds, false).await;
             return;
         },
         _ => {},
     }
     let Some(card) = lookup_word(app, word).await else {
         // User choice: on hover dictionary miss, return the LLM translation
-        // result instead of showing nothing. (P1: was CJK-only; now any miss.)
-        present_mt_card(app, word, Some((x, y)), None).await;
+        // result instead of showing nothing. Pass the hovered word's bounds so
+        // the card is placed below it (not under the cursor) and keeps the word
+        // alive while the cursor parks on it (P1: was CJK-only; now any miss).
+        present_mt_card(app, word, Some((x, y)), bounds, false).await;
         return;
     };
     #[cfg(windows)]
     if crate::selection::mouse_hook::key_pressed_within_ms(400) {
         return;
     }
-    present_dict_card(app, &card, Some((x, y)), bounds).await;
+    present_dict_card(app, &card, Some((x, y)), bounds, false).await;
 }
 
 /// Unified selection / pop / hotkey path.
 /// Word → dict card (miss silent, no MT junk); phrase/sentence → MT; junk → reject.
 /// `bounds`: passed through to the card so it appears below the selection
 /// rather than at the cursor (Fix 3).
+/// `steal_focus`: true for user-initiated (pop click / auto-on-select / hotkey);
+/// false for hover-driven sentence cards.
 pub async fn present_selection(
     app: &AppHandle,
     text: &str,
     bounds: Option<&crate::selection::SelectionBounds>,
+    steal_focus: bool,
 ) {
     let trimmed = text.trim();
     let preview: String = trimmed.chars().take(40).collect();
@@ -825,17 +872,18 @@ pub async fn present_selection(
         TextClass::Junk => "reject",
     };
     tracing::info!(
-        "[pop] pending_len={} preview={:?} route={}",
+        "[pop] pending_len={} preview={:?} route={} steal_focus={}",
         trimmed.chars().count(),
         preview,
-        route
+        route,
+        steal_focus
     );
 
     match class {
         TextClass::Junk => {},
         TextClass::Word => {
             if let Some(card) = lookup_word(app, trimmed).await {
-                present_dict_card(app, &card, None, bounds).await;
+                present_dict_card(app, &card, None, bounds, steal_focus).await;
             } else {
                 tracing::info!("[present] word dict miss — no MT");
             }
@@ -844,11 +892,11 @@ pub async fn present_selection(
             // Short CJK/English phrase that is still is_single_word → try dict first
             if dictionary::is_single_word(trimmed) && trimmed.chars().count() <= 32 {
                 if let Some(card) = lookup_word(app, trimmed).await {
-                    present_dict_card(app, &card, None, bounds).await;
+                    present_dict_card(app, &card, None, bounds, steal_focus).await;
                     return;
                 }
             }
-            present_mt_card(app, trimmed, None, bounds).await;
+            present_mt_card(app, trimmed, None, bounds, steal_focus).await;
         },
     }
 }

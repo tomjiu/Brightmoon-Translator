@@ -73,13 +73,13 @@ pub fn build_shell_html() -> String {
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 {theme}
 html,body {{
-  width:100%; height:100%; margin:0;
+  width:100%; min-height:100%; margin:0;
   background: var(--bg) !important;
   font-family: "Segoe UI","Microsoft YaHei",sans-serif;
-  overflow:hidden;
 }}
+html::-webkit-scrollbar, body::-webkit-scrollbar {{ display:none; }}
 .card {{
-  width:100%; height:100%;
+  width:100%; min-height:100%;
   background: var(--bg-elev); color: var(--fg);
   border: 1px solid var(--border); border-radius: 12px;
   box-shadow: var(--shadow);
@@ -200,18 +200,18 @@ fn fit_script() -> String {
     var hasI = typeof window.__TAURI_INTERNALS__;
     var hasG = typeof window.__TAURI__;
     var inv = typeof window.__moonInvoke;
-    try {{ document.title = 'MOONDIAG|'+w+'|'+h+'|'+winW+'|'+winH+'|I:'+hasI+'|G:'+hasG+'|inv:'+inv; }} catch(e){{}}
+    var ta = typeof window.__TAURI__;
+    try {{ document.title = 'DIAG|'+w+'|'+h+'|'+winW+'|'+winH+'|I:'+hasI+'|G:'+hasG+'|inv:'+inv+'|ta:'+ta; }} catch(e){{}}
   }}
   function fit(){{
-    if(!window.__moonInvoke)return;
+    if(!window.__moonInvoke){{ document.title='DIAG-NOINVOKE'; return; }}
     var el=document.body;
     var w=el.scrollWidth, h=el.scrollHeight;
     var winW=window.innerWidth||document.documentElement.clientWidth;
     var winH=window.innerHeight||document.documentElement.clientHeight;
     var nw=Math.max(w,winW), nh=Math.max(h,winH);
-    if(nw!==winW||nh!==winH){{
-      window.__moonInvoke('resize_overlay',{{width:Math.min(Math.max(Math.ceil(nw),120),620),height:Math.min(Math.max(Math.ceil(nh),48),720)}});
-    }}
+    document.title='DIAG-FIT|'+nw+'|'+nh;
+    window.__moonInvoke('resize_overlay',{{width:Math.min(Math.max(Math.ceil(nw),120),620),height:Math.min(Math.max(Math.ceil(nh),48),720)}});
   }}
   probe();
   if(document.readyState==='loading'){{document.addEventListener('DOMContentLoaded',function(){{probe();fit();}});}}
@@ -380,8 +380,8 @@ html, body {{
   width:100%; min-height:100%; margin:0;
   background: var(--bg) !important;
   font-family: "Segoe UI","Microsoft YaHei",sans-serif;
-  overflow: hidden;
 }}
+html::-webkit-scrollbar, body::-webkit-scrollbar {{ display:none; }}
 .card {{
   width: 100%;
   min-height: 100%;
@@ -530,8 +530,8 @@ html, body {{
   width:100%; min-height:100%; margin:0;
   background: var(--bg) !important;
   font-family: "Segoe UI","Microsoft YaHei",sans-serif;
-  overflow: hidden;
 }}
+html::-webkit-scrollbar, body::-webkit-scrollbar {{ display:none; }}
 .card {{
   width: 100%;
   min-height: 100%;

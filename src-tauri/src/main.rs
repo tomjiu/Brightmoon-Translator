@@ -181,6 +181,115 @@ impl Write for SanitizedWriter {
     }
 }
 
+/// Recursively find the newest modification time under `dir` (skipping
+/// unreadable entries). Returns `None` if `dir` doesn't exist.
+fn newest_mtime(dir: &std::path::Path) -> Option<std::time::SystemTime> {
+    fn walk(dir: &std::path::Path, best: &mut Option<std::time::SystemTime>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                walk(&entry.path(), best);
+            } else if let Ok(metadata) = entry.metadata() {
+                if let Ok(mtime) = metadata.modified() {
+                    let newer = best
+                        .map(|b: std::time::SystemTime| mtime > b)
+                        .unwrap_or(true);
+                    if newer {
+                        *best = Some(mtime);
+                    }
+                }
+            }
+        }
+    }
+    let mut best: Option<std::time::SystemTime> = None;
+    walk(dir, &mut best);
+    best
+}
+
+/// Startup freshness check: warn loudly if the running binary predates newer
+/// source files. This catches the "stale exe" failure mode where a fix lands in
+/// source but is never compiled into the binary you launch — e.g. hovering
+/// translate-card fixes that looked "dead" because the exe predated the edit.
+///
+/// Compares the exe build time against:
+///   - newest `src-tauri/src/**/*.rs` mtime (debug + release)
+///   - newest `dist/**` mtime (release only — debug may run the vite dev server)
+fn check_binary_freshness() {
+    use std::path::PathBuf;
+    use std::time::SystemTime;
+
+    fn fmt_time(t: SystemTime) -> String {
+        let dt: chrono::DateTime<chrono::Utc> = t.into();
+        chrono::DateTime::<chrono::Local>::from(dt)
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string()
+    }
+
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    let exe_mtime = match std::fs::metadata(&exe).and_then(|m| m.modified()) {
+        Ok(t) => t,
+        Err(_) => return,
+    };
+
+    // Find the project root by walking up from the exe until we see
+    // `src-tauri/Cargo.toml`. Works for target/debug and target/release layouts;
+    // silently skips when the source tree isn't present (installed/bundled exe).
+    let mut root: Option<PathBuf> = None;
+    let mut dir = exe.parent();
+    for _ in 0..6 {
+        let Some(d) = dir else { break };
+        if d.join("src-tauri").join("Cargo.toml").is_file() {
+            root = Some(d.to_path_buf());
+            break;
+        }
+        dir = d.parent();
+    }
+    let Some(root) = root else {
+        return;
+    };
+
+    let mut stale: Vec<String> = Vec::new();
+    if let Some(rust_newest) = newest_mtime(&root.join("src-tauri").join("src")) {
+        if exe_mtime < rust_newest {
+            stale.push(format!(
+                "Rust source changed at {} (after exe) — run `cargo build` / `pnpm tauri dev`",
+                fmt_time(rust_newest)
+            ));
+        }
+    }
+    if !cfg!(debug_assertions) {
+        if let Some(dist_newest) = newest_mtime(&root.join("dist")) {
+            if exe_mtime < dist_newest {
+                stale.push(format!(
+                    "FE bundle dist/ changed at {} (after exe) — run `pnpm run build` then rebuild",
+                    fmt_time(dist_newest)
+                ));
+            }
+        }
+    }
+
+    if stale.is_empty() {
+        tracing::info!(
+            "[startup-check] binary is current (exe built {})",
+            fmt_time(exe_mtime)
+        );
+    } else {
+        tracing::warn!("[startup-check] STALE BINARY — you are running an outdated build (exe built {})", fmt_time(exe_mtime));
+        for s in stale {
+            tracing::warn!("[startup-check]   - {}", s);
+        }
+        tracing::warn!("[startup-check]   Fix: rebuild then relaunch. Changes are NOT live in this process.");
+    }
+}
+
 fn main() {
     // Set custom panic hook before tracing is initialized
     set_panic_hook();
@@ -205,7 +314,12 @@ fn main() {
     let filter = if cfg!(debug_assertions) {
         EnvFilter::new("debug")
     } else {
-        EnvFilter::new("warn")
+        // P0: allow selection/overlay/mouse_hook info logs in release so the
+        // 划词/hover/OCR card pipeline is observable without a dev build.
+        // Without this, the entire success path is silent in release builds.
+        EnvFilter::new(
+            "warn,moontranslator_lib::selection=info,moontranslator_lib::overlay=info,moontranslator_lib::commands::window=info",
+        )
     };
 
     let writer = SanitizingWriter::new();
@@ -235,6 +349,9 @@ fn main() {
         .with_target(false)
         .with_writer(writer)
         .init();
+
+    // Fail loudly at startup if we're running a build that predates the source.
+    check_binary_freshness();
 
     moontranslator_lib::run()
 }

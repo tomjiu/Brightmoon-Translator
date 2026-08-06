@@ -22,10 +22,12 @@ pub fn overlay_theme_is_light() -> bool {
 /// CJK-aware: characters >= U+3000 are ~15px wide, others ~8px (matches dict_card_size).
 pub fn estimate_mt_card_size(display_text: &str) -> (f64, f64) {
     // Match build_card_html metrics: padding 22px + optional source ~24px +
-    // each rendered line ~24px (13px*1.5lh + 4px mt). Generous so long engine
-    // results fit without an internal scrollbar.
+    // each rendered line ~24px (13px*1.5lh + 4px mt). The display text is the
+    // FULL translation (often wraps to 2-3x the line count), so the height is
+    // deliberately ~2x the naive estimate — an underestimate clips the result
+    // and defeats the whole card. The JS fit script only ever grows further.
     let line_n = display_text.lines().count().max(1) as f64;
-    let h = (46.0 + line_n * 24.0).clamp(72.0, 420.0);
+    let h = (110.0 + line_n * 52.0).clamp(168.0, 720.0);
     let longest = display_text
         .lines()
         .map(|l| {
@@ -123,13 +125,16 @@ pub fn create_overlay_window_ex(
         note_overlay_shown();
         // MOONDIAG: poll the webview document.title ~600ms after show; the card
         // JS writes diagnostic values there so we can see (without IPC) whether
-        // inline scripts ran and what they measured.
+        // inline scripts ran and what they measured. Log ANY title so we can
+        // tell "script never ran" (stays "Translation") from "invoke missing".
         let probe_window = window.clone();
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(600)).await;
             if let Ok(title) = probe_window.title() {
-                if title.starts_with("MOONDIAG") {
+                if title.starts_with("MOONDIAG") || title.starts_with("DIAG") {
                     tracing::info!("[overlay] JS DIAG title={title}");
+                } else {
+                    tracing::info!("[overlay] JS probe title={title} (script did not run?)");
                 }
             }
         });

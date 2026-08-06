@@ -91,6 +91,9 @@ pub enum TranslationMode {
     Compare,
     /// Primary with document context segments
     Context,
+    /// First-available engine result, resolved fast (floating card quick path;
+    /// remaining engines load lazily on expand).
+    Quick,
 }
 
 /// Product channel that initiated the request (metrics / policy later)
@@ -181,6 +184,23 @@ impl TranslateRequest {
         Self {
             channel,
             mode: TranslationMode::Primary,
+            text: text.into(),
+            from: from.to_string(),
+            to: to.to_string(),
+            ..Default::default()
+        }
+    }
+
+    /// Quick mode: first-available engine result (floating card fast path).
+    pub fn quick(
+        channel: TranslateChannel,
+        text: impl Into<String>,
+        from: &str,
+        to: &str,
+    ) -> Self {
+        Self {
+            channel,
+            mode: TranslationMode::Quick,
             text: text.into(),
             from: from.to_string(),
             to: to.to_string(),

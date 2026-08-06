@@ -297,9 +297,26 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::Builder::new().build())
+        // Close-to-tray: closing the main window hides it instead of destroying
+        // it. Otherwise get_webview_window("main") returns None afterwards and
+        // the tray icon can never reopen the UI (regression: tray show did
+        // nothing once the main window was closed).
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .manage(state)
         .manage(commands::hook_inject_cmd::HookState::new())
         .setup(|app| {
+            // Diagnose main-window availability at startup (tray show uses "main").
+            tracing::info!(
+                "[setup] main_exists={}",
+                app.get_webview_window("main").is_some()
+            );
             // Restore window position from config only when it is still visible on
             // the current monitor layout. Otherwise keep tauri.conf.json defaults
             // (centered window) to avoid launching off-screen after DPI/display changes.
@@ -337,6 +354,97 @@ pub fn run() {
                 app.listen("__theme_dbg", move |event| {
                     tracing::warn!("[THEME-DBG] {}", event.payload());
                 });
+            }
+
+            // translate-card FE signals when its data listener is mounted so
+            // `show_translate_card` never emits into a blank webview on the
+            // cold-start path (bounded wait in translate_card::wait_card_ready).
+            {
+                use tauri::Listener;
+                app.listen(
+                    overlay::translate_card::TRANSLATE_CARD_READY_EVENT,
+                    move |_| {
+                        overlay::translate_card::mark_card_ready();
+                    },
+                );
+                // FE render-ack: payload nonce → unblocks the show until the
+                // webview applied the payload and self-sized (flash fix).
+                app.listen(
+                    overlay::translate_card::TRANSLATE_CARD_RENDERED_EVENT,
+                    move |event| {
+                        if let Ok(nonce) = event.payload().parse::<u64>() {
+                            overlay::translate_card::mark_card_rendered(nonce);
+                        }
+                    },
+                );
+                // selection-pop FE mount signal: unblocks the cold-path show
+                // until the chip webview is painted (black-block fix).
+                app.listen("selection-pop-ready", move |_| {
+                    crate::selection::pop_button::mark_pop_ready();
+                });
+                // Manual close (close button / Esc): suppress hover briefly.
+                app.listen(overlay::translate_card::TRANSLATE_CARD_CLOSED_EVENT, move |_| {
+                    overlay::translate_card::mark_card_closed();
+                });
+                // Quick-card expand: FE clicked "translate remaining engines".
+                // Run the full (all-engine) translation and reply with the
+                // complete response; the FE applies it only if the source text
+                // still matches the current card.
+                {
+                    use tauri::Emitter;
+                    let service = app.state::<AppState>().translation.service.clone();
+                    let emit_app = app.handle().clone();
+                    app.listen(
+                        overlay::translate_card::TRANSLATE_CARD_EXPAND_REQUEST,
+                        move |event| {
+                            #[derive(serde::Deserialize)]
+                            struct ExpandReq {
+                                source: String,
+                                from: String,
+                                to: String,
+                            }
+                            let Ok(req) = serde_json::from_str::<ExpandReq>(event.payload()) else {
+                                return;
+                            };
+                            let svc = service.clone();
+                            let em = emit_app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let outcome = svc
+                                    .run_full(
+                                        crate::models::translation::TranslateChannel::Selection,
+                                        &req.source,
+                                        &req.from,
+                                        &req.to,
+                                    )
+                                    .await;
+                                let response = match outcome {
+                                    Ok(r) => r,
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "[translate-card] expand failed: {}",
+                                            e
+                                        );
+                                        crate::models::translation::TranslateResponse {
+                                            results: vec![],
+                                            detected_language: None,
+                                            errors: vec![e.to_string()],
+                                        }
+                                    },
+                                };
+                                let payload = serde_json::json!({
+                                    "source": req.source,
+                                    "from": req.from,
+                                    "to": req.to,
+                                    "response": response,
+                                });
+                                let _ = em.emit(
+                                    overlay::translate_card::TRANSLATE_CARD_EXPAND_RESULT,
+                                    payload,
+                                );
+                            });
+                        },
+                    );
+                }
             }
                 }
 
@@ -380,7 +488,6 @@ pub fn run() {
                         app_state.system.config.clone(),
                         app_handle,
                         app_state.system.app_detector.clone(),
-                        app_state.overlay.follow_controller.clone(),
                     ));
                 let inp_replacement: Arc<dyn InputReplacement> =
                     Arc::new(DefaultInputReplacement::new(
@@ -440,13 +547,26 @@ pub fn run() {
                 .icon(icon)
                 .menu(&menu)
                 .tooltip("Moon Translator")
-                .on_menu_event(move |app, event| match event.id().as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                // 左键不弹菜单（由 on_tray_icon_event 恢复主窗口），右键仍弹菜单。
+                .show_menu_on_left_click(false)
+                .on_menu_event(move |app, event| {
+                    tracing::info!(
+                        "[tray] menu event id={:?} — enter handler",
+                        event.id().as_ref()
+                    );
+                    match event.id().as_ref() {
+                        "show" => {
+                            tracing::info!("[tray] show branch — main exists={}", app.get_webview_window("main").is_some());
+                            if let Some(window) = app.get_webview_window("main") {
+                                let r1 = window.show();
+                                tracing::info!(
+                                    "[tray] show() => {:?} visible_after={}",
+                                    r1.is_err(),
+                                    window.is_visible().unwrap_or(false)
+                                );
+                                let _ = window.set_focus();
+                            }
                         }
-                    }
                     "selection" => {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.emit("trigger-translate-selection", ());
@@ -482,6 +602,10 @@ pub fn run() {
                         });
                     }
                     "settings" => {
+                        tracing::info!(
+                            "[tray] settings branch — main exists={}",
+                            app.get_webview_window("main").is_some()
+                        );
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
                             let _ = window.set_focus();
@@ -492,20 +616,30 @@ pub fn run() {
                         app.exit(0);
                     }
                     _ => {}
+                }
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let tauri::tray::TrayIconEvent::DoubleClick {
-                        button: tauri::tray::MouseButton::Left,
-                        ..
-                    } = event
-                    {
+                    // 左键单击 → 直接恢复主窗口（show_menu_on_left_click(false) 已
+                    // 禁用左键弹菜单）；右键单击由系统弹二级菜单（退出/设置等）。
+                    let is_left_click_up = matches!(
+                        &event,
+                        tauri::tray::TrayIconEvent::Click {
+                            button: tauri::tray::MouseButton::Left,
+                            button_state: tauri::tray::MouseButtonState::Up,
+                            ..
+                        }
+                    );
+                    if is_left_click_up {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             // Defense-in-depth: clear skip_taskbar in case an OCR
                             // session left it set (close-path bug fix).
                             let _ = window.set_skip_taskbar(false);
+                            tracing::info!("[tray] left click → show main");
                             let _ = window.show();
                             let _ = window.set_focus();
+                        } else {
+                            tracing::warn!("[tray] show main failed — window 'main' not found");
                         }
                     }
                 })
@@ -535,6 +669,21 @@ pub fn run() {
                     // first OCR session skips WebView2 create cost.
                     if let Err(e) = commands::window::preload_ocr_region_frame(&app_handle) {
                         tracing::warn!("[O5] OCR region frame preload failed (non-fatal): {}", e);
+                    }
+                    // Preload the floating translate-card window so the first
+                    // 划词/词典 card skips WebView2 create cost and its FE
+                    // listener is already mounted before any emit.
+                    if let Err(e) = overlay::translate_card::preload_translate_card(&app_handle) {
+                        tracing::warn!(
+                            "[translate-card] preload failed (non-fatal): {}",
+                            e
+                        );
+                    }
+                    // Preload the selection-pop button webview so the first 划词
+                    // pop is instant and already painted (no black-block flash).
+                    if let Err(e) = crate::selection::pop_button::preload_selection_pop(&app_handle)
+                    {
+                        tracing::warn!("[pop] preload failed (non-fatal): {}", e);
                     }
 
                     tracing::info!("[OCR Warmup] Starting screenshot cache warmup...");

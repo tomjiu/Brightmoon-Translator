@@ -137,12 +137,22 @@ impl SelectionAutoWatch {
         self.stop.store(true, Ordering::SeqCst);
         let handle = { self.task_handle.lock().await.take() };
         if let Some(h) = handle {
-            match tokio::time::timeout(std::time::Duration::from_millis(500), h).await {
-                Ok(_) => {},
-                Err(_) => {
-                    tracing::warn!("[selection_ux] run_loop did not exit within 500ms, aborting");
-                },
+            // Grace period: let run_loop observe `stop` and exit on its own.
+            for _ in 0..50 {
+                if h.inner().is_finished() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
+            if !h.inner().is_finished() {
+                tracing::warn!("[selection_ux] run_loop did not exit within 500ms, aborting");
+                // P0 fix: abort the stale task and force-reset WATCHER_RUNNING.
+                // Without this, WATCHER_RUNNING stays true → next start() silently
+                // fails → watcher permanently dead after a config change.
+                h.abort();
+                let _ = h.await;
+            }
+            WATCHER_RUNNING.store(false, Ordering::SeqCst);
         }
     }
 }
@@ -202,6 +212,9 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
     let mut hover_dedupe = HoverDedupe::new();
     // QTranslate: mouse-leave debounce before hide (~500ms)
     let mut overlay_leave_since: Option<Instant> = None;
+    // Same debounce for the translate card (separate timer so the overlay block
+    // below doesn't keep resetting it on its own `else` branch).
+    let mut card_leave_since: Option<Instant> = None;
 
     tracing::info!("[selection_ux] watcher started (Easydict WH_MOUSE_LL)");
 
@@ -254,6 +267,47 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
             }
         }
 
+        // Translate-card mouse-leave dismiss — hover/dict (no-focus) cards only.
+        // User-initiated cards close on window blur instead (FE), so this block
+        // is skipped when the last card was shown with focus.
+        if !crate::overlay::translate_card::translate_card_no_focus_mode() {
+            card_leave_since = None;
+        } else if crate::overlay::translate_card::translate_card_shown_within_ms(800) {
+            // No-flicker guard (QTranslate behavior, mirrors the legacy overlay):
+            // never start a leave-timer within the first 800ms after a show.
+            card_leave_since = None;
+        } else if let Some((ox, oy, ow, oh)) =
+            crate::overlay::translate_card::translate_card_screen_bounds(&app)
+        {
+            let plausible = ow >= 40.0 && oh >= 20.0 && (ox > 2.0 || oy > 2.0 || ow > 100.0);
+            let inside = cx >= ox - 12.0
+                && cx <= ox + ow + 12.0
+                && cy >= oy - 12.0
+                && cy <= oy + oh + 12.0;
+            // The hovered word that spawned this card also keeps it alive:
+            // parking the cursor on the word (the card sits just below it) must
+            // not dismiss the card (flicker / frequent disappear-and-reappear).
+            let inside = inside
+                || crate::overlay::translate_card::translate_card_keep_alive_hit(cx, cy);
+            let on_pop = super::pop_button::hit_test(&app, cx, cy);
+            if plausible && !inside && !on_pop {
+                if card_leave_since.is_none() {
+                    card_leave_since = Some(Instant::now());
+                }
+                if card_leave_since
+                    .map(|t| t.elapsed() >= Duration::from_millis(500))
+                    .unwrap_or(false)
+                {
+                    crate::overlay::translate_card::hide_translate_card(&app);
+                    card_leave_since = None;
+                }
+            } else {
+                card_leave_since = None;
+            }
+        } else {
+            card_leave_since = None;
+        }
+
         // Hover dictionary (MTT-inspired on desktop):
         // - dwell then pick; never while typing (key within 500ms — 1.5s was
         //   too long, users hover another word right after typing one)
@@ -274,6 +328,17 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
         } else if !super::pop_button::has_pending()
             && !is_own_window_foreground(&app)
             && crate::overlay::window_manager::overlay_screen_bounds(&app).is_none()
+            // Hover must not fire over the translate card itself (its own DOM /
+            // OCR would re-trigger a card on the card) — Bug: hover dict firing
+            // on the selection-translate page. Also back off briefly after a
+            // manual close so the card doesn't instantly reappear under the
+            // still-hovering cursor.
+            && !crate::overlay::translate_card::translate_card_is_visible(&app)
+            && !crate::overlay::translate_card::translate_card_closed_within_ms(1200)
+            // After a manual close, the card is latched shut around the cursor
+            // position until the user moves away — otherwise clicking X on a
+            // hover card just has the card pop back a moment later.
+            && !crate::overlay::translate_card::translate_card_close_latch_hit(cx, cy)
             // 划词优先: after a selection gesture, the pop/translation owns the
             // interaction — don't also fire hover on the same word.
             && !selection_gesture_within_ms(3000)
@@ -369,7 +434,7 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                                 );
                                 hover_still_since = None;
                                 if want_sentence && !dictionary::is_single_word(&w) {
-                                    present::present_selection(&app, &w, pick.bounds.as_ref())
+                                    present::present_selection(&app, &w, pick.bounds.as_ref(), false)
                                         .await;
                                 } else {
                                     present::present_hover_dictionary(
@@ -414,7 +479,7 @@ async fn handle_hook_event(
                 job_gen.fetch_add(1, Ordering::SeqCst); // cancel in-flight fetch jobs
                 let app_c = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    present::present_selection(&app_c, &text, None).await;
+                    present::present_selection(&app_c, &text, None, true).await;
                 });
             } else {
                 tracing::warn!("[selection_ux] pop click but no pending text");
@@ -432,18 +497,25 @@ async fn handle_hook_event(
             // Typing: cancel jobs + hide stuck hover/selection cards (terminal spam fix)
             job_gen.fetch_add(1, Ordering::SeqCst);
             crate::overlay::window_manager::hide_overlay_window(app);
+            crate::overlay::translate_card::hide_translate_card(app);
             let _ = super::pop_button::dismiss(app);
         },
         MouseHookEvent::SelectionGesture(pt) => {
+            tracing::info!("[selection_ux] SelectionGesture at ({},{})", pt.x, pt.y);
             note_selection_gesture();
             let ux = config.lock().await.clone();
             if !matches!(
                 ux.trigger_mode,
                 SelectionTriggerMode::AutoOnSelect | SelectionTriggerMode::PopButton
             ) {
+                tracing::debug!(
+                    "[selection_ux] gesture dropped: trigger_mode={:?}",
+                    ux.trigger_mode
+                );
                 return;
             }
             if is_own_window_foreground(app) {
+                tracing::debug!("[selection_ux] gesture dropped: own window foreground");
                 return;
             }
 
@@ -467,9 +539,13 @@ async fn handle_hook_event(
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(150)).await;
                 if job_gen_c.load(Ordering::SeqCst) != gen {
+                    tracing::debug!("[selection_ux] gesture job {} superseded", gen);
                     return;
                 }
                 if is_own_window_foreground(&app_c) {
+                    tracing::debug!(
+                        "[selection_ux] gesture dropped: own window foreground (at trigger)"
+                    );
                     return;
                 }
 
@@ -511,7 +587,7 @@ async fn handle_hook_event(
                                     );
                                     return;
                                 }
-                                present::present_selection(&app_c, &trimmed, bounds.as_ref())
+                                present::present_selection(&app_c, &trimmed, bounds.as_ref(), true)
                                     .await;
                             },
                             SelectionTriggerMode::HotkeyOnly => {},
@@ -544,6 +620,7 @@ async fn handle_hook_event(
                                         &app_c,
                                         &pick.word,
                                         pick.bounds.as_ref(),
+                                        true,
                                     )
                                     .await;
                                 },
@@ -551,7 +628,7 @@ async fn handle_hook_event(
                         }
                     },
                     _ => {
-                        tracing::trace!("[selection_ux] gesture: no selection text");
+                        tracing::info!("[selection_ux] gesture: no selection text");
                     },
                 }
             });
@@ -560,7 +637,33 @@ async fn handle_hook_event(
 }
 
 fn is_junk_hover_word(w: &str) -> bool {
-    is_ui_chrome_word(w) || super::hover_pick::looks_like_app_or_process_name(w)
+    is_ui_chrome_word(w)
+        || super::hover_pick::looks_like_app_or_process_name(w)
+        || looks_like_measurement(w)
+}
+
+/// "300ms", "1.5s", "1080p", "4k", "100%", "3.5gb" — numeric tokens with a short
+/// unit suffix. Hovering these (latency readouts, resolutions, sizes) just
+/// spawns junk translate cards; skip them.
+fn looks_like_measurement(w: &str) -> bool {
+    let t = w.trim();
+    let bytes = t.as_bytes();
+    let mut i = 0usize;
+    let mut digit_count = 0usize;
+    while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+        if bytes[i].is_ascii_digit() {
+            digit_count += 1;
+        }
+        i += 1;
+    }
+    if digit_count == 0 || i == 0 || i == bytes.len() {
+        return false;
+    }
+    let rest = &t[i..];
+    rest.len() <= 4
+        && rest
+            .chars()
+            .all(|c| c.is_ascii_alphabetic() || matches!(c, '%' | 'x' | 'X'))
 }
 
 fn left_button_down() -> bool {

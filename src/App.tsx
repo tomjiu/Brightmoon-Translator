@@ -19,6 +19,8 @@ import ErrorBoundary from './components/ErrorBoundary';
 const OcrScreenshotSelector = lazy(() => import('./components/OcrScreenshotSelector'));
 const OcrRegionFrame = lazy(() => import('./components/OcrRegionFrame'));
 const OcrScreenshotTranslator = lazy(() => import('./components/OcrScreenshotTranslator'));
+const TranslateCard = lazy(() => import('./components/TranslateCard'));
+const SelectionPop = lazy(() => import('./components/SelectionPop'));
 import TitleBar from './components/TitleBar';
 import { AIGenerationProgress } from './components/vocabulary';
 import { useThemeStore } from './stores/themeStore';
@@ -67,6 +69,24 @@ function App() {
     return (
       <Suspense fallback={null}>
         <OcrRegionFrame regionId={regionIdParam ?? undefined} />
+      </Suspense>
+    );
+  }
+  if (windowMode === 'translate-card') {
+    // Floating 划词/词典 card window (Rust overlay::translate_card). The Rust
+    // side emits structured data; this component renders + self-sizes.
+    return (
+      <Suspense fallback={null}>
+        <TranslateCard />
+      </Suspense>
+    );
+  }
+  if (windowMode === 'selection-pop') {
+    // Floating 划词 pop button (Rust selection::pop_button). Static 32×32 chip;
+    // Rust Win32 mouse hook handles clicks.
+    return (
+      <Suspense fallback={null}>
+        <SelectionPop />
       </Suspense>
     );
   }

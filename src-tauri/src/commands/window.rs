@@ -413,7 +413,7 @@ pub async fn trigger_dictionary_lookup(
         return Err("No text selected".to_string());
     }
 
-    crate::selection::present::present_selection(&app, &text, None).await;
+    crate::selection::present::present_selection(&app, &text, None, true).await;
     Ok(())
 }
 

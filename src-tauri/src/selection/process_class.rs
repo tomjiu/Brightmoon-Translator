@@ -38,13 +38,13 @@ impl ForegroundProcess {
             return SelectionStrategy::Skip;
         }
         if self.is_terminal {
-            // Terminals: prefer UIA; fall back to clipboard (Ctrl+C) when UIA
-            // can't read a selection (WindowsTerminal TextPattern returns no
-            // ranges). The synthetic Ctrl+C in clipboard.rs uses SendInput with
-            // MOON_SYNTHETIC_KEY and restores the previous clipboard contents,
-            // so it is safe even in an interactive session — a selection copies,
-            // no selection is a no-op.
-            return SelectionStrategy::UiaThenClipboard;
+            // Terminals: UIA only. A synthetic Ctrl+C would be delivered to the
+            // foreground terminal window (Windows Terminal / cmd / opencode TUI)
+            // and SIGINT the running session — killing `tauri dev`, npm, or the
+            // user's shell. Windows Terminal exposes the selection via UIA
+            // TextPattern; when UIA can't read it we give up rather than risk
+            // the foreground session.
+            return SelectionStrategy::UiaOnly;
         }
         if self.is_electron || self.is_browser {
             return SelectionStrategy::ClipboardThenUia;
@@ -268,7 +268,7 @@ mod tests {
             is_terminal: true,
             is_self: false,
         };
-        assert_eq!(term.strategy(&[]), SelectionStrategy::UiaThenClipboard);
+        assert_eq!(term.strategy(&[]), SelectionStrategy::UiaOnly);
 
         let elec = ForegroundProcess {
             process_name: "Code".into(),

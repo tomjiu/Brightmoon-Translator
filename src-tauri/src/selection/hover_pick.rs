@@ -548,6 +548,11 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
 
         // Reject pure chrome controls (title bar, tab strip) — never parse Name as page text.
         if element_is_chrome_only(&element) {
+            let ct = element.CurrentControlType().ok().map(|c| c.0);
+            tracing::info!(
+                "[hover_pick] reject: chrome-only element control_type={:?}",
+                ct
+            );
             return None;
         }
 
@@ -555,6 +560,11 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
         if let Some(pick) = try_text_pattern_at_point(&element, pt, cx, cy, sentence) {
             return Some(pick);
         }
+        let ct = element.CurrentControlType().ok().map(|c| c.0);
+        tracing::info!(
+            "[hover_pick] TextPattern miss → ValuePattern fallback control_type={:?}",
+            ct
+        );
 
         // 2) Writable ValuePattern (edit fields) — content, not window title.
         //    Do NOT use CurrentName: it is Accessibility name (app title, "Google", "PowerShell").
@@ -701,9 +711,18 @@ fn try_text_pattern_at_point(
     // SAFETY: Read-only UIA pattern/range queries on a borrowed element.
     // COM pointers are reference-counted; pt was obtained from cursor_pos_raw.
     unsafe {
-        let pat = element.GetCurrentPattern(UIA_TextPatternId).ok()?;
+        let Ok(pat) = element.GetCurrentPattern(UIA_TextPatternId) else {
+            tracing::info!(
+                "[hover_pick] no TextPattern on element (control_type={:?})",
+                element.CurrentControlType().ok().map(|c| c.0)
+            );
+            return None;
+        };
         let text_pattern: IUIAutomationTextPattern = pat.cast().ok()?;
-        let range = text_pattern.RangeFromPoint(pt).ok()?;
+        let Ok(range) = text_pattern.RangeFromPoint(pt) else {
+            tracing::info!("[hover_pick] RangeFromPoint failed");
+            return None;
+        };
         // UIA has no Sentence unit — expand Paragraph then trim to one sentence.
         let unit = if sentence {
             TextUnit_Paragraph
@@ -733,7 +752,16 @@ fn try_text_pattern_at_point(
             // already applies is_single_word / is_ui_chrome_word / length guards.
             match extract_word_candidate_with_hint(raw, cursor_ratio) {
                 Some(w) if w.chars().count() <= 40 => w,
-                _ => return None,
+                other => {
+                    tracing::info!(
+                        "[hover_pick] word extraction failed raw={:?} ratio={:?} got={:?} (control_type={:?})",
+                        raw.chars().take(100).collect::<String>(),
+                        cursor_ratio,
+                        other,
+                        element.CurrentControlType().ok().map(|c| c.0)
+                    );
+                    return None;
+                },
             }
         };
         let word = word.trim();

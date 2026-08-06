@@ -204,6 +204,20 @@ fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOp
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
+    // Defense-in-depth: never deliver a synthetic Ctrl+C to a terminal window.
+    // Even though manager routes terminals to UIA-only, an independent caller
+    // (or a classification miss) must not SIGINT the foreground session.
+    if let Some(fg) = super::process_class::foreground_process() {
+        if fg.is_terminal {
+            tracing::info!(
+                "[clipboard] refusing Ctrl+C — foreground is terminal '{}' (pid={})",
+                fg.process_name,
+                fg.process_id
+            );
+            return Ok(None);
+        }
+    }
+
     use std::mem::size_of;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
