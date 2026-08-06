@@ -307,6 +307,14 @@ pub async fn submit_review(
         .await
         .map_err(|e| e.to_string())?;
 
+    // 刷新卡牌快照,保证 get_due_cards 读到最新的 next_review
+    if let Ok(updated) = store.rebuild_card(&card_id).await {
+        store
+            .update_snapshot(&updated)
+            .await
+            .map_err(|e| format!("更新快照失败: {e}"))?;
+    }
+
     Ok(())
 }
 
@@ -515,104 +523,123 @@ pub async fn study_word(
         use crate::domain::CardEvent;
         use uuid::Uuid;
 
-        let card_id = Uuid::new_v4().to_string();
+        // 复用已存在的卡牌,避免同一单词生成多条 UUID / 重复 AI 调用
+        let pool = store.pool();
+        let existing: Option<String> = sqlx::query_scalar("SELECT id FROM cards WHERE word = ?1 LIMIT 1")
+            .bind(&word)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let is_new = existing.is_none();
+        let card_id = match existing {
+            Some(id) => id,
+            None => Uuid::new_v4().to_string(),
+        };
         let now = chrono::Utc::now().timestamp();
 
-        let event = CardEvent::WordImported {
-            word: word.clone(),
-            source: "study".to_string(),
-            timestamp: now,
-        };
+        // 已存在的卡牌直接复用,不重复生成 AI 内容
+        if !is_new {
+            data.card_id = Some(card_id.clone());
+        }
 
-        match store.append_event(&card_id, &event).await {
-            Ok(_) => {
-                data.card_id = Some(card_id.clone());
+        if is_new {
+            let event = CardEvent::WordImported {
+                word: word.clone(),
+                source: "study".to_string(),
+                timestamp: now,
+            };
 
-                // 5. AI 生成内容
-                let config = state.system.config.lock().await;
-                let llm = &config.llm;
-                let api_key = if !llm.api_key.is_empty() {
-                    Some(llm.api_key.clone())
-                } else {
-                    llm.api_keys.first().cloned()
-                };
-                let base_url = llm.base_url.clone();
-                let model = llm.model.clone();
-                drop(config);
+            match store.append_event(&card_id, &event).await {
+                Ok(_) => {
+                    data.card_id = Some(card_id.clone());
 
-                tracing::info!(
-                    "AI gen check: key_set={}, base_url='{}', model='{}'",
-                    api_key.is_some(),
-                    base_url,
-                    model
-                );
+                    // 5. AI 生成内容
+                    let config = state.system.config.lock().await;
+                    let llm = &config.llm;
+                    let api_key = if !llm.api_key.is_empty() {
+                        Some(llm.api_key.clone())
+                    } else {
+                        llm.api_keys.first().cloned()
+                    };
+                    let base_url = llm.base_url.clone();
+                    let model = llm.model.clone();
+                    drop(config);
 
-                if let Some(key) = api_key {
-                    if !key.is_empty() && !base_url.is_empty() {
-                        let model_for_event = model.clone();
-                        use crate::skills::{
-                            GenerateCardSkill, OpenAiCompatibleProvider, SkillInput, SkillRegistry,
-                        };
+                    tracing::info!(
+                        "AI gen check: key_set={}, base_url='{}', model='{}'",
+                        api_key.is_some(),
+                        base_url,
+                        model
+                    );
 
-                        let provider = std::sync::Arc::new(OpenAiCompatibleProvider::new(
-                            key, base_url, model,
-                        ));
-                        let mut registry = SkillRegistry::new();
-                        if registry
-                            .register(Box::new(GenerateCardSkill::new(provider)), 100)
-                            .is_ok()
-                        {
-                            let context = serde_json::json!({
-                                "word": data.word,
-                                "translation": data.chinese_translation,
-                                "definitions": data.english_definitions,
-                            });
-                            let input = SkillInput::new(&data.word).with_param("context", context);
+                    if let Some(key) = api_key {
+                        if !key.is_empty() && !base_url.is_empty() {
+                            let model_for_event = model.clone();
+                            use crate::skills::{
+                                GenerateCardSkill, OpenAiCompatibleProvider, SkillInput, SkillRegistry,
+                            };
 
-                            match registry.execute("generate_card", input).await {
-                                Ok(output) => {
-                                    match output.into_type::<crate::domain::AiContent>() {
-                                        Ok(ai_content) => {
-                                            // 保存到事件流
-                                            let event = CardEvent::AiContentGenerated {
-                                                content: ai_content.clone(),
-                                                model: model_for_event,
-                                                confidence: 0.9,
-                                                timestamp: now,
-                                            };
-                                            store
-                                                .append_event(&card_id, &event)
-                                                .await
-                                                .map_err(|e| {
-                                                    tracing::warn!("保存AI内容事件失败: {}", e)
-                                                })
-                                                .ok();
-                                            data.ai_content = Some(ai_content);
-                                            data.sources.push("AI".into());
-                                        },
-                                        Err(e) => tracing::warn!("AI content parse failed: {}", e),
-                                    }
-                                },
-                                Err(e) => {
-                                    tracing::warn!("AI generation failed for '{}': {}", word, e)
-                                },
+                            let provider = std::sync::Arc::new(OpenAiCompatibleProvider::new(
+                                key, base_url, model,
+                            ));
+                            let mut registry = SkillRegistry::new();
+                            if registry
+                                .register(Box::new(GenerateCardSkill::new(provider)), 100)
+                                .is_ok()
+                            {
+                                let context = serde_json::json!({
+                                    "word": data.word,
+                                    "translation": data.chinese_translation,
+                                    "definitions": data.english_definitions,
+                                });
+                                let input = SkillInput::new(&data.word).with_param("context", context);
+
+                                match registry.execute("generate_card", input).await {
+                                    Ok(output) => {
+                                        match output.into_type::<crate::domain::AiContent>() {
+                                            Ok(ai_content) => {
+                                                // 保存到事件流
+                                                let event = CardEvent::AiContentGenerated {
+                                                    content: ai_content.clone(),
+                                                    model: model_for_event,
+                                                    confidence: 0.9,
+                                                    timestamp: now,
+                                                };
+                                                store
+                                                    .append_event(&card_id, &event)
+                                                    .await
+                                                    .map_err(|e| {
+                                                        tracing::warn!("保存AI内容事件失败: {}", e)
+                                                    })
+                                                    .ok();
+                                                data.ai_content = Some(ai_content);
+                                                data.sources.push("AI".into());
+                                            },
+                                            Err(e) => tracing::warn!("AI content parse failed: {}", e),
+                                        }
+                                    },
+                                    Err(e) => {
+                                        tracing::warn!("AI generation failed for '{}': {}", word, e)
+                                    },
+                                }
                             }
                         }
                     }
-                }
 
-                // 6. 更新卡牌快照
-                if let Ok(card) = store.rebuild_card(&card_id).await {
-                    store
-                        .update_snapshot(&card)
-                        .await
-                        .map_err(|e| tracing::warn!("更新卡牌快照失败: {}", e))
-                        .ok();
-                }
-            },
-            Err(e) => {
-                tracing::warn!("Failed to create card for '{}': {}", word, e);
-            },
+                    // 6. 更新卡牌快照
+                    if let Ok(card) = store.rebuild_card(&card_id).await {
+                        store
+                            .update_snapshot(&card)
+                            .await
+                            .map_err(|e| tracing::warn!("更新卡牌快照失败: {}", e))
+                            .ok();
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!("Failed to create card for '{}': {}", word, e);
+                },
+            }
         }
     }
 
