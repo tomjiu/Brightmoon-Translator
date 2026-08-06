@@ -25,12 +25,13 @@ export default function SelectionPop() {
 
   return (
     <div
-      className="w-full h-full flex items-center justify-center select-none cursor-pointer"
+      className="w-full h-full flex items-center justify-center select-none cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
       style={{
         borderRadius: 8,
-        background: 'var(--color-bg-tertiary)',
+        background: 'var(--color-bg-secondary)',
+        boxShadow: 'var(--shadow-card)',
         color: 'var(--color-text-primary)',
-        border: '1px solid var(--color-border-strong)',
+        border: '1px solid var(--color-border)',
         fontSize: 13,
         fontWeight: 600,
         lineHeight: 1,

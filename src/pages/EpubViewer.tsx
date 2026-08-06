@@ -338,7 +338,7 @@ ${body}</body></html>`;
               {showBilingual && translatedEpub ? (
                 /* Bilingual View */
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-bg-secondary border border-border rounded-xl p-4 min-w-0">
+                  <div className="ui-card p-4 min-w-0">
                     <h3 className="text-xs font-semibold text-text-secondary uppercase mb-3">
                       {t('epub.original')}
                     </h3>
@@ -346,7 +346,7 @@ ${body}</body></html>`;
                       {currentEpubChapter?.text || t('epub.emptyChapter')}
                     </div>
                   </div>
-                  <div className="bg-bg-secondary border border-border rounded-xl p-4 min-w-0">
+                  <div className="ui-card p-4 min-w-0">
                     <h3 className="text-xs font-semibold text-primary uppercase mb-3">
                       {t('epub.translation')}
                     </h3>
@@ -357,7 +357,7 @@ ${body}</body></html>`;
                 </div>
               ) : translatedEpub ? (
                 /* Translation Only View */
-                <div className="bg-bg-secondary border border-border rounded-xl p-4">
+                <div className="ui-card p-4">
                   <h3 className="text-xs font-semibold text-primary uppercase mb-3">
                     {t('epub.translation')}
                   </h3>
@@ -367,7 +367,7 @@ ${body}</body></html>`;
                 </div>
               ) : (
                 /* Original Only View */
-                <div className="bg-bg-secondary border border-border rounded-xl p-4">
+                <div className="ui-card p-4">
                   <h3 className="text-xs font-semibold text-text-secondary uppercase mb-3">
                     {t('epub.original')}
                   </h3>

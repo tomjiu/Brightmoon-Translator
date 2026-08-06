@@ -134,10 +134,6 @@ function MainApp() {
       .then(({ listen, emit }) =>
         listen('theme-sync-request', () => {
           const current = themeRef.current;
-          console.error('[T-DBG] App.tsx received theme-sync-request, replying', current, 'from main');
-          void import('@tauri-apps/api/event').then(({ emit }) =>
-            emit('__theme_dbg', `App.tsx theme-sync-request => reply ${current}`),
-          );
           void emit('theme-sync-reply', current);
         }),
       )
@@ -475,21 +471,23 @@ function MainApp() {
 
         <main className="flex-1 overflow-hidden bg-bg-primary">
           <ErrorBoundary key={page}>
-            <Suspense
-              fallback={
-                <div className="flex-1 flex items-center justify-center h-full">
-                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                </div>
-              }
-            >
-              {page === 'translator' && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
-              {page === 'documents' && <DocumentsViewer />}
-              {page === 'vocabulary' && <Vocabulary />}
-              {page === 'settings' && <Settings />}
-              {page === 'metrics' && <MetricsDashboard />}
-              {page === 'tm' && <TmManager />}
-              {page === 'hook' && <HookMonitor />}
-            </Suspense>
+            <div key={page} className="ui-page-in h-full">
+              <Suspense
+                fallback={
+                  <div className="flex-1 flex items-center justify-center h-full">
+                    <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                  </div>
+                }
+              >
+                {page === 'translator' && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
+                {page === 'documents' && <DocumentsViewer />}
+                {page === 'vocabulary' && <Vocabulary />}
+                {page === 'settings' && <Settings />}
+                {page === 'metrics' && <MetricsDashboard />}
+                {page === 'tm' && <TmManager />}
+                {page === 'hook' && <HookMonitor />}
+              </Suspense>
+            </div>
           </ErrorBoundary>
         </main>
       </div>

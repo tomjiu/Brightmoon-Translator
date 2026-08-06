@@ -389,13 +389,12 @@ export default function TranslateCard() {
   return (
     <div
       ref={setContentEl}
-      className="flex flex-col overflow-hidden select-none bg-bg-secondary text-text-primary"
+      className="ui-glass ui-run-light flex flex-col overflow-hidden select-none text-text-primary"
       style={{
         minWidth: 140,
         maxWidth: 620,
-        border: '1px solid var(--color-border-strong)',
         borderRadius: 8,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+        boxShadow: 'var(--shadow-card-hover)',
         fontSize: 13,
         lineHeight: 1.45,
       }}

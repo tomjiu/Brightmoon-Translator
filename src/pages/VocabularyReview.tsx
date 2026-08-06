@@ -284,28 +284,28 @@ export default function VocabularyReview() {
 
           {/* 统计卡片 */}
           <div className="grid grid-cols-2 gap-4 mb-8">
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border border-border shadow-sm">
+            <div className="p-6 ui-card">
               <div className="ui-stat text-primary mb-1">{session.reviewedCount}</div>
               <div className="ui-caption">复习卡牌数</div>
             </div>
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border border-border shadow-sm">
+            <div className="p-6 ui-card">
               <div className="ui-stat text-primary mb-1">{session.correctRate.toFixed(0)}%</div>
               <div className="text-sm text-text-secondary">正确率</div>
             </div>
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border border-border shadow-sm">
+            <div className="p-6 ui-card">
               <div className="text-4xl font-bold text-primary mb-1">
                 {minutes}:{seconds.toString().padStart(2, '0')}
               </div>
               <div className="text-sm text-text-secondary">总用时</div>
             </div>
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border border-border shadow-sm">
+            <div className="p-6 ui-card">
               <div className="text-4xl font-bold text-primary mb-1">{avgTime}s</div>
               <div className="text-sm text-text-secondary">平均用时</div>
             </div>
           </div>
 
           {/* 评分分布 */}
-          <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border border-border shadow-sm mb-8">
+          <div className="p-6 ui-card mb-8">
             <h3 className="text-sm font-semibold text-text-secondary mb-4">评分分布</h3>
             <div className="grid grid-cols-4 gap-3">
               <div className="text-center">
@@ -543,7 +543,7 @@ export default function VocabularyReview() {
               {wordDetail.englishDefinitions &&
                 wordDetail.englishDefinitions.length > 0 &&
                 !wordDetail.collinsEntries.length && (
-                  <div className="p-5 bg-bg-secondary border border-border rounded-xl">
+                  <div className="p-5 ui-card">
                     <h3 className="text-xs font-semibold text-primary mb-2">英文释义</h3>
                     <ul className="space-y-1">
                       {wordDetail.englishDefinitions.slice(0, 5).map((def, i) => (

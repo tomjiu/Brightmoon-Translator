@@ -104,7 +104,7 @@ function SyncSettings() {
   };
 
   return (
-    <section className="bg-bg-secondary border border-border rounded-xl p-5 mb-5">
+    <section className="ui-card p-5 mb-5">
       <h2 className="text-base font-semibold text-primary mb-4 flex items-center gap-2">
         <Cloud size={18} />
         {t('settings.sync.title')}

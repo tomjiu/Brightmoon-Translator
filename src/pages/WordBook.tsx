@@ -301,7 +301,7 @@ function WordBook() {
 
       {/* Add Word Form */}
       {showAddForm && (
-        <div className="bg-bg-secondary border border-border rounded-xl p-4 mb-4">
+        <div className="ui-card p-4 mb-4">
           <div className="flex gap-3">
             <input
               type="text"

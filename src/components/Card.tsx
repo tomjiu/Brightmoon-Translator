@@ -10,7 +10,7 @@ interface CardProps {
 export default function Card({ title, description, children, className = '' }: CardProps) {
   return (
     <div
-      className={`bg-bg-secondary border border-border rounded-xl p-5 shadow-sm transition-colors ${className}`}
+      className={`ui-card ui-card-hover p-5 ${className}`}
     >
       {title && (
         <div className="mb-4 pb-3 border-b border-border">

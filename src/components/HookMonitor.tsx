@@ -565,7 +565,7 @@ function HookMonitor() {
   return (
     <div className="flex flex-col h-full gap-3 p-4">
       {/* Header & Controls */}
-      <div className="bg-bg-secondary border border-border rounded-xl p-4">
+      <div className="ui-card p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Zap size={18} className="text-primary" />

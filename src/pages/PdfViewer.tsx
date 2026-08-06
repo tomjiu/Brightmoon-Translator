@@ -514,7 +514,7 @@ ${body}</body></html>`;
               {showBilingual && translatedPdf ? (
                 /* Bilingual View */
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-bg-secondary border border-border rounded-xl p-4 min-w-0">
+                  <div className="ui-card p-4 min-w-0">
                     <h3 className="text-xs font-semibold text-text-secondary uppercase mb-3">
                       {t('pdf.original')}
                     </h3>
@@ -522,7 +522,7 @@ ${body}</body></html>`;
                       {currentPdfPage?.text || t('pdf.emptyPage')}
                     </div>
                   </div>
-                  <div className="bg-bg-secondary border border-border rounded-xl p-4 min-w-0">
+                  <div className="ui-card p-4 min-w-0">
                     <h3 className="text-xs font-semibold text-primary uppercase mb-3">
                       {t('pdf.translation')}
                     </h3>
@@ -533,7 +533,7 @@ ${body}</body></html>`;
                 </div>
               ) : translatedPdf ? (
                 /* Translation Only View */
-                <div className="bg-bg-secondary border border-border rounded-xl p-4">
+                <div className="ui-card p-4">
                   <h3 className="text-xs font-semibold text-primary uppercase mb-3">
                     {t('pdf.translation')}
                   </h3>
@@ -543,7 +543,7 @@ ${body}</body></html>`;
                 </div>
               ) : (
                 /* Original Only View */
-                <div className="bg-bg-secondary border border-border rounded-xl p-4">
+                <div className="ui-card p-4">
                   <h3 className="text-xs font-semibold text-text-secondary uppercase mb-3">
                     {t('pdf.original')}
                   </h3>

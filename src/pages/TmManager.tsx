@@ -295,7 +295,7 @@ function TmManager() {
 
         {/* Statistics */}
         {stats && (
-          <div className="bg-bg-secondary border border-border rounded-xl p-4 mb-6">
+          <div className="ui-card p-4 mb-6">
             <h2 className="text-sm font-semibold text-text-primary mb-3">{t('tm.statistics')}</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
@@ -313,7 +313,7 @@ function TmManager() {
         )}
 
         {/* Search & Filters */}
-        <div className="bg-bg-secondary border border-border rounded-xl p-4 mb-6">
+        <div className="ui-card p-4 mb-6">
           <div className="flex flex-col md:flex-row gap-3">
             <div className="relative flex-1">
               <Search
@@ -398,7 +398,7 @@ function TmManager() {
         </div>
 
         {/* Table */}
-        <div className="bg-bg-secondary border border-border rounded-xl overflow-hidden mb-6">
+        <div className="ui-card overflow-hidden mb-6">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 size={24} className="animate-spin text-primary" />

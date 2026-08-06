@@ -269,7 +269,7 @@ function Glossary() {
       />
 
       {/* Add Entry Form */}
-      <div className="bg-bg-secondary border border-border rounded-xl p-4 mb-6">
+      <div className="ui-card p-4 mb-6">
         <h2 className="text-sm font-semibold text-text-secondary mb-3">
           {t('glossary.addTerm') || '添加术语'}
         </h2>
@@ -327,7 +327,7 @@ function Glossary() {
           Object.entries(entries).map(([pair, pairEntries]) => (
             <div
               key={pair}
-              className="bg-bg-secondary border border-border rounded-xl mb-4 overflow-hidden"
+              className="ui-card mb-4 overflow-hidden"
             >
               <div className="bg-bg-tertiary px-4 py-2 border-b border-border">
                 <span className="text-sm font-semibold text-primary">

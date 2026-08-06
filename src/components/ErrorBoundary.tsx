@@ -49,7 +49,7 @@ class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex flex-col items-center justify-center h-screen bg-bg-primary text-text-primary p-8">
-          <div className="max-w-md w-full bg-bg-secondary border border-border rounded-xl p-6 text-center">
+          <div className="max-w-md w-full ui-card p-6 text-center">
             <div className="w-12 h-12 rounded-full bg-error/15 flex items-center justify-center mx-auto mb-4">
               <span className="text-error text-2xl">!</span>
             </div>

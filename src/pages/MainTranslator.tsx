@@ -447,7 +447,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
       {/* Translation Area */}
       <div className="flex gap-3 flex-1 min-h-0 p-3">
         {/* Source Panel */}
-        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-xl overflow-hidden shadow-sm">
+        <div className="ui-card ui-run-light flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 relative">
             <textarea
               value={sourceText}
@@ -525,7 +525,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
         </div>
 
         {/* Result Panel */}
-        <div className="flex-1 flex flex-col bg-bg-secondary border border-border rounded-xl overflow-hidden shadow-sm">
+        <div className="ui-card ui-run-light flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             {/* Incremental Entries */}
             {incrementalMode && incrementalEntries.length > 0 && (

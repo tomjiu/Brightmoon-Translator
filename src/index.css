@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /*
- * Dual theme: pure black / pure white monochrome.
+ * Dual theme: neutral near-black / neutral light.
  * primary = high-contrast action fill (white on dark, black on light).
  * Always pair filled primary with text-primary-fg — never raw text-white.
  *
@@ -23,34 +23,46 @@
   --color-primary-hover: #ffffff;
   --color-primary-fg: #0a0a0a;
   --color-accent: #a3a3a3;
-  --color-bg-primary: #000000;
-  --color-bg-secondary: #0a0a0a;
-  --color-bg-tertiary: #141414;
-  --color-bg-chrome: #0a0a0a;
+
+  /* 中性黑灰层级 — 无蓝味,层次由三层阴影 + 白色边框承载 */
+  --color-bg-primary: #0b0b0b;
+  --color-bg-secondary: #171717;
+  --color-bg-tertiary: #242424;
+  --color-bg-chrome: #0f0f0f;
+
   --color-text-primary: #fafafa;
-  --color-text-secondary: #a3a3a3;
-  --color-border: rgba(255, 255, 255, 0.16);
+  --color-text-secondary: #b3b3b3;
+  --color-border: rgba(255, 255, 255, 0.12);
   --color-border-strong: rgba(255, 255, 255, 0.24);
   --color-success: #22c55e;
   --color-warning: #eab308;
   --color-error: #ef4444;
-  /* S5-fix: RGB triplets for Tailwind opacity modifier (bg-primary/5 etc.) */
+
+  /* RGB triplets for Tailwind opacity modifier (bg-primary/5 etc.) */
   --color-primary-rgb: 245 245 245;
   --color-primary-hover-rgb: 255 255 255;
   --color-primary-fg-rgb: 10 10 10;
   --color-accent-rgb: 163 163 163;
-  --color-bg-primary-rgb: 0 0 0;
-  --color-bg-secondary-rgb: 10 10 10;
-  --color-bg-tertiary-rgb: 20 20 20;
-  --color-bg-chrome-rgb: 10 10 10;
+  --color-bg-primary-rgb: 11 11 11;
+  --color-bg-secondary-rgb: 23 23 23;
+  --color-bg-tertiary-rgb: 36 36 36;
+  --color-bg-chrome-rgb: 15 15 15;
   --color-text-primary-rgb: 250 250 250;
-  --color-text-secondary-rgb: 163 163 163;
+  --color-text-secondary-rgb: 179 179 179;
   --color-border-rgb: 255 255 255;
   --color-border-strong-rgb: 255 255 255;
   --color-success-rgb: 34 197 94;
   --color-warning-rgb: 234 179 8;
   --color-error-rgb: 239 68 68;
-  --shadow-elevated: 0 8px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* 三层阴影:顶光 + 接触阴影 + 落影 */
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                 0 1px 2px rgba(0, 0, 0, 0.5),
+                 0 10px 28px -10px rgba(0, 0, 0, 0.7);
+  --shadow-card-hover: inset 0 1px 0 rgba(255, 255, 255, 0.10),
+                       0 2px 4px rgba(0, 0, 0, 0.6),
+                       0 18px 36px -10px rgba(0, 0, 0, 0.85);
+  --shadow-elevated: var(--shadow-card);
   --ring: 0 0 0 2px rgba(245, 245, 245, 0.25);
   color-scheme: dark;
 
@@ -77,35 +89,46 @@
   --color-primary-hover: #000000;
   --color-primary-fg: #fafafa;
   --color-accent: #525252;
-  --color-bg-primary: #f5f5f5;
+
+  /* 中性白三件套 */
+  --color-bg-primary: #f4f4f4;
   --color-bg-secondary: #ffffff;
-  --color-bg-tertiary: #ebebeb;
+  --color-bg-tertiary: #e9e9e9;
   --color-bg-chrome: #ffffff;
+
   --color-text-primary: #0a0a0a;
-  --color-text-secondary: #525252;
-  --color-border: rgba(0, 0, 0, 0.1);
-  --color-border-strong: rgba(0, 0, 0, 0.18);
+  --color-text-secondary: #4d4d4d;
+  --color-border: rgba(0, 0, 0, 0.10);
+  --color-border-strong: rgba(0, 0, 0, 0.20);
   --color-success: #16a34a;
   --color-warning: #d97706;
   --color-error: #dc2626;
-  /* S5-fix: RGB triplets for Tailwind opacity modifier (bg-primary/5 etc.) */
+
+  /* RGB triplets for Tailwind opacity modifier (bg-primary/5 etc.) */
   --color-primary-rgb: 10 10 10;
   --color-primary-hover-rgb: 0 0 0;
   --color-primary-fg-rgb: 250 250 250;
   --color-accent-rgb: 82 82 82;
-  --color-bg-primary-rgb: 245 245 245;
+  --color-bg-primary-rgb: 244 244 244;
   --color-bg-secondary-rgb: 255 255 255;
-  --color-bg-tertiary-rgb: 235 235 235;
+  --color-bg-tertiary-rgb: 233 233 233;
   --color-bg-chrome-rgb: 255 255 255;
   --color-text-primary-rgb: 10 10 10;
-  --color-text-secondary-rgb: 82 82 82;
+  --color-text-secondary-rgb: 77 77 77;
   --color-border-rgb: 0 0 0;
   --color-border-strong-rgb: 0 0 0;
   --color-success-rgb: 22 163 74;
   --color-warning-rgb: 217 119 6;
   --color-error-rgb: 220 38 38;
-  --shadow-elevated: 0 8px 30px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  --ring: 0 0 0 2px rgba(10, 10, 10, 0.15);
+
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.9),
+                 0 1px 2px rgba(0, 0, 0, 0.05),
+                 0 10px 28px -10px rgba(0, 0, 0, 0.12);
+  --shadow-card-hover: inset 0 1px 0 rgba(255, 255, 255, 1),
+                       0 2px 4px rgba(0, 0, 0, 0.08),
+                       0 18px 36px -10px rgba(0, 0, 0, 0.18);
+  --shadow-elevated: var(--shadow-card);
+  --ring: 0 0 0 2px rgba(10, 10, 10, 0.18);
   color-scheme: light;
 
   /* OCR region frame overlay (semi-transparent, sits over screenshot) */
@@ -328,12 +351,214 @@ textarea:focus-visible {
   border-radius: 0.75rem;
 }
 
-/* Mono Premium: add a subtle top white highlight to native shadow-sm cards
- * (cards sit on pure-black; a faint inner top edge reads as depth light). */
-.dark .shadow-sm {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    0 1px 2px 0 rgba(0, 0, 0, 0.5);
+/* ── 卡片系统:三层阴影 + 常驻渐变高光边 + hover 抬升 ── */
+.ui-card {
+  /* 双 background-clip:内层 padding-box 铺底色,外层 border-box 画渐变边
+   * 渐变边:顶部亮 → 中部 → 底部几乎透明,静态就有科技感,零动画开销 */
+  background:
+    linear-gradient(var(--color-bg-secondary), var(--color-bg-secondary)) padding-box,
+    linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.32),
+        rgba(255, 255, 255, 0.12) 38%,
+        rgba(255, 255, 255, 0.05) 75%,
+        rgba(255, 255, 255, 0.02)
+      )
+      border-box;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-card);
+  transition:
+    box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 200ms ease-out;
+}
+.ui-card-hover:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+.ui-card-hover:focus-within {
+  filter: brightness(1.03);
+}
+
+/* 亮色模式:渐变边换深灰,静态可读 */
+.light .ui-card {
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    linear-gradient(
+        180deg,
+        rgba(10, 10, 10, 0.30),
+        rgba(10, 10, 10, 0.12) 38%,
+        rgba(10, 10, 10, 0.05) 75%,
+        rgba(10, 10, 10, 0.02)
+      )
+      border-box;
+}
+
+/* Tailwind 原生 shadow-sm 不再被覆盖(卡片统一走 .ui-card) */
+.shadow-sm {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* ── 白色闪光边框:跑马灯光点 ──
+ * 4 边分段移动,纯 CSS,GPU 开销极低
+ * 仅 hover/focus 触发,不常驻 */
+.ui-run-light {
+  position: relative;
+  isolation: isolate;
+}
+.ui-run-light::before,
+.ui-run-light::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+  z-index: 1;
+}
+/* 上下两条光带(横向移动) */
+.ui-run-light::before {
+  background:
+    linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.9) 45%,
+      rgba(255, 255, 255, 0.9) 55%,
+      transparent 100%) top    / 220% 1.5px no-repeat,
+    linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.9) 45%,
+      rgba(255, 255, 255, 0.9) 55%,
+      transparent 100%) bottom / 220% 1.5px no-repeat;
+  animation: march-x 2.4s linear infinite;
+  animation-play-state: paused;
+  will-change: background-position;
+}
+/* 左右两条光带(纵向移动) */
+.ui-run-light::after {
+  background:
+    linear-gradient(0deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.9) 45%,
+      rgba(255, 255, 255, 0.9) 55%,
+      transparent 100%) left  / 1.5px 220% no-repeat,
+    linear-gradient(0deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.9) 45%,
+      rgba(255, 255, 255, 0.9) 55%,
+      transparent 100%) right / 1.5px 220% no-repeat;
+  animation: march-y 2.4s linear infinite;
+  animation-play-state: paused;
+  will-change: background-position;
+}
+/* 亮色模式:白色光带换成深灰,保证可见 */
+.light .ui-run-light::before,
+.light .ui-run-light::after {
+  background-color: transparent;
+}
+.light .ui-run-light::before {
+  background-image:
+    linear-gradient(90deg,
+      transparent 0%,
+      rgba(10, 10, 10, 0.7) 45%,
+      rgba(10, 10, 10, 0.7) 55%,
+      transparent 100%),
+    linear-gradient(90deg,
+      transparent 0%,
+      rgba(10, 10, 10, 0.7) 45%,
+      rgba(10, 10, 10, 0.7) 55%,
+      transparent 100%);
+}
+.light .ui-run-light::after {
+  background-image:
+    linear-gradient(0deg,
+      transparent 0%,
+      rgba(10, 10, 10, 0.7) 45%,
+      rgba(10, 10, 10, 0.7) 55%,
+      transparent 100%),
+    linear-gradient(0deg,
+      transparent 0%,
+      rgba(10, 10, 10, 0.7) 45%,
+      rgba(10, 10, 10, 0.7) 55%,
+      transparent 100%);
+}
+.ui-run-light:hover::before,
+.ui-run-light:hover::after,
+.ui-run-light:focus-within::before,
+.ui-run-light:focus-within::after {
+  opacity: 1;
+  animation-play-state: running;
+}
+@keyframes march-x {
+  0%   { background-position: -120% 0,   120% 0; }
+  100% { background-position:  120% 0,  -120% 0; }
+}
+@keyframes march-y {
+  0%   { background-position: 0  120%, 0 -120%; }
+  100% { background-position: 0 -120%, 0  120%; }
+}
+
+/* ── 玻璃拟态:仅用于浮层(TranslateCard / SelectionPop / Modal) ── */
+.ui-glass {
+  background:
+    color-mix(in srgb, var(--color-bg-secondary) 80%, transparent) padding-box,
+    linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.30),
+        rgba(255, 255, 255, 0.10) 40%,
+        rgba(255, 255, 255, 0.04) 80%
+      )
+      border-box;
+  border: 1px solid transparent;
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .ui-glass {
+    background-color: var(--color-bg-secondary);
+  }
+}
+
+/* ── 渐变文字:标题/品牌字 ── */
+.ui-text-gradient {
+  background: linear-gradient(
+    180deg,
+    var(--color-text-primary) 0%,
+    color-mix(in srgb, var(--color-text-primary) 70%, var(--color-text-secondary)) 100%
+  );
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+          color: transparent;
+}
+
+/* ── 骨架屏 shimmer:替代 animate-pulse ── */
+.ui-skeleton {
+  background:
+    linear-gradient(
+      90deg,
+      var(--color-bg-tertiary) 0%,
+      color-mix(in srgb, var(--color-bg-tertiary) 60%, var(--color-bg-secondary)) 50%,
+      var(--color-bg-tertiary) 100%
+    );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── 页面切换淡入 ── */
+.ui-page-in {
+  animation: page-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Map residual colorful utility classes to Mono Premium status tokens.
@@ -425,9 +650,7 @@ textarea:focus-visible {
   border-color: color-mix(in srgb, var(--color-error) 30%, transparent) !important;
 }
 
-/* ── Light theme: align native Tailwind status classes to Mono tokens ──
- * On light backgrounds use the deeper token shades (already dark enough for
- * contrast); badge fills use a soft tint of the same hue. */
+/* ── Light theme: align native Tailwind status classes to Mono tokens ── */
 .light .text-green-500,
 .light .text-green-600,
 .light .text-green-700,
@@ -491,15 +714,30 @@ textarea:focus-visible {
   border-color: color-mix(in srgb, var(--color-error) 30%, transparent) !important;
 }
 
-/* Mono Premium light: subtle top highlight on shadow-sm cards */
-.light .shadow-sm {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 1px 2px 0 rgba(0, 0, 0, 0.08);
-}
-
 /* Selection */
 ::selection {
   background: var(--color-primary);
   color: var(--color-primary-fg);
+}
+
+/* ── prefers-reduced-motion 兜底(必须) ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .ui-run-light::before,
+  .ui-run-light::after,
+  .ui-pulse-border,
+  .ui-skeleton {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+  .ui-card-hover:hover {
+    transform: none !important;
+  }
 }
