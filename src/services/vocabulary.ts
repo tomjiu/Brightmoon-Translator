@@ -141,6 +141,27 @@ export interface LearningStats {
   reviewed_today: number;
 }
 
+export interface StudyWordData {
+  word: string;
+  card_id?: string;
+  phonetic?: string;
+  chinese_translation?: string;
+  english_definitions: string[];
+  collins_entries: unknown[];
+  examples: unknown[];
+  us_audio_url?: string;
+  uk_audio_url?: string;
+  ai_content?: AiContent;
+  image_url?: string;
+  sources: string[];
+}
+
+export interface ExtractStudyResult {
+  total_words: number;
+  studied: StudyWordData[];
+  skipped_existing: string[];
+}
+
 // ============================================
 // Service 方法
 // ============================================
@@ -198,6 +219,13 @@ export async function generateCardContent(cardId: string): Promise<AiContent> {
  */
 export async function submitReview(cardId: string, rating: Rating): Promise<undefined> {
   return await invokeOrThrow('submit_review', { cardId, rating });
+}
+
+/**
+ * 从一段文本中提取生词并批量建卡（划词 AI 抽生词建本）
+ */
+export async function extractWordsAndStudy(text: string): Promise<ExtractStudyResult> {
+  return await invokeOrThrow<ExtractStudyResult>('extract_words_and_study', { text });
 }
 
 /**

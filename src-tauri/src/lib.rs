@@ -977,6 +977,7 @@ pub fn run() {
             commands::vocabulary_cmd::submit_review,
             commands::vocabulary_cmd::get_learning_stats,
             commands::vocabulary_cmd::study_word,
+            commands::vocabulary_cmd::extract_words_and_study,
             commands::statistics_cmd::get_learning_statistics,
             commands::statistics_cmd::get_daily_activity,
             commands::statistics_cmd::get_heatmap_data,

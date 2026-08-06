@@ -1001,3 +1001,127 @@ fn word_to_photo_id(word: &str) -> String {
     let idx = (hash as usize) % generic_photos.len();
     generic_photos[idx].to_string()
 }
+
+/// 划词文本 AI 抽生词建本结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractStudyResult {
+    pub total_words: usize,
+    pub studied: Vec<StudyWordData>,
+    pub skipped_existing: Vec<String>,
+}
+
+/// 从一段文本中提取生词并批量建卡（划词 AI 抽生词建本）
+///
+/// 1. 正则提取文本中的英文单词（去停用词、去标点、小写化）
+/// 2. 过滤掉已在词库中的卡（cards.word）
+/// 3. 用 ECDICT 词典校验词条存在，过滤太长的复合串
+/// 4. 并行 study_word 建卡 + 生成 AI 内容
+#[tauri::command]
+pub async fn extract_words_and_study(
+    state: State<'_, crate::AppState>,
+    text: String,
+) -> Result<ExtractStudyResult, String> {
+    use std::collections::HashSet;
+
+    let ecdict_pool = state.ecdict_pool.as_ref().ok_or("本地词典未连接")?;
+
+    // 1. 提取英文单词
+    let mut words: Vec<String> = text
+        .split(|c: char| !c.is_ascii_alphabetic() && c != '\'' && c != '-')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.trim().trim_matches(['\'', '-']).to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // 停用词过滤（常见功能词 + 无学习价值的词）
+    let stop_words: HashSet<&str> = [
+        "the", "a", "an", "and", "or", "but", "if", "then", "than", "so", "of", "to", "in",
+        "on", "at", "by", "for", "with", "about", "as", "is", "are", "was", "were", "be",
+        "been", "being", "am", "do", "does", "did", "done", "have", "has", "had", "having",
+        "it", "its", "this", "that", "these", "those", "there", "here", "i", "you", "he",
+        "she", "they", "we", "my", "your", "his", "her", "their", "our", "not", "no", "yes",
+        "will", "would", "can", "could", "should", "shall", "may", "might", "must", "from",
+        "into", "up", "down", "out", "off", "over", "under", "again", "once", "just", "very",
+        "also", "but", "which", "what", "when", "where", "why", "how", "who", "whom", "whose",
+        "all", "any", "some", "each", "every", "both", "few", "more", "most", "other", "such",
+        "only", "own", "same", "too", "very", "them", "us", "me", "him", "her", "it",
+        "not", "don't", "doesn't", "didn't", "won't", "can't", "isn't", "aren't", "wasn't",
+        "weren't", "i'm", "i've", "i'll", "i'd", "you're", "you've", "we're", "they're",
+        "there's", "it's", "that's", "what's", "let's", "ok", "okay", "good", "well", "yes",
+    ]
+    .into_iter()
+    .collect();
+
+    words.retain(|w| !stop_words.contains(w.as_str()) && w.len() >= 2 && w.len() <= 20);
+
+    // 去重（保序）
+    let mut seen = HashSet::new();
+    words.retain(|w| seen.insert(w.clone()));
+    if words.is_empty() {
+        return Ok(ExtractStudyResult {
+            total_words: 0,
+            studied: Vec::new(),
+            skipped_existing: Vec::new(),
+        });
+    }
+
+    // 2. 过滤已存在的卡
+    let event_store = state.event_store.as_ref();
+    let mut skipped_existing = Vec::new();
+    if let Some(store) = event_store {
+        let pool = store.pool();
+        let mut existing = HashSet::new();
+        let rows = sqlx::query("SELECT word FROM cards")
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let w: String = row.try_get("word").unwrap_or_default();
+            existing.insert(w.to_lowercase());
+        }
+        words.retain(|w| {
+            if existing.contains(w) {
+                skipped_existing.push(w.clone());
+                false
+            } else {
+                true
+            }
+        });
+    }
+
+    // 3. ECDICT 校验词条存在（批量 IN 查询）
+    if words.len() > 200 {
+        words.truncate(200);
+    }
+    if !words.is_empty() {
+        let placeholders = vec!["?"; words.len()].join(",");
+        let sql = format!("SELECT word FROM stardict WHERE word IN ({})", placeholders);
+        let mut q = sqlx::query(&sql);
+        for w in &words {
+            q = q.bind(w);
+        }
+        let rows = q.fetch_all(ecdict_pool).await.map_err(|e| e.to_string())?;
+        let known: HashSet<String> = rows
+            .into_iter()
+            .map(|r| r.try_get::<String, _>("word").unwrap_or_default())
+            .collect();
+        words.retain(|w| known.contains(w.as_str()));
+    }
+
+    let total_words = words.len();
+    let mut studied = Vec::new();
+    // 顺序建卡：AI 内容生成受 API 限流约束，串行比并发更稳
+    for w in words {
+        match study_word(state.clone(), w).await {
+            Ok(data) => studied.push(data),
+            Err(e) => tracing::warn!("study_word 建卡失败: {}", e),
+        }
+    }
+
+    Ok(ExtractStudyResult {
+        total_words,
+        studied,
+        skipped_existing,
+    })
+}
