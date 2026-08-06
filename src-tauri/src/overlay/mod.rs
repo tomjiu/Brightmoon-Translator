@@ -5,6 +5,7 @@ pub mod interaction;
 pub mod pin_manager;
 pub mod positioner;
 pub mod resize_service;
+pub mod translate_card;
 pub mod window_manager;
 
 pub use follow_controller::{FollowController, FollowMode, TargetBounds};

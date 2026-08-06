@@ -176,6 +176,12 @@ impl TranslationService {
                         .await?;
                     Ok(TranslateOutcome::Primary(r))
                 },
+                TranslationMode::Quick => {
+                    let r = self
+                        .translate_quick(&req.text, &req.from, &req.to)
+                        .await?;
+                    Ok(TranslateOutcome::Full(r))
+                },
                 TranslationMode::Batch => {
                     let lines: Vec<(usize, &str)> = if req.segments.is_empty() {
                         req.text
@@ -251,6 +257,33 @@ impl TranslationService {
                 other
             ))),
         }
+    }
+
+    /// Convenience: quick-mode run for a product channel — first-available
+    /// engine result, resolved fast (floating card quick path).
+    pub async fn run_quick(
+        &self,
+        channel: TranslateChannel,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<TranslateResponse, TranslationError> {
+        match self
+            .run(TranslateRequest::quick(channel, text, from, to))
+            .await?
+        {
+            TranslateOutcome::Full(r) => Ok(r),
+            other => Err(TranslationError::Internal(format!(
+                "unexpected outcome for quick: {:?}",
+                other
+            ))),
+        }
+    }
+
+    /// Number of configured/active translation engines (for the card's
+    /// "expand to translate the rest" affordance).
+    pub async fn enabled_engine_count(&self) -> usize {
+        self.engine_router.read().await.engine_count()
     }
 
     /// Convenience: primary-mode run for a product channel.
@@ -407,6 +440,38 @@ impl TranslationService {
         from: &str,
         to: &str,
     ) -> Result<TranslateResponse, TranslationError> {
+        self.translate_impl(channel, text, from, to, None).await
+    }
+
+    /// Quick card path: forces `LatencyFirst` so the floating translate card
+    /// gets the FIRST available result fast instead of waiting for every engine.
+    /// The remaining engines load lazily when the FE expands the card.
+    async fn translate_quick(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<TranslateResponse, TranslationError> {
+        self.translate_impl(
+            TranslateChannel::Selection,
+            text,
+            from,
+            to,
+            Some(RoutingStrategy::LatencyFirst),
+        )
+        .await
+    }
+
+    /// Full pipeline; `strategy_override` forces a routing strategy (quick card
+    /// path) instead of the channel's default.
+    async fn translate_impl(
+        &self,
+        channel: TranslateChannel,
+        text: &str,
+        from: &str,
+        to: &str,
+        strategy_override: Option<RoutingStrategy>,
+    ) -> Result<TranslateResponse, TranslationError> {
         let span = info_span!(
             "translate",
             channel = ?channel,
@@ -424,12 +489,15 @@ impl TranslationService {
 
             let prepared = self.prepare(text, from, to).await;
 
-            let strategy = {
-                let config = self.config.lock().await;
-                Self::strategy_for_channel(
-                    channel,
-                    config.routing_strategy.clone().unwrap_or_default(),
-                )
+            let strategy = match strategy_override {
+                Some(s) => s,
+                None => {
+                    let config = self.config.lock().await;
+                    Self::strategy_for_channel(
+                        channel,
+                        config.routing_strategy.clone().unwrap_or_default(),
+                    )
+                },
             };
             let want_multi = matches!(strategy, RoutingStrategy::ParallelCompare);
 

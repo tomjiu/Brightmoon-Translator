@@ -58,6 +58,7 @@ pi-session-*.html
 .tmp/
 .playwright-mcp/
 .pi-subagents/
+.pi/
 docs/superpowers/
 
 # Third party tools

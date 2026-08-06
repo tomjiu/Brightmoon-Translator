@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { isTauriRuntime } from '../services/tauriRuntime';
 
 type Theme = 'dark' | 'light';
@@ -11,6 +12,23 @@ interface ThemeState {
 
 const THEME_EVENT = 'app-theme-changed';
 
+const themeDbg = (msg: string) => {
+  console.error(`[T-DBG] ${msg}`);
+  if (isTauriRuntime()) {
+    void import('@tauri-apps/api/event')
+      .then(({ emit }) => emit('__theme_dbg', msg))
+      .catch(() => undefined);
+  }
+};
+
+const getW = () => {
+  try {
+    return getCurrentWindow().label;
+  } catch {
+    return 'browser';
+  }
+};
+
 const getInitialTheme = (): Theme => {
   const stored = localStorage.getItem('theme');
   if (stored === 'light' || stored === 'dark') return stored;
@@ -22,6 +40,7 @@ export const useThemeStore = create<ThemeState>((set) => ({
   theme: getInitialTheme(),
 
   toggleTheme: () => {
+    themeDbg(`toggleTheme called, stack=${new Error().stack?.split('\n').slice(1, 4).join(' <- ') ?? '?'}`);
     set((state) => {
       const newTheme = state.theme === 'dark' ? 'light' : 'dark';
       localStorage.setItem('theme', newTheme);
@@ -31,11 +50,35 @@ export const useThemeStore = create<ThemeState>((set) => ({
   },
 
   setTheme: (theme: Theme) => {
+    themeDbg(`setTheme(${theme}), stack=${new Error().stack?.split('\n').slice(1, 4).join(' <- ') ?? '?'}`);
     localStorage.setItem('theme', theme);
     applyTheme(theme, { broadcast: true });
     set({ theme });
   },
 }));
+
+/**
+ * Keep the native selection/hover overlay cards (Rust `OVERLAY_LIGHT`) in sync
+ * with the DOM theme. **Must only be called from the main window**: the static
+ * is process-global, so a sub-window syncing its own (possibly dark-defaulted)
+ * theme would flip the shared overlay cards to dark even on a light session.
+ */
+async function overlayIsOnMain(): Promise<boolean> {
+  if (!isTauriRuntime()) return false;
+  try {
+    return getCurrentWindow().label === 'main';
+  } catch {
+    return false;
+  }
+}
+
+async function syncOverlayTheme(theme: Theme) {
+  themeDbg(`syncOverlayTheme(${theme}) isMain=${await overlayIsOnMain()}`);
+  if (!(await overlayIsOnMain())) return;
+  const { safeInvoke } = await import('../services/invoke');
+  await safeInvoke('set_overlay_theme', { theme });
+  themeDbg(`set_overlay_theme invoked with ${theme}`);
+}
 
 /**
  * Apply theme class to <html>.
@@ -52,29 +95,35 @@ function applyTheme(theme: Theme, opts: { broadcast?: boolean } = {}) {
         /* non-tauri / window closing */
       });
   }
-  // Keep selection/hover overlay cards in sync (native webview, not DOM)
-  void import('../services/invoke')
-    .then(({ safeInvoke }) => safeInvoke('set_overlay_theme', { theme }))
-    .catch((err: unknown) => {
-      console.debug('set_overlay_theme skipped', err);
-    });
+  // Keep selection/hover overlay cards in sync (native webview, not DOM).
+  // Only the main window pushes the global process-level value; sub-windows
+  // are corrected by the cross-window sync below.
+  void syncOverlayTheme(theme);
 }
 
 function applyThemeClass(theme: Theme) {
   const root = document.documentElement;
   root.classList.remove('dark', 'light');
   root.classList.add(theme);
+  themeDbg(`applyThemeClass(${theme}) in ${getW()}`);
 }
 
 // Apply theme on load (localStorage is shared across same-origin webview windows
 // in WebView2; if it is not, the theme-changed event from main will correct it).
 applyThemeClass(getInitialTheme());
 
+// bug1 fix: push the persisted theme to Rust at startup too, so the native
+// overlay cards match the light session without requiring a manual re-toggle.
+if (isTauriRuntime()) {
+  void syncOverlayTheme(getInitialTheme());
+}
+
 // Cross-window theme sync: main window broadcasts, every other window applies.
 if (isTauriRuntime()) {
   void import('@tauri-apps/api/event')
     .then(({ listen, emit }) => {
       listen<Theme>(THEME_EVENT, (event) => {
+        themeDbg(`THEME_EVENT listener payload=${event.payload} in ${getW()}`);
         applyThemeClass(event.payload);
         useThemeStore.setState({ theme: event.payload });
       }).catch(() => undefined);
@@ -84,8 +133,17 @@ if (isTauriRuntime()) {
       // to 'dark' and miss the earlier theme-changed broadcast. Emit a
       // one-shot request so the main window replies with the current theme.
       // The main window handler is registered in App.tsx.
-      void emit('theme-sync-request', null).catch(() => undefined);
+      // The main window itself never requests — it is the authoritative source.
+      if (getW() !== 'main') {
+        void emit('theme-sync-request', null).catch(() => undefined);
+      }
+      // The reply is meant for sub-windows ONLY. The main window must never
+      // apply it: it both emits replies (App.tsx) and would receive its own
+      // echoed broadcast here, so a stale/duplicate reply could overwrite the
+      // authoritative theme (observed: light session flipping back to dark).
       listen<Theme>('theme-sync-reply', (event) => {
+        if (getW() === 'main') return;
+        themeDbg(`theme-sync-reply listener payload=${event.payload} in ${getW()}`);
         applyThemeClass(event.payload);
         useThemeStore.setState({ theme: event.payload });
       }).catch(() => undefined);

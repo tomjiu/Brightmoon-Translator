@@ -96,6 +96,8 @@ export interface SelectionUxConfig {
   triggerMode: SelectionTriggerMode;
   /** Mouse dwell → dictionary popup (system-wide; phased) */
   hoverDictionary: boolean;
+  /** Whether hover also picks CJK (Chinese) words. Default off. */
+  hoverCjk?: boolean;
   hoverDwellMs: number;
   /** word | sentence — MTT-style unit; Alt held also forces sentence */
   hoverUnit?: string;
@@ -359,6 +361,52 @@ export interface DictionaryResult {
   meanings: DictionaryMeaning[];
   sourceUrls: string[];
 }
+
+// Floating translate-card (Rust overlay::translate_card) structured payloads
+export interface DictMeaning {
+  pos: string;
+  defs: string[];
+}
+
+export interface DictExample {
+  en: string;
+  zh: string;
+}
+
+export interface DictCollins {
+  pos: string;
+  posCn: string;
+  englishDef: string;
+  examples: DictExample[];
+}
+
+export interface PhoneticInfo {
+  text?: string | null;
+  audio?: string | null;
+  source: string;
+}
+
+export interface DictCard {
+  word: string;
+  phonetic?: string | null;
+  meanings: DictMeaning[];
+  phonetics: PhoneticInfo[];
+  audioUrl?: string | null;
+  examples: DictExample[];
+  collins: DictCollins[];
+  sources: string[];
+}
+
+export interface MtCardData {
+  source: string;
+  from: string;
+  to: string;
+  response: TranslateResponse;
+}
+
+export type TranslateCardEvent =
+  | { nonce: number; focus: boolean; kind: 'mt'; source: string; from: string; to: string; response: TranslateResponse }
+  | { nonce: number; focus: boolean; kind: 'dict'; card: DictCard };
 
 // Variable name format types
 export type VariableFormat =

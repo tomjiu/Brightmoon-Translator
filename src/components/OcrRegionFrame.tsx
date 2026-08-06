@@ -365,7 +365,14 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
     s.textContent =
       'html,body,#root{background:transparent!important;margin:0!important;outline:none!important}' +
       '*{outline:none!important}' +
-      '::selection{background:rgba(255,255,255,0.15)!important}';
+      // Selection highlight must stay readable on BOTH themes. The global
+      // ::selection colors selected text with var(--color-primary-fg) — that
+      // flips to black-on-dark (dark theme) or white-on-light (light theme)
+      // over the translucent OCR overlay, making selected text unreadable.
+      // Override with theme-scoped, high-contrast pairs: dark overlay bg is
+      // near-black (→ light chip), light overlay bg is near-white (→ dark chip).
+      '.dark ::selection{background:rgba(255,255,255,0.85)!important;color:#0a0a0a!important;text-shadow:none!important}' +
+      '.light ::selection{background:rgba(10,10,10,0.85)!important;color:#fafafa!important;text-shadow:none!important}';
     document.head.appendChild(s);
     document.documentElement.style.background = 'transparent';
     document.body.style.backgroundColor = 'transparent';
@@ -564,26 +571,38 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
     };
   }, [tf]);
 
-  // Emit initial position only for follow offset sync — parent must NOT re-OCR on this
-  // and must NOT adopt min-width-expanded width (see OcrScreenshotTranslator handler).
-  // Fire after first paint (rAF×2) instead of fixed 400ms delay.
+  // P0 fix (PR9 V2): emit positionChanged on every OS-level window move (debounced).
+  // `win.startDragging()` uses PostMessageW (async) in tao 0.35.2 and returns
+  // BEFORE the drag starts — so querying position right after it yields the
+  // PRE-drag coordinates. Listening to `onMoved` (WM_WINDOWPOSCHANGED) is the
+  // only reliable way to learn the post-drag position. Emit initial position
+  // only for follow offset sync — parent must NOT re-OCR on this and must NOT
+  // adopt min-width-expanded width (see OcrScreenshotTranslator handler).
   useEffect(() => {
     let cancelled = false;
-    let raf2 = 0;
-    const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        if (cancelled) return;
-        void getCaptureRegion()
-          .then((r) => emitMain(OcrMainEvents.positionChanged, r))
-          .catch(() => undefined);
-      });
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const emit = () => {
+      timer = null;
+      if (cancelled) return;
+      void getCaptureRegion()
+        .then((r) => emitMain(OcrMainEvents.positionChanged, r))
+        .catch(() => undefined);
+    };
+    // Initial sync after first paint.
+    const raf1 = requestAnimationFrame(() => requestAnimationFrame(emit));
+    // Debounced move listener — fires 80ms after the last WM_WINDOWPOSCHANGED
+    // (i.e. after the drag ends).
+    const unlistenPromise = win.onMoved(() => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(emit, 80);
     });
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
+      if (timer) window.clearTimeout(timer);
+      void unlistenPromise.then((fn) => fn());
     };
-  }, [getCaptureRegion]);
+  }, [getCaptureRegion, win]);
 
   // Sync follow button if main window fails to bind target window
   useEffect(() => {
@@ -681,9 +700,12 @@ export default function OcrRegionFrame({ regionId }: { regionId?: string }) {
     }
     e.preventDefault();
     pauseParentRefresh();
+    // P0 fix (PR9 V2): do NOT emit positionChanged here — startDragging()
+    // returns immediately (PostMessageW) so getCaptureRegion() would yield the
+    // PRE-drag position. The onMoved listener (see useEffect above) emits the
+    // correct post-drag position after the OS drag loop ends.
     try {
       await win.startDragging();
-      await emitMain(OcrMainEvents.positionChanged, await getCaptureRegion());
     } catch {
       /* ignore */
     } finally {

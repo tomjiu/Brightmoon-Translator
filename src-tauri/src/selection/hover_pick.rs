@@ -119,7 +119,12 @@ pub fn is_ui_chrome_word(w: &str) -> bool {
     }
     let n = t.to_ascii_lowercase();
     // Window titles: "App - Document", "Administrator: Windows PowerShell"
-    if (t.contains(" - ") || t.contains(" — ") || t.contains(':')) && t.chars().count() > 12 {
+    // P1: colon check only for chrome tokens (no spaces, short) —
+    // "Warning: ..." / "Note: ..." are real sentences, not chrome.
+    if (t.contains(" - ") || t.contains(" — ")) && t.chars().count() > 12 {
+        return true;
+    }
+    if t.contains(':') && !t.contains(' ') && t.chars().count() > 12 && t.chars().count() < 40 {
         return true;
     }
     if n.ends_with(".exe") || n.contains(".exe ") {
@@ -463,11 +468,23 @@ fn is_editable_control_focused_win() -> bool {
         };
         if let Ok(ct) = focused.CurrentControlType() {
             let id = ct.0;
-            if id == UIA_EditControlTypeId.0
-                || id == UIA_DocumentControlTypeId.0
-                || id == UIA_ComboBoxControlTypeId.0
-            {
+            // P1 fix: Document controls (PDF viewer, Word, browser doc) should
+            // allow hover — only block truly editable Edit/ComboBox. Document
+            // was wrongly blocked, making hover dead on PDF/Word/browser pages.
+            if id == UIA_EditControlTypeId.0 || id == UIA_ComboBoxControlTypeId.0 {
                 return true;
+            }
+            if id == UIA_DocumentControlTypeId.0 {
+                // Only block when the doc is editable (ValuePattern not read-only);
+                // a read-only document is a reading surface → allow hover.
+                if let Ok(pat) = focused.GetCurrentPattern(UIA_ValuePatternId) {
+                    if let Ok(vp) = pat.cast::<IUIAutomationValuePattern>() {
+                        if let Ok(ro) = vp.CurrentIsReadOnly() {
+                            return !ro.as_bool();
+                        }
+                    }
+                }
+                return false; // readonly or unknown → allow hover
             }
         }
         if let Ok(pat) = focused.GetCurrentPattern(UIA_ValuePatternId) {
@@ -531,6 +548,11 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
 
         // Reject pure chrome controls (title bar, tab strip) — never parse Name as page text.
         if element_is_chrome_only(&element) {
+            let ct = element.CurrentControlType().ok().map(|c| c.0);
+            tracing::info!(
+                "[hover_pick] reject: chrome-only element control_type={:?}",
+                ct
+            );
             return None;
         }
 
@@ -538,6 +560,11 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
         if let Some(pick) = try_text_pattern_at_point(&element, pt, cx, cy, sentence) {
             return Some(pick);
         }
+        let ct = element.CurrentControlType().ok().map(|c| c.0);
+        tracing::info!(
+            "[hover_pick] TextPattern miss → ValuePattern fallback control_type={:?}",
+            ct
+        );
 
         // 2) Writable ValuePattern (edit fields) — content, not window title.
         //    Do NOT use CurrentName: it is Accessibility name (app title, "Google", "PowerShell").
@@ -684,9 +711,18 @@ fn try_text_pattern_at_point(
     // SAFETY: Read-only UIA pattern/range queries on a borrowed element.
     // COM pointers are reference-counted; pt was obtained from cursor_pos_raw.
     unsafe {
-        let pat = element.GetCurrentPattern(UIA_TextPatternId).ok()?;
+        let Ok(pat) = element.GetCurrentPattern(UIA_TextPatternId) else {
+            tracing::info!(
+                "[hover_pick] no TextPattern on element (control_type={:?})",
+                element.CurrentControlType().ok().map(|c| c.0)
+            );
+            return None;
+        };
         let text_pattern: IUIAutomationTextPattern = pat.cast().ok()?;
-        let range = text_pattern.RangeFromPoint(pt).ok()?;
+        let Ok(range) = text_pattern.RangeFromPoint(pt) else {
+            tracing::info!("[hover_pick] RangeFromPoint failed");
+            return None;
+        };
         // UIA has no Sentence unit — expand Paragraph then trim to one sentence.
         let unit = if sentence {
             TextUnit_Paragraph
@@ -716,7 +752,16 @@ fn try_text_pattern_at_point(
             // already applies is_single_word / is_ui_chrome_word / length guards.
             match extract_word_candidate_with_hint(raw, cursor_ratio) {
                 Some(w) if w.chars().count() <= 40 => w,
-                _ => return None,
+                other => {
+                    tracing::info!(
+                        "[hover_pick] word extraction failed raw={:?} ratio={:?} got={:?} (control_type={:?})",
+                        raw.chars().take(100).collect::<String>(),
+                        cursor_ratio,
+                        other,
+                        element.CurrentControlType().ok().map(|c| c.0)
+                    );
+                    return None;
+                },
             }
         };
         let word = word.trim();
@@ -726,15 +771,20 @@ fn try_text_pattern_at_point(
         if looks_like_app_or_process_name(word) {
             return None;
         }
-        let bounds = element
-            .CurrentBoundingRectangle()
-            .ok()
-            .map(|r| SelectionBounds {
-                x: r.left as f64,
-                y: r.top as f64,
-                width: (r.right - r.left).max(0) as f64,
-                height: (r.bottom - r.top).max(0) as f64,
-            });
+        // P0: place the card near the *word*, not the whole element — the
+        // element's bounding rect (a paragraph / full control) put cards far
+        // from the hovered token. The expanded range's own rect is the token.
+        let bounds = super::uiautomation::text_range_bounds(&range).or_else(|| {
+            element
+                .CurrentBoundingRectangle()
+                .ok()
+                .map(|r| SelectionBounds {
+                    x: r.left as f64,
+                    y: r.top as f64,
+                    width: (r.right - r.left).max(0) as f64,
+                    height: (r.bottom - r.top).max(0) as f64,
+                })
+        });
         Some(HoverPick {
             word: word.to_string(),
             x: cx,

@@ -22,23 +22,61 @@ extern "system" {
     ) -> i32;
 }
 
+/// Read the first (merged) bounding rect out of a text range's SAFEARRAY.
+/// Shared by the selection provider and hover pick so both place cards near
+/// the *word*, not the whole control element.
+#[cfg(target_os = "windows")]
+pub(crate) fn text_range_bounds(
+    range: &windows::Win32::UI::Accessibility::IUIAutomationTextRange,
+) -> Option<SelectionBounds> {
+    // SAFETY: GetBoundingRectangles returns a SAFEARRAY of doubles; parsing
+    // reads only the first 4 elements (x, y, w, h) after checking UB >= 3.
+    unsafe {
+        let rects_ptr = range.GetBoundingRectangles().ok()?;
+        if rects_ptr.is_null() {
+            return None;
+        }
+        let mut upper: i32 = -1;
+        SafeArrayGetUBound(rects_ptr as *mut std::ffi::c_void, 1, &mut upper);
+        if upper < 3 {
+            return None;
+        }
+        let mut r = [0.0f64; 4];
+        for j in 0..4i32 {
+            SafeArrayGetElement(
+                rects_ptr as *mut std::ffi::c_void,
+                &j as *const i32,
+                &mut r[j as usize] as *mut f64 as *mut std::ffi::c_void,
+            );
+        }
+        Some(SelectionBounds {
+            x: r[0],
+            y: r[1],
+            width: r[2],
+            height: r[3],
+        })
+    }
+}
+
 /// Uses Windows UI Automation to read selected text from the focused control.
 /// Falls back gracefully when the focused element doesn't support text patterns.
 pub struct UiAutomationSelectionProvider;
 
 /// Easydict `_automationSemaphore` (SemaphoreSlim 1,1) + UiaSemaphoreTimeoutMs=200.
 /// Serializes UIA calls so concurrent selection requests (hotkey + auto_select + hover)
-/// don't contend on the focused element / COM apartment. If busy past 200ms we skip
-/// rather than piling up — matches Easydict's "Wait 200ms then give up" behavior.
+/// don't contend on the focused element / COM apartment. If busy past the timeout we skip
+/// rather than piling up — matches Easydict's "Wait then give up" behavior.
+/// P1: 200ms was too short and dropped words under concurrent hotkey + auto_select — now 500ms.
 static UIA_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(1));
 
 #[async_trait::async_trait]
 impl SelectionProvider for UiAutomationSelectionProvider {
     async fn get_selection(&self) -> Option<SelectionResult> {
-        // Easydict: acquire the UIA semaphore (200ms budget) before doing any UIA work,
+        // Easydict: acquire the UIA semaphore (500ms budget) before doing any UIA work,
         // so two in-flight selection requests can't race on GetFocusedElement / COM.
+        // P1: 200ms was too short — concurrent hotkey+auto_select dropped words.
         let _permit = match tokio::time::timeout(
-            std::time::Duration::from_millis(200),
+            std::time::Duration::from_millis(500),
             UIA_SEMAPHORE.acquire(),
         )
         .await
@@ -50,7 +88,7 @@ impl SelectionProvider for UiAutomationSelectionProvider {
             },
             Err(_) => {
                 tracing::warn!(
-                    "[uiautomation] semaphore busy after 200ms — skip (UIA serialized)"
+                    "[uiautomation] semaphore busy after 500ms — skip (UIA serialized)"
                 );
                 return None;
             },
@@ -247,31 +285,11 @@ unsafe fn try_text_pattern(
         }
 
         // Merge bounding rectangles
-        if let Ok(rects_ptr) = range.GetBoundingRectangles() {
-            if !rects_ptr.is_null() {
-                let mut upper: i32 = -1;
-                SafeArrayGetUBound(rects_ptr as *mut std::ffi::c_void, 1, &mut upper);
-                if upper >= 3 {
-                    let mut r = [0.0f64; 4];
-                    for j in 0..4i32 {
-                        SafeArrayGetElement(
-                            rects_ptr as *mut std::ffi::c_void,
-                            &j as *const i32,
-                            &mut r[j as usize] as *mut f64 as *mut std::ffi::c_void,
-                        );
-                    }
-                    let rect = SelectionBounds {
-                        x: r[0],
-                        y: r[1],
-                        width: r[2],
-                        height: r[3],
-                    };
-                    merged_bounds = Some(match merged_bounds {
-                        Some(existing) => merge_bounds(&existing, &rect),
-                        None => rect,
-                    });
-                }
-            }
+        if let Some(rect) = text_range_bounds(&range) {
+            merged_bounds = Some(match merged_bounds {
+                Some(existing) => merge_bounds(&existing, &rect),
+                None => rect,
+            });
         }
     }
 

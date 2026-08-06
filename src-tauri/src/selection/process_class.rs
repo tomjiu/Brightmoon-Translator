@@ -38,6 +38,12 @@ impl ForegroundProcess {
             return SelectionStrategy::Skip;
         }
         if self.is_terminal {
+            // Terminals: UIA only. A synthetic Ctrl+C would be delivered to the
+            // foreground terminal window (Windows Terminal / cmd / opencode TUI)
+            // and SIGINT the running session — killing `tauri dev`, npm, or the
+            // user's shell. Windows Terminal exposes the selection via UIA
+            // TextPattern; when UIA can't read it we give up rather than risk
+            // the foreground session.
             return SelectionStrategy::UiaOnly;
         }
         if self.is_electron || self.is_browser {

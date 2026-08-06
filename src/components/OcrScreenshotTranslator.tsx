@@ -18,7 +18,13 @@ import { alignTranslationToLines } from '../services/ocrLineAlign';
 import { useConfigStore } from '../stores/configStore';
 import type { AppConfig, TranslateResponse, DetectionResult, DictionaryResult } from '../types';
 import { WindowBindingManager } from '../hooks/ocrWindowBinding';
-import { normalizeOcrText, textSimilarity, OCR_TEXT_SIMILARITY_SKIP } from '../hooks/ocrQuality';
+import { DEFAULT_ENGINE_ORDER } from '../pages/settings/engines/enginesMeta';
+import {
+  normalizeOcrText,
+  textSimilarity,
+  OCR_TEXT_SIMILARITY_SKIP,
+  imageFingerprint as imageFingerprintJs,
+} from '../hooks/ocrQuality';
 import {
   OCR_MIN_FRAME_WIDTH_CSS,
   OCR_SELECTION_PAD_PX,
@@ -154,6 +160,24 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     },
     [createRegionState],
   );
+
+  /** Multi-frame: live region frames hidden while a new selector is up. They are
+   *  restored (same mounted WebView, content intact) on selection success, cancel,
+   *  or error so no live frame is ever left hidden after a re-snip. */
+  const framesHiddenDuringSelectionRef = useRef<string[]>([]);
+  const restoreFramesHiddenDuringSelection = useCallback(async () => {
+    const hidden = framesHiddenDuringSelectionRef.current;
+    framesHiddenDuringSelectionRef.current = [];
+    for (const rid of hidden) {
+      const rs = getRegionState(rid);
+      if (rs.frameClosed || !rs.region) continue;
+      await safeInvoke(
+        'set_ocr_region_frame_visible',
+        { visible: true, id: rid },
+        { silent: true },
+      );
+    }
+  }, [getRegionState]);
 
   // ---- Q4: cross-region translation cache ----
   const sharedCacheKey = useCallback(
@@ -383,12 +407,15 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         // Region watch: pixel fingerprint (Rust 24×24 luma) then JS fallback.
         // First capture always runs (empty fingerprint / empty last text).
         let fp = await imageDataUrlFingerprint(image);
-        // Rust fail → do not trust weak JS hash for skip (false match would freeze watch).
+        // Rust fail → fall back to JS hash (weaker but better than re-OCR every
+        // tick). The JS hash is prefixed with "js:" so it never matches a Rust
+        // hash, and the text-similarity check below still gates the skip.
         if (!fp) {
-          fp = '';
-          st.lastImageFp = '';
+          const jsFp = imageFingerprintJs(image);
+          fp = jsFp ? `js:${jsFp}` : '';
         }
-        if (st.lastImageFp && fp && fp === st.lastImageFp && st.lastOcrText) {
+        const fpMatch = !!fp && !!st.lastImageFp && fp === st.lastImageFp;
+        if (fpMatch && st.lastOcrText) {
           st.consecutiveSkip = Math.min(st.consecutiveSkip + 1, 8);
           return;
         }
@@ -727,7 +754,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           if (st.frameClosed) {
             await safeInvoke(
               'set_ocr_region_frame_visible',
-              { visible: false },
+              { visible: false, id: regionId },
               { silent: true },
             );
           }
@@ -1035,7 +1062,13 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           }
           let engineOrder = [...(prev.engineOrder || [])];
           if (promote) {
-            engineOrder = [engineId, ...engineOrder.filter((id) => id !== engineId)];
+            // P3 fix: reject unknown engineId so promote never pollutes
+            // engineOrder with invalid strings (causes position-number gaps).
+            if (DEFAULT_ENGINE_ORDER.includes(engineId as never)) {
+              engineOrder = [engineId, ...engineOrder.filter((id) => id !== engineId)];
+            } else {
+              console.warn('[OCR] engineChange promote rejected unknown engineId:', engineId);
+            }
           }
           return { ...prev, engines, engineOrder };
         });
@@ -1081,11 +1114,29 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
         { sampling: false, id: rid },
         { silent: true },
       );
-      await safeInvoke(
-        'ocr_end_session',
-        { id: rid },
-        { silent: true },
-      ).catch(() => undefined);
+      // Close the region frame window. Default uses the legacy close command
+      // (its session may not be registered — ocr_begin_session_hide_main only
+      // hides main, it never registers a default session). Non-default uses
+      // ocr_end_session which removes the session AND closes its labeled
+      // window; falling back to close_ocr_region_frame so the frame always
+      // closes even if the session was already gone.
+      if (rid === DEFAULT_REGION_ID) {
+        await safeInvoke('close_ocr_region_frame', undefined, { silent: true });
+      } else {
+        await safeInvoke('ocr_end_session', { id: rid }, { silent: true }).catch(
+          () => undefined,
+        );
+      }
+      // Restore main ONLY when no live region frame remains. ocr_begin_session_hide_main
+      // set main.skip_taskbar(true) at session start — ocr_end_session_show_main clears
+      // it, so the taskbar entry returns together with the main window when the LAST
+      // region closes. (B5: closing one frame must never resurrect main while siblings live.)
+      const anyLive = Array.from(regionsRef.current.values()).some(
+        (s) => !s.frameClosed && s.region,
+      );
+      if (!anyLive) {
+        await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
+      }
     });
 
     // Multi-frame: frame toolbar "add region" → start a new selection for a
@@ -1350,14 +1401,20 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           { ignore: false, id: selRegionId },
           { silent: true },
         );
-        // Result takes foreground before selector dies (no empty-foreground gap).
-        await safeInvoke('set_ocr_region_frame_visible', { visible: true }, { silent: true });
-        await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
+        // P0 fix (PR9 V3): do NOT show the frame here. New region windows are
+        // cold WebView2 starts — showing before index.html paints flashes pure
+        // white. Show only after waitForOcrRegionFrameReady succeeds below.
+        // close_ocr_screenshot_selector also moves after that handshake so the
+        // selector stays as the foreground baton until the frame is rendered.
       } catch (err) {
         if (cancelled) return;
         ocrSessionActiveRef.current = false;
         await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
-        await safeInvoke('close_ocr_region_frame', undefined, { silent: true });
+        // Close the target region frame (default → legacy close; non-default → end session).
+        await safeInvoke('ocr_end_session', { id: selRegionId }, { silent: true }).catch(
+          () => undefined,
+        );
+        await restoreFramesHiddenDuringSelection();
         await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
         console.error('[OCR] Failed to create region frame or crop:', err);
         return;
@@ -1394,7 +1451,6 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
             height: screenH,
             id: selRegionId,
           });
-          await safeInvoke('set_ocr_region_frame_visible', { visible: true }, { silent: true });
           const ready2 = await waitForOcrRegionFrameReady(OCR_FRAME_READY_TIMEOUT_MS, selRegionId);
           if (!ready2) {
             throw new Error('OCR 区域窗口未就绪，请重试');
@@ -1404,16 +1460,37 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           console.error('[OCR] frame not ready:', readyErr);
           ocrSessionActiveRef.current = false;
           await safeInvoke('close_ocr_region_frame', undefined, { silent: true });
+          await restoreFramesHiddenDuringSelection();
           await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
           return;
         }
       }
+      // P0 fix (PR9 V3): show the frame ONLY after the ready handshake —
+      // new region windows are cold WebView2 starts and show white until
+      // index.html paints. Then take the foreground baton and destroy the
+      // selector (frame is rendered, no empty-foreground gap).
+      await safeInvoke(
+        'set_ocr_region_frame_visible',
+        { visible: true, id: selRegionId },
+        { silent: true },
+      );
+      await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
+      // Restore sibling region frames hidden at session start — they keep running
+      // (hide/show on the same mounted WebView does not reset their content).
+      await restoreFramesHiddenDuringSelection();
       void emitToRegionId(
         selRegionId,
         regionEventName(OcrRegionEvents.continuousState, selRegionId),
         { enabled: false },
       ).catch(() => undefined);
-      const resetOk = await waitForSessionResetAck(OCR_SESSION_RESET_ACK_TIMEOUT_MS);
+      // Only the legacy default path needs the session-reset handshake — it
+      // wipes the default frame's stale content before re-translate. For a
+      // non-default target the default frame is a hidden sibling we just
+      // restored; resetting it here would erase its last translation.
+      const resetOk =
+        selRegionId === DEFAULT_REGION_ID
+          ? await waitForSessionResetAck(OCR_SESSION_RESET_ACK_TIMEOUT_MS)
+          : true;
       if (!resetOk) {
         console.warn('[OCR] session-reset ack timeout — continuing');
       }
@@ -1451,7 +1528,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       cancelled = true;
       unlisten?.();
     };
-  }, [captureAndTranslate, getRegionState, isTauri, updateConfig, saveConfig, bumpRegionsVersion]);
+  }, [captureAndTranslate, getRegionState, isTauri, updateConfig, saveConfig, bumpRegionsVersion, restoreFramesHiddenDuringSelection]);
 
   // Guard ref to prevent concurrent startScreenshotTranslate calls
   const startingRef = useRef(false);
@@ -1489,6 +1566,18 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       selectionTakenRef.current = false;
       void (async () => {
         await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
+        // Ensure no leftover region frame survives a cancelled session (e.g.
+        // the preloaded O5 frame that create_ocr_region_frame may have shown).
+        const rid = selectionTargetRegionIdRef.current;
+        if (rid === DEFAULT_REGION_ID) {
+          await safeInvoke('close_ocr_region_frame', undefined, { silent: true });
+        } else {
+          await safeInvoke('ocr_end_session', { id: rid }, { silent: true }).catch(
+            () => undefined,
+          );
+        }
+        // Re-show sibling region frames hidden at session start (selection never landed).
+        await restoreFramesHiddenDuringSelection();
         await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
       })();
     }).then((fn) => {
@@ -1503,7 +1592,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       cancelled = true;
       unlisten?.();
     };
-  }, [isTauri, clearSelectorSafetyTimer]);
+  }, [isTauri, clearSelectorSafetyTimer, restoreFramesHiddenDuringSelection]);
 
   // ---- Start screenshot translate ----
   // Lifecycle (STranslate + pot):
@@ -1561,13 +1650,21 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     clearSelectorSafetyTimer();
 
     try {
-      // Multi-frame: while the selector is up, exclude ALL live region frames
-      // from capture so the new selection never screenshots an existing frame.
-      // Non-default id routes to the global exclusion set (M3.4); default keeps
-      // the legacy single-window path below.
-      const anyLiveRegion = [...regionsRef.current.keys()].find(
-        (rid) => rid !== DEFAULT_REGION_ID && regionsRef.current.get(rid)?.region,
-      );
+      // Multi-frame: while the selector is up, HIDE every live region frame
+      // (default + non-default). An existing frame must never sit over the new
+      // selector nor leave a stale white block in its frozen screenshot — the
+      // old code only set WDA capture-exclusion (sampling:true) which keeps the
+      // window VISIBLE, so a live sibling frame was captured as a white patch
+      // and the default frame was hidden but never re-shown ("first window
+      // disappears"). Live frames are restored on selection success / cancel /
+      // error via restoreFramesHiddenDuringSelection.
+      const liveFrames = [...regionsRef.current.entries()]
+        .filter(([rid, rs]) => rid !== targetRegionId && !rs.frameClosed && rs.region)
+        .map(([rid]) => rid);
+      framesHiddenDuringSelectionRef.current = liveFrames;
+      // Exclude from capture first — a lagging hide must not be captured into
+      // the new selector's frozen screenshot (WDA settles DWM immediately).
+      const anyLiveRegion = liveFrames.find((rid) => rid !== DEFAULT_REGION_ID);
       if (anyLiveRegion) {
         await safeInvoke(
           'set_ocr_region_frame_sampling',
@@ -1575,6 +1672,14 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
           { silent: true },
         );
       }
+      for (const rid of liveFrames) {
+        await safeInvoke(
+          'set_ocr_region_frame_visible',
+          { visible: false, id: rid },
+          { silent: true },
+        );
+      }
+      // Legacy default: clear sampling + hide (no-op if default was live & already hidden).
       await safeInvoke(
         'set_ocr_region_frame_sampling',
         { sampling: false, id: DEFAULT_REGION_ID },
@@ -1584,9 +1689,14 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       void emitToRegionId(DEFAULT_REGION_ID, regionEventName(OcrRegionEvents.continuousState, DEFAULT_REGION_ID), {
         enabled: false,
       }).catch(() => undefined);
-      void emitToRegionId(DEFAULT_REGION_ID, regionEventName(OcrRegionEvents.sessionReset, DEFAULT_REGION_ID), null).catch(
-        () => undefined,
-      );
+      // Only wipe the default frame's content when it is the selection target.
+      // For a non-default target the default frame stays live and is re-shown
+      // with its last translation (see restoreFramesHiddenDuringSelection).
+      if (targetRegionId === DEFAULT_REGION_ID) {
+        void emitToRegionId(DEFAULT_REGION_ID, regionEventName(OcrRegionEvents.sessionReset, DEFAULT_REGION_ID), null).catch(
+          () => undefined,
+        );
+      }
       await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
       st.frameClosed = true;
 
@@ -1657,7 +1767,12 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
             selectionPhaseRef.current = 'idle';
             selectionTakenRef.current = false;
             await safeInvoke('close_ocr_screenshot_selector', undefined, { silent: true });
-            await safeInvoke('set_ocr_region_frame_visible', { visible: false }, { silent: true });
+            await safeInvoke(
+              'set_ocr_region_frame_visible',
+              { visible: false, id: targetRegionId },
+              { silent: true },
+            );
+            await restoreFramesHiddenDuringSelection();
             await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
           } catch {
             /* ignore */
@@ -1668,6 +1783,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
       console.error('[OCR] Error in startScreenshotTranslate:', err);
       clearSelectorSafetyTimer();
       ocrSessionActiveRef.current = false;
+      await restoreFramesHiddenDuringSelection();
       try {
         await safeInvoke('ocr_end_session_show_main', undefined, { silent: true });
       } catch {
@@ -1676,7 +1792,7 @@ export default function OcrScreenshotTranslator({ launchNonce = 0 }: OcrScreensh
     } finally {
       startingRef.current = false;
     }
-  }, [isTauri, t, clearSelectorSafetyTimer, getRegionState]);
+  }, [isTauri, t, clearSelectorSafetyTimer, getRegionState, restoreFramesHiddenDuringSelection]);
   // Multi-frame: keep the latest startScreenshotTranslate for the addRegion
   // listener (defined earlier in the file) via a ref.
   startScreenshotTranslateRef.current = startScreenshotTranslate;

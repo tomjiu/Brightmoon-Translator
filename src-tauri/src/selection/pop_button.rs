@@ -1,15 +1,26 @@
 //! Floating pop button after text selection (Easydict-style).
-//! Created invisible, positioned in physical pixels, then shown once — no (0,0) flash.
-//! Click via Win32 hit-test (data-URI webviews lack reliable Tauri IPC).
+//! Created hidden off-screen (preloaded at startup), positioned in physical
+//! pixels, then shown once — no (0,0) flash.
+//! Click via Win32 hit-test (the FE chip never handles clicks).
+//!
+//! Render: React App-URL window (`index.html?window=selection-pop`), the same
+//! proven path as the translate card / OCR frames. The legacy `data:text/html`
+//! webview used here sometimes failed to paint and showed a plain black block.
+//! The App-URL window paints the chip reliably and self-reports readiness via
+//! the `POPREADY` document.title + `selection-pop-ready` event, so Rust can
+//! (a) wait before the first show and (b) log if the webview never renders.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const LABEL: &str = "selection-pop";
-const AUTO_DISMISS_MS: u64 = 5000; // Easydict AutoDismissMs
-const BTN_W: f64 = 28.0;
-const BTN_H: f64 = 28.0;
+const POP_URL: &str = "index.html?window=selection-pop&v=1";
+// P1 (Fix 14): 5s was too short for hesitant users; 28px too small at high DPI.
+const AUTO_DISMISS_MS: u64 = 8000; // Easydict AutoDismissMs
+const BTN_W: f64 = 32.0;
+const BTN_H: f64 = 32.0;
 
 struct Pending {
     text: String,
@@ -17,35 +28,85 @@ struct Pending {
 }
 
 static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
+/// True once the FE webview has mounted the pop chip (set by `selection-pop-ready`).
+static POP_READY: AtomicBool = AtomicBool::new(false);
 
-fn pop_html() -> String {
-    // S3-5: theme-aware pop button. Previously hardcoded dark colors
-    // (#12141a / #1a1d27 / #e8eaed) that didn't respond to
-    // set_overlay_theme_light, so the button looked out of place on light
-    // wallpaper or when the main window was in light mode.
-    let light = crate::overlay::window_manager::overlay_theme_is_light();
-    let (body_bg, chip_bg, chip_color, border) = if light {
-        ("#f5f5f7", "#ffffff", "#1d1d1f", "rgba(0,0,0,0.12)")
+/// Mark the FE mounted (from the `selection-pop-ready` event handler).
+pub fn mark_pop_ready() {
+    POP_READY.store(true, Ordering::SeqCst);
+}
+
+/// True once the FE webview is mounted, so the chip paints immediately on show.
+pub fn pop_ready() -> bool {
+    POP_READY.load(Ordering::SeqCst)
+}
+
+/// Window raw background (visible only at the chip's rounded corners).
+fn theme_bg_color() -> tauri::window::Color {
+    if crate::overlay::window_manager::overlay_theme_is_light() {
+        tauri::window::Color(245, 245, 247, 255)
     } else {
-        ("#12141a", "#1a1d27", "#e8eaed", "rgba(255,255,255,0.14)")
-    };
-    format!(
-        r##"<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<style>
-html,body{{margin:0;width:100%;height:100%;background:{body_bg};overflow:hidden;user-select:none;}}
-.chip{{
-  width:100%;height:100%;display:flex;align-items:center;justify-content:center;
-  border-radius:8px;background:{chip_bg};color:{chip_color};
-  font:600 12px/1 "Segoe UI","Microsoft YaHei",sans-serif;
-  border:1px solid {border};
-  cursor:pointer;
-}}
-.chip:hover{{background:#2563eb;color:#fff;}}
-</style></head>
-<body><div class="chip" id="b">译</div></body></html>
-"##
-    )
+        tauri::window::Color(18, 20, 26, 255)
+    }
+}
+
+/// Create the hidden off-screen pop window if missing (safe to call repeatedly).
+/// Preloaded at startup so the first `show()` is instant and already painted.
+pub fn preload_selection_pop(app: &AppHandle) -> Result<(), String> {
+    if app.get_webview_window(LABEL).is_some() {
+        return Ok(());
+    }
+    let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(POP_URL.into()))
+        .title("pop")
+        .inner_size(BTN_W, BTN_H)
+        // Off-screen so the hidden window never paints over the desktop if DWM
+        // races the `visible(false)` setting during creation.
+        .position(-32000.0, -32000.0)
+        .decorations(false)
+        .transparent(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .focused(false)
+        .visible(false)
+        .background_color(theme_bg_color())
+        .build()
+        .map_err(|e| e.to_string())?;
+    // Force-hide after build (same DWM race that affects `visible(false)`).
+    let _ = window.hide();
+    tracing::info!("[pop] window created (hidden, off-screen)");
+    Ok(())
+}
+
+/// Hide → position → show the existing pop window and re-assert no-activate.
+fn show_existing(app: &AppHandle, x: i32, y: i32) {
+    if let Some(w) = app.get_webview_window(LABEL) {
+        let _ = w.hide();
+        let _ = w.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+            x, y,
+        )));
+        let _ = w.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+            BTN_W as u32,
+            BTN_H as u32,
+        )));
+        let _ = w.show();
+        #[cfg(windows)]
+        {
+            if let Ok(hwnd) = w.hwnd() {
+                let h = hwnd.0 as isize;
+                super::win_noactivate::apply_no_activate(h);
+                super::mouse_hook::set_pop_hwnd(h);
+            }
+            // Prefer actual outer bounds after show (DPI-correct)
+            let (rx, ry, rw, rh) = if let (Ok(pos), Ok(size)) = (w.outer_position(), w.outer_size())
+            {
+                (pos.x, pos.y, size.width as i32, size.height as i32)
+            } else {
+                (x, y, BTN_W as i32, BTN_H as i32)
+            };
+            super::mouse_hook::set_pop_rect(rx, ry, rw.max(1), rh.max(1));
+        }
+    }
 }
 
 pub fn show(app: &AppHandle, text: String, screen_x: f64, screen_y: f64) -> Result<(), String> {
@@ -86,78 +147,10 @@ pub fn show(app: &AppHandle, text: String, screen_x: f64, screen_y: f64) -> Resu
     let x = clamped_x.max(0.0) as i32;
     let y = clamped_y.max(0.0) as i32;
 
-    if let Some(w) = app.get_webview_window(LABEL) {
-        let _ = w.hide();
-        let _ = w.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-            x, y,
-        )));
-        let _ = w.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-            BTN_W as u32,
-            BTN_H as u32,
-        )));
-        let _ = w.show();
-        #[cfg(windows)]
-        {
-            if let Ok(hwnd) = w.hwnd() {
-                let h = hwnd.0 as isize;
-                super::win_noactivate::apply_no_activate(h);
-                super::mouse_hook::set_pop_hwnd(h);
-            }
-            // Prefer actual outer bounds after show (DPI-correct)
-            let (rx, ry, rw, rh) = if let (Ok(pos), Ok(size)) = (w.outer_position(), w.outer_size())
-            {
-                (pos.x, pos.y, size.width as i32, size.height as i32)
-            } else {
-                (x, y, BTN_W as i32, BTN_H as i32)
-            };
-            super::mouse_hook::set_pop_rect(rx, ry, rw.max(1), rh.max(1));
-        }
-        return Ok(());
-    }
-
-    let html = pop_html();
-    let encoded = urlencoding::encode(&html);
-    let url_str = format!("data:text/html,{}", encoded);
-    let url = tauri::Url::parse(&url_str).map_err(|e| e.to_string())?;
-
-    let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::External(url))
-        .title("pop")
-        .inner_size(BTN_W, BTN_H)
-        .decorations(false)
-        .transparent(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .resizable(false)
-        .focused(false)
-        .visible(false)
-        .background_color(tauri::window::Color(18, 20, 26, 255))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-        x, y,
-    )));
-    let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-        BTN_W as u32,
-        BTN_H as u32,
-    )));
-    let _ = window.show();
-    #[cfg(windows)]
-    {
-        if let Ok(hwnd) = window.hwnd() {
-            let h = hwnd.0 as isize;
-            super::win_noactivate::apply_no_activate(h);
-            super::mouse_hook::set_pop_hwnd(h);
-        }
-        let (rx, ry, rw, rh) =
-            if let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) {
-                (pos.x, pos.y, size.width as i32, size.height as i32)
-            } else {
-                (x, y, BTN_W as i32, BTN_H as i32)
-            };
-        super::mouse_hook::set_pop_rect(rx, ry, rw.max(1), rh.max(1));
-    }
-
+    // P0 fix (Fix 4): reschedule auto_dismiss on EVERY show (reuse included).
+    // Without this, only the FIRST show() spawns a dismiss task; selecting again
+    // within the window updated PENDING.shown_at but no new task existed →
+    // the pop button could stay forever after the first timer elapsed.
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_millis(AUTO_DISMISS_MS)).await;
@@ -171,6 +164,67 @@ pub fn show(app: &AppHandle, text: String, screen_x: f64, screen_y: f64) -> Resu
             .unwrap_or(false);
         if expired {
             let _ = dismiss(&app2);
+        }
+    });
+
+    // Reuse path: window exists (preloaded or created earlier) AND the FE is
+    // already mounted, so hide/position/show synchronously — instant, painted.
+    // If the webview is still loading (e.g. warmup-created moments ago), fall
+    // through so the first show still waits for the chip to be mounted.
+    if app.get_webview_window(LABEL).is_some() && pop_ready() {
+        show_existing(app, x, y);
+        return Ok(());
+    }
+
+    // Cold path: build hidden, then wait (bounded) for the FE to mount so the
+    // first show paints the chip instead of a blank block, then show.
+    preload_selection_pop(app)?;
+    let armed_at = PENDING
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|p| p.shown_at));
+    let app3 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        for _ in 0..50 {
+            if pop_ready() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        // The user may have clicked elsewhere / made a newer selection while the
+        // FE was still mounting — never show a stale button then. Only show if
+        // PENDING still holds THIS arm (same shown_at, not dismissed, not aged).
+        let current = PENDING
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|p| p.shown_at));
+        let still_current = match (armed_at, current) {
+            (Some(a), Some(cur)) => {
+                a == cur && cur.elapsed() < Duration::from_millis(AUTO_DISMISS_MS)
+            },
+            _ => false,
+        };
+        if !still_current {
+            return;
+        }
+        show_existing(&app3, x, y);
+        // Diagnostic: confirm the FE actually painted the chip.
+        if let Some(w) = app3.get_webview_window(LABEL) {
+            tokio::time::sleep(Duration::from_millis(600)).await;
+            match w.title() {
+                Ok(title) if title == "POPREADY" => {
+                    tracing::info!("[pop] FE painted (POPREADY)");
+                },
+                Ok(title) => {
+                    tracing::warn!(
+                        "[pop] FE title={:?} — pop webview may not have painted",
+                        title
+                    );
+                },
+                Err(_) => {
+                    tracing::warn!("[pop] could not read title (webview missing?)");
+                },
+            }
         }
     });
 

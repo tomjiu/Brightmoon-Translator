@@ -413,7 +413,7 @@ pub async fn trigger_dictionary_lookup(
         return Err("No text selected".to_string());
     }
 
-    crate::selection::present::present_selection(&app, &text).await;
+    crate::selection::present::present_selection(&app, &text, None, true).await;
     Ok(())
 }
 
@@ -426,6 +426,7 @@ pub async fn set_overlay_click_through(app: tauri::AppHandle, ignore: bool) -> R
 #[command]
 pub async fn set_overlay_theme(theme: String) -> Result<(), String> {
     let light = theme.eq_ignore_ascii_case("light");
+    tracing::warn!("[THEME-DBG] set_overlay_theme called theme={} light={}", theme, light);
     crate::overlay::window_manager::set_overlay_theme_light(light);
     Ok(())
 }
@@ -443,6 +444,7 @@ pub async fn move_overlay(app: tauri::AppHandle, x: f64, y: f64) -> Result<(), S
 
 #[command]
 pub async fn resize_overlay(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
+    tracing::info!("[overlay] JS resize_overlay -> {}x{}", width, height);
     crate::overlay::window_manager::resize_overlay_window(&app, width, height);
     Ok(())
 }
@@ -679,6 +681,15 @@ pub async fn create_ocr_region_frame(
     // Reuse existing frame: reposition only (no webview reload / label churn).
     // Pin CLIENT rect to capture (same DWM-pad fix as screenshot selector).
     if let Some(existing) = app.get_webview_window(&label) {
+        tracing::debug!(
+            "create_ocr_region_frame: REUSE hit for label {} (is_visible={})",
+            label,
+            existing.is_visible().unwrap_or(false)
+        );
+        // Hide first so the user never sees the stale frame at its old
+        // position during reposition. FE will re-show via
+        // set_ocr_region_frame_visible once crop data is ready.
+        let _ = existing.hide();
         #[cfg(target_os = "windows")]
         {
             if let Err(e) = force_hwnd_cover_physical(
@@ -687,7 +698,7 @@ pub async fn create_ocr_region_frame(
                 window_y,
                 window_w as i32,
                 window_h as i32,
-                true,
+                false,
             ) {
                 tracing::warn!("OCR region frame force cover (reuse): {e}");
                 let _ = existing.set_position(tauri::Position::Physical(
@@ -721,11 +732,11 @@ pub async fn create_ocr_region_frame(
         let _ = existing.set_min_size(Some(tauri::Size::Physical(
             tauri::PhysicalSize::new(min_w_physical as u32, min_h_physical as u32),
         )));
-        // C3+C4: show without stealing focus from the target app (follow mode
-        // keeps keyboard focus on the source window). Buttons still work —
-        // WS_EX_NOACTIVATE only suppresses activation, not mouse input.
-        crate::win::show_webview_no_activate(&existing);
-        tracing::info!("OCR region frame reused (repositioned, no-activate)");
+        // P2 fix: do NOT auto-show on reuse. FE shows the frame via
+        // set_ocr_region_frame_visible(visible:true) AFTER crop data is ready
+        // (OcrScreenshotTranslator.tsx:1384), so the user never sees an empty
+        // loading veil at a stale position.
+        tracing::info!("OCR region frame reused (repositioned, hidden until FE shows)");
         return Ok(());
     }
 
@@ -879,7 +890,22 @@ pub fn preload_ocr_region_frame(app: &tauri::AppHandle) -> Result<(), String> {
     if let Ok(h) = window.hwnd() {
         crate::win::set_window_no_activate(h.0 as isize, true);
     }
-    tracing::info!("[O5] OCR region frame preloaded (hidden, off-screen)");
+    // P0: re-assert skip_taskbar after build — builder flag can be lost to the
+    // same DWM race that affects visible(false) (885616f).
+    let _ = window.set_skip_taskbar(true);
+    // P0 fix: explicitly hide after build. The builder's `visible(false)` can be
+    // lost to a DWM race on Windows (the hidden frame would appear as a fixed
+    // 320x80 empty popup). Force-hide so it never shows until `create_ocr_region_frame`
+    // reuses it for a real session.
+    let _ = window.hide();
+    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+        -32000, -32000,
+    )));
+    tracing::info!(
+        "[O5] OCR region frame preloaded (label=ocr-region-frame, hidden={}, pos_after={:?})",
+        !window.is_visible().unwrap_or(true),
+        window.outer_position().ok()
+    );
     Ok(())
 }
 
@@ -1044,8 +1070,14 @@ pub async fn close_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(), 
     if let Some(frame) = app.get_webview_window("ocr-region-frame") {
         let _ = frame.set_ignore_cursor_events(false);
         let _ = frame.set_always_on_top(true);
-        // C3+C4: show without activating so the target app retains focus.
-        crate::win::show_webview_no_activate(&frame);
+        // P0 fix (PR9 V2): only re-assert show if the frame is ALREADY visible.
+        // Callers that hide the frame (session start, cancel, stuck-selector)
+        // expect it to STAY hidden. Unconditionally showing it here painted the
+        // preloaded frame (320x80 loading veil) at its last position — the
+        // "fixed-position translate box" on first OCR click.
+        if frame.is_visible().unwrap_or(false) {
+            crate::win::show_webview_no_activate(&frame);
+        }
     }
     if let Some(window) = app.get_webview_window("ocr-screenshot") {
         let _ = window.hide();

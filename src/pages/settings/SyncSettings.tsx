@@ -125,8 +125,8 @@ function SyncSettings() {
             onClick={() => updateSync((prev) => ({ ...prev, enabled: !prev.enabled }))}
           >
             <div
-              className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-                sync?.enabled ? 'translate-x-6' : 'translate-x-0.5'
+              className={`absolute top-0.5 w-5 h-5 rounded-full shadow transition-transform ${
+                sync?.enabled ? 'translate-x-6 bg-primary-fg' : 'translate-x-0.5 bg-text-secondary'
               }`}
             />
           </button>

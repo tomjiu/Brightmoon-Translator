@@ -367,6 +367,11 @@ pub struct SelectionUxConfig {
     /// Mouse dwell → word dictionary popup (system-wide)
     #[serde(default)]
     pub hover_dictionary: bool,
+    /// Whether hover dictionary also picks up CJK (Chinese) words.
+    /// Default off — CJK hover often misfires on UI chrome and triggers slow
+    /// LLM fallbacks; selection (划词) is the preferred path for Chinese.
+    #[serde(default)]
+    pub hover_cjk: bool,
     /// Dwell time before hover dictionary (ms)
     #[serde(default = "default_hover_dwell_ms")]
     pub hover_dwell_ms: u32,
@@ -426,8 +431,9 @@ impl Default for SelectionUxConfig {
     fn default() -> Self {
         Self {
             // Match UI + Easydict: pop button by default
-            trigger_mode: SelectionTriggerMode::PopButton,
+            trigger_mode: SelectionTriggerMode::AutoOnSelect,
             hover_dictionary: false,
+            hover_cjk: false,
             hover_dwell_ms: default_hover_dwell_ms(),
             hover_unit: default_hover_unit(),
             hover_dict_source: default_hover_dict_source(),

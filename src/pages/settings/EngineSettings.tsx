@@ -5,9 +5,10 @@ import { ROUTING_STRATEGIES } from './engines/routingStrategies';
 import {
   DEFAULT_ENGINE_ORDER,
   ENGINE_SECTIONS,
-  enginesInSection,
+  getEngineSection,
   isLlmConfigured,
 } from './engines/enginesMeta';
+import { useReorderDrag } from './engines/useReorderDrag';
 import Card from '../../components/Card';
 import Badge from '../../components/Badge';
 import LLMEngineConfig from './engines/LLMEngineConfig';
@@ -17,11 +18,7 @@ import BaiduEngineConfig from './engines/BaiduEngineConfig';
 import DeepLXEngineConfig from './engines/DeepLXEngineConfig';
 import OfflineEngineConfig from './engines/OfflineEngineConfig';
 import EngineCard from './engines/EngineCard';
-import {
-  ExternalLink,
-  ChevronUp,
-  ChevronDown,
-} from 'lucide-react';
+import { ExternalLink, GripVertical } from 'lucide-react';
 import { useI18n } from '../../i18n';
 
 type ConfigUpdater = (updater: (prev: AppConfig) => AppConfig) => void;
@@ -59,9 +56,24 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
 
   // Merge saved order with any new engine ids
   const engineOrder = useMemo(() => {
-    const saved = config.engineOrder?.filter(Boolean) ?? [];
-    const base = saved.length > 0 ? saved : DEFAULT_ENGINE_ORDER;
-    const missing = DEFAULT_ENGINE_ORDER.filter((id) => !base.includes(id));
+    // P3 fix: filter invalid IDs + dedupe. filter(Boolean) only drops empty
+    // strings; it keeps typos like 'deepl_web' or 'Google' (wrong case) that
+    // cause position-number gaps in the UI.
+    const validIds = new Set<string>(DEFAULT_ENGINE_ORDER);
+    const saved = (config.engineOrder ?? []).filter(
+      (id): id is string => typeof id === 'string' && validIds.has(id),
+    );
+    // Dedupe (first occurrence wins to preserve user order)
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const id of saved) {
+      if (!seen.has(id)) {
+        deduped.push(id);
+        seen.add(id);
+      }
+    }
+    const base = deduped.length > 0 ? deduped : [...DEFAULT_ENGINE_ORDER];
+    const missing = DEFAULT_ENGINE_ORDER.filter((id) => !seen.has(id));
     return [...base, ...missing];
   }, [config.engineOrder]);
 
@@ -73,25 +85,10 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
     [updateConfig, saveConfig],
   );
 
-  const moveEngine = useCallback(
-    (idx: number, direction: 'up' | 'down') => {
-      const next = direction === 'up' ? idx - 1 : idx + 1;
-      if (next < 0 || next >= engineOrder.length) return;
-      const order = [...engineOrder];
-      [order[idx], order[next]] = [order[next], order[idx]];
-      persistEngineOrder(order);
-    },
-    [engineOrder, persistEngineOrder],
-  );
-
-  const rawStrategy = config.routingStrategy || 'fallback_on_error';
-  const currentStrategy = ROUTING_STRATEGIES.some((s) => s.id === rawStrategy)
-    ? rawStrategy
-    : 'fallback_on_error';
-
   // 引擎配置映射 - 根据ID返回引擎配置
-  const getEngineConfig = (engineId: string): EngineDisplayConfig | null => {
-    switch (engineId) {
+  const getEngineConfig = useCallback(
+    (engineId: string): EngineDisplayConfig | null => {
+      switch (engineId) {
       case 'llm': {
         const llmOk = isLlmConfigured(config.llm);
         return {
@@ -303,6 +300,67 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
       default:
         return null;
     }
+    },
+    [config, t],
+  );
+
+  const rawStrategy = config.routingStrategy || 'fallback_on_error';
+  const currentStrategy = ROUTING_STRATEGIES.some((s) => s.id === rawStrategy)
+    ? rawStrategy
+    : 'fallback_on_error';
+
+  // 已启用引擎：按 engineOrder 顺序（即路由/OCR 回退优先级），LLM 永远在内
+  const enabledIds = useMemo(
+    () =>
+      engineOrder.filter((id) => id === 'llm' || !!getEngineConfig(id)?.enabled),
+    [engineOrder, getEngineConfig],
+  );
+  const enabledSet = useMemo(() => new Set(enabledIds), [enabledIds]);
+
+  // 未启用引擎：按分类（llm/official/web/offline）默认顺序分组
+  const disabledBySection = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const section of ENGINE_SECTIONS) {
+      map.set(
+        section.id,
+        DEFAULT_ENGINE_ORDER.filter(
+          (id) => !enabledSet.has(id) && getEngineSection(id) === section.id,
+        ),
+      );
+    }
+    return map;
+  }, [enabledSet]);
+
+  // 拖拽提交：新启用顺序在前，其余按原 engineOrder 相对顺序收尾
+  const handleDragCommit = useCallback(
+    (newEnabledOrder: string[]) => {
+      const rest = engineOrder.filter((id) => !enabledSet.has(id));
+      persistEngineOrder([...newEnabledOrder, ...rest]);
+    },
+    [engineOrder, enabledSet, persistEngineOrder],
+  );
+
+  const { order: enabledOrder, isDragging, dragHandleProps } = useReorderDrag(
+    enabledIds,
+    handleDragCommit,
+  );
+
+  // 启用一个引擎时移到优先级列表末尾（追加到已启用顺序的队尾）
+  const bumpToEnd = useCallback(
+    (engineId: string) => {
+      persistEngineOrder([...engineOrder.filter((id) => id !== engineId), engineId]);
+    },
+    [engineOrder, persistEngineOrder],
+  );
+
+  const engineRowProps = {
+    config,
+    updateConfig,
+    saveConfig,
+    showSecrets,
+    toggleSecret,
+    onNavigate,
+    onEnable: bumpToEnd,
   };
 
   return (
@@ -410,51 +468,73 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
         {t('settings.enginePage.listHint')}
       </p>
 
-      {ENGINE_SECTIONS.map((section) => {
-        const sectionIds = enginesInSection(engineOrder, section.id);
-        if (sectionIds.length === 0) return null;
+      <Card
+        title={t('settings.enginePage.enabledTitle')}
+        description={t('settings.enginePage.enabledDesc')}
+      >
+        <div className="space-y-2">
+          {enabledOrder.map((engineId, idx) => {
+            const engineConfig = getEngineConfig(engineId);
+            if (!engineConfig) return null;
+            return (
+              <EngineRow
+                key={engineId}
+                {...engineRowProps}
+                engineId={engineId}
+                engineConfig={engineConfig}
+                index={idx}
+                dragging={isDragging(engineId)}
+                dragHandleProps={dragHandleProps(engineId)}
+              />
+            );
+          })}
+          {enabledOrder.length === 0 && (
+            <p className="text-xs text-text-secondary">{t('settings.enginePage.noEnabled')}</p>
+          )}
+        </div>
+      </Card>
 
-        return (
-          <Card key={section.id} title={t(section.title)} description={t(section.description)}>
-            <div className="space-y-2">
-              {sectionIds.map((engineId) => {
-                const idx = engineOrder.indexOf(engineId);
-                const engineConfig = getEngineConfig(engineId);
-                if (!engineConfig || idx < 0) return null;
-
-                return (
-                  <SortableEngineCard
-                    key={engineId}
-                    engineId={engineId}
-                    engineConfig={engineConfig}
-                    config={config}
-                    updateConfig={updateConfig}
-                    saveConfig={saveConfig}
-                    showSecrets={showSecrets}
-                    toggleSecret={toggleSecret}
-                    index={idx}
-                    total={engineOrder.length}
-                    onMoveUp={() => moveEngine(idx, 'up')}
-                    onMoveDown={() => moveEngine(idx, 'down')}
-                    onNavigate={onNavigate}
-                  />
-                );
-              })}
-            </div>
-            {section.id === 'offline' && (
-              <p className="mt-3 text-xs text-text-secondary leading-relaxed">
-                {t('settings.enginePage.offlineOcrNote')}
-              </p>
-            )}
-          </Card>
-        );
-      })}
+      <Card
+        title={t('settings.enginePage.disabledTitle')}
+        description={t('settings.enginePage.disabledDesc')}
+      >
+        <div className="space-y-5">
+          {ENGINE_SECTIONS.map((section) => {
+            const sectionIds = disabledBySection.get(section.id) ?? [];
+            if (sectionIds.length === 0) return null;
+            return (
+              <div key={section.id}>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-text-secondary mb-2">
+                  {t(section.title)}
+                </h3>
+                <div className="space-y-2">
+                  {sectionIds.map((engineId) => {
+                    const engineConfig = getEngineConfig(engineId);
+                    if (!engineConfig) return null;
+                    return (
+                      <EngineRow
+                        key={engineId}
+                        {...engineRowProps}
+                        engineId={engineId}
+                        engineConfig={engineConfig}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          {[...disabledBySection.values()].every((ids) => ids.length === 0) && (
+            <p className="text-xs text-text-secondary">{t('settings.enginePage.noDisabled')}</p>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }
 
-// Ordered engine row — ▲▼ reorder (HTML5 drag is unreliable in WebView)
-interface SortableEngineCardProps {
+// Ordered engine row — draggable handle when enabled, plain card when not
+interface EngineRowProps {
   engineId: string;
   engineConfig: EngineDisplayConfig;
   config: AppConfig;
@@ -462,14 +542,17 @@ interface SortableEngineCardProps {
   saveConfig: () => Promise<void>;
   showSecrets: Record<string, boolean>;
   toggleSecret: (key: string) => void;
-  index: number;
-  total: number;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
+  onEnable: (engineId: string) => void;
   onNavigate?: (sectionId: string) => void;
+  index?: number;
+  dragging?: boolean;
+  dragHandleProps?: {
+    'data-engine-drag-id': string;
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => void;
+  };
 }
 
-function SortableEngineCard({
+function EngineRow({
   engineId,
   engineConfig,
   config,
@@ -477,12 +560,12 @@ function SortableEngineCard({
   saveConfig,
   showSecrets,
   toggleSecret,
-  index,
-  total,
-  onMoveUp,
-  onMoveDown,
+  onEnable,
   onNavigate,
-}: SortableEngineCardProps) {
+  index,
+  dragging = false,
+  dragHandleProps,
+}: EngineRowProps) {
   const { t } = useI18n();
   const getToggleHandler = () => {
     switch (engineId) {
@@ -653,36 +736,38 @@ function SortableEngineCard({
     }
   };
 
+  const engineToggle = getToggleHandler();
+  const handleToggle = (enabled: boolean) => {
+    engineToggle(enabled);
+    if (enabled) onEnable(engineId);
+  };
+
   return (
-    <div className="flex items-stretch gap-1.5">
-      <div className="flex flex-col items-center justify-center gap-0.5 shrink-0 pt-1">
-        <span className="text-[10px] font-mono text-text-secondary w-5 text-center">
-          {index + 1}
-        </span>
-        <button
-          type="button"
-          onClick={onMoveUp}
-          disabled={index === 0}
-          className="p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-tertiary disabled:opacity-25 disabled:pointer-events-none"
-          title={t('settings.enginePage.moveUp')}
+    <div
+      data-engine-drag-id={engineId}
+      className={`flex items-stretch gap-1.5 rounded-xl ${
+        dragging ? 'opacity-60 ring-2 ring-primary ring-offset-1' : ''
+      }`}
+    >
+      {dragHandleProps && typeof index === 'number' && (
+        <div
+          {...dragHandleProps}
+          title={t('settings.enginePage.dragHandle')}
+          className={`flex flex-col items-center justify-center gap-0.5 shrink-0 pt-1 px-1 rounded-lg select-none touch-none ${
+            dragging ? 'cursor-grabbing' : 'cursor-grab hover:bg-bg-tertiary'
+          }`}
         >
-          <ChevronUp size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={onMoveDown}
-          disabled={index >= total - 1}
-          className="p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-tertiary disabled:opacity-25 disabled:pointer-events-none"
-          title={t('settings.enginePage.moveDown')}
-        >
-          <ChevronDown size={16} />
-        </button>
-      </div>
+          <span className="text-[10px] font-mono text-text-secondary w-5 text-center">
+            {index + 1}
+          </span>
+          <GripVertical size={16} className="text-text-secondary" />
+        </div>
+      )}
       <div className="flex-1 min-w-0">
         <EngineCard
           name={engineConfig.name}
           enabled={engineConfig.enabled}
-          onToggle={getToggleHandler()}
+          onToggle={handleToggle}
           status={engineConfig.status}
           badges={engineConfig.badges}
           description={engineConfig.description}

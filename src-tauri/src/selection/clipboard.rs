@@ -45,7 +45,7 @@ const SUPPRESSION_WINDOW: Duration = Duration::from_secs(5 * 60);
 const OPEN_CLIP_RETRIES: u32 = 10;
 const OPEN_CLIP_SLEEP_MS: u64 = 100; // STranslate 10×100ms
 const CLIPWAIT_NORMAL_MS: u64 = 450; // Easydict default
-const CLIPWAIT_ELECTRON_MS: u64 = 1200; // Easydict Electron
+const CLIPWAIT_ELECTRON_MS: u64 = 600; // Easydict Electron (P1: 1200ms was too slow for Chrome/Edge/VSCode)
 const CLIPWAIT_POLL_MS: u64 = 10;
 
 fn with_stats<R>(f: impl FnOnce(&mut HashMap<String, ProcessClipStats>) -> R) -> R {
@@ -204,11 +204,24 @@ fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOp
         .lock()
         .unwrap_or_else(|e| e.into_inner());
 
+    // Defense-in-depth: never deliver a synthetic Ctrl+C to a terminal window.
+    // Even though manager routes terminals to UIA-only, an independent caller
+    // (or a classification miss) must not SIGINT the foreground session.
+    if let Some(fg) = super::process_class::foreground_process() {
+        if fg.is_terminal {
+            tracing::info!(
+                "[clipboard] refusing Ctrl+C — foreground is terminal '{}' (pid={})",
+                fg.process_name,
+                fg.process_id
+            );
+            return Ok(None);
+        }
+    }
+
     use std::mem::size_of;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
-        VIRTUAL_KEY, VK_C, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU,
-        VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
+        VIRTUAL_KEY, VK_C, VK_CONTROL, VK_LCONTROL, VK_RCONTROL,
     };
 
     extern "system" {
@@ -271,19 +284,10 @@ fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOp
     // SAFETY: SendInput with a stack-allocated INPUT slice of known length.
     // No preconditions beyond a valid pointer + correct struct size.
     unsafe fn release_modifiers() {
-        let mods = [
-            VK_CONTROL,
-            VK_LCONTROL,
-            VK_RCONTROL,
-            VK_SHIFT,
-            VK_LSHIFT,
-            VK_RSHIFT,
-            VK_MENU,
-            VK_LMENU,
-            VK_RMENU,
-            VK_LWIN,
-            VK_RWIN,
-        ];
+        // P1 fix: only release Ctrl — releasing Shift/Alt broke reverse
+        // selection and Alt+click context menus. Ctrl alone is enough to
+        // ensure the synthetic Ctrl+C below is not turned into Ctrl+Shift+C.
+        let mods = [VK_CONTROL, VK_LCONTROL, VK_RCONTROL];
         let inputs: Vec<INPUT> = mods
             .iter()
             .map(|vk| make_input(*vk, KEYEVENTF_KEYUP))
