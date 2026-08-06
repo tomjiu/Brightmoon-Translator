@@ -179,6 +179,23 @@ export default function VocabularyReview() {
         rating,
       });
 
+      // T8: 答错(Hard/Again)时触发 AI 增强(异步,不阻塞复习流程)
+      if (rating === 'Again' || rating === 'Hard') {
+        const card = dueCards[currentIndex];
+        void invokeOrThrow<{ applied: boolean; message: string }>('optimize_card_on_error', {
+          cardId: card.id,
+          errorType: rating === 'Again' ? 'meaning' : 'spelling',
+          userAnswer: null,
+          correctAnswer: null,
+        })
+          .then((res: { applied: boolean; message: string }) => {
+            if (res.applied) {
+              console.log(`[T8] ${card.word} 已 AI 增强: ${res.message}`);
+            }
+          })
+          .catch((err: unknown) => console.error('AI 增强失败:', err));
+      }
+
       // 更新统计
       const newSession = { ...session };
       newSession.reviewedCount += 1;

@@ -125,6 +125,109 @@ impl EventStore {
         .execute(&self.pool)
         .await?;
 
+        // T8: 用户画像表（学习偏好/水平）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS user_profile (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id TEXT NOT NULL,
+                field TEXT NOT NULL,
+                rating REAL DEFAULT 0,
+                feedback TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_profile_card
+            ON user_profile(card_id)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T8: 弱点记录表（频繁出错的词/字段）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS weak_points (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id TEXT NOT NULL,
+                field TEXT NOT NULL,
+                error_type TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 0,
+                last_occurred_at INTEGER NOT NULL,
+                resolved INTEGER NOT NULL DEFAULT 0
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_weak_card
+            ON weak_points(card_id)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T8: AI 批注持久化（annotations 表）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS annotations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                highlights TEXT NOT NULL DEFAULT '[]',
+                trigger_type TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_annotations_card
+            ON annotations(card_id)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T8: 测验错误日志表
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS quiz_errors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id TEXT NOT NULL,
+                quiz_type TEXT NOT NULL,
+                user_answer TEXT,
+                correct_answer TEXT,
+                context TEXT,
+                created_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_quiz_errors_card
+            ON quiz_errors(card_id)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         // FTS5 全文搜索索引（word + ai_content 可搜索）
         let fts_result = sqlx::query(
             r#"
