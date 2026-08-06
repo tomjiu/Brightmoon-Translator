@@ -136,7 +136,7 @@ pub async fn lookup_word_multi_source(
     };
 
     // 1. ECDICT
-    if let Ok((chinese, english, phonetic)) = &ecdict_result {
+    if let Ok((chinese, english, phonetic, _exchange)) = &ecdict_result {
         entry.chinese_translation = chinese.clone();
         entry.english_definitions = english.clone();
         if let Some(p) = phonetic {
@@ -150,6 +150,27 @@ pub async fn lookup_word_multi_source(
             }
         }
         entry.sources.push("ECDICT".into());
+    } else if let Some(p) = pool {
+        // 变形词（ran → run）未命中时，用 lemma 还原后再查一次
+        if let Ok(Some(lemma)) = resolve_lemma(&word, p).await {
+            if lemma != word {
+                if let Ok((chinese, english, phonetic, _)) = lookup_ecdict(&lemma, p).await {
+                    entry.chinese_translation = chinese.clone();
+                    entry.english_definitions = english.clone();
+                    if let Some(p) = phonetic {
+                        let clean = p.trim().trim_start_matches('/').trim_end_matches('/');
+                        if !clean.is_empty() {
+                            entry.phonetics.push(PhoneticInfo {
+                                text: Some(clean.to_string()),
+                                audio: None,
+                                source: "ECDICT".into(),
+                            });
+                        }
+                    }
+                    entry.sources.push("ECDICT".into());
+                }
+            }
+        }
     }
 
     // 有道：音频、音标、中文释义、例句、柯林斯
@@ -579,9 +600,9 @@ async fn parse_youdao(dict: &MultiSourceDictionary, word: &str) -> Option<Youdao
 async fn lookup_ecdict(
     word: &str,
     pool: &sqlx::SqlitePool,
-) -> Result<(Option<String>, Vec<String>, Option<String>), String> {
+) -> Result<(Option<String>, Vec<String>, Option<String>, Option<String>), String> {
     let row =
-        sqlx::query("SELECT word, phonetic, definition, translation FROM stardict WHERE word = ?1")
+        sqlx::query("SELECT word, phonetic, definition, translation, exchange FROM stardict WHERE word = ?1")
             .bind(word)
             .fetch_optional(pool)
             .await
@@ -591,6 +612,7 @@ async fn lookup_ecdict(
         let phonetic: Option<String> = row.get("phonetic");
         let definition: Option<String> = row.get("definition");
         let translation: Option<String> = row.get("translation");
+        let exchange: Option<String> = row.get("exchange");
 
         let english: Vec<String> = definition
             .as_deref()
@@ -602,10 +624,80 @@ async fn lookup_ecdict(
             })
             .unwrap_or_default();
 
-        Ok((translation, english, phonetic))
+        Ok((translation, english, phonetic, exchange))
     } else {
         Err("not found".into())
     }
+}
+
+/// 从 ECDICT exchange 字段还原词形（变形词 → 原形，如 "ran" → "run"）
+///
+/// exchange 格式：`0:run/1:p/3:runs/p:ran/d:ran/i:running`
+/// - `0:` 开头的是 lemma（原形）
+/// - `1:` 开头的是词形变化标签（p=过去式, d=过去分词, i=进行式, 3=三单, r=比较级, s=复数等）
+/// - 其余前缀（p:/d:/i:/s:/3:）是可反查的变形形式
+pub async fn resolve_lemma(
+    word: &str,
+    pool: &sqlx::SqlitePool,
+) -> Result<Option<String>, String> {
+    let word_lower = word.trim().to_lowercase();
+    if word_lower.is_empty() {
+        return Ok(None);
+    }
+
+    // 1. 直接查该词的 exchange，看它是不是变形词
+    let row = sqlx::query("SELECT exchange FROM stardict WHERE word = ?1")
+        .bind(&word_lower)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(row) = row {
+        let exchange: Option<String> = row.get("exchange");
+        if let Some(ex) = exchange {
+            // 解析 0:xxx 原形段
+            for seg in ex.split('/') {
+                let seg = seg.trim();
+                if let Some(lemma) = seg.strip_prefix("0:") {
+                    let lemma = lemma.trim();
+                    if !lemma.is_empty() && lemma != word_lower {
+                        return Ok(Some(lemma.to_string()));
+                    }
+                    return Ok(None); // 本身就是原形
+                }
+            }
+        }
+    }
+
+    // 2. 反查：遍历 exchange 含此变形词的条目（前缀匹配 p:/d:/i:/s:/3:）
+    let needle = format!("{}/", &word_lower);
+    let rows = sqlx::query(
+        "SELECT word, exchange FROM stardict
+         WHERE exchange LIKE ?1 OR exchange LIKE ?2
+         LIMIT 5",
+    )
+    .bind(format!("%/{}:{}%", &word_lower, '%'))
+    .bind(format!("%/{}", &word_lower))
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    for r in rows {
+        let lemma: String = r.get("word");
+        let exchange: Option<String> = r.get("exchange");
+        if let Some(ex) = exchange {
+            if ex.split('/').any(|s| {
+                let s = s.trim();
+                s.starts_with("p:") || s.starts_with("d:") || s.starts_with("i:")
+                    || s.starts_with("s:") || s.starts_with("3:")
+            }) && ex.split('/').any(|s| s.trim().ends_with(&needle.trim_end_matches('/')))
+            {
+                return Ok(Some(lemma));
+            }
+        }
+    }
+
+    Ok(None)
 }
 
 /// 查询 Oxford 词典

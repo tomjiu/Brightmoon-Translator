@@ -420,7 +420,19 @@ pub async fn study_word(
     let (ecdict_result, youdao_result, online_result, image_url) = tokio::join!(
         async {
             match ecdict_pool {
-                Some(p) => lookup_ecdict_simple(&word, p).await,
+                Some(p) => {
+                    let mut r = lookup_ecdict_simple(&word, p).await;
+                    if r.is_err() {
+                        // 变形词（ran → run）未命中时，用 lemma 还原后重查
+                        if let Ok(Some(lemma)) = crate::commands::dictionary_cmd::resolve_lemma(&word, p).await
+                        {
+                            if lemma != word {
+                                r = lookup_ecdict_simple(&lemma, p).await;
+                            }
+                        }
+                    }
+                    r
+                }
                 None => Err("no pool".into()),
             }
         },
