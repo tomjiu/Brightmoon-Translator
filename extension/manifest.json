@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Moon Translator",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "强大的翻译插件 - 划词翻译 / 整页翻译 / 多引擎支持",
   "permissions": [
     "activeTab",
