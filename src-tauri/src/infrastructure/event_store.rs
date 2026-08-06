@@ -125,6 +125,32 @@ impl EventStore {
         .execute(&self.pool)
         .await?;
 
+        // T9: 语义向量表（选择题干扰项语义近邻）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                word TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'ecdict',
+                vector TEXT NOT NULL,
+                dim INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                UNIQUE(word, source)
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_embeddings_word
+            ON embeddings(word)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         // FTS5 全文搜索索引（word + ai_content 可搜索）
         let fts_result = sqlx::query(
             r#"
