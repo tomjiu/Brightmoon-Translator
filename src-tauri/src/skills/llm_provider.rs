@@ -161,6 +161,8 @@ impl LlmProvider for OpenAiCompatibleProvider {
             messages: Vec<LlmMessage>,
             temperature: f32,
             max_tokens: u32,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            response_format: Option<serde_json::Value>,
         }
 
         #[derive(Deserialize)]
@@ -204,6 +206,9 @@ impl LlmProvider for OpenAiCompatibleProvider {
             messages,
             temperature: request.temperature,
             max_tokens: request.max_tokens,
+            response_format: request.json_schema.map(|_| {
+                serde_json::json!({ "type": "json_object" })
+            }),
         };
 
         let response = self

@@ -384,57 +384,68 @@ impl Skill for GenerateCardSkill {
         let user_prompt = self.build_user_prompt(&context);
         let json_schema = self.build_json_schema();
 
-        let request = LlmRequest::new(vec![
-            LlmMessage::system(system_prompt),
-            LlmMessage::user(user_prompt),
-        ])
-        .with_temperature(0.7)
-        .with_max_tokens(4000)  // 增加到 4000 tokens 以支持更详细的内容
-        .with_json_schema(json_schema);
-
         // 调用 LLM
         tracing::info!(
             "🤖 AI生成开始: word='{}', model='{}'",
             context.word,
             "current"
         );
-        let response = self.provider.complete(request).await;
-        let response = match response {
-            Ok(r) => {
-                tracing::info!(
-                    "✅ AI生成完成: word='{}', tokens={}, content_len={}",
-                    context.word,
-                    r.usage.total_tokens,
-                    r.content.len()
-                );
-                r
-            },
-            Err(e) => {
-                tracing::error!("❌ AI生成失败: word='{}', error={}", context.word, e);
-                return Err(e);
-            },
-        };
 
-        // 解析响应（处理 markdown 代码块包裹的 JSON）
-        let json_str = extract_json(&response.content);
-        tracing::debug!(
-            "AI JSON 解析: word='{}', json_len={}",
-            context.word,
-            json_str.len()
-        );
-        let generated: AiGeneratedContent = serde_json::from_str(&json_str).map_err(|e| {
-            tracing::error!(
-                "❌ AI JSON解析失败: word='{}', error={}, raw_content={}",
-                context.word,
-                e,
-                &response.content[..500.min(response.content.len())]
-            );
-            anyhow::anyhow!(
-                "AI 返回 JSON 解析失败: {} | 原始内容: {}",
-                e,
-                &response.content[..200.min(response.content.len())]
-            )
-        })?;
+        // 失败自动重试一次（降低温度以获得更稳定的 JSON 输出）
+        let mut response = None;
+        let mut last_err: Option<anyhow::Error> = None;
+
+        for (attempt, temperature) in [(0, 0.7f32), (1, 0.3f32)].iter() {
+            let request = LlmRequest::new(vec![
+                LlmMessage::system(system_prompt.clone()),
+                LlmMessage::user(user_prompt.clone()),
+            ])
+            .with_temperature(*temperature)
+            .with_max_tokens(4000)
+            .with_json_schema(json_schema.clone());
+
+            match self.provider.complete(request).await {
+                Ok(r) => {
+                    let json_str = extract_json(&r.content);
+                    if let Ok(parsed) = serde_json::from_str::<AiGeneratedContent>(json_str) {
+                        tracing::info!(
+                            "✅ AI生成成功: word='{}', attempt={}, tokens={}, content_len={}",
+                            context.word,
+                            attempt,
+                            r.usage.total_tokens,
+                            r.content.len()
+                        );
+                        response = Some((r, parsed));
+                        break;
+                    } else {
+                        tracing::warn!(
+                            "❌ AI JSON解析失败: word='{}', attempt={}, 将重试, raw_content={}",
+                            context.word,
+                            attempt,
+                            &r.content[..200.min(r.content.len())]
+                        );
+                        last_err = Some(anyhow::anyhow!(
+                            "AI 返回 JSON 解析失败: 原始内容: {}",
+                            &r.content[..200.min(r.content.len())]
+                        ));
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "❌ AI生成失败: word='{}', attempt={}, error={}",
+                        context.word,
+                        attempt,
+                        e
+                    );
+                    last_err = Some(e);
+                }
+            }
+        }
+
+        let (response, generated) = match response {
+            Some((r, parsed)) => (r, parsed),
+            None => return Err(last_err.unwrap_or_else(|| anyhow::anyhow!("AI 生成失败"))),
+        };
 
         tracing::info!(
             "✅ AI内容解析成功: word='{}', mnemonics={}, examples={}, collocations={}",
