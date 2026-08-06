@@ -29,11 +29,11 @@
   --color-bg-chrome: #0a0a0a;
   --color-text-primary: #fafafa;
   --color-text-secondary: #a3a3a3;
-  --color-border: #262626;
-  --color-border-strong: #404040;
-  --color-success: #a3a3a3;
-  --color-warning: #d4d4d4;
-  --color-error: #e5e5e5;
+  --color-border: rgba(255, 255, 255, 0.16);
+  --color-border-strong: rgba(255, 255, 255, 0.24);
+  --color-success: #22c55e;
+  --color-warning: #eab308;
+  --color-error: #ef4444;
   /* S5-fix: RGB triplets for Tailwind opacity modifier (bg-primary/5 etc.) */
   --color-primary-rgb: 245 245 245;
   --color-primary-hover-rgb: 255 255 255;
@@ -45,12 +45,12 @@
   --color-bg-chrome-rgb: 10 10 10;
   --color-text-primary-rgb: 250 250 250;
   --color-text-secondary-rgb: 163 163 163;
-  --color-border-rgb: 38 38 38;
-  --color-border-strong-rgb: 64 64 64;
-  --color-success-rgb: 163 163 163;
-  --color-warning-rgb: 212 212 212;
-  --color-error-rgb: 229 229 229;
-  --shadow-elevated: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --color-border-rgb: 255 255 255;
+  --color-border-strong-rgb: 255 255 255;
+  --color-success-rgb: 34 197 94;
+  --color-warning-rgb: 234 179 8;
+  --color-error-rgb: 239 68 68;
+  --shadow-elevated: 0 8px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --ring: 0 0 0 2px rgba(245, 245, 245, 0.25);
   color-scheme: dark;
 
@@ -83,11 +83,11 @@
   --color-bg-chrome: #ffffff;
   --color-text-primary: #0a0a0a;
   --color-text-secondary: #525252;
-  --color-border: #e5e5e5;
-  --color-border-strong: #d4d4d4;
-  --color-success: #404040;
-  --color-warning: #737373;
-  --color-error: #171717;
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-border-strong: rgba(0, 0, 0, 0.18);
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-error: #dc2626;
   /* S5-fix: RGB triplets for Tailwind opacity modifier (bg-primary/5 etc.) */
   --color-primary-rgb: 10 10 10;
   --color-primary-hover-rgb: 0 0 0;
@@ -99,12 +99,12 @@
   --color-bg-chrome-rgb: 255 255 255;
   --color-text-primary-rgb: 10 10 10;
   --color-text-secondary-rgb: 82 82 82;
-  --color-border-rgb: 229 229 229;
-  --color-border-strong-rgb: 212 212 212;
-  --color-success-rgb: 64 64 64;
-  --color-warning-rgb: 115 115 115;
-  --color-error-rgb: 23 23 23;
-  --shadow-elevated: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --color-border-rgb: 0 0 0;
+  --color-border-strong-rgb: 0 0 0;
+  --color-success-rgb: 22 163 74;
+  --color-warning-rgb: 217 119 6;
+  --color-error-rgb: 220 38 38;
+  --shadow-elevated: 0 8px 30px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
   --ring: 0 0 0 2px rgba(10, 10, 10, 0.15);
   color-scheme: light;
 
@@ -328,12 +328,174 @@ textarea:focus-visible {
   border-radius: 0.75rem;
 }
 
-/* Kill residual colorful utility escapes on main chrome */
+/* Mono Premium: add a subtle top white highlight to native shadow-sm cards
+ * (cards sit on pure-black; a faint inner top edge reads as depth light). */
+.dark .shadow-sm {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 1px 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* Map residual colorful utility classes to Mono Premium status tokens.
+ * Components still use Tailwind's native green/amber/red/orange names; align
+ * them (dark theme) to the token palette so status colors stay consistent.
+ * Light theme keeps native Tailwind shades (readable on light bg). */
+.dark .text-green-300,
 .dark .text-green-400,
+.dark .text-green-500,
+.dark .text-green-600,
+.dark .text-green-700,
+.dark .text-emerald-300,
+.dark .text-emerald-400 {
+  color: var(--color-success) !important;
+}
+.dark .text-yellow-300,
 .dark .text-yellow-400,
+.dark .text-yellow-500,
+.dark .text-yellow-600,
+.dark .text-amber-300,
+.dark .text-amber-400,
+.dark .text-amber-500,
+.dark .text-amber-600,
+.dark .text-orange-400,
+.dark .text-orange-500 {
+  color: var(--color-warning) !important;
+}
+.dark .text-red-300,
 .dark .text-red-400,
-.dark .text-orange-400 {
-  color: var(--color-text-secondary) !important;
+.dark .text-red-500,
+.dark .text-red-600,
+.dark .text-red-700,
+.dark .text-orange-600,
+.dark .text-orange-700 {
+  color: var(--color-error) !important;
+}
+
+/* Semi-transparent colored fills used as badges/indicators (dark theme) */
+.dark .bg-green-400\/15,
+.dark .bg-green-400\/20,
+.dark .bg-green-500\/10,
+.dark .bg-green-500\/20,
+.dark .bg-green-900,
+.dark .bg-green-950 {
+  background-color: color-mix(in srgb, var(--color-success) 20%, transparent) !important;
+}
+.dark .bg-yellow-400\/15,
+.dark .bg-yellow-400\/20,
+.dark .bg-yellow-500\/10,
+.dark .bg-yellow-500\/20,
+.dark .bg-amber-400\/10,
+.dark .bg-amber-400\/15,
+.dark .bg-amber-950 {
+  background-color: color-mix(in srgb, var(--color-warning) 18%, transparent) !important;
+}
+.dark .bg-red-400\/15,
+.dark .bg-red-400\/20,
+.dark .bg-red-500\/10,
+.dark .bg-red-500\/20,
+.dark .bg-red-700 {
+  background-color: color-mix(in srgb, var(--color-error) 20%, transparent) !important;
+}
+.dark .bg-green-500,
+.dark .bg-green-600,
+.dark .bg-green-700 {
+  background-color: var(--color-success) !important;
+}
+.dark .bg-yellow-500,
+.dark .bg-amber-500,
+.dark .bg-orange-500 {
+  background-color: var(--color-warning) !important;
+}
+.dark .bg-red-500,
+.dark .bg-red-600 {
+  background-color: var(--color-error) !important;
+}
+.dark .border-green-500\/30,
+.dark .border-green-800 {
+  border-color: color-mix(in srgb, var(--color-success) 30%, transparent) !important;
+}
+.dark .border-yellow-500\/30,
+.dark .border-amber-400\/20,
+.dark .border-amber-400\/25,
+.dark .border-amber-800 {
+  border-color: color-mix(in srgb, var(--color-warning) 30%, transparent) !important;
+}
+.dark .border-red-500\/30,
+.dark .border-red-400\/25 {
+  border-color: color-mix(in srgb, var(--color-error) 30%, transparent) !important;
+}
+
+/* ── Light theme: align native Tailwind status classes to Mono tokens ──
+ * On light backgrounds use the deeper token shades (already dark enough for
+ * contrast); badge fills use a soft tint of the same hue. */
+.light .text-green-500,
+.light .text-green-600,
+.light .text-green-700,
+.light .text-emerald-600 {
+  color: var(--color-success) !important;
+}
+.light .text-yellow-600,
+.light .text-amber-600,
+.light .text-amber-700,
+.light .text-orange-600,
+.light .text-orange-700 {
+  color: var(--color-warning) !important;
+}
+.light .text-red-500,
+.light .text-red-600,
+.light .text-red-700,
+.light .text-orange-700 {
+  color: var(--color-error) !important;
+}
+.light .bg-green-50,
+.light .bg-green-100,
+.light .bg-green-500\/10,
+.light .bg-green-500\/20 {
+  background-color: color-mix(in srgb, var(--color-success) 12%, transparent) !important;
+}
+.light .bg-yellow-50,
+.light .bg-amber-50,
+.light .bg-yellow-500\/10,
+.light .bg-yellow-500\/20 {
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent) !important;
+}
+.light .bg-red-50,
+.light .bg-red-500\/10,
+.light .bg-red-500\/20 {
+  background-color: color-mix(in srgb, var(--color-error) 10%, transparent) !important;
+}
+.light .bg-green-500,
+.light .bg-green-600,
+.light .bg-green-700 {
+  background-color: var(--color-success) !important;
+}
+.light .bg-yellow-500,
+.light .bg-amber-500 {
+  background-color: var(--color-warning) !important;
+}
+.light .bg-red-500,
+.light .bg-red-600 {
+  background-color: var(--color-error) !important;
+}
+.light .border-green-200,
+.light .border-green-500\/30 {
+  border-color: color-mix(in srgb, var(--color-success) 30%, transparent) !important;
+}
+.light .border-amber-200,
+.light .border-amber-400\/20,
+.light .border-amber-400\/25 {
+  border-color: color-mix(in srgb, var(--color-warning) 30%, transparent) !important;
+}
+.light .border-red-500\/30,
+.light .border-red-400\/25 {
+  border-color: color-mix(in srgb, var(--color-error) 30%, transparent) !important;
+}
+
+/* Mono Premium light: subtle top highlight on shadow-sm cards */
+.light .shadow-sm {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 2px 0 rgba(0, 0, 0, 0.08);
 }
 
 /* Selection */

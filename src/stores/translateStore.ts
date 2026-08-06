@@ -60,7 +60,7 @@ interface TranslateState {
   translateStream: () => Promise<void>;
   lookupDictionary: () => Promise<void>;
   backTranslate: (text: string) => Promise<void>;
-  polishTranslation: () => Promise<void>;
+  polishTranslation: (index?: number) => Promise<void>;
   detectLanguage: (text: string) => Promise<void>;
   clear: () => void;
   clearIncremental: () => void;
@@ -357,15 +357,16 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     set({ backTranslation: result });
   },
 
-  polishTranslation: async () => {
+  polishTranslation: async (index = 0) => {
     const { sourceText, results, fromLang, toLang } = get();
     if (!sourceText.trim() || results.length === 0) {
       return;
     }
 
+    const target = Math.min(Math.max(index, 0), results.length - 1);
     set({ polishing: true });
 
-    const translatedText = results[0].text;
+    const translatedText = results[target].text;
     const [polished, error] = await safeInvoke<string>('polish_translation', {
       sourceText: sourceText.trim(),
       translatedText,
@@ -376,9 +377,9 @@ export const useTranslateStore = create<TranslateState>((set, get) => ({
     if (error || !polished) {
       console.error('Polish failed:', error);
     } else {
-      // Update the first result with polished text
+      // Update the polished result in place
       const newResults = [...results];
-      newResults[0] = { ...newResults[0], text: polished };
+      newResults[target] = { ...newResults[target], text: polished };
       set({ results: newResults });
     }
 

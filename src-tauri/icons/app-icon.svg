@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="80%">
+      <stop offset="0%" stop-color="#101320"/>
+      <stop offset="60%" stop-color="#07080f"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+    <linearGradient id="moonBody" x1="20%" y1="10%" x2="80%" y2="90%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#f5f8ff"/>
+      <stop offset="100%" stop-color="#c9d3f2"/>
+    </linearGradient>
+    <filter id="moonGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- MIUI-style rounded square background -->
+  <rect x="8" y="8" width="496" height="496" rx="116" fill="url(#bg)"/>
+  <!-- subtle inner frame line (MIUI icon border feel) -->
+  <rect x="20" y="20" width="472" height="472" rx="106" fill="none" stroke="#2b3450" stroke-width="2.5" opacity="0.7"/>
+
+  <!-- Plump crescent moon: wide full body with clean inner cut -->
+  <g filter="url(#moonGlow)">
+    <circle cx="252" cy="246" r="152" fill="url(#moonBody)"/>
+    <circle cx="316" cy="204" r="122" fill="url(#bg)"/>
+  </g>
+</svg>

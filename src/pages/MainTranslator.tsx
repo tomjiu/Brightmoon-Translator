@@ -64,6 +64,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
     setFromLang,
     setToLang,
     swapLanguages,
+    translate,
     translateStream,
     lookupDictionary,
     backTranslate,
@@ -131,6 +132,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
   const [bilingualMode, setBilingualMode] = useState(false);
   const [collectedIndex, setCollectedIndex] = useState<number | null>(null);
   const [collectHint, setCollectHint] = useState<string | null>(null);
+  const [activeResultIndex, setActiveResultIndex] = useState(0);
 
   const handleCollect = useCallback(
     async (text: string, index: number) => {
@@ -170,7 +172,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
           if (store.embeddedMode || isMultiLine) {
             translateEmbedded();
           } else {
-            translateStream();
+            translate();
           }
           lookupDictionary();
         }
@@ -179,7 +181,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
     [
       deleteNewlines,
       setSourceText,
-      translateStream,
+      translate,
       translateEmbedded,
       lookupDictionary,
       detectLanguage,
@@ -298,6 +300,12 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
       }
     }
   }, [results, loading, config.ttsAutoPlay, toLang]);
+
+  // Reset active engine tab when a new translation arrives
+  useEffect(() => {
+    setActiveResultIndex(0);
+    setMaskRevealed(false);
+  }, [results]);
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -656,152 +664,152 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
               ) : error ? (
                 <div className="p-4 text-error text-sm">{error}</div>
               ) : results.length > 0 ? (
-                results.map((r, i) => (
-                  <div key={i} className="p-4 border-b border-border last:border-b-0">
-                    {/* Bilingual: show source text above translation */}
-                    {bilingualMode && (
-                      <div className="mb-3 pb-2 border-b border-border/50">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <AlignLeft size={10} className="text-text-secondary" />
-                          <span className="text-xs text-text-secondary">
-                            {t('translator.sourceText')}
-                          </span>
+                (() => {
+                  const safeIndex = Math.min(activeResultIndex, results.length - 1);
+                  const r = results[safeIndex];
+                  return (
+                    <div className="p-4">
+                      {/* Bilingual: show source text above translation */}
+                      {bilingualMode && (
+                        <div className="mb-3 pb-2 border-b border-border/50">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <AlignLeft size={10} className="text-text-secondary" />
+                            <span className="text-xs text-text-secondary">
+                              {t('translator.sourceText')}
+                            </span>
+                          </div>
+                          <p className="text-sm text-text-secondary leading-relaxed select-text">
+                            {sourceText}
+                          </p>
                         </div>
-                        <p className="text-sm text-text-secondary leading-relaxed select-text">
-                          {sourceText}
-                        </p>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs text-primary font-semibold uppercase">
-                        {r.engine}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        {config.translationMask && (
-                          <button
-                            className={`border border-border rounded-md px-2 py-1 text-xs transition-colors flex items-center gap-1 ${
-                              maskRevealed
-                                ? 'bg-bg-tertiary text-text-secondary'
-                                : 'bg-warning/20 text-warning border-warning'
-                            }`}
-                            onClick={() => setMaskRevealed(!maskRevealed)}
-                            title={t(
-                              maskRevealed ? 'translator.hideOriginal' : 'translator.showOriginal',
-                            )}
-                          >
-                            {maskRevealed ? (
-                              <>
-                                <EyeOff size={12} />
-                                {t('translator.hideOriginal')}
-                              </>
-                            ) : (
-                              <>
-                                <Eye size={12} />
-                                {t('translator.showOriginal')}
-                              </>
-                            )}
-                          </button>
+                      )}
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        {/* Engine switcher */}
+                        {results.length > 1 ? (
+                          <div className="flex items-center gap-0.5 bg-bg-tertiary rounded-lg p-0.5 border border-border">
+                            {results.map((res, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setActiveResultIndex(i)}
+                                className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${
+                                  i === safeIndex
+                                    ? 'bg-primary text-primary-fg'
+                                    : 'text-text-secondary hover:text-text-primary'
+                                }`}
+                              >
+                                {res.engine}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-primary font-semibold uppercase">
+                            {r.engine}
+                          </span>
                         )}
-                        <button
-                          className={`border border-border rounded-md px-2 py-1 text-xs transition-colors flex items-center gap-1 ${
-                            speakingIndex === i
-                              ? 'bg-primary text-primary-fg border-primary'
-                              : 'bg-bg-tertiary text-text-secondary hover:bg-primary hover:text-primary-fg hover:border-primary'
-                          }`}
-                          onClick={() => speakText(r.text, toLang, i)}
-                          title={t('translator.speak')}
-                        >
-                          <Volume2 size={12} />
-                          {speakingIndex === i ? t('translator.speaking') : t('translator.speak')}
-                        </button>
-                        <button
-                          className={`border border-border rounded-md px-2 py-1 text-xs transition-colors flex items-center gap-1 ${
-                            collectedIndex === i
-                              ? 'bg-primary text-primary-fg border-primary'
-                              : 'bg-bg-tertiary text-text-secondary hover:bg-primary hover:text-primary-fg hover:border-primary'
-                          }`}
-                          onClick={() => void handleCollect(r.text, i)}
-                          title={t('translator.collectToWordbook')}
-                        >
-                          <Bookmark size={12} />
-                          {collectedIndex === i ? t('translator.collected') : t('translator.collect')}
-                        </button>
-                        <button
-                          className="bg-bg-tertiary border border-border text-text-secondary rounded-md px-2 py-1 text-xs hover:bg-primary hover:text-primary-fg hover:border-primary transition-colors flex items-center gap-1"
-                          onClick={() => copyResult(r.text, i)}
-                        >
-                          {copiedIndex === i ? (
-                            <>
-                              <Check size={12} />
-                              {t('translator.copied')}
-                            </>
-                          ) : (
-                            <>
-                              <Copy size={12} />
-                              {t('translator.copy')}
-                            </>
+
+                        <div className="flex items-center gap-0.5">
+                          {config.translationMask && (
+                            <button
+                              className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
+                                maskRevealed
+                                  ? 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                                  : 'text-warning bg-warning/15 hover:bg-warning/20'
+                              }`}
+                              onClick={() => setMaskRevealed(!maskRevealed)}
+                              title={t(
+                                maskRevealed ? 'translator.hideOriginal' : 'translator.showOriginal',
+                              )}
+                            >
+                              {maskRevealed ? <EyeOff size={13} /> : <Eye size={13} />}
+                            </button>
                           )}
-                        </button>
-                        {isTauri && (
                           <button
-                            className={`border border-border rounded-md px-2 py-1 text-xs transition-colors flex items-center gap-1 ${
-                              pinnedIndex === i
-                                ? 'bg-primary text-primary-fg border-primary'
-                                : 'bg-bg-tertiary text-text-secondary hover:bg-primary hover:text-primary-fg hover:border-primary'
+                            className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
+                              speakingIndex === safeIndex
+                                ? 'text-primary bg-primary/15'
+                                : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
                             }`}
-                            onClick={() => void pinResult(r.text, i)}
-                            title={t('translator.pin')}
+                            onClick={() => speakText(r.text, toLang, safeIndex)}
+                            title={t('translator.speak')}
                           >
-                            <Pin size={12} />
-                            {pinnedIndex === i ? t('translator.pinned') : t('translator.pin')}
+                            <Volume2 size={13} />
                           </button>
-                        )}
-                        {i === 0 && (
-                          <>
+                          <button
+                            className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
+                              collectedIndex === safeIndex
+                                ? 'text-primary bg-primary/15'
+                                : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                            }`}
+                            onClick={() => void handleCollect(r.text, safeIndex)}
+                            title={t('translator.collectToWordbook')}
+                          >
+                            <Bookmark size={13} />
+                          </button>
+                          <button
+                            className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
+                              copiedIndex === safeIndex
+                                ? 'text-primary bg-primary/15'
+                                : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                            }`}
+                            onClick={() => copyResult(r.text, safeIndex)}
+                            title={t('translator.copy')}
+                          >
+                            {copiedIndex === safeIndex ? <Check size={13} /> : <Copy size={13} />}
+                          </button>
+                          {isTauri && (
                             <button
-                              className="bg-bg-tertiary border border-border text-text-secondary rounded-md px-2 py-1 text-xs hover:bg-accent hover:text-white hover:border-accent transition-colors flex items-center gap-1"
-                              onClick={() => backTranslate(r.text)}
-                              title={t('translator.backTranslate')}
+                              className={`h-7 w-7 rounded-md flex items-center justify-center transition-colors ${
+                                pinnedIndex === safeIndex
+                                  ? 'text-primary bg-primary/15'
+                                  : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                              }`}
+                              onClick={() => void pinResult(r.text, safeIndex)}
+                              title={t('translator.pin')}
                             >
-                              <Repeat size={12} />
-                              {t('translator.backTranslate')}
+                              <Pin size={13} />
                             </button>
-                            <button
-                              className="bg-bg-tertiary border border-border text-text-secondary rounded-md px-2 py-1 text-xs hover:bg-accent hover:text-white hover:border-accent transition-colors flex items-center gap-1 disabled:opacity-50"
-                              onClick={polishTranslation}
-                              disabled={polishing}
-                              title={t('translator.polish')}
-                            >
-                              <Sparkles size={12} />
-                              {polishing ? t('translator.polishing') : t('translator.polish')}
-                            </button>
-                          </>
-                        )}
+                          )}
+                          <button
+                            className="h-7 w-7 rounded-md flex items-center justify-center transition-colors text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+                            onClick={() => backTranslate(r.text)}
+                            title={t('translator.backTranslate')}
+                          >
+                            <Repeat size={13} />
+                          </button>
+                          <button
+                            className="h-7 w-7 rounded-md flex items-center justify-center transition-colors text-text-secondary hover:bg-bg-tertiary hover:text-text-primary disabled:opacity-50"
+                            onClick={() => polishTranslation(safeIndex)}
+                            disabled={polishing}
+                            title={t('translator.polish')}
+                          >
+                            <Sparkles size={13} />
+                          </button>
+                        </div>
                       </div>
+                      {config.translationMask && !maskRevealed ? (
+                        <div
+                          className="text-sm leading-relaxed text-text-primary select-text cursor-pointer bg-bg-tertiary/50 rounded-lg p-3 text-center hover:bg-bg-tertiary transition-colors"
+                          onClick={() => setMaskRevealed(true)}
+                        >
+                          <Eye size={16} className="inline mr-2 text-text-secondary" />
+                          <span className="text-text-secondary">{t('translator.clickToShow')}</span>
+                        </div>
+                      ) : (
+                        <div className="text-sm leading-relaxed text-text-primary select-text">
+                          <RubyText
+                            text={r.text}
+                            enabled={config.furiganaEnabled && toLang === 'ja'}
+                          />
+                        </div>
+                      )}
+                      {collectHint && collectedIndex === safeIndex && (
+                        <p className="mt-2 text-xs text-text-secondary whitespace-pre-wrap">
+                          {collectHint}
+                        </p>
+                      )}
                     </div>
-                    {config.translationMask && !maskRevealed ? (
-                      <div
-                        className="text-sm leading-relaxed text-text-primary select-text cursor-pointer bg-bg-tertiary/50 rounded-lg p-3 text-center hover:bg-bg-tertiary transition-colors"
-                        onClick={() => setMaskRevealed(true)}
-                      >
-                        <Eye size={16} className="inline mr-2 text-text-secondary" />
-                        <span className="text-text-secondary">{t('translator.clickToShow')}</span>
-                      </div>
-                    ) : (
-                      <div className="text-sm leading-relaxed text-text-primary select-text">
-                        <RubyText
-                          text={r.text}
-                          enabled={config.furiganaEnabled && toLang === 'ja'}
-                        />
-                      </div>
-                    )}
-                    {collectHint && collectedIndex === i && (
-                      <p className="mt-2 text-xs text-text-secondary whitespace-pre-wrap">
-                        {collectHint}
-                      </p>
-                    )}
-                  </div>
-                ))
+                  );
+                })()
               ) : (
                 <div className="flex items-center justify-center h-full text-text-secondary text-sm">
                   {incrementalMode && incrementalEntries.length > 0

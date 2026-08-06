@@ -31,8 +31,8 @@ export default {
           secondary: 'rgb(var(--color-text-secondary-rgb) / <alpha-value>)',
         },
         border: {
-          DEFAULT: 'rgb(var(--color-border-rgb) / <alpha-value>)',
-          strong: 'rgb(var(--color-border-strong-rgb) / <alpha-value>)',
+          DEFAULT: 'rgba(var(--color-border-rgb) / 0.16)',
+          strong: 'rgba(var(--color-border-strong-rgb) / 0.24)',
         },
         success: 'rgb(var(--color-success-rgb) / <alpha-value>)',
         warning: 'rgb(var(--color-warning-rgb) / <alpha-value>)',
