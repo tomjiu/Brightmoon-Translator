@@ -7,6 +7,7 @@ pub mod config_cmd;
 pub mod data_io_cmd;
 pub mod dict_optimize_cmd;
 pub mod dictionary_cmd;
+pub mod dictionary_source_cmd;
 pub mod docx_cmd;
 pub mod epub_cmd;
 pub mod excel_cmd;

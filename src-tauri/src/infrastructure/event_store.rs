@@ -51,8 +51,37 @@ impl EventStore {
         // 索引
         sqlx::query(
             r#"
-            CREATE INDEX IF NOT EXISTS idx_card_events_card_id
-            ON card_events(card_id)
+            CREATE INDEX IF NOT EXISTS idx_quiz_errors_card
+            ON quiz_errors(card_id)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T7: 词典源配置表（可插拔词典源）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS dictionary_sources (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                priority INTEGER NOT NULL DEFAULT 100,
+                prompt_template TEXT,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // 默认源配置（幂等插入）
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO dictionary_sources (id, name, enabled, priority, updated_at) VALUES
+                ('ecdict', 'ECDICT', 1, 100, 0),
+                ('youdao', '有道', 1, 90, 0),
+                ('online_api', 'DictionaryAPI.dev', 1, 80, 0),
+                ('ai_prompt', 'AI Prompt', 0, 10, 0)
             "#,
         )
         .execute(&self.pool)
