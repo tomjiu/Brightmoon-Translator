@@ -13,7 +13,7 @@ import {
   ArrowLeft,
   Trophy,
 } from 'lucide-react';
-import type { CardInfo, AiContent } from '../services/vocabulary';
+import { recordQuizResult, type CardInfo, type AiContent } from '../services/vocabulary';
 import { speakText, stopSpeaking } from '../services/tts';
 import { detectSpeakLang } from '../utils/speech';
 
@@ -181,12 +181,16 @@ export default function VocabularyReview() {
         rating,
       });
 
-      // T8: 答错(Hard/Again)时触发 AI 增强(异步,不阻塞复习流程)
+      // T8: 答错(Hard/Again)时先记录弱点(weak_points),再异步触发 AI 增强
       if (rating === 'Again' || rating === 'Hard') {
         const card = dueCards[currentIndex];
+        const errorType = rating === 'Again' ? 'meaning' : 'spelling';
+        void recordQuizResult(card.id, 'review', false).catch((err: unknown) =>
+          console.error('记录弱点失败:', err),
+        );
         void invokeOrThrow<{ applied: boolean; message: string }>('optimize_card_on_error', {
           cardId: card.id,
-          errorType: rating === 'Again' ? 'meaning' : 'spelling',
+          errorType,
           userAnswer: null,
           correctAnswer: null,
         })

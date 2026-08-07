@@ -437,20 +437,23 @@ impl SourceRegistry {
 
     /// 查询所有启用的源（聚合结果，按注册顺序）
     pub async fn lookup_all(&self, word: &str) -> Vec<DictEntryResult> {
-        let mut results = Vec::new();
-        for source in &self.sources {
-            let id = source.id().to_string();
-            if !self.enabled.contains(&id) {
-                continue;
-            }
-            match source.lookup(word).await {
-                Ok(entry) => results.push(entry),
-                Err(e) => {
-                    tracing::debug!("词典源 '{}' 查询 '{}' 失败: {}", id, word, e);
-                },
-            }
-        }
-        results
+        // 并行查询所有启用源，避免串行等待（尤其 AI 源慢时）
+        let futures: Vec<_> = self
+            .sources
+            .iter()
+            .filter(|s| self.enabled.contains(&s.id().to_string()))
+            .map(|s| async {
+                match s.lookup(word).await {
+                    Ok(entry) => Some(entry),
+                    Err(e) => {
+                        tracing::debug!("词典源 '{}' 查询 '{}' 失败: {}", s.id(), word, e);
+                        None
+                    },
+                }
+            })
+            .collect();
+        let results = futures::future::join_all(futures).await;
+        results.into_iter().flatten().collect()
     }
 
     /// 按优先级取第一个成功结果
