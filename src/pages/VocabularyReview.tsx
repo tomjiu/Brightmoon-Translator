@@ -1,6 +1,6 @@
 // VocabularyReview - 完整的FSRS复习系统
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { invokeOrThrow } from '../services/invoke';
 import { useVocabularyStore } from '../stores/vocabularyStore';
 import {
@@ -13,7 +13,9 @@ import {
   ArrowLeft,
   Trophy,
 } from 'lucide-react';
-import type { CardInfo, AiContent } from '../services/vocabulary';
+import { recordQuizResult, type CardInfo, type AiContent } from '../services/vocabulary';
+import { speakText, stopSpeaking } from '../services/tts';
+import { detectSpeakLang } from '../utils/speech';
 
 interface ReviewSession {
   totalCards: number;
@@ -179,6 +181,27 @@ export default function VocabularyReview() {
         rating,
       });
 
+      // T8: 答错(Hard/Again)时先记录弱点(weak_points),再异步触发 AI 增强
+      if (rating === 'Again' || rating === 'Hard') {
+        const card = dueCards[currentIndex];
+        const errorType = rating === 'Again' ? 'meaning' : 'spelling';
+        void recordQuizResult(card.id, 'review', false).catch((err: unknown) =>
+          console.error('记录弱点失败:', err),
+        );
+        void invokeOrThrow<{ applied: boolean; message: string }>('optimize_card_on_error', {
+          cardId: card.id,
+          errorType,
+          userAnswer: null,
+          correctAnswer: null,
+        })
+          .then((res: { applied: boolean; message: string }) => {
+            if (res.applied) {
+              console.log(`[T8] ${card.word} 已 AI 增强: ${res.message}`);
+            }
+          })
+          .catch((err: unknown) => console.error('AI 增强失败:', err));
+      }
+
       // 更新统计
       const newSession = { ...session };
       newSession.reviewedCount += 1;
@@ -201,6 +224,9 @@ export default function VocabularyReview() {
         endSession();
         setShowStats(true);
       } else {
+        // 清空上一张的 wordDetail，避免翻页瞬间读到旧卡的音频/数据
+        setWordDetail(null);
+        stopAudio();
         setCurrentIndex(nextIndex);
         setShowAnswer(false);
         await loadWordDetail(dueCards[nextIndex].word);
@@ -213,11 +239,46 @@ export default function VocabularyReview() {
   };
 
   // 播放音频
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const playAudio = (url: string) => {
-    new Audio(url).play().catch((err: unknown) => {
+    stopAudio();
+    audioRef.current = new Audio(url);
+    audioRef.current.play().catch((err: unknown) => {
       console.error(err);
     });
   };
+
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+  };
+
+  // TTS 兜底发音（无词典音频时）
+  const playTts = async (text: string) => {
+    try {
+      await speakText(text, detectSpeakLang(text));
+    } catch (err) {
+      console.error('TTS 发音失败:', err);
+    }
+  };
+
+  // 自动发音：优先词典音频，否则 TTS
+  useEffect(() => {
+    if (!dueCards.length || showAnswer || loading) return;
+    const card = dueCards[currentIndex];
+    if (!card) return;
+    // 先停止上一张卡的音频，避免叠加/错音
+    stopAudio();
+    stopSpeaking();
+    if (wordDetail?.usAudioUrl) {
+      playAudio(wordDetail.usAudioUrl);
+    } else {
+      void playTts(card.word);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, dueCards.length, showAnswer, loading, wordDetail?.usAudioUrl]);
 
   // 退出复习
   const handleExit = () => {
@@ -225,6 +286,8 @@ export default function VocabularyReview() {
       // eslint-disable-next-line no-alert -- destructive confirm; no dialog component available
       if (!confirm('复习尚未完成，确定要退出吗？')) return;
     }
+    stopSpeaking();
+    stopAudio();
     endSession();
     window.history.back();
   };
@@ -433,9 +496,20 @@ export default function VocabularyReview() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-6 text-center">
-                <h1 className="text-5xl font-bold text-white drop-shadow-lg mb-2">
-                  {currentCard.word}
-                </h1>
+                <div className="flex items-center justify-center gap-3">
+                  <h1 className="text-5xl font-bold text-white drop-shadow-lg mb-2">
+                    {currentCard.word}
+                  </h1>
+                  {!wordDetail?.usAudioUrl && !wordDetail?.ukAudioUrl && (
+                    <button
+                      onClick={() => void playTts(currentCard.word)}
+                      className="mt-1 p-1.5 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors"
+                      title="发音"
+                    >
+                      <Volume2 size={16} />
+                    </button>
+                  )}
+                </div>
                 {wordDetail.phonetic && (
                   <p className="text-lg text-white/90 drop-shadow">/{wordDetail.phonetic}/</p>
                 )}
@@ -446,7 +520,20 @@ export default function VocabularyReview() {
           {/* 单词标题（无图或显示答案时） */}
           {(!wordDetail?.imageUrl || showAnswer) && (
             <div className="text-center mb-8">
-              <h1 className="text-6xl font-bold text-text-primary mb-3">{currentCard.word}</h1>
+              <div className="flex items-center justify-center gap-3">
+                <h1 className="text-6xl font-bold text-text-primary mb-3">
+                  {currentCard.word}
+                </h1>
+                {!wordDetail?.usAudioUrl && !wordDetail?.ukAudioUrl && (
+                  <button
+                    onClick={() => void playTts(currentCard.word)}
+                    className="mt-1 p-2 rounded-full bg-bg-tertiary text-primary hover:bg-bg-tertiary transition-colors"
+                    title="发音"
+                  >
+                    <Volume2 size={20} />
+                  </button>
+                )}
+              </div>
               {wordDetail?.phonetic && (
                 <div className="flex items-center justify-center gap-3">
                   <span className="text-xl text-text-secondary">/{wordDetail.phonetic}/</span>

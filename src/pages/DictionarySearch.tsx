@@ -12,11 +12,20 @@ import {
   BookOpen,
   Sparkles,
   Wand2,
+  Settings2,
+  RefreshCw,
 } from 'lucide-react';
 import { safeInvoke, invokeOrDefault } from '../services/invoke';
+import { speakText } from '../services/tts';
+import { detectSpeakLang } from '../utils/speech';
 import { useI18n } from '../i18n';
 import { saveAndCollect, summarizeReport } from '../hooks/useCollectionPush';
 import { extractWordsAndStudy } from '../services/vocabulary';
+import {
+  getDictSources,
+  saveDictSources,
+  type DictSourceConfig,
+} from '../services/dictionarySource';
 import PageHeader from '../components/PageHeader';
 
 interface PhoneticInfo {
@@ -93,6 +102,59 @@ function DictionarySearch() {
   const [extractText, setExtractText] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractResult, setExtractResult] = useState<string | null>(null);
+  // T7 接线:词典源管理
+  const [showSourcesDialog, setShowSourcesDialog] = useState(false);
+  const [dictSources, setDictSources] = useState<DictSourceConfig[]>([]);
+  const [isSourcesLoading, setIsSourcesLoading] = useState(false);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const [isSavingSources, setIsSavingSources] = useState(false);
+  const [sourcesSaved, setSourcesSaved] = useState(false);
+
+  // T7: 加载词典源配置
+  const loadDictSources = useCallback(async () => {
+    setIsSourcesLoading(true);
+    setSourcesError(null);
+    try {
+      const sources = await getDictSources();
+      setDictSources(sources);
+    } catch (err) {
+      setSourcesError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSourcesLoading(false);
+    }
+  }, []);
+
+  const openSourcesDialog = () => {
+    setShowSourcesDialog(true);
+    setSourcesSaved(false);
+    void loadDictSources();
+  };
+
+  const toggleDictSource = (id: string) => {
+    setDictSources((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s)),
+    );
+  };
+
+  const handleSaveSources = async () => {
+    setIsSavingSources(true);
+    setSourcesError(null);
+    try {
+      await saveDictSources(
+        dictSources.map((s) => ({
+          source_id: s.id,
+          enabled: s.enabled,
+          priority: s.priority,
+          prompt_template: s.prompt_template,
+        })),
+      );
+      setSourcesSaved(true);
+    } catch (err) {
+      setSourcesError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSavingSources(false);
+    }
+  };
 
   // 自动检测并导入词典数据（仅首次）
   useEffect(() => {
@@ -238,6 +300,14 @@ function DictionarySearch() {
     audioRef.current.play();
   };
 
+  const playTts = async (text: string) => {
+    try {
+      await speakText(text, detectSpeakLang(text));
+    } catch (err) {
+      console.error('TTS 发音失败:', err);
+    }
+  };
+
   const handleImport = async () => {
     setIsImporting(true);
     setImportStatus('导入中...');
@@ -290,6 +360,14 @@ function DictionarySearch() {
                 >
                   <Wand2 size={12} />
                   AI 抽生词
+                </button>
+                <button
+                  onClick={openSourcesDialog}
+                  className="text-xs px-3 py-1 bg-bg-tertiary text-text-secondary rounded hover:text-primary border border-border flex items-center gap-1"
+                  title="管理词典源(ECDICT / 有道 / 在线API / AI Prompt)"
+                >
+                  <Settings2 size={12} />
+                  词典源
                 </button>
                 <button
                   onClick={handleImport}
@@ -412,7 +490,7 @@ function DictionarySearch() {
               <p className="text-sm mt-2">多源聚合：自动合并多个词典的数据</p>
             </div>
           )}
-          {result && <ResultCard result={result} onPlayAudio={playAudio} />}
+          {result && <ResultCard result={result} onPlayAudio={playAudio} onSpeak={playTts} />}
         </div>
       </div>
 
@@ -485,6 +563,112 @@ function DictionarySearch() {
           </div>
         </div>
       )}
+
+      {/* T7 接线:词典源管理对话框 */}
+      {showSourcesDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="ui-card w-full max-w-lg p-6 animate-fadeIn">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="ui-section-title flex items-center gap-2">
+                <Settings2 size={16} />
+                词典源管理
+              </h3>
+              <button
+                onClick={() => setShowSourcesDialog(false)}
+                className="text-text-secondary hover:text-text-primary"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="ui-caption mb-4">
+              控制词典查询使用哪些来源。AI Prompt 源需配置 LLM 后才会生效。
+            </p>
+
+            {isSourcesLoading ? (
+              <div className="flex items-center gap-2 text-text-secondary text-sm py-6">
+                <Loader2 size={14} className="animate-spin" />
+                加载中...
+              </div>
+            ) : (
+              <div className="space-y-2 mb-4">
+                {dictSources.map((s) => (
+                  <div
+                    key={s.id}
+                    className="flex items-center justify-between p-3 bg-bg-tertiary border border-border rounded-lg"
+                  >
+                    <div>
+                      <div className="text-sm text-text-primary font-medium">
+                        {s.name}
+                        <span className="ml-2 text-xs text-text-tertiary">{s.id}</span>
+                      </div>
+                      {s.prompt_template && (
+                        <div className="text-xs text-text-tertiary mt-1 line-clamp-2">
+                          {s.prompt_template}
+                        </div>
+                      )}
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <span className="text-xs text-text-secondary">
+                        {s.enabled ? '启用' : '停用'}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={s.enabled}
+                        onChange={() => toggleDictSource(s.id)}
+                        className="accent-primary"
+                      />
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {sourcesError && (
+              <p className="text-xs text-red-500 mb-2 bg-bg-tertiary p-2 rounded">
+                {sourcesError}
+              </p>
+            )}
+            {sourcesSaved && (
+              <p className="text-xs text-primary mb-2 bg-bg-tertiary p-2 rounded">
+                已保存
+              </p>
+            )}
+
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                onClick={() => {
+                  setShowSourcesDialog(false);
+                  void loadDictSources();
+                }}
+                className="px-4 py-1.5 text-sm text-text-secondary hover:text-text-primary flex items-center gap-1.5"
+              >
+                <RefreshCw size={14} />
+                刷新
+              </button>
+              <button
+                onClick={() => setShowSourcesDialog(false)}
+                className="px-4 py-1.5 text-sm text-text-secondary hover:text-text-primary"
+              >
+                关闭
+              </button>
+              <button
+                onClick={handleSaveSources}
+                disabled={isSavingSources || isSourcesLoading}
+                className="px-4 py-1.5 text-sm bg-primary text-primary-fg rounded hover:bg-primary-hover disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isSavingSources ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    保存中...
+                  </>
+                ) : (
+                  '保存'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -492,9 +676,11 @@ function DictionarySearch() {
 function ResultCard({
   result,
   onPlayAudio,
+  onSpeak,
 }: {
   result: ComprehensiveEntry;
   onPlayAudio: (url: string) => void;
+  onSpeak: (text: string) => void;
 }) {
   const { t } = useI18n();
   const primaryPhonetic = result.phonetics.find((p) => p.text);
@@ -547,6 +733,16 @@ function ResultCard({
                   title="英式发音"
                 >
                   <Volume2 size={12} /> 英音
+                </button>
+              )}
+              {/* TTS 兜底发音（无词典音频时） */}
+              {!result.usAudioUrl && !result.ukAudioUrl && (
+                <button
+                  onClick={() => onSpeak(result.word)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-bg-tertiary text-primary rounded hover:bg-bg-tertiary"
+                  title="发音"
+                >
+                  <Volume2 size={12} /> 发音
                 </button>
               )}
               {result.sources.map((s) => (

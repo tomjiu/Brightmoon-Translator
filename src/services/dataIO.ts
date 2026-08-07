@@ -38,6 +38,7 @@ export interface AnkiNote {
 export interface ImportResult {
   imported: number;
   skipped: number;
+  invalid: number;
   total: number;
 }
 
@@ -59,6 +60,13 @@ export async function importWordlistCsv(filePath: string): Promise<ImportResult>
 
 export async function autoBackup(backupDir: string): Promise<string> {
   return invokeOrThrow('auto_backup', { backupDir });
+}
+
+export async function autoBackupWithCleanup(
+  backupDir: string,
+  keep: number,
+): Promise<string> {
+  return invokeOrThrow('auto_backup_with_cleanup', { backupDir, keep });
 }
 
 /// 将 Anki Note 列表转为 TSV 文本

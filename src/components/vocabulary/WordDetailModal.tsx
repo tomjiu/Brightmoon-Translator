@@ -1,5 +1,5 @@
 import { useEffect, useState, type FC } from 'react';
-import { X, History, Edit3, Link2, BookOpen, Lightbulb, Save, BarChart3 } from 'lucide-react';
+import { X, History, Edit3, Link2, BookOpen, Lightbulb, Save, BarChart3, Volume2 } from 'lucide-react';
 import {
   getWordHistory,
   getFsrsTimeline,
@@ -12,6 +12,9 @@ import {
   type RelatedWord,
   type AiContent,
 } from '../../services/wordDetail';
+import { getCardPatchHistory, type PatchHistoryEntry } from '../../services/vocabulary';
+import { speakText, stopSpeaking } from '../../services/tts';
+import { detectSpeakLang } from '../../utils/speech';
 import { useToastStore } from '../../stores/toastStore';
 
 interface WordDetailModalProps {
@@ -29,9 +32,10 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
   const [aiContent, setAiContent] = useState<AiContent>({});
   const [editingAi, setEditingAi] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'history' | 'timeline' | 'related' | 'examples'>(
-    'history',
-  );
+  const [activeTab, setActiveTab] = useState<
+    'history' | 'timeline' | 'related' | 'examples' | 'patches'
+  >('history');
+  const [patches, setPatches] = useState<PatchHistoryEntry[]>([]);
 
   useEffect(() => {
     loadWordDetail();
@@ -54,6 +58,11 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
       setRelatedWords(relatedData);
       setExamples(examplesData);
       setEtymology(etymologyData);
+
+      // T8: 并行加载 AI 增强 Patch 历史(答错触发过才有数据)
+      getCardPatchHistory(word)
+        .then(setPatches)
+        .catch(() => setPatches([]));
     } catch (error) {
       console.error('加载单词详情失败:', error);
     } finally {
@@ -71,6 +80,19 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
       addToast({ type: 'error', message: '更新失败，请重试', duration: 3000 });
     }
   };
+
+  const speakWord = async (text: string) => {
+    try {
+      await speakText(text, detectSpeakLang(text));
+    } catch (error) {
+      console.error('发音失败:', error);
+      addToast({ type: 'error', message: '发音失败，请检查网络', duration: 3000 });
+    }
+  };
+
+  useEffect(() => {
+    return () => stopSpeaking();
+  }, []);
 
   const getEventIcon = (eventType: string) => {
     switch (eventType) {
@@ -118,9 +140,20 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
       <div className="bg-gray-900 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <div>
-            <h2 className="text-2xl font-bold">{word}</h2>
-            <p className="text-sm text-gray-400 mt-1">单词详情与学习历史</p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                {word}
+                <button
+                  onClick={() => void speakWord(word)}
+                  className="p-1.5 rounded-lg hover:bg-gray-700 transition-colors"
+                  title="发音"
+                >
+                  <Volume2 className="w-5 h-5 text-primary" />
+                </button>
+              </h2>
+              <p className="text-sm text-gray-400 mt-1">单词详情与学习历史</p>
+            </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
             <X className="w-5 h-5" />
@@ -240,6 +273,17 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
                 <BookOpen className="w-4 h-4" />
                 语料例句
               </button>
+              <button
+                onClick={() => setActiveTab('patches')}
+                className={`flex items-center gap-2 px-4 py-2 border-b-2 transition-colors ${
+                  activeTab === 'patches'
+                    ? 'border-border text-primary'
+                    : 'border-transparent text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                <Edit3 className="w-4 h-4" />
+                AI 增强
+              </button>
             </div>
 
             {/* Tab Content */}
@@ -334,7 +378,16 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
                         className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors"
                       >
                         <div>
-                          <span className="font-semibold text-primary">{related.word}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-primary">{related.word}</span>
+                            <button
+                              onClick={() => void speakWord(related.word)}
+                              className="p-1 rounded hover:bg-gray-600 transition-colors"
+                              title={`发音 ${related.word}`}
+                            >
+                              <Volume2 className="w-3.5 h-3.5 text-gray-400" />
+                            </button>
+                          </div>
                           {related.definition && (
                             <p className="text-sm text-gray-400 mt-1">{related.definition}</p>
                           )}
@@ -354,8 +407,59 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
                     <p className="text-gray-400 text-center py-8">暂无例句</p>
                   ) : (
                     examples.map((example, idx) => (
-                      <div key={idx} className="p-3 bg-gray-700/50 rounded-lg text-gray-300">
-                        {example}
+                      <div
+                        key={idx}
+                        className="flex items-start justify-between gap-3 p-3 bg-gray-700/50 rounded-lg text-gray-300 group"
+                      >
+                        <span>{example}</span>
+                        <button
+                          onClick={() => void speakWord(example)}
+                          className="p-1.5 rounded-lg hover:bg-gray-600 transition-colors shrink-0"
+                          title="朗读例句"
+                        >
+                          <Volume2 className="w-4 h-4 text-gray-400 group-hover:text-primary" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'patches' && (
+                <div className="space-y-3">
+                  {patches.length === 0 ? (
+                    <p className="text-gray-400 text-center py-8">暂无 AI 增强记录</p>
+                  ) : (
+                    patches.map((patch, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-start gap-3 p-3 bg-gray-700/50 rounded-lg"
+                      >
+                        <Edit3 className="w-4 h-4 text-primary mt-1" />
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-semibold text-sm">
+                              v{patch.version} · {patch.field}
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              {new Date(patch.timestamp * 1000).toLocaleString()}
+                            </span>
+                          </div>
+                          <span
+                            className={`inline-block text-xs px-2 py-0.5 rounded mb-1 ${
+                              patch.operation === 'replace'
+                                ? 'bg-green-500/20 text-green-300'
+                                : patch.operation === 'insert'
+                                  ? 'bg-blue-500/20 text-blue-300'
+                                  : 'bg-red-500/20 text-red-300'
+                            }`}
+                          >
+                            {patch.operation}
+                          </span>
+                          {patch.reasoning && (
+                            <p className="text-sm text-gray-400 mt-1">理由: {patch.reasoning}</p>
+                          )}
+                        </div>
                       </div>
                     ))
                   )}

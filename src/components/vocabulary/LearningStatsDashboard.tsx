@@ -17,17 +17,31 @@ import {
   getDailyActivity,
   getHeatmapData,
   getWeakWords,
+  getRetentionCurve,
+  getReviewForecastStats,
   type LearningStatistics,
   type DailyActivity,
   type HeatmapData,
   type WeakWord,
+  type RetentionPoint,
+  type ForecastPoint,
 } from '../../services/statistics';
+import {
+  getWeakPointWords,
+  resolveWeakPoint,
+  type WeakPointWord,
+} from '../../services/vocabulary';
+import { useToastStore } from '../../stores/toastStore';
 
 export const LearningStatsDashboard: FC = () => {
+  const addToast = useToastStore((s) => s.addToast);
   const [stats, setStats] = useState<LearningStatistics | null>(null);
   const [dailyActivity, setDailyActivity] = useState<DailyActivity[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([]);
   const [weakWords, setWeakWords] = useState<WeakWord[]>([]);
+  const [weakPointWords, setWeakPointWords] = useState<WeakPointWord[]>([]);
+  const [retentionCurve, setRetentionCurve] = useState<RetentionPoint[]>([]);
+  const [forecast, setForecast] = useState<ForecastPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
@@ -42,17 +56,28 @@ export const LearningStatsDashboard: FC = () => {
       setRefreshing(true);
       const currentYear = new Date().getFullYear();
 
-      const [statsData, activityData, heatmapData, weakWordsData] = await Promise.all([
-        getLearningStatistics(),
-        getDailyActivity(30),
-        getHeatmapData(currentYear),
-        getWeakWords(10),
-      ]);
+      const [statsData, activityData, heatmapData, weakWordsData, weakPointWordsData] =
+        await Promise.all([
+          getLearningStatistics(),
+          getDailyActivity(30),
+          getHeatmapData(currentYear),
+          getWeakWords(10),
+          getWeakPointWords(20),
+        ]);
+
+      // 并行获取新图表数据（不阻塞主流程）
+      getRetentionCurve(90)
+        .then(setRetentionCurve)
+        .catch((error: unknown) => console.error('加载保留率曲线失败:', error));
+      getReviewForecastStats(14)
+        .then(setForecast)
+        .catch((error: unknown) => console.error('加载复习量预测失败:', error));
 
       setStats(statsData);
       setDailyActivity(activityData);
       setHeatmapData(heatmapData);
       setWeakWords(weakWordsData);
+      setWeakPointWords(weakPointWordsData);
     } catch (error) {
       console.error('加载统计数据失败:', error);
     } finally {
@@ -214,6 +239,24 @@ export const LearningStatsDashboard: FC = () => {
         <DailyActivityChart data={dailyActivity} />
       </div>
 
+      {/* Retention Curve */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <TrendingUp className="w-5 h-5" />
+          记忆保留率曲线
+        </h3>
+        <RetentionCurveChart data={retentionCurve} />
+      </div>
+
+      {/* Review Forecast */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Calendar className="w-5 h-5" />
+          未来14天复习量预测
+        </h3>
+        <ForecastChart data={forecast} />
+      </div>
+
       {/* Weak Words */}
       <div className="bg-gray-800 rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -221,6 +264,27 @@ export const LearningStatsDashboard: FC = () => {
           薄弱词汇（需加强）
         </h3>
         <WeakWordsList words={weakWords} onWordClick={setSelectedWord} />
+      </div>
+
+      {/* T8: 弱点错误明细（答错追踪的精确错误点） */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Target className="w-5 h-5" />
+          弱点错误明细
+        </h3>
+        <WeakPointWordsList
+          words={weakPointWords}
+          onWordClick={setSelectedWord}
+          onResolve={async (cardId) => {
+            try {
+              await resolveWeakPoint(cardId);
+              addToast({ type: 'success', message: '弱点已标记解决', duration: 3000 });
+              loadStatistics();
+            } catch (error) {
+              addToast({ type: 'error', message: '标记失败，请重试', duration: 3000 });
+            }
+          }}
+        />
       </div>
 
       {/* Word Detail Modal */}
@@ -482,12 +546,117 @@ const DailyActivityChart: FC<DailyActivityChartProps> = ({ data }) => {
   );
 };
 
+interface RetentionCurveChartProps {
+  data: RetentionPoint[];
+}
+
+const RetentionCurveChart: FC<RetentionCurveChartProps> = ({ data }) => {
+  if (data.length === 0) {
+    return <div className="text-gray-400 text-center py-8">暂无足够的复习数据</div>;
+  }
+
+  const maxX = Math.max(...data.map((d) => d.intervalDays), 1);
+  const minY = Math.min(...data.map((d) => d.retention), 0);
+  const maxY = 100;
+
+  const points = data
+    .map((d) => {
+      const x = (d.intervalDays / maxX) * 100;
+      const y = 100 - ((d.retention - minY) / (maxY - minY || 1)) * 100;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(' ');
+
+  return (
+    <div>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-48">
+        <polyline
+          points={points}
+          fill="none"
+          stroke="var(--color-primary)"
+          strokeWidth="1"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+        {data.map((d, idx) => {
+          const x = (d.intervalDays / maxX) * 100;
+          const y = 100 - ((d.retention - minY) / (maxY - minY || 1)) * 100;
+          return (
+            <circle
+              key={idx}
+              cx={x}
+              cy={y}
+              r="1.2"
+              fill="var(--color-primary)"
+              vectorEffect="non-scaling-stroke"
+            />
+          );
+        })}
+      </svg>
+      <div className="flex justify-between text-xs text-gray-400 mt-2">
+        <span>间隔 {data[0]?.intervalDays} 天</span>
+        <span>间隔 {maxX}+ 天</span>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-3">
+        {data.map((d, idx) => (
+          <div key={idx} className="text-xs bg-gray-700/50 rounded px-2 py-1">
+            <span className="text-gray-400">{d.intervalDays}+ 天:</span>{' '}
+            <span className="text-primary">{d.retention.toFixed(1)}%</span>
+            <span className="text-gray-500"> ({d.reviewCount}次)</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+interface ForecastChartProps {
+  data: ForecastPoint[];
+}
+
+const ForecastChart: FC<ForecastChartProps> = ({ data }) => {
+  if (data.length === 0) {
+    return <div className="text-gray-400 text-center py-8">暂无数据</div>;
+  }
+
+  const maxValue = Math.max(...data.map((d) => d.dueCount), 1);
+
+  return (
+    <div>
+      <div className="flex items-end gap-1 h-40">
+        {data.map((d, idx) => {
+          const heightPercent = (d.dueCount / maxValue) * 100;
+          return (
+            <div key={idx} className="flex-1 flex flex-col justify-end group relative">
+              <div
+                className="w-full bg-primary/70 rounded-t transition-all duration-200 hover:bg-primary"
+                style={{ height: `${heightPercent}%` }}
+                title={`${d.date}: ${d.dueCount} 个待复习`}
+              />
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full mt-2 px-2 py-1 bg-gray-900 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                {d.date.slice(5)}
+                <br />
+                {d.dueCount} 个待复习
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-xs text-gray-400 mt-4">
+        <span>未来 {data.length} 天预计复习: </span>
+        <span className="text-primary">
+          {data.reduce((sum, d) => sum + d.dueCount, 0)} 次
+        </span>
+      </div>
+    </div>
+  );
+};
+
 interface WeakWordsListProps {
   words: WeakWord[];
   onWordClick?: (word: string) => void;
-}
-
-const WeakWordsList: FC<WeakWordsListProps> = ({ words, onWordClick }) => {
+}const WeakWordsList: FC<WeakWordsListProps> = ({ words, onWordClick }) => {
   if (words.length === 0) {
     return <div className="text-gray-400 text-center py-8">太棒了！暂无薄弱词汇 🎉</div>;
   }
@@ -532,6 +701,68 @@ const WeakWordsList: FC<WeakWordsListProps> = ({ words, onWordClick }) => {
           </div>
         );
       })}
+    </div>
+  );
+};
+
+interface WeakPointWordsListProps {
+  words: WeakPointWord[];
+  onWordClick?: (word: string) => void;
+  onResolve?: (cardId: string) => Promise<void>;
+}
+
+const WeakPointWordsList: FC<WeakPointWordsListProps> = ({ words, onWordClick, onResolve }) => {
+  if (words.length === 0) {
+    return <div className="text-gray-400 text-center py-8">暂无弱点错误记录</div>;
+  }
+
+  const getErrorTypeLabel = (errorType: string) => {
+    switch (errorType) {
+      case 'definition':
+        return '释义';
+      case 'pronunciation':
+        return '发音';
+      case 'spelling':
+        return '拼写';
+      case 'usage':
+        return '用法';
+      default:
+        return errorType;
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {words.map((word, idx) => (
+        <div
+          key={idx}
+          onClick={() => onWordClick?.(word.word)}
+          className="bg-gray-700/50 rounded-lg p-4 hover:bg-gray-700 transition-colors cursor-pointer group"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <span className="text-lg font-semibold group-hover:text-primary transition-colors">
+                {word.word}
+              </span>
+              <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400">
+                {getErrorTypeLabel(word.error_type)} × {word.count}
+              </span>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                void onResolve?.(word.card_id);
+              }}
+              className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-300 hover:bg-green-500/30 transition-colors"
+            >
+              已解决
+            </button>
+          </div>
+          <div className="text-xs text-gray-400">
+            最近出错: {new Date(word.last_occurred_at * 1000).toLocaleString()}
+          </div>
+        </div>
+      ))}
     </div>
   );
 };

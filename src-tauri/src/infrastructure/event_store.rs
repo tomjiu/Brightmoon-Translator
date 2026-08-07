@@ -58,6 +58,45 @@ impl EventStore {
         .execute(&self.pool)
         .await?;
 
+        // T13 性能:按事件类型 + 时间过滤的复合索引（统计/通知/指标等高频查询）
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_card_events_type_timestamp
+            ON card_events(event_type, timestamp)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T7: 词典源配置表（可插拔词典源）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS dictionary_sources (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                priority INTEGER NOT NULL DEFAULT 100,
+                prompt_template TEXT,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // 默认源配置（幂等插入）
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO dictionary_sources (id, name, enabled, priority, updated_at) VALUES
+                ('ecdict', 'ECDICT', 1, 100, 0),
+                ('youdao', '有道', 1, 90, 0),
+                ('online_api', 'DictionaryAPI.dev', 1, 80, 0),
+                ('ai_prompt', 'AI Prompt', 0, 10, 0)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         sqlx::query(
             r#"
             CREATE INDEX IF NOT EXISTS idx_card_events_timestamp
@@ -120,6 +159,158 @@ impl EventStore {
             r#"
             CREATE INDEX IF NOT EXISTS idx_patches_card_version
             ON card_patches(card_id, version)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T9: 语义向量表（选择题干扰项语义近邻）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                word TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'ecdict',
+                vector TEXT NOT NULL,
+                dim INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                UNIQUE(word, source)
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_embeddings_word
+            ON embeddings(word)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T8: 用户画像表（学习偏好/水平）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS user_profile (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id TEXT NOT NULL,
+                field TEXT NOT NULL,
+                rating REAL DEFAULT 0,
+                feedback TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_profile_card
+            ON user_profile(card_id)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T8: 弱点记录表（频繁出错的词/字段）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS weak_points (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id TEXT NOT NULL,
+                field TEXT NOT NULL,
+                error_type TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 0,
+                last_occurred_at INTEGER NOT NULL,
+                resolved INTEGER NOT NULL DEFAULT 0
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_weak_card
+            ON weak_points(card_id)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T8 修复:weak_points 需要唯一约束 (card_id, field, error_type)，否则
+        // ON CONFLICT DO UPDATE 永不触发，count 永远 = 1。
+        // 先合并历史重复行（保留 count 总和），再建唯一索引。
+        sqlx::query(
+            r#"
+            DELETE FROM weak_points
+            WHERE id NOT IN (
+                SELECT MIN(id) FROM weak_points GROUP BY card_id, field, error_type
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_weak_unique
+            ON weak_points(card_id, field, error_type)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T8: AI 批注持久化（annotations 表）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS annotations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                highlights TEXT NOT NULL DEFAULT '[]',
+                trigger_type TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_annotations_card
+            ON annotations(card_id)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T8: 测验错误日志表
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS quiz_errors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id TEXT NOT NULL,
+                quiz_type TEXT NOT NULL,
+                user_answer TEXT,
+                correct_answer TEXT,
+                context TEXT,
+                created_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_quiz_errors_card
+            ON quiz_errors(card_id)
             "#,
         )
         .execute(&self.pool)
@@ -320,6 +511,21 @@ impl EventStore {
         }
 
         Ok(events)
+    }
+
+    /// 返回该卡最近一次 AI 优化事件(patch_proposed / patch_applied)的 Unix 时间戳
+    pub async fn last_ai_optimize_at(&self, card_id: &str) -> Result<Option<i64>> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            r#"
+            SELECT MAX(timestamp) FROM card_events
+            WHERE card_id = ?
+              AND event_type IN ('patch_proposed', 'patch_applied')
+            "#,
+        )
+        .bind(card_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|(t,)| t))
     }
 
     /// 重建卡牌（从事件流）— P0 修复:覆盖 from_events 生成的新 UUID 为真实 card_id

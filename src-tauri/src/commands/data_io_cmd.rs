@@ -238,6 +238,7 @@ pub async fn import_learning_data_json(
 
     let mut imported = 0;
     let mut skipped = 0;
+    let mut invalid = 0;
 
     for card in &data.cards {
         // 检查是否已存在
@@ -245,7 +246,7 @@ pub async fn import_learning_data_json(
             .bind(&card.word)
             .fetch_optional(store.pool())
             .await
-            .unwrap_or(None);
+            .map_err(|e| format!("查询已存在卡牌失败: {}", e))?;
 
         if exists.is_some() {
             skipped += 1;
@@ -274,6 +275,9 @@ pub async fn import_learning_data_json(
                     timestamp: card.created_at,
                 };
                 store.append_event(&card_id, &ai_event).await.ok();
+            } else {
+                // P2 修复:AiContent 解析失败时计入 invalid，而不是静默吞掉
+                invalid += 1;
             }
         }
 
@@ -283,25 +287,16 @@ pub async fn import_learning_data_json(
     Ok(ImportResult {
         imported,
         skipped,
+        invalid,
         total: data.cards.len() as i32,
     })
 }
 
-/// 从 CSV/TSV 导入单词列表（兼容 Quizlet/扇贝/Anki 导出）
-#[tauri::command]
-pub async fn import_wordlist_csv(
-    state: State<'_, crate::AppState>,
-    file_path: String,
-) -> Result<ImportResult, String> {
-    let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
-    let content =
-        std::fs::read_to_string(&file_path).map_err(|e| format!("读取文件失败: {}", e))?;
-
-    let delimiter = if content.contains('\t') { '\t' } else { ',' };
-    let mut imported = 0;
-    let mut skipped = 0;
-    let now = chrono::Utc::now().timestamp();
-
+/// 解析 wordlist 文本内容，返回 (待导入词列表, 无效行数)。
+/// 提取为纯函数便于单测（T12 P0: 文件内重复词去重）。
+fn parse_wordlist_content(content: &str, delimiter: char) -> (Vec<(String, String)>, i32) {
+    let mut pending: Vec<(String, String)> = Vec::new();
+    let mut invalid = 0;
     for line in content.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -320,17 +315,60 @@ pub async fn import_wordlist_csv(
             .unwrap_or_default();
 
         if word.is_empty() || word.len() < 2 {
+            invalid += 1;
             continue;
         }
 
-        // 检查是否已存在
-        let exists: Option<String> = sqlx::query_scalar("SELECT id FROM cards WHERE word = ?")
-            .bind(&word)
-            .fetch_optional(store.pool())
-            .await
-            .unwrap_or(None);
+        pending.push((word, definition));
+    }
+    (pending, invalid)
+}
 
-        if exists.is_some() {
+/// 从 CSV/TSV 导入单词列表（兼容 Quizlet/扇贝/Anki 导出）
+#[tauri::command]
+pub async fn import_wordlist_csv(
+    state: State<'_, crate::AppState>,
+    file_path: String,
+) -> Result<ImportResult, String> {
+    let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
+    let content =
+        std::fs::read_to_string(&file_path).map_err(|e| format!("读取文件失败: {}", e))?;
+
+    let delimiter = if content.contains('\t') { '\t' } else { ',' };
+    let mut imported = 0;
+    let mut skipped = 0;
+    let now = chrono::Utc::now().timestamp();
+
+    // 从文件中提取待导入单词（第 1 列），返回 (word, definition) 及无效行计数
+    let (pending, invalid) = parse_wordlist_content(&content, delimiter);
+
+    // 批量查询已存在的单词
+    let mut existing: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for chunk in pending.chunks(500) {
+        if chunk.is_empty() {
+            continue;
+        }
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!("SELECT word FROM cards WHERE word IN ({})", placeholders);
+        let mut q = sqlx::query(&sql);
+        for (w, _) in chunk {
+            q = q.bind(w);
+        }
+        // P0 修复:DB 错误必须向上传播，否则空 Vec 会把所有词误判为"不存在"，导致批量重复插入
+        let rows = q
+            .fetch_all(store.pool())
+            .await
+            .map_err(|e| format!("查询已存在单词失败: {}", e))?;
+        for row in rows {
+            use sqlx::Row;
+            if let Ok(w) = row.try_get::<String, _>("word") {
+                existing.insert(w);
+            }
+        }
+    }
+
+    for (word, definition) in pending {
+        if existing.contains(&word) {
             skipped += 1;
             continue;
         }
@@ -345,6 +383,9 @@ pub async fn import_wordlist_csv(
             .append_event(&card_id, &event)
             .await
             .map_err(|e| e.to_string())?;
+
+        // P0 修复:插入成功后立即加入 existing 集合，避免文件内重复行产生重复卡片
+        existing.insert(word.clone());
 
         // 将释义作为 AI 内容的一部分存储
         if !definition.is_empty() {
@@ -379,7 +420,8 @@ pub async fn import_wordlist_csv(
     Ok(ImportResult {
         imported,
         skipped,
-        total: imported + skipped,
+        invalid,
+        total: imported + skipped + invalid,
     })
 }
 
@@ -408,12 +450,57 @@ pub async fn auto_backup(
     Ok(file_path.to_string_lossy().to_string())
 }
 
+/// 自动备份并清理旧备份（保留最近 keep 份）
+#[tauri::command]
+pub async fn auto_backup_with_cleanup(
+    state: State<'_, crate::AppState>,
+    backup_dir: String,
+    keep: i32,
+) -> Result<String, String> {
+    let result = auto_backup(state, backup_dir.clone()).await?;
+
+    // 清理旧备份：仅保留最近 keep 份
+    if keep > 0 {
+        let keep = keep as usize;
+        if let Ok(entries) = std::fs::read_dir(&backup_dir) {
+            let mut backups: Vec<(std::path::PathBuf, u128)> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.file_name()
+                        .to_string_lossy()
+                        .starts_with("moontranslator_backup_")
+                })
+                .filter_map(|e| {
+                    let path = e.path();
+                    let mtime = std::fs::metadata(&path)
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis())
+                        .unwrap_or(0);
+                    Some((path, mtime))
+                })
+                .collect();
+
+            // 按修改时间倒序（最新在前）
+            backups.sort_by(|a, b| b.1.cmp(&a.1));
+
+            for (path, _) in backups.into_iter().skip(keep) {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 /// 导入结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportResult {
     pub imported: i32,
     pub skipped: i32,
+    pub invalid: i32,
     pub total: i32,
 }
 
@@ -435,4 +522,52 @@ pub async fn write_file_base64(file_path: String, base64_data: String) -> Result
         .decode(raw.trim())
         .map_err(|e| format!("base64 decode: {}", e))?;
     std::fs::write(&file_path, bytes).map_err(|e| format!("写入文件失败: {}", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_wordlist_comma_csv() {
+        let content = "apple,一种水果\nbanana\n# comment line\n\nCAt,小猫\n";
+        let (pending, invalid) = parse_wordlist_content(content, ',');
+        // 单词小写化:apple/banana/cat
+        assert_eq!(pending.len(), 3);
+        assert_eq!(pending[0].0, "apple");
+        assert_eq!(pending[0].1, "一种水果");
+        assert_eq!(pending[1].0, "banana");
+        assert_eq!(pending[2].0, "cat");
+        assert_eq!(invalid, 0);
+    }
+
+    #[test]
+    fn parse_wordlist_tsv_delimiter() {
+        let content = "hello\t你好\nworld\t世界\n";
+        let (pending, invalid) = parse_wordlist_content(content, '\t');
+        assert_eq!(pending.len(), 2);
+        assert_eq!(pending[0].0, "hello");
+        assert_eq!(pending[0].1, "你好");
+        assert_eq!(invalid, 0);
+    }
+
+    #[test]
+    fn parse_wordlist_counts_invalid_rows() {
+        // 单字符词、空词、纯空白都算无效
+        let content = "a\n\n   \nvalid-word\nx,\n";
+        let (pending, invalid) = parse_wordlist_content(content, ',');
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].0, "valid-word");
+        assert_eq!(invalid, 2); // "a" 和 "x"
+    }
+
+    #[test]
+    fn parse_wordlist_preserves_duplicates_for_db_dedup() {
+        // 文件内重复行由 existing 集合在导入循环中去重，
+        // 解析层保留重复以便 DB 批量查询能正确跳过(不在解析层静默去重)。
+        let content = "apple\napple\napple\n";
+        let (pending, _invalid) = parse_wordlist_content(content, ',');
+        assert_eq!(pending.len(), 3);
+        assert_eq!(pending[0].0, "apple");
+    }
 }

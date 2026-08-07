@@ -272,9 +272,162 @@ pub async fn get_weak_words(
     Ok(weak_words)
 }
 
+/// 记忆保留率曲线数据点（按首次学习后的间隔天数分桶）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetentionPoint {
+    /// 间隔天数（从首次学习起）
+    pub interval_days: i32,
+    /// 该桶内正确率（Good/Easy 占比 %）
+    pub retention: f64,
+    /// 该桶内复习次数
+    pub review_count: i32,
+}
+
+/// 获取记忆保留率曲线（最近若干天内发生的复习，按学习间隔分桶）
+#[tauri::command]
+pub async fn get_retention_curve(
+    state: State<'_, crate::AppState>,
+    days: i32,
+) -> Result<Vec<RetentionPoint>, String> {
+    let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
+    let pool = store.pool();
+    let start_timestamp =
+        (chrono::Utc::now() - chrono::Duration::days(days as i64)).timestamp();
+
+    // 关联每张卡的首次学习时间与历次复习，计算间隔天数
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            CAST((e.timestamp - first_seen.t) / 86400.0 AS INTEGER) as interval_days,
+            json_extract(e.event_data, '$.grade') as grade
+        FROM card_events e
+        JOIN (
+            SELECT card_id, MIN(timestamp) as t
+            FROM card_events
+            WHERE event_type = 'word_imported'
+            GROUP BY card_id
+        ) first_seen ON e.card_id = first_seen.card_id
+        WHERE e.event_type = 'fsrs_updated'
+          AND e.timestamp >= ?
+          AND e.timestamp > first_seen.t
+        "#,
+    )
+    .bind(start_timestamp)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // 按间隔分桶：0, 1, 2-3, 4-6, 7-13, 14-20, 21-27, 28+
+    let mut buckets: std::collections::HashMap<i32, (i32, i32)> = std::collections::HashMap::new(); // interval_bucket -> (correct, total)
+    let bucket_of = retention_bucket;
+
+    for row in rows {
+        use sqlx::Row;
+        let interval_days: i64 = row.get("interval_days");
+        let grade: Option<String> = row.get("grade");
+        let bucket = bucket_of(interval_days as i32);
+        let entry = buckets.entry(bucket).or_insert((0, 0));
+        entry.1 += 1;
+        if matches!(grade.as_deref(), Some("good") | Some("easy")) {
+            entry.0 += 1;
+        }
+    }
+
+    let bucket_labels: [i32; 8] = [0, 1, 2, 4, 7, 14, 21, 28];
+    let mut points: Vec<RetentionPoint> = (0..8)
+        .filter_map(|b| {
+            let (correct, total) = buckets.get(&b).copied().unwrap_or((0, 0));
+            if total == 0 {
+                return None;
+            }
+            Some(RetentionPoint {
+                interval_days: bucket_labels[b as usize],
+                retention: (correct as f64 / total as f64) * 100.0,
+                review_count: total,
+            })
+        })
+        .collect();
+
+    points.sort_by(|a, b| a.interval_days.cmp(&b.interval_days));
+    Ok(points)
+}
+
+/// 未来复习量预测点
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForecastPoint {
+    pub date: String, // YYYY-MM-DD
+    pub due_count: i32,
+}
+
+/// 获取未来 N 天的到期复习量预测（基于 FSRS next_review）
+#[tauri::command]
+pub async fn get_review_forecast_stats(
+    state: State<'_, crate::AppState>,
+    days: i32,
+) -> Result<Vec<ForecastPoint>, String> {
+    let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
+    let pool = store.pool();
+
+    let today = chrono::Utc::now().date_naive();
+    let today_start = today.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+    let window_end = (today + chrono::Duration::days(days as i64))
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp();
+
+    // T10 修复:单次聚合查询按天分桶，消除 N+1（原先逐日发 days 次 COUNT）
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT CAST(
+                    (json_extract(fsrs_state, '$.next_review') - ?) / 86400
+                 AS INTEGER) AS day_offset,
+                COUNT(*)
+         FROM cards
+         WHERE json_extract(fsrs_state, '$.next_review') >= ?
+           AND json_extract(fsrs_state, '$.next_review') < ?
+         GROUP BY day_offset",
+    )
+    .bind(today_start)
+    .bind(today_start)
+    .bind(window_end)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("统计到期卡片失败: {e}"))?;
+
+    let mut points = Vec::with_capacity(days as usize);
+    let mut counts: std::collections::HashMap<i64, i64> =
+        rows.into_iter().collect();
+    for offset in 0..days {
+        let day = today + chrono::Duration::days(offset as i64);
+        let due = counts.remove(&(offset as i64)).unwrap_or(0);
+        points.push(ForecastPoint {
+            date: day.format("%Y-%m-%d").to_string(),
+            due_count: due as i32,
+        });
+    }
+
+    Ok(points)
+}
+
 // ============================================
 // 辅助函数
 // ============================================
+
+/// 保留率按复习间隔分桶：0, 1, 2-3, 4-6, 7-13, 14-20, 21-27, 28+
+fn retention_bucket(days: i32) -> i32 {
+    match days {
+        d if d <= 0 => 0,
+        d if d <= 1 => 1,
+        d if d <= 3 => 2,
+        d if d <= 6 => 3,
+        d if d <= 13 => 4,
+        d if d <= 20 => 5,
+        d if d <= 27 => 6,
+        _ => 7,
+    }
+}
 
 /// 计算连续学习天数（单次聚合查询优化）
 async fn calculate_streak_days(pool: &sqlx::SqlitePool) -> Result<i32, sqlx::Error> {
@@ -373,4 +526,29 @@ async fn calculate_avg_daily_review(pool: &sqlx::SqlitePool) -> Result<f64, sqlx
     .await?;
 
     Ok(total as f64 / days as f64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retention_bucket_boundaries() {
+        // 每个桶的边界值
+        assert_eq!(retention_bucket(-5), 0);
+        assert_eq!(retention_bucket(0), 0);
+        assert_eq!(retention_bucket(1), 1);
+        assert_eq!(retention_bucket(2), 2);
+        assert_eq!(retention_bucket(3), 2);
+        assert_eq!(retention_bucket(4), 3);
+        assert_eq!(retention_bucket(6), 3);
+        assert_eq!(retention_bucket(7), 4);
+        assert_eq!(retention_bucket(13), 4);
+        assert_eq!(retention_bucket(14), 5);
+        assert_eq!(retention_bucket(20), 5);
+        assert_eq!(retention_bucket(21), 6);
+        assert_eq!(retention_bucket(27), 6);
+        assert_eq!(retention_bucket(28), 7);
+        assert_eq!(retention_bucket(100), 7);
+    }
 }

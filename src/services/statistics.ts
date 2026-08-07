@@ -51,3 +51,22 @@ export async function getHeatmapData(year: number): Promise<HeatmapData[]> {
 export async function getWeakWords(limit: number): Promise<WeakWord[]> {
   return invokeOrThrow('get_weak_words', { limit });
 }
+
+export interface RetentionPoint {
+  intervalDays: number;
+  retention: number;
+  reviewCount: number;
+}
+
+export interface ForecastPoint {
+  date: string; // YYYY-MM-DD
+  dueCount: number;
+}
+
+export async function getRetentionCurve(days: number): Promise<RetentionPoint[]> {
+  return invokeOrThrow('get_retention_curve', { days });
+}
+
+export async function getReviewForecastStats(days: number): Promise<ForecastPoint[]> {
+  return invokeOrThrow('get_review_forecast_stats', { days });
+}
