@@ -1023,6 +1023,7 @@ pub fn run() {
             commands::data_io_cmd::import_learning_data_json,
             commands::data_io_cmd::import_wordlist_csv,
             commands::data_io_cmd::auto_backup,
+            commands::data_io_cmd::auto_backup_with_cleanup,
             commands::data_io_cmd::write_file_content,
             commands::data_io_cmd::write_file_base64,
             commands::fsrs_optimization_cmd::get_fsrs_analysis,
