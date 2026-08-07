@@ -982,6 +982,8 @@ pub fn run() {
             commands::statistics_cmd::get_daily_activity,
             commands::statistics_cmd::get_heatmap_data,
             commands::statistics_cmd::get_weak_words,
+            commands::statistics_cmd::get_retention_curve,
+            commands::statistics_cmd::get_review_forecast_stats,
             commands::notification_cmd::send_desktop_notification,
             commands::notification_cmd::check_daily_reminder,
             commands::notification_cmd::check_due_cards_reminder,
