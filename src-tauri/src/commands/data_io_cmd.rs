@@ -238,6 +238,7 @@ pub async fn import_learning_data_json(
 
     let mut imported = 0;
     let mut skipped = 0;
+    let mut invalid = 0;
 
     for card in &data.cards {
         // 检查是否已存在
@@ -245,7 +246,7 @@ pub async fn import_learning_data_json(
             .bind(&card.word)
             .fetch_optional(store.pool())
             .await
-            .unwrap_or(None);
+            .map_err(|e| format!("查询已存在卡牌失败: {}", e))?;
 
         if exists.is_some() {
             skipped += 1;
@@ -274,6 +275,9 @@ pub async fn import_learning_data_json(
                     timestamp: card.created_at,
                 };
                 store.append_event(&card_id, &ai_event).await.ok();
+            } else {
+                // P2 修复:AiContent 解析失败时计入 invalid，而不是静默吞掉
+                invalid += 1;
             }
         }
 
@@ -283,7 +287,7 @@ pub async fn import_learning_data_json(
     Ok(ImportResult {
         imported,
         skipped,
-        invalid: 0,
+        invalid,
         total: data.cards.len() as i32,
     })
 }
@@ -345,7 +349,11 @@ pub async fn import_wordlist_csv(
         for w in chunk {
             q = q.bind(w);
         }
-        let rows = q.fetch_all(store.pool()).await.unwrap_or_default();
+        // P0 修复:DB 错误必须向上传播，否则空 Vec 会把所有词误判为"不存在"，导致批量重复插入
+        let rows = q
+            .fetch_all(store.pool())
+            .await
+            .map_err(|e| format!("查询已存在单词失败: {}", e))?;
         for row in rows {
             use sqlx::Row;
             if let Ok(w) = row.try_get::<String, _>("word") {
@@ -370,6 +378,9 @@ pub async fn import_wordlist_csv(
             .append_event(&card_id, &event)
             .await
             .map_err(|e| e.to_string())?;
+
+        // P0 修复:插入成功后立即加入 existing 集合，避免文件内重复行产生重复卡片
+        existing.insert(word.clone());
 
         // 将释义作为 AI 内容的一部分存储
         if !definition.is_empty() {
