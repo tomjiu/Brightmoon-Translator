@@ -51,8 +51,8 @@ impl EventStore {
         // 索引
         sqlx::query(
             r#"
-            CREATE INDEX IF NOT EXISTS idx_quiz_errors_card
-            ON quiz_errors(card_id)
+            CREATE INDEX IF NOT EXISTS idx_card_events_card_id
+            ON card_events(card_id)
             "#,
         )
         .execute(&self.pool)
@@ -352,15 +352,21 @@ impl EventStore {
     }
 
     /// 重建卡牌（从事件流）
+    /// P0 修复:from_events 内部用 Uuid::new_v4() 生成临时 id，这里覆盖为真实 card_id，
+    /// 否则 update_snapshot 会写到新 row，导致该 card_id 的 fsrs_state 永不更新。
     pub async fn rebuild_card(&self, card_id: &str) -> Result<WordCard> {
         let events = self.load_events(card_id).await?;
-        WordCard::from_events(&events)
+        let mut card = WordCard::from_events(&events)?;
+        card.id = card_id.to_string();
+        Ok(card)
     }
 
-    /// 获取卡牌在指定时间点的状态（时间旅行）
+    /// 获取卡牌在指定时间点的状态（时间旅行），同样覆盖为真实 card_id
     pub async fn get_card_at_time(&self, card_id: &str, timestamp: i64) -> Result<WordCard> {
         let events = self.load_events_before(card_id, timestamp).await?;
-        WordCard::from_events(&events)
+        let mut card = WordCard::from_events(&events)?;
+        card.id = card_id.to_string();
+        Ok(card)
     }
 
     /// 更新卡牌快照（性能优化）
