@@ -148,6 +148,21 @@ pub async fn get_card(
         .map_err(|e| e.to_string())
 }
 
+/// 全文搜索卡牌(FTS5 + LIKE 兜底)— T5 接线:暴露 EventStore::search_cards 为命令
+#[tauri::command]
+pub async fn search_cards(
+    state: State<'_, crate::AppState>,
+    query: String,
+    limit: Option<i64>,
+) -> Result<Vec<WordCard>, String> {
+    let store = state.event_store.as_ref().ok_or("词汇数据库未初始化")?;
+    let limit = limit.unwrap_or(20).clamp(1, 100);
+    store
+        .search_cards(&query, limit)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// 获取待复习卡牌列表
 #[tauri::command]
 pub async fn get_due_cards(state: State<'_, crate::AppState>) -> Result<Vec<CardInfo>, String> {
@@ -409,6 +424,11 @@ pub async fn study_word(
     word: String,
 ) -> Result<StudyWordData, String> {
     // 词典数据由 study_word 命令处理
+    // P1 修复:word 归一化(trim),大小写归一化通过 COLLATE NOCASE 查询实现
+    let word = word.trim().to_string();
+    if word.is_empty() {
+        return Err("word is empty".to_string());
+    }
 
     let ecdict_pool = state.ecdict_pool.as_ref();
     let event_store = state.event_store.as_ref();
@@ -536,12 +556,14 @@ pub async fn study_word(
         use uuid::Uuid;
 
         // 复用已存在的卡牌,避免同一单词生成多条 UUID / 重复 AI 调用
+        // P1 修复:用 word_lower 查询,大小写归一化("Run" == "run")
         let pool = store.pool();
-        let existing: Option<String> = sqlx::query_scalar("SELECT id FROM cards WHERE word = ?1 LIMIT 1")
-            .bind(&word)
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| e.to_string())?;
+        let existing: Option<String> =
+            sqlx::query_scalar("SELECT id FROM cards WHERE word = ?1 COLLATE NOCASE LIMIT 1")
+                .bind(&word)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| e.to_string())?;
 
         let is_new = existing.is_none();
         let card_id = match existing {
@@ -1034,7 +1056,7 @@ pub async fn extract_words_and_study(
         .filter(|s| !s.is_empty())
         .collect();
 
-    // 停用词过滤（常见功能词 + 无学习价值的词）
+    // 停用词过滤（常见功能词 + 无学习价值的词）— P1 修复:去重
     let stop_words: HashSet<&str> = [
         "the", "a", "an", "and", "or", "but", "if", "then", "than", "so", "of", "to", "in",
         "on", "at", "by", "for", "with", "about", "as", "is", "are", "was", "were", "be",
@@ -1043,12 +1065,12 @@ pub async fn extract_words_and_study(
         "she", "they", "we", "my", "your", "his", "her", "their", "our", "not", "no", "yes",
         "will", "would", "can", "could", "should", "shall", "may", "might", "must", "from",
         "into", "up", "down", "out", "off", "over", "under", "again", "once", "just", "very",
-        "also", "but", "which", "what", "when", "where", "why", "how", "who", "whom", "whose",
+        "also", "which", "what", "when", "where", "why", "how", "who", "whom", "whose",
         "all", "any", "some", "each", "every", "both", "few", "more", "most", "other", "such",
-        "only", "own", "same", "too", "very", "them", "us", "me", "him", "her", "it",
-        "not", "don't", "doesn't", "didn't", "won't", "can't", "isn't", "aren't", "wasn't",
+        "only", "own", "same", "too", "them", "us", "me", "him",
+        "don't", "doesn't", "didn't", "won't", "can't", "isn't", "aren't", "wasn't",
         "weren't", "i'm", "i've", "i'll", "i'd", "you're", "you've", "we're", "they're",
-        "there's", "it's", "that's", "what's", "let's", "ok", "okay", "good", "well", "yes",
+        "there's", "it's", "that's", "what's", "let's", "ok", "okay", "good", "well",
     ]
     .into_iter()
     .collect();

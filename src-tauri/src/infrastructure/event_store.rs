@@ -322,16 +322,22 @@ impl EventStore {
         Ok(events)
     }
 
-    /// 重建卡牌（从事件流）
+    /// 重建卡牌（从事件流）— P0 修复:覆盖 from_events 生成的新 UUID 为真实 card_id
     pub async fn rebuild_card(&self, card_id: &str) -> Result<WordCard> {
         let events = self.load_events(card_id).await?;
-        WordCard::from_events(&events)
+        let mut card = WordCard::from_events(&events)?;
+        // from_events 内部用 Uuid::new_v4() 生成临时 id,这里覆盖为真实的 card_id,
+        // 否则 update_snapshot 会写到一个新 row,原 card_id 行的 fsrs_state 永不更新。
+        card.id = card_id.to_string();
+        Ok(card)
     }
 
-    /// 获取卡牌在指定时间点的状态（时间旅行）
+    /// 获取卡牌在指定时间点的状态（时间旅行）— 同上,覆盖 id
     pub async fn get_card_at_time(&self, card_id: &str, timestamp: i64) -> Result<WordCard> {
         let events = self.load_events_before(card_id, timestamp).await?;
-        WordCard::from_events(&events)
+        let mut card = WordCard::from_events(&events)?;
+        card.id = card_id.to_string();
+        Ok(card)
     }
 
     /// 更新卡牌快照（性能优化）
