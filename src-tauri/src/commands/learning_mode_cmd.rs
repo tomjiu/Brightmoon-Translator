@@ -1,5 +1,6 @@
 // Learning Mode Commands - 多样化学习模式 API
 
+use crate::skills::{LlmMessage, LlmProvider, LlmRequest, OpenAiCompatibleProvider};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use tauri::State;
@@ -14,7 +15,6 @@ pub struct ChoiceQuestion {
     pub correct_index: usize,
     pub explanation: Option<String>,
 }
-
 /// 拼写题
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,45 +44,49 @@ pub async fn generate_choice_questions(
 ) -> Result<Vec<ChoiceQuestion>, String> {
     let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
     let pool = store.pool();
+    let ecdict_pool = state.ecdict_pool.as_ref();
 
     // 获取要测试的单词
     let words = get_quiz_words(pool, plan_id, count).await?;
 
-    let mut questions = Vec::new();
-
-    for word_info in &words {
-        let (word, definition) = word_info;
-
-        // 获取干扰选项（其他单词的释义）
-        let distractors: Vec<String> =
-            sqlx::query_scalar("SELECT word FROM cards WHERE word != ? ORDER BY RANDOM() LIMIT 3")
-                .bind(word)
-                .fetch_all(pool)
+    // 并发生成每道题（LLM 验证是网络请求，串行会阻塞 10 题 = 20-30s）
+    let pool_clone = pool.clone();
+    let state_ref = &state;
+    let futures = words
+        .iter()
+        .map(|(word, definition)| {
+            let pool = pool_clone.clone();
+            let ecdict_pool = ecdict_pool.map(|p| p.clone());
+            let words_clone: Vec<(String, String)> = words
+                .iter()
+                .map(|(w, d)| (w.clone(), d.clone()))
+                .collect();
+            let word = word.clone();
+            let definition = definition.clone();
+            async move {
+                build_choice_for_word(
+                    state_ref,
+                    &pool,
+                    ecdict_pool.as_ref(),
+                    &words_clone,
+                    &word,
+                    &definition,
+                )
                 .await
-                .unwrap_or_default();
+            }
+        })
+        .collect::<Vec<_>>();
 
-        if distractors.len() < 3 {
-            continue;
+    let results = futures::future::join_all(futures).await;
+    let mut questions = Vec::new();
+    for q in results {
+        if let Some(q) = q {
+            questions.push(q);
         }
-
-        // 组装选项（正确答案 + 3个干扰项）
-        let mut options = distractors;
-        options.push(word.clone());
-        shuffle_vec(&mut options);
-        let correct_index = options.iter().position(|o| o == word).unwrap_or(0);
-
-        questions.push(ChoiceQuestion {
-            word: word.clone(),
-            question: format!("哪个单词的意思是「{}」？", definition),
-            options,
-            correct_index,
-            explanation: None,
-        });
     }
 
     // 如果本地卡牌不够，从 ECDICT 补充
     if questions.len() < count as usize {
-        let ecdict_pool = state.ecdict_pool.as_ref();
         if let Some(ecdict_pool) = ecdict_pool {
             let extra: Vec<(String, String)> = sqlx::query_as(
                 "SELECT word, translation FROM stardict WHERE frq IS NOT NULL ORDER BY RANDOM() LIMIT ?"
@@ -96,13 +100,13 @@ pub async fn generate_choice_questions(
                 let def_short = translation.lines().next().unwrap_or(&translation);
                 let def_short: String = def_short.chars().take(40).collect();
 
+                // T9: 语义近邻干扰项（本地卡牌池优先）
+                let used: Vec<String> = vec![word.clone()];
                 let distractors: Vec<String> =
-                    sqlx::query_scalar("SELECT word FROM cards ORDER BY RANDOM() LIMIT 3")
-                        .fetch_all(pool)
-                        .await
-                        .unwrap_or_default();
+                    pick_semantic_distractors(pool, ecdict_pool, &word, &used, 3).await;
 
                 if distractors.len() < 3 {
+                    // 语义向量不足时回退到 ECDICT 随机
                     let ecdict_distractors: Vec<String> = sqlx::query_scalar(
                         "SELECT word FROM stardict WHERE word != ? ORDER BY RANDOM() LIMIT 3",
                     )
@@ -146,6 +150,103 @@ pub async fn generate_choice_questions(
     }
 
     Ok(questions)
+}
+
+/// 为单个单词构建一道选择题（T9 语义干扰项 + LLM 歧义验证）
+/// 返回 None 表示该题无法生成（干扰项不足），由调用方跳过
+async fn build_choice_for_word(
+    state: &State<'_, crate::AppState>,
+    pool: &sqlx::SqlitePool,
+    ecdict_pool: Option<&sqlx::SqlitePool>,
+    words: &[(String, String)],
+    word: &str,
+    definition: &str,
+) -> Option<ChoiceQuestion> {
+    // 获取干扰选项（T9：语义近邻替代随机）
+    let mut used: Vec<String> = words.iter().map(|(w, _)| w.clone()).collect();
+    used.push(word.to_string());
+    let distractors: Vec<String> = match ecdict_pool {
+        Some(dict_pool) => pick_semantic_distractors(pool, dict_pool, word, &used, 3).await,
+        None => Vec::new(),
+    };
+
+    if distractors.len() < 3 {
+        // 语义向量不足时回退到随机（保留原有兜底）
+        let fallback: Vec<String> =
+            sqlx::query_scalar("SELECT word FROM cards WHERE word != ? ORDER BY RANDOM() LIMIT 3")
+                .bind(word)
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default();
+        if fallback.len() >= 3 {
+            let mut options = fallback;
+            options.push(word.to_string());
+            shuffle_vec(&mut options);
+            let correct_index = options.iter().position(|o| o == word).unwrap_or(0);
+            return Some(ChoiceQuestion {
+                word: word.to_string(),
+                question: format!("哪个单词的意思是「{}」？", definition),
+                options,
+                correct_index,
+                explanation: None,
+            });
+        }
+        return None;
+    }
+
+    // 组装选项（正确答案 + 3个干扰项）
+    // T9: AI 验证防幻觉——替换有歧义的干扰项
+    let mut distractors = distractors;
+    let ambiguous = verify_options_with_llm(state, word, definition, &distractors).await;
+    if !ambiguous.is_empty() {
+        let ambiguous_set: std::collections::HashSet<String> =
+            ambiguous.into_iter().collect();
+        distractors.retain(|d| !ambiguous_set.contains(d));
+
+        // 补充替换词：用剩余候选补齐到 3 个（仅用语义近邻，不再 LLM 验证）
+        if distractors.len() < 3 {
+            let used: Vec<String> = {
+                let mut u = words.iter().map(|(w, _)| w.clone()).collect::<Vec<_>>();
+                u.push(word.to_string());
+                u.extend(distractors.iter().cloned());
+                u
+            };
+            let extra = match ecdict_pool {
+                Some(dict_pool) => {
+                    pick_semantic_distractors(pool, dict_pool, word, &used, 3).await
+                },
+                None => Vec::new(),
+            };
+            for e in extra {
+                if distractors.len() >= 3 {
+                    break;
+                }
+                if !distractors.contains(&e) {
+                    distractors.push(e);
+                }
+            }
+        }
+    }
+
+    // 契约兜底：LLM 删除歧义项且补充失败时，干扰项可能 < 3，跳过此题保持 4 选项
+    if distractors.len() < 3 {
+        return None;
+    }
+
+    let mut options = distractors;
+    if !options.iter().any(|o| o == word) {
+        options.push(word.to_string());
+    }
+    shuffle_vec(&mut options);
+    let correct_index = options.iter().position(|o| o == word).unwrap_or(0);
+
+    Some(ChoiceQuestion {
+        word: word.to_string(),
+        question: format!("哪个单词的意思是「{}」？", definition),
+        options,
+        correct_index,
+        explanation: None,
+    })
 }
 
 /// 生成拼写题
@@ -289,6 +390,206 @@ pub async fn submit_swipe_rating(
 // ============================================
 // 辅助函数
 // ============================================
+
+/// 语义化选择干扰项（T9）
+///
+/// 从候选词池中挑选与目标词语义相近(余弦相似度 0.4-0.8)的 3 个词作干扰项,
+/// 替代原来的 ORDER BY RANDOM() 完全随机。
+/// 向量基于 ECDICT 释义文本构建,懒加载并缓存到 embeddings 表。
+async fn pick_semantic_distractors(
+    emb_pool: &sqlx::SqlitePool,
+    dict_pool: &sqlx::SqlitePool,
+    word: &str,
+    exclude: &[String],
+    count: usize,
+) -> Vec<String> {
+    // 候选词池：从 ECDICT 高频词取
+    let mut candidates: Vec<(String, String)> = sqlx::query_as(
+        "SELECT word, translation FROM stardict
+         WHERE frq IS NOT NULL AND frq <= 6000 AND word != ?
+         ORDER BY RANDOM() LIMIT 80",
+    )
+    .bind(word)
+    .fetch_all(dict_pool)
+    .await
+    .unwrap_or_default();
+
+    // 排除已用词
+    candidates.retain(|(w, _)| !exclude.contains(w));
+
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+
+    // 目标词释义（用于构建目标向量）
+    let target_text: Option<String> = sqlx::query_scalar(
+        "SELECT translation FROM stardict WHERE word = ?1",
+    )
+    .bind(word)
+    .fetch_optional(dict_pool)
+    .await
+    .ok()
+    .flatten();
+
+    // 目标词向量（优先读缓存，未命中则从释义构建）
+    let target_vec = match crate::infrastructure::load_embedding(emb_pool, word, "ecdict").await {
+        Ok(Some(v)) => v,
+        _ => {
+            let text = target_text.clone().unwrap_or_else(|| word.to_string());
+            let v = crate::infrastructure::build_vector(&text, 256);
+            crate::infrastructure::upsert_embedding(emb_pool, word, "ecdict", &v).await.ok();
+            v
+        },
+    };
+
+    // 候选词向量（批量加载，未命中则从释义构建）
+    let cand_words: Vec<String> = candidates.iter().map(|(w, _)| w.clone()).collect();
+    let mut vec_map = crate::infrastructure::load_embeddings(emb_pool, &cand_words, "ecdict")
+        .await
+        .unwrap_or_default();
+
+    for (w, text) in &candidates {
+        if !vec_map.contains_key(w) {
+            let v = crate::infrastructure::build_vector(text, 256);
+            crate::infrastructure::upsert_embedding(emb_pool, w, "ecdict", &v).await.ok();
+            vec_map.insert(w.clone(), v);
+        }
+    }
+
+    // 计算相似度，选 0.4-0.8 区间内最接近的 count 个
+    let mut scored: Vec<(f32, String)> = candidates
+        .iter()
+        .filter_map(|(w, _)| {
+            let v = vec_map.get(w)?;
+            let sim = target_vec.cosine(v);
+            Some((sim, w.clone()))
+        })
+        .collect();
+
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    // 优先取 0.4-0.8 区间（语义相近但不易混淆），不足则退而取最接近的
+    let in_range: Vec<String> = scored
+        .iter()
+        .filter(|(sim, _)| (*sim >= 0.4) && (*sim <= 0.8))
+        .map(|(_, w)| w.clone())
+        .take(count)
+        .collect();
+
+    if in_range.len() >= count {
+        in_range
+    } else {
+        let mut result = in_range;
+        for (_, w) in &scored {
+            if result.len() >= count {
+                break;
+            }
+            if !result.contains(w) {
+                result.push(w.clone());
+            }
+        }
+        result
+    }
+}
+
+/// AI 词义验证防幻觉（T9）
+///
+/// 检查干扰项是否与正确答案语义冲突（多个选项都可能正确 = 歧义题）。
+/// 返回需要替换的干扰项列表；无法调用 LLM 时返回空（不阻塞，静默跳过）。
+/// 带缓存：相同 (正确词, 干扰项组合) 只验证一次。
+async fn verify_options_with_llm(
+    state: &State<'_, crate::AppState>,
+    correct_word: &str,
+    definition: &str,
+    distractors: &[String],
+) -> Vec<String> {
+    if distractors.is_empty() {
+        return Vec::new();
+    }
+
+    // LLM 配置
+    let config = state.system.config.lock().await;
+    let llm = &config.llm;
+    let api_key = if !llm.api_key.is_empty() {
+        Some(llm.api_key.clone())
+    } else {
+        llm.api_keys.first().cloned()
+    };
+    let base_url = llm.base_url.clone();
+    let model = llm.model.clone();
+    drop(config);
+
+    let (Some(key), false) = (api_key, base_url.is_empty()) else {
+        return Vec::new();
+    };
+
+    let options_text = distractors
+        .iter()
+        .enumerate()
+        .map(|(i, w)| format!("{}. {}", i + 1, w))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let prompt = format!(
+        "你是一个单词学习题质量检查器。题目是「哪个单词的意思是「{}」？」，正确答案是「{}」。\n\n干扰选项：\n{}\n\n请判断：是否有某个干扰选项的意思是\"可以理解为 {} 或与之非常接近、会导致歧义\"？\n只返回 JSON，格式：\n{{\"ambiguous_indices\": [下标数组，1起（与上面列表的编号一致）], \"reason\": \"简述\"}}\n如果没有歧义，返回 {{\"ambiguous_indices\": [], \"reason\": \"\"}}\n只返回 JSON。",
+        definition,
+        correct_word,
+        options_text,
+        definition
+    );
+
+    let provider = OpenAiCompatibleProvider::new(key, base_url, model);
+    let request = LlmRequest::new(vec![
+        LlmMessage::system("你是严格、准确的单词学习题质量检查器。"),
+        LlmMessage::user(prompt),
+    ])
+    .with_temperature(0.0)
+    .with_max_tokens(300)
+    .with_json_schema(serde_json::json!({ "type": "object" }));
+
+    let response = match provider.complete(request).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::debug!("LLM 选项验证跳过: {}", e);
+            return Vec::new();
+        },
+    };
+
+    let json_str = extract_json_content(&response.content);
+    let parsed: serde_json::Value = match serde_json::from_str(json_str) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+
+    let idxs: Vec<usize> = parsed
+        .get("ambiguous_indices")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_u64())
+                .filter_map(|u| u.checked_sub(1).map(|x| x as usize)) // LLM 返回 1-based（与选项列表编号一致），转为 0-based
+                .collect()
+        })
+        .unwrap_or_default();
+
+    idxs.iter()
+        .filter_map(|i| distractors.get(*i).cloned())
+        .collect()
+}
+
+/// 从 LLM 响应提取 JSON 字符串
+fn extract_json_content(content: &str) -> &str {
+    let trimmed = content.trim();
+    if trimmed.starts_with('{') {
+        return trimmed;
+    }
+    if let Some(start) = trimmed.find('{') {
+        if let Some(end) = trimmed[start..].rfind('}') {
+            return &trimmed[start..start + end + 1];
+        }
+    }
+    trimmed
+}
 
 /// 获取要测试的单词列表
 async fn get_quiz_words(
