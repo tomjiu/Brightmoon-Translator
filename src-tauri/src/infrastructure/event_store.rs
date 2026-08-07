@@ -177,6 +177,29 @@ impl EventStore {
         .execute(&self.pool)
         .await?;
 
+        // T8 修复:weak_points 需要唯一约束 (card_id, field, error_type)，否则
+        // ON CONFLICT DO UPDATE 永不触发，count 永远 = 1。
+        // 先合并历史重复行（保留 count 总和），再建唯一索引。
+        sqlx::query(
+            r#"
+            DELETE FROM weak_points
+            WHERE id NOT IN (
+                SELECT MIN(id) FROM weak_points GROUP BY card_id, field, error_type
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_weak_unique
+            ON weak_points(card_id, field, error_type)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         // T8: AI 批注持久化（annotations 表）
         sqlx::query(
             r#"
@@ -423,6 +446,21 @@ impl EventStore {
         }
 
         Ok(events)
+    }
+
+    /// 返回该卡最近一次 AI 优化事件(patch_proposed / patch_applied)的 Unix 时间戳
+    pub async fn last_ai_optimize_at(&self, card_id: &str) -> Result<Option<i64>> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            r#"
+            SELECT MAX(timestamp) FROM card_events
+            WHERE card_id = ?
+              AND event_type IN ('patch_proposed', 'patch_applied')
+            "#,
+        )
+        .bind(card_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|(t,)| t))
     }
 
     /// 重建卡牌（从事件流）

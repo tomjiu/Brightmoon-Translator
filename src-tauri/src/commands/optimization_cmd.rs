@@ -54,7 +54,7 @@ pub async fn record_quiz_result(
             r#"
             INSERT INTO weak_points (card_id, field, error_type, count, last_occurred_at)
             VALUES (?, ?, ?, 1, ?)
-            ON CONFLICT DO UPDATE SET
+            ON CONFLICT (card_id, field, error_type) DO UPDATE SET
                 count = count + 1,
                 last_occurred_at = excluded.last_occurred_at
             "#,
@@ -128,6 +128,22 @@ pub async fn optimize_card_on_error(
         .await
         .map_err(|e| e.to_string())?;
 
+    // 2.1 T8 防抖:同一卡片 5 秒内已有 AI 优化，跳过，避免连续答错触发 LLM 风暴
+    if let Ok(Some(last)) = store.last_ai_optimize_at(&card_id).await {
+        if now - last < 5 {
+            tracing::info!(
+                "optimize_card_on_error: 卡片 {} 刚优化过({}s 前)，跳过本次",
+                card_id,
+                now - last
+            );
+            return Ok(OptimizeResult {
+                applied: false,
+                message: "该卡片近期已优化，稍后再试".to_string(),
+                patch_id: None,
+            });
+        }
+    }
+
     // 3. 配置 LLM
     let config = state.system.config.lock().await;
     let llm = &config.llm;
@@ -168,7 +184,8 @@ pub async fn optimize_card_on_error(
 {{
   "field": "{}",
   "proposed_value": <该字段对应的数据结构>,
-  "reasoning": "为什么这样改进（面向学习者，简短）"
+  "reasoning": "为什么这样改进（面向学习者，简短）",
+  "confidence": 0.0到1.0之间的数字，表示你对这个改动的确信度（>0.7 才值得应用，低分通常是有歧义或原始内容已不错）
 }}
 严格按 JSON Schema 返回：
 {}"#,
@@ -222,6 +239,13 @@ pub async fn optimize_card_on_error(
         .and_then(|v| v.as_str())
         .unwrap_or("AI 自动优化")
         .to_string();
+    // T8 修复:confidence 由 LLM 返回，clamp 到 [0.1, 0.99]，缺失时兜底 0.7。
+    // 若 LLM 明确给出低置信度，验证器仍会放行(默认 min 0.7)，这里仅在 LLM 评分极低时主动拒绝。
+    let confidence = parsed
+        .get("confidence")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.7)
+        .clamp(0.1, 0.99) as f32;
 
     // 6. 构造 Patch
     let patch = CardPatch {
@@ -230,7 +254,7 @@ pub async fn optimize_card_on_error(
         operation: PatchOperation::Replace,
         proposed_value: proposed_value.clone(),
         reasoning,
-        confidence: 0.7,
+        confidence,
         generated_by: "llm-optimize".to_string(),
     };
 
