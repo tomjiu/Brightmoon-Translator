@@ -58,6 +58,16 @@ impl EventStore {
         .execute(&self.pool)
         .await?;
 
+        // T13 性能:按事件类型 + 时间过滤的复合索引（统计/通知/指标等高频查询）
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_card_events_type_timestamp
+            ON card_events(event_type, timestamp)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         // T7: 词典源配置表（可插拔词典源）
         sqlx::query(
             r#"
