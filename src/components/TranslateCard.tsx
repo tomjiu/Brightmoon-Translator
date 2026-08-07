@@ -500,8 +500,7 @@ export default function TranslateCard() {
                     {tf('translateCard.expanding', '翻译其余引擎…')}
                   </>
                 ) : (
-                  tf('translateCard.expand', '翻译其余引擎') +
-                  ` (${mt.totalEngines - mtResults.length})`
+                  `${tf('translateCard.expand', '翻译其余引擎')} (${mt.totalEngines - mtResults.length})`
                 )}
               </button>
             ) : null}
