@@ -244,6 +244,79 @@ export async function searchCards(query: string, limit?: number): Promise<CardSe
   return await invokeOrThrow<CardSearchResult[]>('search_cards', { query, limit });
 }
 
+export interface OptimizeResult {
+  applied: boolean;
+  message: string;
+  patch_id?: string;
+}
+
+export interface PatchHistoryEntry {
+  version: number;
+  field: string;
+  operation: string;
+  reasoning: string;
+  generated_by: string;
+  timestamp: number;
+}
+
+export interface WeakPointWord {
+  card_id: string;
+  word: string;
+  error_type: string;
+  count: number;
+  last_occurred_at: number;
+}
+
+/**
+ * 记录测验结果（答错时写入错误日志 + 弱点统计）
+ */
+export async function recordQuizResult(
+  cardId: string,
+  quizType: string,
+  correct: boolean,
+  userAnswer?: string,
+  correctAnswer?: string,
+): Promise<undefined> {
+  return await invokeOrThrow('record_quiz_result', {
+    cardId,
+    quizType,
+    correct,
+    userAnswer,
+    correctAnswer,
+  });
+}
+
+/**
+ * 答错触发 AI 增强（生成 Patch → 验证 → 应用）
+ */
+export async function optimizeCardOnError(
+  cardId: string,
+  errorType: string,
+  userAnswer?: string | null,
+  correctAnswer?: string | null,
+): Promise<OptimizeResult> {
+  return await invokeOrThrow<OptimizeResult>('optimize_card_on_error', {
+    cardId,
+    errorType,
+    userAnswer,
+    correctAnswer,
+  });
+}
+
+/**
+ * 读取卡牌 Patch 历史（版本追踪）
+ */
+export async function getCardPatchHistory(cardId: string): Promise<PatchHistoryEntry[]> {
+  return await invokeOrThrow<PatchHistoryEntry[]>('get_card_patch_history', { cardId });
+}
+
+/**
+ * 获取弱点词表
+ */
+export async function getWeakPointWords(limit = 20): Promise<WeakPointWord[]> {
+  return await invokeOrThrow<WeakPointWord[]>('get_weak_point_words', { limit });
+}
+
 /**
  * 获取学习统计
  */
