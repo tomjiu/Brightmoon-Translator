@@ -49,91 +49,40 @@ pub async fn generate_choice_questions(
     // 获取要测试的单词
     let words = get_quiz_words(pool, plan_id, count).await?;
 
+    // 并发生成每道题（LLM 验证是网络请求，串行会阻塞 10 题 = 20-30s）
+    let pool_clone = pool.clone();
+    let state_ref = &state;
+    let futures = words
+        .iter()
+        .map(|(word, definition)| {
+            let pool = pool_clone.clone();
+            let ecdict_pool = ecdict_pool.map(|p| p.clone());
+            let words_clone: Vec<(String, String)> = words
+                .iter()
+                .map(|(w, d)| (w.clone(), d.clone()))
+                .collect();
+            let word = word.clone();
+            let definition = definition.clone();
+            async move {
+                build_choice_for_word(
+                    state_ref,
+                    &pool,
+                    ecdict_pool.as_ref(),
+                    &words_clone,
+                    &word,
+                    &definition,
+                )
+                .await
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let results = futures::future::join_all(futures).await;
     let mut questions = Vec::new();
-
-    for word_info in &words {
-        let (word, definition) = word_info;
-
-        // 获取干扰选项（T9：语义近邻替代随机）
-        let mut used: Vec<String> = words.iter().map(|(w, _)| w.clone()).collect();
-        used.push(word.clone());
-        let distractors: Vec<String> = match ecdict_pool {
-            Some(dict_pool) => pick_semantic_distractors(pool, dict_pool, word, &used, 3).await,
-            None => Vec::new(),
-        };
-
-        if distractors.len() < 3 {
-            // 语义向量不足时回退到随机（保留原有兜底）
-            let fallback: Vec<String> =
-                sqlx::query_scalar("SELECT word FROM cards WHERE word != ? ORDER BY RANDOM() LIMIT 3")
-                    .bind(word)
-                    .fetch_all(pool)
-                    .await
-                    .unwrap_or_default();
-            if fallback.len() >= 3 {
-                let mut options = fallback;
-                options.push(word.clone());
-                shuffle_vec(&mut options);
-                let correct_index = options.iter().position(|o| o == word).unwrap_or(0);
-                questions.push(ChoiceQuestion {
-                    word: word.clone(),
-                    question: format!("哪个单词的意思是「{}」？", definition),
-                    options,
-                    correct_index,
-                    explanation: None,
-                });
-            }
-            continue;
+    for q in results {
+        if let Some(q) = q {
+            questions.push(q);
         }
-
-        // 组装选项（正确答案 + 3个干扰项）
-        // T9: AI 验证防幻觉——替换有歧义的干扰项
-        let mut distractors = distractors;
-        let ambiguous = verify_options_with_llm(&state, word, definition, &distractors).await;
-        if !ambiguous.is_empty() {
-            let ambiguous_set: std::collections::HashSet<String> =
-                ambiguous.into_iter().collect();
-            distractors.retain(|d| !ambiguous_set.contains(d));
-
-            // 补充替换词：用剩余候选补齐到 3 个（仅用语义近邻，不再 LLM 验证）
-            if distractors.len() < 3 {
-                let used: Vec<String> = {
-                    let mut u = words.iter().map(|(w, _)| w.clone()).collect::<Vec<_>>();
-                    u.push(word.clone());
-                    u.extend(distractors.iter().cloned());
-                    u
-                };
-                let extra = match ecdict_pool {
-                    Some(dict_pool) => {
-                        pick_semantic_distractors(pool, dict_pool, word, &used, 3).await
-                    },
-                    None => Vec::new(),
-                };
-                for e in extra {
-                    if distractors.len() >= 3 {
-                        break;
-                    }
-                    if !distractors.contains(&e) {
-                        distractors.push(e);
-                    }
-                }
-            }
-        }
-
-        let mut options = distractors;
-        if !options.contains(word) {
-            options.push(word.clone());
-        }
-        shuffle_vec(&mut options);
-        let correct_index = options.iter().position(|o| o == word).unwrap_or(0);
-
-        questions.push(ChoiceQuestion {
-            word: word.clone(),
-            question: format!("哪个单词的意思是「{}」？", definition),
-            options,
-            correct_index,
-            explanation: None,
-        });
     }
 
     // 如果本地卡牌不够，从 ECDICT 补充
@@ -201,6 +150,103 @@ pub async fn generate_choice_questions(
     }
 
     Ok(questions)
+}
+
+/// 为单个单词构建一道选择题（T9 语义干扰项 + LLM 歧义验证）
+/// 返回 None 表示该题无法生成（干扰项不足），由调用方跳过
+async fn build_choice_for_word(
+    state: &State<'_, crate::AppState>,
+    pool: &sqlx::SqlitePool,
+    ecdict_pool: Option<&sqlx::SqlitePool>,
+    words: &[(String, String)],
+    word: &str,
+    definition: &str,
+) -> Option<ChoiceQuestion> {
+    // 获取干扰选项（T9：语义近邻替代随机）
+    let mut used: Vec<String> = words.iter().map(|(w, _)| w.clone()).collect();
+    used.push(word.to_string());
+    let distractors: Vec<String> = match ecdict_pool {
+        Some(dict_pool) => pick_semantic_distractors(pool, dict_pool, word, &used, 3).await,
+        None => Vec::new(),
+    };
+
+    if distractors.len() < 3 {
+        // 语义向量不足时回退到随机（保留原有兜底）
+        let fallback: Vec<String> =
+            sqlx::query_scalar("SELECT word FROM cards WHERE word != ? ORDER BY RANDOM() LIMIT 3")
+                .bind(word)
+                .fetch_all(pool)
+                .await
+                .unwrap_or_default();
+        if fallback.len() >= 3 {
+            let mut options = fallback;
+            options.push(word.to_string());
+            shuffle_vec(&mut options);
+            let correct_index = options.iter().position(|o| o == word).unwrap_or(0);
+            return Some(ChoiceQuestion {
+                word: word.to_string(),
+                question: format!("哪个单词的意思是「{}」？", definition),
+                options,
+                correct_index,
+                explanation: None,
+            });
+        }
+        return None;
+    }
+
+    // 组装选项（正确答案 + 3个干扰项）
+    // T9: AI 验证防幻觉——替换有歧义的干扰项
+    let mut distractors = distractors;
+    let ambiguous = verify_options_with_llm(state, word, definition, &distractors).await;
+    if !ambiguous.is_empty() {
+        let ambiguous_set: std::collections::HashSet<String> =
+            ambiguous.into_iter().collect();
+        distractors.retain(|d| !ambiguous_set.contains(d));
+
+        // 补充替换词：用剩余候选补齐到 3 个（仅用语义近邻，不再 LLM 验证）
+        if distractors.len() < 3 {
+            let used: Vec<String> = {
+                let mut u = words.iter().map(|(w, _)| w.clone()).collect::<Vec<_>>();
+                u.push(word.to_string());
+                u.extend(distractors.iter().cloned());
+                u
+            };
+            let extra = match ecdict_pool {
+                Some(dict_pool) => {
+                    pick_semantic_distractors(pool, dict_pool, word, &used, 3).await
+                },
+                None => Vec::new(),
+            };
+            for e in extra {
+                if distractors.len() >= 3 {
+                    break;
+                }
+                if !distractors.contains(&e) {
+                    distractors.push(e);
+                }
+            }
+        }
+    }
+
+    // 契约兜底：LLM 删除歧义项且补充失败时，干扰项可能 < 3，跳过此题保持 4 选项
+    if distractors.len() < 3 {
+        return None;
+    }
+
+    let mut options = distractors;
+    if !options.iter().any(|o| o == word) {
+        options.push(word.to_string());
+    }
+    shuffle_vec(&mut options);
+    let correct_index = options.iter().position(|o| o == word).unwrap_or(0);
+
+    Some(ChoiceQuestion {
+        word: word.to_string(),
+        question: format!("哪个单词的意思是「{}」？", definition),
+        options,
+        correct_index,
+        explanation: None,
+    })
 }
 
 /// 生成拼写题
@@ -485,7 +531,7 @@ async fn verify_options_with_llm(
         .join("\n");
 
     let prompt = format!(
-        "你是一个单词学习题质量检查器。题目是「哪个单词的意思是「{}」？」，正确答案是「{}」。\n\n干扰选项：\n{}\n\n请判断：是否有某个干扰选项的意思是\"可以理解为 {} 或与之非常接近、会导致歧义\"？\n只返回 JSON，格式：\n{{\"ambiguous_indices\": [下标数组，0起], \"reason\": \"简述\"}}\n如果没有歧义，返回 {{\"ambiguous_indices\": [], \"reason\": \"\"}}\n只返回 JSON。",
+        "你是一个单词学习题质量检查器。题目是「哪个单词的意思是「{}」？」，正确答案是「{}」。\n\n干扰选项：\n{}\n\n请判断：是否有某个干扰选项的意思是\"可以理解为 {} 或与之非常接近、会导致歧义\"？\n只返回 JSON，格式：\n{{\"ambiguous_indices\": [下标数组，1起（与上面列表的编号一致）], \"reason\": \"简述\"}}\n如果没有歧义，返回 {{\"ambiguous_indices\": [], \"reason\": \"\"}}\n只返回 JSON。",
         definition,
         correct_word,
         options_text,
@@ -521,7 +567,7 @@ async fn verify_options_with_llm(
         .map(|arr| {
             arr.iter()
                 .filter_map(|v| v.as_u64())
-                .map(|u| u as usize)
+                .filter_map(|u| u.checked_sub(1).map(|x| x as usize)) // LLM 返回 1-based（与选项列表编号一致），转为 0-based
                 .collect()
         })
         .unwrap_or_default();
