@@ -13,6 +13,43 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
+/// 弱点计数 upsert(答错时调用)。
+/// T8 修复:依赖 UNIQUE(card_id, field, error_type) + 显式 ON CONFLICT 目标，
+/// 否则 count 永远 = 1(无唯一约束时 ON CONFLICT DO UPDATE 永不触发)。
+async fn upsert_weak_point(
+    pool: &sqlx::SqlitePool,
+    card_id: &str,
+    error_type: &str,
+    now: i64,
+) -> Result<(), String> {
+    sqlx::query(
+        r#"
+        INSERT INTO weak_points (card_id, field, error_type, count, last_occurred_at)
+        VALUES (?, ?, ?, 1, ?)
+        ON CONFLICT (card_id, field, error_type) DO UPDATE SET
+            count = count + 1,
+            last_occurred_at = excluded.last_occurred_at
+        "#,
+    )
+    .bind(card_id)
+    .bind("ai_content")
+    .bind(error_type)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 从 quiz_type 映射弱点类型
+fn weak_error_type(quiz_type: &str) -> &'static str {
+    match quiz_type {
+        "spelling" => "spelling",
+        "cloze" | "fill_blank" => "usage",
+        _ => "meaning",
+    }
+}
+
 /// 记录测验结果（答错时写入错误日志 + 弱点统计）
 #[tauri::command]
 pub async fn record_quiz_result(
@@ -45,27 +82,8 @@ pub async fn record_quiz_result(
         .map_err(|e| e.to_string())?;
 
         // 2. 弱点计数 upsert
-        let error_type = match quiz_type.as_str() {
-            "spelling" => "spelling",
-            "cloze" | "fill_blank" => "usage",
-            _ => "meaning",
-        };
-        sqlx::query(
-            r#"
-            INSERT INTO weak_points (card_id, field, error_type, count, last_occurred_at)
-            VALUES (?, ?, ?, 1, ?)
-            ON CONFLICT (card_id, field, error_type) DO UPDATE SET
-                count = count + 1,
-                last_occurred_at = excluded.last_occurred_at
-            "#,
-        )
-        .bind(&card_id)
-        .bind("ai_content")
-        .bind(error_type)
-        .bind(now)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        let error_type = weak_error_type(&quiz_type);
+        upsert_weak_point(pool, &card_id, error_type, now).await?;
     }
 
     // 3. 写 QuizCompleted 事件（驱动状态机 + 卡牌错误记录）
@@ -527,4 +545,89 @@ pub async fn resolve_weak_point(
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 建带 UNIQUE 约束的 weak_points 表（与 init_schema 保持一致）
+    async fn weak_pool() -> sqlx::SqlitePool {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE weak_points (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id TEXT NOT NULL,
+                field TEXT NOT NULL,
+                error_type TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 0,
+                last_occurred_at INTEGER NOT NULL,
+                resolved INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(card_id, field, error_type)
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn weak_point_count_increments_on_repeat_error() {
+        // P0 修复验证:UNIQUE(card_id, field, error_type) 让 ON CONFLICT DO UPDATE 真正触发，
+        // 同一弱点评第二次 count 从 1 → 2(修复前恒为 1)
+        let pool = weak_pool().await;
+
+        upsert_weak_point(&pool, "card-1", "meaning", 1000)
+            .await
+            .unwrap();
+        upsert_weak_point(&pool, "card-1", "meaning", 2000)
+            .await
+            .unwrap();
+        upsert_weak_point(&pool, "card-1", "meaning", 3000)
+            .await
+            .unwrap();
+
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count FROM weak_points WHERE card_id = 'card-1' AND error_type = 'meaning'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(count, 3);
+
+        // 只产生一行
+        let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM weak_points")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(rows, 1);
+    }
+
+    #[tokio::test]
+    async fn weak_point_separates_error_types() {
+        let pool = weak_pool().await;
+        upsert_weak_point(&pool, "card-1", "meaning", 1000)
+            .await
+            .unwrap();
+        upsert_weak_point(&pool, "card-1", "usage", 1000).await.unwrap();
+        upsert_weak_point(&pool, "card-2", "meaning", 1000)
+            .await
+            .unwrap();
+
+        let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM weak_points")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(rows, 3);
+    }
+
+    #[test]
+    fn weak_error_type_mapping() {
+        assert_eq!(weak_error_type("spelling"), "spelling");
+        assert_eq!(weak_error_type("cloze"), "usage");
+        assert_eq!(weak_error_type("fill_blank"), "usage");
+        assert_eq!(weak_error_type("choice"), "meaning");
+        assert_eq!(weak_error_type("anything_else"), "meaning");
+    }
 }

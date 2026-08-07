@@ -1139,3 +1139,77 @@ pub async fn lookup_japanese(
         .await
         .map_err(|e| format!("Japanese lookup failed: {}", e))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn test_pool() -> sqlx::SqlitePool {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        // 最小 stardict 表（含 exchange 列，模拟 ECDICT 精简库）
+        sqlx::query(
+            "CREATE TABLE stardict (
+                word TEXT PRIMARY KEY,
+                exchange TEXT
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
+    }
+
+    async fn seed(pool: &sqlx::SqlitePool, word: &str, exchange: &str) {
+        sqlx::query("INSERT INTO stardict (word, exchange) VALUES (?, ?)")
+            .bind(word)
+            .bind(exchange)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn resolve_lemma_reverse_past_tense() {
+        // P0 修复验证:反查模式 "%:ran%" 应命中 "p:ran/d:ran/...",还原出 run
+        let pool = test_pool().await;
+        seed(&pool, "run", "0:run/1:p/3:runs/p:ran/d:ran/i:running").await;
+
+        let lemma = resolve_lemma("ran", &pool).await.unwrap();
+        assert_eq!(lemma.as_deref(), Some("run"));
+    }
+
+    #[tokio::test]
+    async fn resolve_lemma_reverse_plural() {
+        let pool = test_pool().await;
+        seed(&pool, "mouse", "0:mouse/1:s/3:mice/m:s?/s:mice").await;
+
+        let lemma = resolve_lemma("mice", &pool).await.unwrap();
+        assert_eq!(lemma.as_deref(), Some("mouse"));
+    }
+
+    #[tokio::test]
+    async fn resolve_lemma_lemma_itself_returns_none() {
+        // 直接查 exchange 含 0:run,且自身就是原形 → 返回 None
+        let pool = test_pool().await;
+        seed(&pool, "run", "0:run/1:p/3:runs/p:ran").await;
+
+        let lemma = resolve_lemma("run", &pool).await.unwrap();
+        assert_eq!(lemma, None);
+    }
+
+    #[tokio::test]
+    async fn resolve_lemma_case_insensitive() {
+        let pool = test_pool().await;
+        seed(&pool, "run", "0:run/1:p/3:runs/p:ran/d:ran/i:running").await;
+
+        let lemma = resolve_lemma("Ran", &pool).await.unwrap();
+        assert_eq!(lemma.as_deref(), Some("run"));
+    }
+
+    #[tokio::test]
+    async fn resolve_lemma_unknown_word_returns_none() {
+        let pool = test_pool().await;
+        let lemma = resolve_lemma("zzqxwv", &pool).await.unwrap();
+        assert_eq!(lemma, None);
+    }
+}
