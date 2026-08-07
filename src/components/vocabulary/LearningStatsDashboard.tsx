@@ -26,12 +26,20 @@ import {
   type RetentionPoint,
   type ForecastPoint,
 } from '../../services/statistics';
+import {
+  getWeakPointWords,
+  resolveWeakPoint,
+  type WeakPointWord,
+} from '../../services/vocabulary';
+import { useToastStore } from '../../stores/toastStore';
 
 export const LearningStatsDashboard: FC = () => {
+  const addToast = useToastStore((s) => s.addToast);
   const [stats, setStats] = useState<LearningStatistics | null>(null);
   const [dailyActivity, setDailyActivity] = useState<DailyActivity[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([]);
   const [weakWords, setWeakWords] = useState<WeakWord[]>([]);
+  const [weakPointWords, setWeakPointWords] = useState<WeakPointWord[]>([]);
   const [retentionCurve, setRetentionCurve] = useState<RetentionPoint[]>([]);
   const [forecast, setForecast] = useState<ForecastPoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,12 +56,14 @@ export const LearningStatsDashboard: FC = () => {
       setRefreshing(true);
       const currentYear = new Date().getFullYear();
 
-      const [statsData, activityData, heatmapData, weakWordsData] = await Promise.all([
-        getLearningStatistics(),
-        getDailyActivity(30),
-        getHeatmapData(currentYear),
-        getWeakWords(10),
-      ]);
+      const [statsData, activityData, heatmapData, weakWordsData, weakPointWordsData] =
+        await Promise.all([
+          getLearningStatistics(),
+          getDailyActivity(30),
+          getHeatmapData(currentYear),
+          getWeakWords(10),
+          getWeakPointWords(20),
+        ]);
 
       // 并行获取新图表数据（不阻塞主流程）
       getRetentionCurve(90)
@@ -67,6 +77,7 @@ export const LearningStatsDashboard: FC = () => {
       setDailyActivity(activityData);
       setHeatmapData(heatmapData);
       setWeakWords(weakWordsData);
+      setWeakPointWords(weakPointWordsData);
     } catch (error) {
       console.error('加载统计数据失败:', error);
     } finally {
@@ -253,6 +264,27 @@ export const LearningStatsDashboard: FC = () => {
           薄弱词汇（需加强）
         </h3>
         <WeakWordsList words={weakWords} onWordClick={setSelectedWord} />
+      </div>
+
+      {/* T8: 弱点错误明细（答错追踪的精确错误点） */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Target className="w-5 h-5" />
+          弱点错误明细
+        </h3>
+        <WeakPointWordsList
+          words={weakPointWords}
+          onWordClick={setSelectedWord}
+          onResolve={async (cardId) => {
+            try {
+              await resolveWeakPoint(cardId);
+              addToast({ type: 'success', message: '弱点已标记解决', duration: 3000 });
+              loadStatistics();
+            } catch (error) {
+              addToast({ type: 'error', message: '标记失败，请重试', duration: 3000 });
+            }
+          }}
+        />
       </div>
 
       {/* Word Detail Modal */}
@@ -669,6 +701,68 @@ interface WeakWordsListProps {
           </div>
         );
       })}
+    </div>
+  );
+};
+
+interface WeakPointWordsListProps {
+  words: WeakPointWord[];
+  onWordClick?: (word: string) => void;
+  onResolve?: (cardId: string) => Promise<void>;
+}
+
+const WeakPointWordsList: FC<WeakPointWordsListProps> = ({ words, onWordClick, onResolve }) => {
+  if (words.length === 0) {
+    return <div className="text-gray-400 text-center py-8">暂无弱点错误记录</div>;
+  }
+
+  const getErrorTypeLabel = (errorType: string) => {
+    switch (errorType) {
+      case 'definition':
+        return '释义';
+      case 'pronunciation':
+        return '发音';
+      case 'spelling':
+        return '拼写';
+      case 'usage':
+        return '用法';
+      default:
+        return errorType;
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {words.map((word, idx) => (
+        <div
+          key={idx}
+          onClick={() => onWordClick?.(word.word)}
+          className="bg-gray-700/50 rounded-lg p-4 hover:bg-gray-700 transition-colors cursor-pointer group"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <span className="text-lg font-semibold group-hover:text-primary transition-colors">
+                {word.word}
+              </span>
+              <span className="text-xs px-2 py-1 rounded bg-red-500/20 text-red-400">
+                {getErrorTypeLabel(word.error_type)} × {word.count}
+              </span>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                void onResolve?.(word.card_id);
+              }}
+              className="text-xs px-2 py-1 rounded bg-green-500/20 text-green-300 hover:bg-green-500/30 transition-colors"
+            >
+              已解决
+            </button>
+          </div>
+          <div className="text-xs text-gray-400">
+            最近出错: {new Date(word.last_occurred_at * 1000).toLocaleString()}
+          </div>
+        </div>
+      ))}
     </div>
   );
 };

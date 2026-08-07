@@ -320,6 +320,13 @@ export async function getWeakPointWords(limit = 20): Promise<WeakPointWord[]> {
 }
 
 /**
+ * 标记弱点已解决（重学通过后调用）
+ */
+export async function resolveWeakPoint(cardId: string): Promise<void> {
+  return invokeOrThrow('resolve_weak_point', { cardId });
+}
+
+/**
  * 获取学习统计
  */
 export async function getLearningStats(): Promise<LearningStats> {
