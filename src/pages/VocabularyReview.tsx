@@ -1,6 +1,6 @@
 // VocabularyReview - 完整的FSRS复习系统
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { invokeOrThrow } from '../services/invoke';
 import { useVocabularyStore } from '../stores/vocabularyStore';
 import {
@@ -203,6 +203,9 @@ export default function VocabularyReview() {
         endSession();
         setShowStats(true);
       } else {
+        // 清空上一张的 wordDetail，避免翻页瞬间读到旧卡的音频/数据
+        setWordDetail(null);
+        stopAudio();
         setCurrentIndex(nextIndex);
         setShowAnswer(false);
         await loadWordDetail(dueCards[nextIndex].word);
@@ -215,10 +218,20 @@ export default function VocabularyReview() {
   };
 
   // 播放音频
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const playAudio = (url: string) => {
-    new Audio(url).play().catch((err: unknown) => {
+    stopAudio();
+    audioRef.current = new Audio(url);
+    audioRef.current.play().catch((err: unknown) => {
       console.error(err);
     });
+  };
+
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
   };
 
   // TTS 兜底发音（无词典音频时）
@@ -235,6 +248,9 @@ export default function VocabularyReview() {
     if (!dueCards.length || showAnswer || loading) return;
     const card = dueCards[currentIndex];
     if (!card) return;
+    // 先停止上一张卡的音频，避免叠加/错音
+    stopAudio();
+    stopSpeaking();
     if (wordDetail?.usAudioUrl) {
       playAudio(wordDetail.usAudioUrl);
     } else {
@@ -250,6 +266,7 @@ export default function VocabularyReview() {
       if (!confirm('复习尚未完成，确定要退出吗？')) return;
     }
     stopSpeaking();
+    stopAudio();
     endSession();
     window.history.back();
   };
