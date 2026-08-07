@@ -972,6 +972,7 @@ pub fn run() {
             commands::vocabulary_cmd::search_core_vocabulary,
             commands::vocabulary_cmd::create_card,
             commands::vocabulary_cmd::get_card,
+            commands::vocabulary_cmd::search_cards,
             commands::vocabulary_cmd::get_due_cards,
             commands::vocabulary_cmd::generate_card_content,
             commands::vocabulary_cmd::submit_review,

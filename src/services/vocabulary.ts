@@ -162,6 +162,17 @@ export interface ExtractStudyResult {
   skipped_existing: string[];
 }
 
+/** T5 接线:卡牌全文搜索结果(简版 WordCard) */
+export interface CardSearchResult {
+  id: string;
+  word: string;
+  current_version: number;
+  ai_content: unknown;
+  fsrs_state: unknown;
+  created_at: number;
+  updated_at: number;
+}
+
 // ============================================
 // Service 方法
 // ============================================
@@ -226,6 +237,11 @@ export async function submitReview(cardId: string, rating: Rating): Promise<unde
  */
 export async function extractWordsAndStudy(text: string): Promise<ExtractStudyResult> {
   return await invokeOrThrow<ExtractStudyResult>('extract_words_and_study', { text });
+}
+
+/** T5 接线:全文搜索卡牌(FTS5 + LIKE 兜底) */
+export async function searchCards(query: string, limit?: number): Promise<CardSearchResult[]> {
+  return await invokeOrThrow<CardSearchResult[]>('search_cards', { query, limit });
 }
 
 /**
