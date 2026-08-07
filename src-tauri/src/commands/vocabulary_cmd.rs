@@ -556,7 +556,6 @@ pub async fn study_word(
         use uuid::Uuid;
 
         // 复用已存在的卡牌,避免同一单词生成多条 UUID / 重复 AI 调用
-<<<<<<< HEAD
         // P1 修复:用 word_lower 查询,大小写归一化("Run" == "run")
         let pool = store.pool();
         let existing: Option<String> =
