@@ -669,15 +669,15 @@ pub async fn resolve_lemma(
         }
     }
 
-    // 2. 反查：遍历 exchange 含此变形词的条目（前缀匹配 p:/d:/i:/s:/3:）
-    let needle = format!("{}/", &word_lower);
+    // 2. 反查：遍历 exchange 含此变形词的条目
+    // P0 修复:原 LIKE 模式 "%/{}:{}%" 查找 "/ran:" 但 exchange 格式是 "p:ran/d:ran/...",
+    // 不含 "/ran:"。正确模式应为 "%:{}%" 匹配 ":ran"(p:ran / d:ran / i:ran / s:rans / 3:rans)
     let rows = sqlx::query(
         "SELECT word, exchange FROM stardict
-         WHERE exchange LIKE ?1 OR exchange LIKE ?2
-         LIMIT 5",
+         WHERE exchange LIKE ?1
+         LIMIT 10",
     )
-    .bind(format!("%/{}:{}%", &word_lower, '%'))
-    .bind(format!("%/{}", &word_lower))
+    .bind(format!("%:{}%", &word_lower)) // 匹配 ":ran" → 命中 "p:ran" / "d:ran" / "i:ran"
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -686,12 +686,20 @@ pub async fn resolve_lemma(
         let lemma: String = r.get("word");
         let exchange: Option<String> = r.get("exchange");
         if let Some(ex) = exchange {
-            if ex.split('/').any(|s| {
+            // 验证:exchange 的某个 segment 必须是 "X:word_lower" 形式(X 是 p/d/i/s/3/1/2/4/5/r/t)
+            let found = ex.split('/').any(|s| {
                 let s = s.trim();
-                s.starts_with("p:") || s.starts_with("d:") || s.starts_with("i:")
-                    || s.starts_with("s:") || s.starts_with("3:")
-            }) && ex.split('/').any(|s| s.trim().ends_with(&needle.trim_end_matches('/')))
-            {
+                if let Some((prefix, value)) = s.split_once(':') {
+                    let prefix = prefix.trim();
+                    let value = value.trim();
+                    // prefix 是变形类型(p/d/i/s/3/1/2/4/5/r/t),value 是变形词
+                    let valid_prefix = matches!(prefix, "p" | "d" | "i" | "s" | "3" | "1" | "2" | "4" | "5" | "r" | "t");
+                    valid_prefix && value == word_lower
+                } else {
+                    false
+                }
+            });
+            if found && lemma != word_lower {
                 return Ok(Some(lemma));
             }
         }

@@ -11,10 +11,12 @@ import {
   Globe,
   BookOpen,
   Sparkles,
+  Wand2,
 } from 'lucide-react';
 import { safeInvoke, invokeOrDefault } from '../services/invoke';
 import { useI18n } from '../i18n';
 import { saveAndCollect, summarizeReport } from '../hooks/useCollectionPush';
+import { extractWordsAndStudy } from '../services/vocabulary';
 import PageHeader from '../components/PageHeader';
 
 interface PhoneticInfo {
@@ -86,6 +88,11 @@ function DictionarySearch() {
   const [error, setError] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  // T6 接线:AI 抽生词建本
+  const [showExtractDialog, setShowExtractDialog] = useState(false);
+  const [extractText, setExtractText] = useState('');
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractResult, setExtractResult] = useState<string | null>(null);
 
   // 自动检测并导入词典数据（仅首次）
   useEffect(() => {
@@ -239,6 +246,28 @@ function DictionarySearch() {
     setIsImporting(false);
   };
 
+  // T6 接线:AI 抽生词建本 handler
+  const handleExtractWords = async () => {
+    const text = extractText.trim();
+    if (!text) return;
+    setIsExtracting(true);
+    setExtractResult(null);
+    try {
+      const result = await extractWordsAndStudy(text);
+      const studied = result.studied.length;
+      const skipped = result.skipped_existing.length;
+      const total = result.total_words;
+      setExtractResult(
+        `完成:共 ${total} 词,新建 ${studied} 张卡,跳过已有 ${skipped} 词`,
+      );
+      setExtractText('');
+    } catch (err) {
+      setExtractResult(`失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-bg-primary">
       {/* Search Bar */}
@@ -254,6 +283,14 @@ function DictionarySearch() {
                   <Globe size={12} />
                   多源聚合
                 </span>
+                <button
+                  onClick={() => setShowExtractDialog(true)}
+                  className="text-xs px-3 py-1 bg-bg-tertiary text-text-secondary rounded hover:text-primary border border-border flex items-center gap-1"
+                  title="粘贴一段文本,AI 自动抽取生词并批量建卡"
+                >
+                  <Wand2 size={12} />
+                  AI 抽生词
+                </button>
                 <button
                   onClick={handleImport}
                   disabled={isImporting}
@@ -378,6 +415,76 @@ function DictionarySearch() {
           {result && <ResultCard result={result} onPlayAudio={playAudio} />}
         </div>
       </div>
+
+      {/* T6 接线:AI 抽生词建本对话框 */}
+      {showExtractDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="ui-card w-full max-w-2xl p-6 animate-fadeIn">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="ui-section-title flex items-center gap-2">
+                <Wand2 size={16} />
+                AI 抽生词建本
+              </h3>
+              <button
+                onClick={() => {
+                  setShowExtractDialog(false);
+                  setExtractResult(null);
+                  setExtractText('');
+                }}
+                className="text-text-secondary hover:text-text-primary"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="ui-caption mb-3">
+              粘贴一段英文文本(如文章/句子),系统会自动抽取生词、过滤停用词、查 ECDICT
+              验证,然后批量创建学习卡牌。已有卡牌的词会跳过。
+            </p>
+            <textarea
+              value={extractText}
+              onChange={(e) => setExtractText(e.target.value)}
+              placeholder="Paste English text here... 例如:The quick brown fox jumps over the lazy dog."
+              className="w-full h-40 p-3 bg-bg-tertiary border border-border rounded-lg text-sm text-text-primary resize-none focus:outline-none focus:border-primary"
+              disabled={isExtracting}
+            />
+            {extractResult && (
+              <p className="text-xs text-primary mt-2 p-2 bg-bg-tertiary rounded">
+                {extractResult}
+              </p>
+            )}
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => {
+                  setShowExtractDialog(false);
+                  setExtractResult(null);
+                  setExtractText('');
+                }}
+                className="px-4 py-1.5 text-sm text-text-secondary hover:text-text-primary"
+                disabled={isExtracting}
+              >
+                关闭
+              </button>
+              <button
+                onClick={handleExtractWords}
+                disabled={isExtracting || !extractText.trim()}
+                className="px-4 py-1.5 text-sm bg-primary text-primary-fg rounded hover:bg-primary-hover disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isExtracting ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    抽取中...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} />
+                    开始抽取
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
