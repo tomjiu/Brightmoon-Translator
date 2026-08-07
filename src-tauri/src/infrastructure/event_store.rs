@@ -474,9 +474,6 @@ impl EventStore {
         Ok(events)
     }
 
-<<<<<<< HEAD
-    /// 重建卡牌（从事件流）— P0 修复:覆盖 from_events 生成的新 UUID 为真实 card_id
-=======
     /// 返回该卡最近一次 AI 优化事件(patch_proposed / patch_applied)的 Unix 时间戳
     pub async fn last_ai_optimize_at(&self, card_id: &str) -> Result<Option<i64>> {
         let row: Option<(i64,)> = sqlx::query_as(
