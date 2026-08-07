@@ -38,6 +38,7 @@ export interface AnkiNote {
 export interface ImportResult {
   imported: number;
   skipped: number;
+  invalid: number;
   total: number;
 }
 

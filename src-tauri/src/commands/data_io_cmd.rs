@@ -238,6 +238,7 @@ pub async fn import_learning_data_json(
 
     let mut imported = 0;
     let mut skipped = 0;
+    let mut invalid = 0;
 
     for card in &data.cards {
         // 检查是否已存在
@@ -245,7 +246,7 @@ pub async fn import_learning_data_json(
             .bind(&card.word)
             .fetch_optional(store.pool())
             .await
-            .unwrap_or(None);
+            .map_err(|e| format!("查询已存在卡牌失败: {}", e))?;
 
         if exists.is_some() {
             skipped += 1;
@@ -274,6 +275,9 @@ pub async fn import_learning_data_json(
                     timestamp: card.created_at,
                 };
                 store.append_event(&card_id, &ai_event).await.ok();
+            } else {
+                // P2 修复:AiContent 解析失败时计入 invalid，而不是静默吞掉
+                invalid += 1;
             }
         }
 
@@ -283,6 +287,7 @@ pub async fn import_learning_data_json(
     Ok(ImportResult {
         imported,
         skipped,
+        invalid,
         total: data.cards.len() as i32,
     })
 }
@@ -300,8 +305,12 @@ pub async fn import_wordlist_csv(
     let delimiter = if content.contains('\t') { '\t' } else { ',' };
     let mut imported = 0;
     let mut skipped = 0;
+    let mut invalid = 0;
     let now = chrono::Utc::now().timestamp();
 
+    // 从文件中提取待导入单词（第 1 列）
+    let mut words_to_check: Vec<String> = Vec::new();
+    let mut pending: Vec<(String, String)> = Vec::new(); // (word, definition)
     for line in content.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -320,17 +329,41 @@ pub async fn import_wordlist_csv(
             .unwrap_or_default();
 
         if word.is_empty() || word.len() < 2 {
+            invalid += 1;
             continue;
         }
 
-        // 检查是否已存在
-        let exists: Option<String> = sqlx::query_scalar("SELECT id FROM cards WHERE word = ?")
-            .bind(&word)
-            .fetch_optional(store.pool())
-            .await
-            .unwrap_or(None);
+        words_to_check.push(word.clone());
+        pending.push((word, definition));
+    }
 
-        if exists.is_some() {
+    // 批量查询已存在的单词
+    let mut existing: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for chunk in words_to_check.chunks(500) {
+        if chunk.is_empty() {
+            continue;
+        }
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!("SELECT word FROM cards WHERE word IN ({})", placeholders);
+        let mut q = sqlx::query(&sql);
+        for w in chunk {
+            q = q.bind(w);
+        }
+        // P0 修复:DB 错误必须向上传播，否则空 Vec 会把所有词误判为"不存在"，导致批量重复插入
+        let rows = q
+            .fetch_all(store.pool())
+            .await
+            .map_err(|e| format!("查询已存在单词失败: {}", e))?;
+        for row in rows {
+            use sqlx::Row;
+            if let Ok(w) = row.try_get::<String, _>("word") {
+                existing.insert(w);
+            }
+        }
+    }
+
+    for (word, definition) in pending {
+        if existing.contains(&word) {
             skipped += 1;
             continue;
         }
@@ -345,6 +378,9 @@ pub async fn import_wordlist_csv(
             .append_event(&card_id, &event)
             .await
             .map_err(|e| e.to_string())?;
+
+        // P0 修复:插入成功后立即加入 existing 集合，避免文件内重复行产生重复卡片
+        existing.insert(word.clone());
 
         // 将释义作为 AI 内容的一部分存储
         if !definition.is_empty() {
@@ -379,7 +415,8 @@ pub async fn import_wordlist_csv(
     Ok(ImportResult {
         imported,
         skipped,
-        total: imported + skipped,
+        invalid,
+        total: imported + skipped + invalid,
     })
 }
 
@@ -414,6 +451,7 @@ pub async fn auto_backup(
 pub struct ImportResult {
     pub imported: i32,
     pub skipped: i32,
+    pub invalid: i32,
     pub total: i32,
 }
 
