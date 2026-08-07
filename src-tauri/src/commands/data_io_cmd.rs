@@ -445,6 +445,50 @@ pub async fn auto_backup(
     Ok(file_path.to_string_lossy().to_string())
 }
 
+/// 自动备份并清理旧备份（保留最近 keep 份）
+#[tauri::command]
+pub async fn auto_backup_with_cleanup(
+    state: State<'_, crate::AppState>,
+    backup_dir: String,
+    keep: i32,
+) -> Result<String, String> {
+    let result = auto_backup(state, backup_dir.clone()).await?;
+
+    // 清理旧备份：仅保留最近 keep 份
+    if keep > 0 {
+        let keep = keep as usize;
+        if let Ok(entries) = std::fs::read_dir(&backup_dir) {
+            let mut backups: Vec<(std::path::PathBuf, u128)> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.file_name()
+                        .to_string_lossy()
+                        .starts_with("moontranslator_backup_")
+                })
+                .filter_map(|e| {
+                    let path = e.path();
+                    let mtime = std::fs::metadata(&path)
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis())
+                        .unwrap_or(0);
+                    Some((path, mtime))
+                })
+                .collect();
+
+            // 按修改时间倒序（最新在前）
+            backups.sort_by(|a, b| b.1.cmp(&a.1));
+
+            for (path, _) in backups.into_iter().skip(keep) {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 /// 导入结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

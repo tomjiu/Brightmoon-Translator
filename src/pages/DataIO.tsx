@@ -18,7 +18,7 @@ import {
   ankiNotesToTsv,
   importLearningDataJson,
   importWordlistCsv,
-  autoBackup,
+  autoBackupWithCleanup,
   writeFileContent,
   type ImportResult,
 } from '../services/dataIO';
@@ -180,7 +180,7 @@ export default function DataIO() {
       });
       if (!path) return;
 
-      const backupPath = await autoBackup(path);
+      const backupPath = await autoBackupWithCleanup(path, 30);
       showSuccess(`备份成功！文件: ${backupPath}`);
     } catch (error) {
       showError(`备份失败: ${error}`);

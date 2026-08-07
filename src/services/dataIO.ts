@@ -62,6 +62,13 @@ export async function autoBackup(backupDir: string): Promise<string> {
   return invokeOrThrow('auto_backup', { backupDir });
 }
 
+export async function autoBackupWithCleanup(
+  backupDir: string,
+  keep: number,
+): Promise<string> {
+  return invokeOrThrow('auto_backup_with_cleanup', { backupDir, keep });
+}
+
 /// 将 Anki Note 列表转为 TSV 文本
 export function ankiNotesToTsv(notes: AnkiNote[]): string {
   const header = '#separator:tab\n#html:true\n#tags column:5\n';
