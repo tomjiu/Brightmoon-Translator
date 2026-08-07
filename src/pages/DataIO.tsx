@@ -155,12 +155,17 @@ export default function DataIO() {
   };
 
   const showImportResult = (result: ImportResult, format: string) => {
+    const parts = [
+      result.imported > 0 ? `新增 ${result.imported} 词` : '没有新词导入',
+      result.skipped > 0 ? `跳过 ${result.skipped} 个重复词` : '',
+      result.invalid > 0 ? `忽略 ${result.invalid} 个无效行` : '',
+    ]
+      .filter(Boolean)
+      .join('，');
     if (result.imported > 0) {
-      showSuccess(
-        `${format} 导入完成！新增 ${result.imported} 词，跳过 ${result.skipped} 个重复词`,
-      );
+      showSuccess(`${format} 导入完成！${parts}`);
     } else {
-      showError(`没有新词导入（${result.skipped} 个已存在）`);
+      showError(parts);
     }
   };
 

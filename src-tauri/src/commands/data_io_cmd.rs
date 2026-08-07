@@ -283,6 +283,7 @@ pub async fn import_learning_data_json(
     Ok(ImportResult {
         imported,
         skipped,
+        invalid: 0,
         total: data.cards.len() as i32,
     })
 }
@@ -300,8 +301,12 @@ pub async fn import_wordlist_csv(
     let delimiter = if content.contains('\t') { '\t' } else { ',' };
     let mut imported = 0;
     let mut skipped = 0;
+    let mut invalid = 0;
     let now = chrono::Utc::now().timestamp();
 
+    // 从文件中提取待导入单词（第 1 列）
+    let mut words_to_check: Vec<String> = Vec::new();
+    let mut pending: Vec<(String, String)> = Vec::new(); // (word, definition)
     for line in content.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -320,17 +325,37 @@ pub async fn import_wordlist_csv(
             .unwrap_or_default();
 
         if word.is_empty() || word.len() < 2 {
+            invalid += 1;
             continue;
         }
 
-        // 检查是否已存在
-        let exists: Option<String> = sqlx::query_scalar("SELECT id FROM cards WHERE word = ?")
-            .bind(&word)
-            .fetch_optional(store.pool())
-            .await
-            .unwrap_or(None);
+        words_to_check.push(word.clone());
+        pending.push((word, definition));
+    }
 
-        if exists.is_some() {
+    // 批量查询已存在的单词
+    let mut existing: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for chunk in words_to_check.chunks(500) {
+        if chunk.is_empty() {
+            continue;
+        }
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!("SELECT word FROM cards WHERE word IN ({})", placeholders);
+        let mut q = sqlx::query(&sql);
+        for w in chunk {
+            q = q.bind(w);
+        }
+        let rows = q.fetch_all(store.pool()).await.unwrap_or_default();
+        for row in rows {
+            use sqlx::Row;
+            if let Ok(w) = row.try_get::<String, _>("word") {
+                existing.insert(w);
+            }
+        }
+    }
+
+    for (word, definition) in pending {
+        if existing.contains(&word) {
             skipped += 1;
             continue;
         }
@@ -379,7 +404,8 @@ pub async fn import_wordlist_csv(
     Ok(ImportResult {
         imported,
         skipped,
-        total: imported + skipped,
+        invalid,
+        total: imported + skipped + invalid,
     })
 }
 
@@ -414,6 +440,7 @@ pub async fn auto_backup(
 pub struct ImportResult {
     pub imported: i32,
     pub skipped: i32,
+    pub invalid: i32,
     pub total: i32,
 }
 
