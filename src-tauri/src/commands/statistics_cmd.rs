@@ -320,18 +320,7 @@ pub async fn get_retention_curve(
 
     // 按间隔分桶：0, 1, 2-3, 4-6, 7-13, 14-20, 21-27, 28+
     let mut buckets: std::collections::HashMap<i32, (i32, i32)> = std::collections::HashMap::new(); // interval_bucket -> (correct, total)
-    let bucket_of = |days: i32| -> i32 {
-        match days {
-            d if d <= 0 => 0,
-            d if d <= 1 => 1,
-            d if d <= 3 => 2,
-            d if d <= 6 => 3,
-            d if d <= 13 => 4,
-            d if d <= 20 => 5,
-            d if d <= 27 => 6,
-            _ => 7,
-        }
-    };
+    let bucket_of = retention_bucket;
 
     for row in rows {
         use sqlx::Row;
@@ -425,6 +414,20 @@ pub async fn get_review_forecast_stats(
 // ============================================
 // 辅助函数
 // ============================================
+
+/// 保留率按复习间隔分桶：0, 1, 2-3, 4-6, 7-13, 14-20, 21-27, 28+
+fn retention_bucket(days: i32) -> i32 {
+    match days {
+        d if d <= 0 => 0,
+        d if d <= 1 => 1,
+        d if d <= 3 => 2,
+        d if d <= 6 => 3,
+        d if d <= 13 => 4,
+        d if d <= 20 => 5,
+        d if d <= 27 => 6,
+        _ => 7,
+    }
+}
 
 /// 计算连续学习天数（单次聚合查询优化）
 async fn calculate_streak_days(pool: &sqlx::SqlitePool) -> Result<i32, sqlx::Error> {
@@ -523,4 +526,29 @@ async fn calculate_avg_daily_review(pool: &sqlx::SqlitePool) -> Result<f64, sqlx
     .await?;
 
     Ok(total as f64 / days as f64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retention_bucket_boundaries() {
+        // 每个桶的边界值
+        assert_eq!(retention_bucket(-5), 0);
+        assert_eq!(retention_bucket(0), 0);
+        assert_eq!(retention_bucket(1), 1);
+        assert_eq!(retention_bucket(2), 2);
+        assert_eq!(retention_bucket(3), 2);
+        assert_eq!(retention_bucket(4), 3);
+        assert_eq!(retention_bucket(6), 3);
+        assert_eq!(retention_bucket(7), 4);
+        assert_eq!(retention_bucket(13), 4);
+        assert_eq!(retention_bucket(14), 5);
+        assert_eq!(retention_bucket(20), 5);
+        assert_eq!(retention_bucket(21), 6);
+        assert_eq!(retention_bucket(27), 6);
+        assert_eq!(retention_bucket(28), 7);
+        assert_eq!(retention_bucket(100), 7);
+    }
 }
