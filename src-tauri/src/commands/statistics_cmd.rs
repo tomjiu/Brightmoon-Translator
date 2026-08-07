@@ -382,29 +382,37 @@ pub async fn get_review_forecast_stats(
     let pool = store.pool();
 
     let today = chrono::Utc::now().date_naive();
-    let mut points = Vec::with_capacity(days as usize);
+    let today_start = today.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+    let window_end = (today + chrono::Duration::days(days as i64))
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp();
 
-    // 逐日查询 next_review 落在该天内的卡片数
+    // T10 修复:单次聚合查询按天分桶，消除 N+1（原先逐日发 days 次 COUNT）
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT CAST(
+                    (json_extract(fsrs_state, '$.next_review') - ?) / 86400
+                 AS INTEGER) AS day_offset,
+                COUNT(*)
+         FROM cards
+         WHERE json_extract(fsrs_state, '$.next_review') >= ?
+           AND json_extract(fsrs_state, '$.next_review') < ?
+         GROUP BY day_offset",
+    )
+    .bind(today_start)
+    .bind(today_start)
+    .bind(window_end)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("统计到期卡片失败: {e}"))?;
+
+    let mut points = Vec::with_capacity(days as usize);
+    let mut counts: std::collections::HashMap<i64, i64> =
+        rows.into_iter().collect();
     for offset in 0..days {
         let day = today + chrono::Duration::days(offset as i64);
-        let day_start = day.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
-        let day_end = (day + chrono::Duration::days(1))
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .timestamp();
-
-        let due: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM cards
-             WHERE json_extract(fsrs_state, '$.next_review') >= ?
-               AND json_extract(fsrs_state, '$.next_review') < ?",
-        )
-        .bind(day_start)
-        .bind(day_end)
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
-
+        let due = counts.remove(&(offset as i64)).unwrap_or(0);
         points.push(ForecastPoint {
             date: day.format("%Y-%m-%d").to_string(),
             due_count: due as i32,
