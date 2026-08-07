@@ -304,10 +304,12 @@ export async function optimizeCardOnError(
 }
 
 /**
- * 读取卡牌 Patch 历史（版本追踪）
+ * 读取卡牌 Patch 历史（版本追踪）— 接受 word 或 card_id
  */
-export async function getCardPatchHistory(cardId: string): Promise<PatchHistoryEntry[]> {
-  return await invokeOrThrow<PatchHistoryEntry[]>('get_card_patch_history', { cardId });
+export async function getCardPatchHistory(wordOrCardId: string): Promise<PatchHistoryEntry[]> {
+  return await invokeOrThrow<PatchHistoryEntry[]>('get_card_patch_history', {
+    wordOrCardId,
+  });
 }
 
 /**

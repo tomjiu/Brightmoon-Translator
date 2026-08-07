@@ -337,12 +337,10 @@ pub async fn import_wordlist_csv(
     let delimiter = if content.contains('\t') { '\t' } else { ',' };
     let mut imported = 0;
     let mut skipped = 0;
-    let mut invalid = 0;
     let now = chrono::Utc::now().timestamp();
 
     // 从文件中提取待导入单词（第 1 列），返回 (word, definition) 及无效行计数
-    let (pending, invalid_count) = parse_wordlist_content(&content, delimiter);
-    invalid = invalid_count;
+    let (pending, invalid) = parse_wordlist_content(&content, delimiter);
 
     // 批量查询已存在的单词
     let mut existing: std::collections::HashSet<String> = std::collections::HashSet::new();

@@ -443,13 +443,26 @@ pub struct PatchHistoryEntry {
     pub timestamp: i64,
 }
 
-/// 读取卡牌 Patch 历史（版本追踪）
+/// 读取卡牌 Patch 历史（版本追踪）。
+/// 接受 word 或 card_id：传 word 时先反查卡片，兼容前端用单词查看详情。
 #[tauri::command]
 pub async fn get_card_patch_history(
     state: tauri::State<'_, crate::AppState>,
-    card_id: String,
+    word_or_card_id: String,
 ) -> Result<Vec<PatchHistoryEntry>, String> {
     let store = state.event_store.as_ref().ok_or("词汇数据库未初始化")?;
+    let pool = store.pool();
+
+    // 先尝试按 word 精确匹配（大小写不敏感）反查 card_id
+    let card_id = sqlx::query_scalar::<_, String>(
+        "SELECT id FROM cards WHERE word = ?1 COLLATE NOCASE LIMIT 1",
+    )
+    .bind(&word_or_card_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .unwrap_or(word_or_card_id.clone());
+
     let events = store
         .load_events(&card_id)
         .await

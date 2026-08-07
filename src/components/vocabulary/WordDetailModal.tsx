@@ -12,6 +12,7 @@ import {
   type RelatedWord,
   type AiContent,
 } from '../../services/wordDetail';
+import { getCardPatchHistory, type PatchHistoryEntry } from '../../services/vocabulary';
 import { speakText, stopSpeaking } from '../../services/tts';
 import { detectSpeakLang } from '../../utils/speech';
 import { useToastStore } from '../../stores/toastStore';
@@ -31,9 +32,10 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
   const [aiContent, setAiContent] = useState<AiContent>({});
   const [editingAi, setEditingAi] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'history' | 'timeline' | 'related' | 'examples'>(
-    'history',
-  );
+  const [activeTab, setActiveTab] = useState<
+    'history' | 'timeline' | 'related' | 'examples' | 'patches'
+  >('history');
+  const [patches, setPatches] = useState<PatchHistoryEntry[]>([]);
 
   useEffect(() => {
     loadWordDetail();
@@ -56,6 +58,11 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
       setRelatedWords(relatedData);
       setExamples(examplesData);
       setEtymology(etymologyData);
+
+      // T8: 并行加载 AI 增强 Patch 历史(答错触发过才有数据)
+      getCardPatchHistory(word)
+        .then(setPatches)
+        .catch(() => setPatches([]));
     } catch (error) {
       console.error('加载单词详情失败:', error);
     } finally {
@@ -266,6 +273,17 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
                 <BookOpen className="w-4 h-4" />
                 语料例句
               </button>
+              <button
+                onClick={() => setActiveTab('patches')}
+                className={`flex items-center gap-2 px-4 py-2 border-b-2 transition-colors ${
+                  activeTab === 'patches'
+                    ? 'border-border text-primary'
+                    : 'border-transparent text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                <Edit3 className="w-4 h-4" />
+                AI 增强
+              </button>
             </div>
 
             {/* Tab Content */}
@@ -401,6 +419,47 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
                         >
                           <Volume2 className="w-4 h-4 text-gray-400 group-hover:text-primary" />
                         </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'patches' && (
+                <div className="space-y-3">
+                  {patches.length === 0 ? (
+                    <p className="text-gray-400 text-center py-8">暂无 AI 增强记录</p>
+                  ) : (
+                    patches.map((patch, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-start gap-3 p-3 bg-gray-700/50 rounded-lg"
+                      >
+                        <Edit3 className="w-4 h-4 text-primary mt-1" />
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-semibold text-sm">
+                              v{patch.version} · {patch.field}
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              {new Date(patch.timestamp * 1000).toLocaleString()}
+                            </span>
+                          </div>
+                          <span
+                            className={`inline-block text-xs px-2 py-0.5 rounded mb-1 ${
+                              patch.operation === 'replace'
+                                ? 'bg-green-500/20 text-green-300'
+                                : patch.operation === 'insert'
+                                  ? 'bg-blue-500/20 text-blue-300'
+                                  : 'bg-red-500/20 text-red-300'
+                            }`}
+                          >
+                            {patch.operation}
+                          </span>
+                          {patch.reasoning && (
+                            <p className="text-sm text-gray-400 mt-1">理由: {patch.reasoning}</p>
+                          )}
+                        </div>
                       </div>
                     ))
                   )}
