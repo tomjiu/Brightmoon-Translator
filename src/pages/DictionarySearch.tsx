@@ -14,6 +14,8 @@ import {
   Wand2,
 } from 'lucide-react';
 import { safeInvoke, invokeOrDefault } from '../services/invoke';
+import { speakText } from '../services/tts';
+import { detectSpeakLang } from '../utils/speech';
 import { useI18n } from '../i18n';
 import { saveAndCollect, summarizeReport } from '../hooks/useCollectionPush';
 import { extractWordsAndStudy } from '../services/vocabulary';
@@ -238,6 +240,14 @@ function DictionarySearch() {
     audioRef.current.play();
   };
 
+  const playTts = async (text: string) => {
+    try {
+      await speakText(text, detectSpeakLang(text));
+    } catch (err) {
+      console.error('TTS 发音失败:', err);
+    }
+  };
+
   const handleImport = async () => {
     setIsImporting(true);
     setImportStatus('导入中...');
@@ -412,7 +422,7 @@ function DictionarySearch() {
               <p className="text-sm mt-2">多源聚合：自动合并多个词典的数据</p>
             </div>
           )}
-          {result && <ResultCard result={result} onPlayAudio={playAudio} />}
+          {result && <ResultCard result={result} onPlayAudio={playAudio} onSpeak={playTts} />}
         </div>
       </div>
 
@@ -492,9 +502,11 @@ function DictionarySearch() {
 function ResultCard({
   result,
   onPlayAudio,
+  onSpeak,
 }: {
   result: ComprehensiveEntry;
   onPlayAudio: (url: string) => void;
+  onSpeak: (text: string) => void;
 }) {
   const { t } = useI18n();
   const primaryPhonetic = result.phonetics.find((p) => p.text);
@@ -547,6 +559,16 @@ function ResultCard({
                   title="英式发音"
                 >
                   <Volume2 size={12} /> 英音
+                </button>
+              )}
+              {/* TTS 兜底发音（无词典音频时） */}
+              {!result.usAudioUrl && !result.ukAudioUrl && (
+                <button
+                  onClick={() => onSpeak(result.word)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-bg-tertiary text-primary rounded hover:bg-bg-tertiary"
+                  title="发音"
+                >
+                  <Volume2 size={12} /> 发音
                 </button>
               )}
               {result.sources.map((s) => (
