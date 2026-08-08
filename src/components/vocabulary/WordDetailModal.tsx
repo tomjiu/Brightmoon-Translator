@@ -4,12 +4,12 @@ import {
   getWordHistory,
   getFsrsTimeline,
   updateAiContent,
-  getRelatedWords,
+  getRootGraph,
   getCorpusExamples,
   getWordEtymology,
   type WordHistory,
   type FsrsTimeline,
-  type RelatedWord,
+  type RootGraph,
   type AiContent,
 } from '../../services/wordDetail';
 import { getCardPatchHistory, type PatchHistoryEntry } from '../../services/vocabulary';
@@ -26,7 +26,7 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
   const addToast = useToastStore((s) => s.addToast);
   const [history, setHistory] = useState<WordHistory[]>([]);
   const [timeline, setTimeline] = useState<FsrsTimeline[]>([]);
-  const [relatedWords, setRelatedWords] = useState<RelatedWord[]>([]);
+  const [rootGraph, setRootGraph] = useState<RootGraph | null>(null);
   const [examples, setExamples] = useState<string[]>([]);
   const [etymology, setEtymology] = useState<string>('');
   const [aiContent, setAiContent] = useState<AiContent>({});
@@ -44,18 +44,18 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
   const loadWordDetail = async () => {
     try {
       setLoading(true);
-      const [historyData, timelineData, relatedData, examplesData, etymologyData] =
+      const [historyData, timelineData, graphData, examplesData, etymologyData] =
         await Promise.all([
           getWordHistory(word),
           getFsrsTimeline(word),
-          getRelatedWords(word),
+          getRootGraph(word),
           getCorpusExamples(word, 5),
           getWordEtymology(word),
         ]);
 
       setHistory(historyData);
       setTimeline(timelineData);
-      setRelatedWords(relatedData);
+      setRootGraph(graphData);
       setExamples(examplesData);
       setEtymology(etymologyData);
 
@@ -368,35 +368,46 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
               )}
 
               {activeTab === 'related' && (
-                <div className="space-y-2">
-                  {relatedWords.length === 0 ? (
-                    <p className="text-gray-400 text-center py-8">暂无相关词汇</p>
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Lightbulb className="w-5 h-5 text-yellow-400" />
+                    <h3 className="font-semibold">词根图谱</h3>
+                    {rootGraph?.source === 'heuristic' && (
+                      <span className="text-xs text-gray-500">（启发式匹配）</span>
+                    )}
+                  </div>
+
+                  {!rootGraph || rootGraph.rootMates.length === 0 ? (
+                    <p className="text-gray-500 text-sm">暂无同根词数据</p>
                   ) : (
-                    relatedWords.map((related, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors"
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-primary">{related.word}</span>
-                            <button
-                              onClick={() => void speakWord(related.word)}
-                              className="p-1 rounded hover:bg-gray-600 transition-colors"
-                              title={`发音 ${related.word}`}
-                            >
-                              <Volume2 className="w-3.5 h-3.5 text-gray-400" />
-                            </button>
-                          </div>
-                          {related.definition && (
-                            <p className="text-sm text-gray-400 mt-1">{related.definition}</p>
-                          )}
-                        </div>
-                        <span className="text-xs px-2 py-1 bg-white/10 text-primary rounded">
-                          {related.relationType === 'root' ? '同根词' : related.relationType}
+                    <div>
+                      <div className="flex items-center gap-2 mb-4">
+                        <span className="px-3 py-1 bg-primary/20 text-primary rounded-lg font-semibold">
+                          {word}
                         </span>
+                        <span className="text-gray-500">← 词根:</span>
+                        {rootGraph.roots.map((root, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-1 bg-gray-700 rounded text-yellow-400 font-mono"
+                          >
+                            {root}
+                          </span>
+                        ))}
                       </div>
-                    ))
+                      <div className="space-y-1.5">
+                        {rootGraph.rootMates.map((mate) => (
+                          <div key={mate.word} className="flex items-center gap-2 py-1">
+                            <span className="w-28 font-medium text-blue-300 truncate">
+                              {mate.word}
+                            </span>
+                            <span className="text-gray-400 text-xs truncate">
+                              {mate.definition || '暂无释义'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
