@@ -51,6 +51,16 @@ fn weak_error_type(quiz_type: &str) -> &'static str {
     }
 }
 
+/// 解析 word / card_id 双输入（学习模式题目只带 word）
+async fn resolve_quiz_card_id(pool: &sqlx::SqlitePool, word_or_id: &str) -> Option<String> {
+    sqlx::query_scalar("SELECT id FROM cards WHERE id = ?1 OR word = ?1")
+        .bind(word_or_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+}
+
 /// 记录测验结果（答错时写入错误日志 + 弱点统计）
 #[tauri::command]
 pub async fn record_quiz_result(
@@ -64,6 +74,10 @@ pub async fn record_quiz_result(
     let store = state.event_store.as_ref().ok_or("词汇数据库未初始化")?;
     let pool = store.pool();
     let now = Utc::now().timestamp();
+
+    // 兼容 word / card_id 双输入（学习模式题目只有 word）
+    let resolved: Option<String> = resolve_quiz_card_id(pool, &card_id).await;
+    let card_id = resolved.unwrap_or(card_id.clone());
 
     if !correct {
         // 1. 写 quiz_errors 表
@@ -683,5 +697,31 @@ mod tests {
         assert_eq!(weak_error_type("fill_blank"), "usage");
         assert_eq!(weak_error_type("choice"), "meaning");
         assert_eq!(weak_error_type("anything_else"), "meaning");
+    }
+
+    #[tokio::test]
+    async fn resolve_quiz_card_id_accepts_word_input() {
+        // T15: 学习模式题目只带 word，需解析 word → card_id
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query("CREATE TABLE cards (id TEXT PRIMARY KEY, word TEXT, fsrs_state TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO cards (id, word, fsrs_state) VALUES ('c1', 'hello', '{}')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // word 输入 → 解析出 card_id
+        let resolved = resolve_quiz_card_id(&pool, "hello").await;
+        assert_eq!(resolved.as_deref(), Some("c1"));
+
+        // card_id 输入 → 原样解析
+        let resolved = resolve_quiz_card_id(&pool, "c1").await;
+        assert_eq!(resolved.as_deref(), Some("c1"));
+
+        // 不存在的 word → None（调用方回退用原始输入）
+        let resolved = resolve_quiz_card_id(&pool, "nonexistent").await;
+        assert_eq!(resolved, None);
     }
 }

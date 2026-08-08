@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, XCircle, ChevronRight, RotateCcw, Keyboard } from 'lucide-react';
+import { recordQuizResult } from '../../../services/vocabulary';
 
 interface ChoiceQuestion {
   word: string;
@@ -29,9 +30,19 @@ export function ChoiceQuiz({ questions, onComplete }: ChoiceQuizProps) {
       setSelectedIndex(index);
       setShowResult(true);
 
-      if (index === current.correctIndex) {
+      const isCorrect = index === current.correctIndex;
+      if (isCorrect) {
         setCorrectCount((c) => c + 1);
       }
+
+      // T15: 答题结果记录到学习系统（弱项统计 + QuizCompleted 事件）
+      void recordQuizResult(
+        current.word,
+        'choice',
+        isCorrect,
+        current.options[index],
+        current.options[current.correctIndex],
+      ).catch((err: unknown) => console.error('记录答题结果失败:', err));
     },
     [showResult, current],
   );
