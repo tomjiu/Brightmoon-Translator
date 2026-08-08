@@ -401,6 +401,13 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
                             <span className="w-28 font-medium text-blue-300 truncate">
                               {mate.word}
                             </span>
+                            <button
+                              onClick={() => void speakWord(mate.word)}
+                              className="p-1 rounded hover:bg-gray-600 transition-colors"
+                              title={`发音 ${mate.word}`}
+                            >
+                              <Volume2 className="w-3.5 h-3.5 text-gray-400" />
+                            </button>
                             <span className="text-gray-400 text-xs truncate">
                               {mate.definition || '暂无释义'}
                             </span>
