@@ -23,6 +23,13 @@ export interface RelatedWord {
   definition?: string;
 }
 
+export interface RootGraph {
+  word: string;
+  roots: string[];
+  rootMates: RelatedWord[];
+  source: string;
+}
+
 export interface AiContent {
   etymology?: string;
   mnemonics?: string;
@@ -44,6 +51,10 @@ export async function updateAiContent(word: string, aiContent: AiContent): Promi
 
 export async function getRelatedWords(word: string): Promise<RelatedWord[]> {
   return invokeOrThrow('get_related_words', { word });
+}
+
+export async function getRootGraph(word: string): Promise<RootGraph> {
+  return invokeOrThrow('get_root_graph', { word });
 }
 
 export async function getCorpusExamples(word: string, limit: number): Promise<string[]> {
