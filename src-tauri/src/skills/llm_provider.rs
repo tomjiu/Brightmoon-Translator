@@ -250,9 +250,56 @@ impl LlmProvider for OpenAiCompatibleProvider {
     }
 }
 
+/// 从 LLM 响应中提取 JSON 字符串。
+/// 处理场景：直接以 `{`/`[` 开头、markdown 代码块包裹（```json ... ```）、
+/// 以及前后夹杂文本（提取首尾 `{...}` 或 `[...]`）。
+pub fn extract_json(content: &str) -> &str {
+    let trimmed = content.trim();
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return trimmed;
+    }
+    if let Some(start) = trimmed.find("```json") {
+        let json_start = start + 7;
+        if let Some(end) = trimmed[json_start..].find("```") {
+            return trimmed[json_start..json_start + end].trim();
+        }
+    }
+    // 提取第一个 `{...}` 或 `[...]` 完整块
+    for (open, close) in [('{', '}'), ('[', ']')] {
+        if let Some(start) = trimmed.find(open) {
+            if let Some(end) = trimmed[start..].rfind(close) {
+                return &trimmed[start..start + end + 1];
+            }
+        }
+    }
+    trimmed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_extract_json_plain() {
+        assert_eq!(extract_json("{a:1}"), "{a:1}");
+        assert_eq!(extract_json("[1,2]"), "[1,2]");
+    }
+
+    #[test]
+    fn test_extract_json_markdown_block() {
+        assert_eq!(extract_json("```json\n{\"b\":2}\n```"), "{\"b\":2}");
+    }
+
+    #[test]
+    fn test_extract_json_embedded_text() {
+        assert_eq!(extract_json("前缀 {\"c\":3} 后缀"), "{\"c\":3}");
+        assert_eq!(extract_json("答案: [1, 2, 3] 完"), "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_extract_json_no_json_returns_trimmed() {
+        assert_eq!(extract_json("  无 JSON 内容  "), "无 JSON 内容");
+    }
 
     #[test]
     fn test_llm_message() {

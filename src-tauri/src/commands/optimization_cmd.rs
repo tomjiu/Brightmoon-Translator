@@ -7,6 +7,7 @@
 // - get_weak_words:         弱点词表（错误次数排序）
 
 use crate::domain::{CardPatch, PatchOperation, PatchValidator};
+use crate::skills::llm_provider::extract_json;
 use crate::skills::{LlmMessage, LlmProvider, LlmRequest, OpenAiCompatibleProvider};
 use anyhow::Result;
 use chrono::Utc;
@@ -456,26 +457,6 @@ fn patch_json_schema(field: &str) -> serde_json::Value {
         }),
         _ => serde_json::json!({ "type": "object" }),
     }
-}
-
-/// 从 LLM 响应中提取 JSON（处理 markdown 代码块包裹）
-fn extract_json(content: &str) -> &str {
-    let trimmed = content.trim();
-    if trimmed.starts_with('{') || trimmed.starts_with('[') {
-        return trimmed;
-    }
-    if let Some(start) = trimmed.find("```json") {
-        let json_start = start + 7;
-        if let Some(end) = trimmed[json_start..].find("```") {
-            return trimmed[json_start..json_start + end].trim();
-        }
-    }
-    if let Some(start) = trimmed.find('{') {
-        if let Some(end) = trimmed[start..].rfind('}') {
-            return &trimmed[start..start + end + 1];
-        }
-    }
-    trimmed
 }
 
 /// 优化结果

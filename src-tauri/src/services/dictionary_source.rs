@@ -3,6 +3,7 @@
 // 定义统一的 DictionarySource trait,让 ECDICT / 有道 / 在线API / AI Prompt
 // 都作为可插拔的词典源,聚合到统一的词典查询流程。
 
+use crate::skills::llm_provider::extract_json;
 use crate::skills::{LlmMessage, LlmProvider, LlmRequest, OpenAiCompatibleProvider};
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
@@ -381,20 +382,6 @@ impl DictionarySource for AiPromptSource {
             raw: None,
         })
     }
-}
-
-/// 从 LLM 响应中提取 JSON
-fn extract_json(content: &str) -> &str {
-    let trimmed = content.trim();
-    if trimmed.starts_with('{') {
-        return trimmed;
-    }
-    if let Some(start) = trimmed.find('{') {
-        if let Some(end) = trimmed[start..].rfind('}') {
-            return &trimmed[start..start + end + 1];
-        }
-    }
-    trimmed
 }
 
 // ============================================

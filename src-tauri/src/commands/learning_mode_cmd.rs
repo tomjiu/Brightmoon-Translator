@@ -1,5 +1,6 @@
 // Learning Mode Commands - 多样化学习模式 API
 
+use crate::skills::llm_provider::extract_json;
 use crate::skills::{LlmMessage, LlmProvider, LlmRequest, OpenAiCompatibleProvider};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -556,7 +557,7 @@ async fn verify_options_with_llm(
         },
     };
 
-    let json_str = extract_json_content(&response.content);
+    let json_str = extract_json(&response.content);
     let parsed: serde_json::Value = match serde_json::from_str(json_str) {
         Ok(v) => v,
         Err(_) => return Vec::new(),
@@ -576,20 +577,6 @@ async fn verify_options_with_llm(
     idxs.iter()
         .filter_map(|i| distractors.get(*i).cloned())
         .collect()
-}
-
-/// 从 LLM 响应提取 JSON 字符串
-fn extract_json_content(content: &str) -> &str {
-    let trimmed = content.trim();
-    if trimmed.starts_with('{') {
-        return trimmed;
-    }
-    if let Some(start) = trimmed.find('{') {
-        if let Some(end) = trimmed[start..].rfind('}') {
-            return &trimmed[start..start + end + 1];
-        }
-    }
-    trimmed
 }
 
 /// 获取要测试的单词列表
