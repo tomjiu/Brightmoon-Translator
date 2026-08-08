@@ -5,6 +5,11 @@ use crate::skills::preference_service::{
 };
 use chrono::Utc;
 
+/// 低分阈值判定：< 3 分触发再优化
+pub fn needs_reoptimization(rating: f32) -> bool {
+    rating < 3.0
+}
+
 /// user_profile upsert（单测与命令共用）
 pub async fn upsert_profile(
     pool: &sqlx::SqlitePool,
@@ -82,6 +87,15 @@ pub async fn rate_card_field(
         .append_event(&card_id, &event)
         .await
         .map_err(|e| e.to_string())?;
+
+    if needs_reoptimization(rating) {
+        let ev = crate::domain::CardEvent::OptimizationRequested {
+            field: field.clone(),
+            reason: "user_feedback".to_string(),
+            timestamp: now,
+        };
+        store.append_event(&card_id, &ev).await.map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }
@@ -184,5 +198,11 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].field, "mnemonic");
         assert!((rows[0].rating - 2.0).abs() < 0.01);
+    }
+
+    #[tokio::test]
+    async fn low_rating_flags_for_optimization() {
+        assert!(needs_reoptimization(2.0));
+        assert!(!needs_reoptimization(4.0));
     }
 }
