@@ -3,6 +3,7 @@
 
 pub mod generate_card;
 pub mod llm_provider;
+pub mod preference_service;
 
 use anyhow::Result;
 use async_trait::async_trait;
