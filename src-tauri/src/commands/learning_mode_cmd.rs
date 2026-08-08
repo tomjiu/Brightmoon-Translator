@@ -1,7 +1,7 @@
 // Learning Mode Commands - 多样化学习模式 API
 
 use crate::skills::llm_provider::extract_json;
-use crate::skills::{LlmMessage, LlmProvider, LlmRequest, OpenAiCompatibleProvider};
+use crate::skills::{LlmMessage, LlmProvider, LlmRequest};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use tauri::State;
@@ -511,17 +511,10 @@ async fn verify_options_with_llm(
 
     // LLM 配置
     let config = state.system.config.lock().await;
-    let llm = &config.llm;
-    let api_key = if !llm.api_key.is_empty() {
-        Some(llm.api_key.clone())
-    } else {
-        llm.api_keys.first().cloned()
-    };
-    let base_url = llm.base_url.clone();
-    let model = llm.model.clone();
+    let provider = crate::skills::llm_provider::provider_from_config(&config.llm);
     drop(config);
 
-    let (Some(key), false) = (api_key, base_url.is_empty()) else {
+    let Some(provider) = provider else {
         return Vec::new();
     };
 
@@ -540,7 +533,6 @@ async fn verify_options_with_llm(
         definition
     );
 
-    let provider = OpenAiCompatibleProvider::new(key, base_url, model);
     let request = LlmRequest::new(vec![
         LlmMessage::system("你是严格、准确的单词学习题质量检查器。"),
         LlmMessage::user(prompt),

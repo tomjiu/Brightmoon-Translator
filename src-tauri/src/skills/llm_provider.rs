@@ -138,6 +138,11 @@ impl OpenAiCompatibleProvider {
         Self::new(api_key, "https://api.openai.com/v1".to_string(), model)
     }
 
+    /// 当前使用的模型名
+    pub fn model_name(&self) -> String {
+        self.model.clone()
+    }
+
     /// DeepSeek
     pub fn deepseek(api_key: String) -> Self {
         Self::new(
@@ -248,6 +253,27 @@ impl LlmProvider for OpenAiCompatibleProvider {
     fn is_available(&self) -> bool {
         !self.api_key.is_empty()
     }
+}
+
+/// 从 LLM 配置构建可用的 OpenAI 兼容 Provider。
+/// 优先使用 api_key，其次 api_keys 列表第一个；api_key 为空或 base_url 为空时返回 None。
+pub fn provider_from_config(
+    llm: &crate::models::config::LlmConfig,
+) -> Option<OpenAiCompatibleProvider> {
+    if llm.base_url.is_empty() {
+        return None;
+    }
+    let api_key = if !llm.api_key.is_empty() {
+        Some(llm.api_key.clone())
+    } else {
+        llm.api_keys.first().cloned()
+    };
+    let key = api_key?;
+    Some(OpenAiCompatibleProvider::new(
+        key,
+        llm.base_url.clone(),
+        llm.model.clone(),
+    ))
 }
 
 /// 从 LLM 响应中提取 JSON 字符串。

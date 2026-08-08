@@ -226,21 +226,15 @@ pub async fn generate_card_content(
 
     // 从配置获取 LLM 设置
     let config = state.system.config.lock().await;
-    let llm_config = &config.llm;
-    let api_key = if !llm_config.api_key.is_empty() {
-        llm_config.api_key.clone()
-    } else if let Some(key) = llm_config.api_keys.first() {
-        key.clone()
-    } else {
-        return Err("未配置 LLM API Key，请在设置中配置".to_string());
-    };
-    let base_url = llm_config.base_url.clone();
-    let model = llm_config.model.clone();
+    let provider =
+        crate::skills::llm_provider::provider_from_config(&config.llm);
     drop(config);
 
-    use crate::skills::{GenerateCardSkill, OpenAiCompatibleProvider, SkillInput, SkillRegistry};
+    let provider = provider.ok_or("未配置 LLM API Key，请在设置中配置")?;
 
-    let provider = std::sync::Arc::new(OpenAiCompatibleProvider::new(api_key, base_url, model));
+    use crate::skills::{GenerateCardSkill, SkillInput, SkillRegistry};
+
+    let provider = std::sync::Arc::new(provider);
 
     let mut registry = SkillRegistry::new();
     registry
@@ -590,38 +584,25 @@ pub async fn study_word(
 
                     // 5. AI 生成内容
                     let config = state.system.config.lock().await;
-                    let llm = &config.llm;
-                    let api_key = if !llm.api_key.is_empty() {
-                        Some(llm.api_key.clone())
-                    } else {
-                        llm.api_keys.first().cloned()
-                    };
-                    let base_url = llm.base_url.clone();
-                    let model = llm.model.clone();
+                    let provider =
+                        crate::skills::llm_provider::provider_from_config(&config.llm);
                     drop(config);
 
                     tracing::info!(
-                        "AI gen check: key_set={}, base_url='{}', model='{}'",
-                        api_key.is_some(),
-                        base_url,
-                        model
+                        "AI gen check: key_set={}",
+                        provider.is_some()
                     );
 
-                    if let Some(key) = api_key {
-                        if !key.is_empty() && !base_url.is_empty() {
-                            let model_for_event = model.clone();
-                            use crate::skills::{
-                                GenerateCardSkill, OpenAiCompatibleProvider, SkillInput, SkillRegistry,
-                            };
+                    if let Some(provider) = provider {
+                        let model_for_event = provider.model_name();
+                        use crate::skills::{GenerateCardSkill, SkillInput, SkillRegistry};
 
-                            let provider = std::sync::Arc::new(OpenAiCompatibleProvider::new(
-                                key, base_url, model,
-                            ));
-                            let mut registry = SkillRegistry::new();
-                            if registry
-                                .register(Box::new(GenerateCardSkill::new(provider)), 100)
-                                .is_ok()
-                            {
+                        let provider = std::sync::Arc::new(provider);
+                        let mut registry = SkillRegistry::new();
+                        if registry
+                            .register(Box::new(GenerateCardSkill::new(provider)), 100)
+                            .is_ok()
+                        {
                                 let context = serde_json::json!({
                                     "word": data.word,
                                     "translation": data.chinese_translation,
@@ -659,7 +640,6 @@ pub async fn study_word(
                                 }
                             }
                         }
-                    }
 
                     // 6. 更新卡牌快照
                     if let Ok(card) = store.rebuild_card(&card_id).await {
