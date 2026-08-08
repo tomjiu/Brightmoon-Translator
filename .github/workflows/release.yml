@@ -48,6 +48,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # ecdict.db 不在仓库中（.gitignore），stub 使 tauri build 资源校验通过
+      - name: Stub resource files
+        working-directory: src-tauri
+        run: |
+          New-Item -ItemType Directory -Force -Path ../dictionaries | Out-Null
+          New-Item -ItemType File -Force -Path ../dictionaries/ecdict.db -Value "stub" | Out-Null
+
       - name: Build Tauri app
         id: tauri_build
         uses: tauri-apps/tauri-action@v0
