@@ -216,6 +216,16 @@ impl EventStore {
         .execute(&self.pool)
         .await?;
 
+        // T12: user_profile 唯一约束（upsert 依赖）
+        sqlx::query(
+            r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_profile_card_field
+            ON user_profile(card_id, field)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         // T8: 弱点记录表（频繁出错的词/字段）
         sqlx::query(
             r#"
