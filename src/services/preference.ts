@@ -19,7 +19,7 @@ export async function rateCardField(
   rating: number,
   feedback: string | null,
 ): Promise<void> {
-  return invokeOrThrow<void>('rate_card_field', { cardId, field, rating, feedback });
+  return invokeOrThrow('rate_card_field', { cardId, field, rating, feedback });
 }
 
 export async function getUserPreferences(): Promise<FieldPreference[]> {
