@@ -56,7 +56,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Moon Translator ${{ github.ref_name }}
-          tauriScript: pnpm run tauri --
+          tauriScript: pnpm exec tauri --
           releaseBody: |
             ## Moon Translator ${{ github.ref_name }}
 
