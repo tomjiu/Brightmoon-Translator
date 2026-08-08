@@ -247,7 +247,9 @@ export async function searchCards(query: string, limit?: number): Promise<CardSe
 export interface OptimizeResult {
   applied: boolean;
   message: string;
-  patch_id?: string;
+  patchId?: string;
+  reasoning?: string;
+  suggestionPreview?: string;
 }
 
 export interface PatchHistoryEntry {

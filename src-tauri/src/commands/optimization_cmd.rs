@@ -158,6 +158,8 @@ pub async fn optimize_card_on_error(
                 applied: false,
                 message: "该卡片近期已优化，稍后再试".to_string(),
                 patch_id: None,
+                reasoning: None,
+                suggestion_preview: None,
             });
         }
     }
@@ -179,6 +181,8 @@ pub async fn optimize_card_on_error(
             applied: false,
             message: "未配置 LLM，跳过 AI 增强".to_string(),
             patch_id: None,
+            reasoning: None,
+            suggestion_preview: None,
         });
     };
 
@@ -233,6 +237,8 @@ pub async fn optimize_card_on_error(
                 applied: false,
                 message: format!("AI 生成失败: {e}"),
                 patch_id: None,
+                reasoning: None,
+                suggestion_preview: None,
             });
         },
     };
@@ -247,6 +253,8 @@ pub async fn optimize_card_on_error(
                 applied: false,
                 message: "AI 返回格式错误".to_string(),
                 patch_id: None,
+                reasoning: None,
+                suggestion_preview: None,
             });
         },
     };
@@ -284,6 +292,8 @@ pub async fn optimize_card_on_error(
             applied: false,
             message: format!("Patch 验证未通过: {e}"),
             patch_id: None,
+            reasoning: None,
+            suggestion_preview: None,
         });
     }
 
@@ -327,11 +337,57 @@ pub async fn optimize_card_on_error(
         new_version
     );
 
+    // 生成建议预览：从 proposed_value 提取首个字符串字段作为展示文本
+    let suggestion_preview = extract_preview_text(&proposed_value);
+
     Ok(OptimizeResult {
         applied: true,
         message: "已根据错误生成改进内容".to_string(),
         patch_id: Some(patch.patch_id),
+        reasoning: Some(patch.reasoning),
+        suggestion_preview,
     })
+}
+
+/// 从 AI 建议值中提取可展示的文本预览（取首个字符串字段，截断到 160 字符）
+fn extract_preview_text(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(s) => {
+            let s = s.trim();
+            if s.is_empty() {
+                None
+            } else {
+                Some(truncate(s, 160))
+            }
+        },
+        serde_json::Value::Object(map) => {
+            for (_, v) in map {
+                if let Some(text) = extract_preview_text(v) {
+                    return Some(text);
+                }
+            }
+            None
+        },
+        serde_json::Value::Array(arr) => {
+            for v in arr {
+                if let Some(text) = extract_preview_text(v) {
+                    return Some(text);
+                }
+            }
+            None
+        },
+        _ => None,
+    }
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(max).collect();
+        out.push('…');
+        out
+    }
 }
 
 /// 根据错误类型选择需要增强的字段
@@ -429,6 +485,10 @@ pub struct OptimizeResult {
     pub applied: bool,
     pub message: String,
     pub patch_id: Option<String>,
+    /// T8 增强 UI：AI 改进理由（面向学习者）
+    pub reasoning: Option<String>,
+    /// T8 增强 UI：建议内容的文本预览（截断）
+    pub suggestion_preview: Option<String>,
 }
 
 /// Patch 历史记录项

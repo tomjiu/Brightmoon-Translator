@@ -13,7 +13,7 @@ import {
   ArrowLeft,
   Trophy,
 } from 'lucide-react';
-import { recordQuizResult, type CardInfo, type AiContent } from '../services/vocabulary';
+import { recordQuizResult, optimizeCardOnError, type CardInfo, type AiContent, type OptimizeResult } from '../services/vocabulary';
 import { speakText, stopSpeaking } from '../services/tts';
 import { detectSpeakLang } from '../utils/speech';
 
@@ -73,6 +73,7 @@ export default function VocabularyReview() {
     correctRate: 0,
   });
   const [showStats, setShowStats] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState<OptimizeResult | null>(null);
 
   const { startSession, endSession } = useVocabularyStore();
 
@@ -188,15 +189,11 @@ export default function VocabularyReview() {
         void recordQuizResult(card.id, 'review', false).catch((err: unknown) =>
           console.error('记录弱点失败:', err),
         );
-        void invokeOrThrow<{ applied: boolean; message: string }>('optimize_card_on_error', {
-          cardId: card.id,
-          errorType,
-          userAnswer: null,
-          correctAnswer: null,
-        })
-          .then((res: { applied: boolean; message: string }) => {
+        void optimizeCardOnError(card.id, errorType, null, null)
+          .then((res) => {
             if (res.applied) {
               console.log(`[T8] ${card.word} 已 AI 增强: ${res.message}`);
+              setAiSuggestion(res);
             }
           })
           .catch((err: unknown) => console.error('AI 增强失败:', err));
@@ -762,6 +759,34 @@ export default function VocabularyReview() {
               </button>
             </div>
           </div>
+
+          {/* T8: AI 增强建议面板（答错后展示） */}
+          {aiSuggestion && aiSuggestion.applied && (
+            <div className="mt-4 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/30 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 text-indigo-300 font-semibold">
+                  <Sparkles className="w-4 h-4" />
+                  AI 增强建议
+                </div>
+                <button
+                  onClick={() => setAiSuggestion(null)}
+                  className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                >
+                  关闭
+                </button>
+              </div>
+              {aiSuggestion.suggestionPreview && (
+                <p className="mt-2 text-sm text-gray-300 leading-relaxed">
+                  {aiSuggestion.suggestionPreview}
+                </p>
+              )}
+              {aiSuggestion.reasoning && (
+                <p className="mt-2 text-xs text-gray-400">
+                  💡 {aiSuggestion.reasoning}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
