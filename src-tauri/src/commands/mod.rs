@@ -31,6 +31,7 @@ pub mod pdf_cmd;
 pub mod post_process_cmd;
 pub mod pptx_cmd;
 pub mod pre_process_cmd;
+pub mod preference_cmd;
 pub mod process_list;
 pub mod quality_cmd;
 pub mod region_session;
