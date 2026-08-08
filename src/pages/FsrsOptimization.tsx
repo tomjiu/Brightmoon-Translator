@@ -8,6 +8,8 @@ import {
   AlertTriangle,
   CheckCircle,
   Info,
+  Wand2,
+  RotateCcw,
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import {
@@ -16,6 +18,8 @@ import {
   getReviewForecast,
   getBestStudyTime,
   getDifficultyDistribution,
+  applyFsrsParams,
+  resetFsrsParams,
   type FsrsAnalysis,
   type ForgettingCurvePoint,
   type ReviewForecast,
@@ -53,6 +57,9 @@ export default function FsrsOptimization() {
   const [difficulty, setDifficulty] = useState<DifficultyBucket[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
   const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState(false);
+  const [applyMsg, setApplyMsg] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -82,6 +89,40 @@ export default function FsrsOptimization() {
       console.error('加载 FSRS 数据失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApplyParams = async () => {
+    setApplying(true);
+    setApplyMsg(null);
+    setApplyError(null);
+    try {
+      const result = await applyFsrsParams();
+      if (result.applied) {
+        setApplyMsg(result.reason);
+      } else {
+        setApplyError(result.reason);
+      }
+      await loadData();
+    } catch (error) {
+      setApplyError(`应用参数失败: ${error}`);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const handleResetParams = async () => {
+    setApplying(true);
+    setApplyMsg(null);
+    setApplyError(null);
+    try {
+      await resetFsrsParams();
+      setApplyMsg('已重置为默认参数');
+      await loadData();
+    } catch (error) {
+      setApplyError(`重置参数失败: ${error}`);
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -229,6 +270,47 @@ export default function FsrsOptimization() {
                   <div className="text-sm font-mono">{param.toFixed(3)}</div>
                 </div>
               ))}
+            </div>
+
+            {/* T11: 参数优化闭环 */}
+            <div className="mt-5 pt-5 border-t border-border">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleApplyParams}
+                  disabled={applying}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-fg text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                >
+                  {applying ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-4 h-4" />
+                  )}
+                  {applying ? '应用中...' : '应用优化参数'}
+                </button>
+                <button
+                  onClick={handleResetParams}
+                  disabled={applying}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-bg-tertiary text-text-secondary text-sm font-medium hover:text-text-primary disabled:opacity-50"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  重置默认
+                </button>
+                <span className="text-xs text-text-secondary">
+                  基于复习历史优化，数据需 ≥50 次复习，应用后立即生效
+                </span>
+              </div>
+              {applyMsg && (
+                <div className="mt-3 flex items-center gap-2 text-sm text-green-400">
+                  <CheckCircle className="w-4 h-4" />
+                  {applyMsg}
+                </div>
+              )}
+              {applyError && (
+                <div className="mt-3 flex items-center gap-2 text-sm text-yellow-400">
+                  <AlertTriangle className="w-4 h-4" />
+                  {applyError}
+                </div>
+              )}
             </div>
           </div>
         </div>

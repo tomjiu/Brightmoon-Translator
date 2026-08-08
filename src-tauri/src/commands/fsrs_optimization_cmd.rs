@@ -4,6 +4,22 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use tauri::State;
 
+/// T11: 构建 FSRS 引擎，优先使用持久化的优化参数（app_settings.fsrs_params）
+pub async fn build_fsrs_engine(
+    store: &crate::infrastructure::EventStore,
+) -> crate::domain::FsrsEngine {
+    let stored = store
+        .get_setting("fsrs_params")
+        .await
+        .ok()
+        .flatten()
+        .and_then(|s| serde_json::from_str::<[f64; 17]>(&s).ok());
+    match stored {
+        Some(params) => crate::domain::FsrsEngine::with_params(params),
+        None => crate::domain::FsrsEngine::new(),
+    }
+}
+
 /// FSRS 参数分析结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,8 +65,8 @@ pub async fn get_fsrs_analysis(state: State<'_, crate::AppState>) -> Result<Fsrs
     let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
     let pool = store.pool();
 
-    // 获取当前参数
-    let engine = crate::domain::FsrsEngine::new();
+    // 获取当前参数（T11: 优先持久化的优化参数）
+    let engine = build_fsrs_engine(store).await;
     let params = *engine.get_params();
 
     // 计算所有卡牌的平均指标
@@ -400,4 +416,54 @@ async fn calculate_actual_retention_by_interval(
     }
 
     Ok(result)
+}
+
+/// FSRS 参数优化应用结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyParamsResult {
+    pub applied: bool,
+    pub params: [f64; 17],
+    pub reason: String,
+}
+
+/// T11: 应用 FSRS 优化参数（写入持久化，后续调度即生效）
+#[tauri::command]
+pub async fn apply_fsrs_params(state: State<'_, crate::AppState>) -> Result<ApplyParamsResult, String> {
+    let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
+    let pool = store.pool();
+
+    let optimal = optimize_params_from_history(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let default_params = *crate::domain::FsrsEngine::new().get_params();
+    if optimal == default_params {
+        return Ok(ApplyParamsResult {
+            applied: false,
+            params: optimal,
+            reason: "复习数据不足，暂无法优化（需至少 50 次复习记录）".to_string(),
+        });
+    }
+
+    store
+        .set_setting("fsrs_params", &serde_json::to_string(&optimal).map_err(|e| e.to_string())?)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ApplyParamsResult {
+        applied: true,
+        params: optimal,
+        reason: "已应用优化参数，后续复习调度将使用新参数".to_string(),
+    })
+}
+
+/// T11: 重置 FSRS 参数为默认值
+#[tauri::command]
+pub async fn reset_fsrs_params(state: State<'_, crate::AppState>) -> Result<(), String> {
+    let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
+    store
+        .delete_setting("fsrs_params")
+        .await
+        .map_err(|e| e.to_string())
 }

@@ -1,5 +1,6 @@
 // Vocabulary Commands - 词汇学习 API
 
+use crate::commands::fsrs_optimization_cmd::build_fsrs_engine;
 use crate::domain::{AiContent, LearningPhase, Rating, WordCard};
 use crate::services::multi_dictionary::MultiSourceDictionary;
 use serde::{Deserialize, Serialize};
@@ -295,7 +296,7 @@ pub async fn submit_review(
     card_id: String,
     rating: Rating,
 ) -> Result<(), String> {
-    use crate::domain::{CardEvent, FsrsEngine};
+    use crate::domain::CardEvent;
     use chrono::Utc;
 
     let store = state.event_store.as_ref().ok_or("词汇数据库未初始化")?;
@@ -304,8 +305,8 @@ pub async fn submit_review(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 计算新的 FSRS 状态
-    let fsrs = FsrsEngine::new();
+    // 计算新的 FSRS 状态（T11: 优先使用已优化的持久化参数）
+    let fsrs = build_fsrs_engine(store).await;
     let new_state = fsrs
         .schedule_review(&card.fsrs_state, rating, Utc::now())
         .map_err(|e| e.to_string())?;

@@ -1041,6 +1041,8 @@ pub fn run() {
             commands::fsrs_optimization_cmd::get_review_forecast,
             commands::fsrs_optimization_cmd::get_best_study_time,
             commands::fsrs_optimization_cmd::get_difficulty_distribution,
+            commands::fsrs_optimization_cmd::apply_fsrs_params,
+            commands::fsrs_optimization_cmd::reset_fsrs_params,
             commands::dict_optimize_cmd::get_dict_stats,
             commands::dict_optimize_cmd::export_compressed_dict,
             commands::dict_optimize_cmd::export_dict_shards,
