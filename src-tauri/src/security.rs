@@ -88,9 +88,8 @@ pub fn validate_output_path(path: &str) -> Result<(), String> {
 ///
 /// Example:
 /// ```
-/// use crate::security::sanitize_like_pattern;
-/// let safe = sanitize_like_pattern("user%input_with_wildcards");
-/// // safe == "user\\%input\\_with\\_wildcards"
+/// let safe = moontranslator_lib::security::sanitize_like_pattern("user%input_with_wildcards");
+/// assert_eq!(safe, "user\\%input\\_with\\_wildcards");
 /// ```
 pub fn sanitize_like_pattern(pattern: &str) -> String {
     pattern
