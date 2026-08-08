@@ -10,6 +10,16 @@ pub fn needs_reoptimization(rating: f32) -> bool {
     rating < 3.0
 }
 
+/// 若传入 word 而非 card_id，查 cards 表解析
+pub async fn resolve_card_id(pool: &sqlx::SqlitePool, word_or_id: &str) -> Option<String> {
+    sqlx::query_scalar("SELECT id FROM cards WHERE id = ?1 OR word = ?1")
+        .bind(word_or_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+}
+
 /// user_profile upsert（单测与命令共用）
 pub async fn upsert_profile(
     pool: &sqlx::SqlitePool,
@@ -74,6 +84,8 @@ pub async fn rate_card_field(
     let store = state.event_store.as_ref().ok_or("词汇数据库未初始化")?;
     let pool = store.pool();
     let now = Utc::now().timestamp();
+
+    let card_id = resolve_card_id(pool, &card_id).await.ok_or("单词不存在")?;
 
     upsert_profile(pool, &card_id, &field, rating as f64, feedback.clone(), now).await?;
 
@@ -204,5 +216,21 @@ mod tests {
     async fn low_rating_flags_for_optimization() {
         assert!(needs_reoptimization(2.0));
         assert!(!needs_reoptimization(4.0));
+    }
+
+    #[tokio::test]
+    async fn rate_by_word_resolves_card_id() {
+        let pool = in_memory_pool().await;
+        sqlx::query("CREATE TABLE cards (id TEXT PRIMARY KEY, word TEXT, fsrs_state TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO cards (id, word, fsrs_state) VALUES ('c1', 'hello', '{}')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let resolved = resolve_card_id(&pool, "hello").await;
+        assert_eq!(resolved.as_deref(), Some("c1"));
     }
 }
