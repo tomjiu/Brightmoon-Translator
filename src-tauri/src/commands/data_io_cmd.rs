@@ -294,6 +294,7 @@ pub async fn import_learning_data_json(
 
 /// 解析 wordlist 文本内容，返回 (待导入词列表, 无效行数)。
 /// 提取为纯函数便于单测（T12 P0: 文件内重复词去重）。
+/// 支持 CSV 引号转义：`word,"hello,world"` 中引号内逗号不拆分，且移除外层引号。
 fn parse_wordlist_content(content: &str, delimiter: char) -> (Vec<(String, String)>, i32) {
     let mut pending: Vec<(String, String)> = Vec::new();
     let mut invalid = 0;
@@ -303,17 +304,7 @@ fn parse_wordlist_content(content: &str, delimiter: char) -> (Vec<(String, Strin
             continue;
         }
 
-        let parts: Vec<&str> = line.splitn(2, delimiter).collect();
-        if parts.is_empty() {
-            continue;
-        }
-
-        let word = parts[0].trim().to_lowercase();
-        let definition = parts
-            .get(1)
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
-
+        let (word, definition) = split_word_definition(line, delimiter);
         if word.is_empty() || word.len() < 2 {
             invalid += 1;
             continue;
@@ -322,6 +313,43 @@ fn parse_wordlist_content(content: &str, delimiter: char) -> (Vec<(String, Strin
         pending.push((word, definition));
     }
     (pending, invalid)
+}
+
+/// 按分隔符拆分一行词条，支持引号包裹的 definition（引号内分隔符不拆分）。
+/// 返回 (小写化单词, 释义)。
+fn split_word_definition(line: &str, delimiter: char) -> (String, String) {
+    let line_trimmed = line.trim();
+    // 查找第一个未被引号包裹的分隔符
+    let mut in_quotes = false;
+    let mut split_at = None;
+    for (idx, ch) in line_trimmed.char_indices() {
+        if ch == '"' {
+            in_quotes = !in_quotes;
+        } else if ch == delimiter && !in_quotes {
+            split_at = Some(idx);
+            break;
+        }
+    }
+
+    let (word_raw, def_raw) = match split_at {
+        Some(idx) => (&line_trimmed[..idx], &line_trimmed[idx + 1..]),
+        None => (line_trimmed, ""),
+    };
+
+    let word = word_raw.trim().to_lowercase();
+    let definition = unquote_definition(def_raw.trim());
+
+    (word, definition)
+}
+
+/// 去除 definition 外层成对引号（如 `"hello,world"` → `hello,world`）。
+fn unquote_definition(s: &str) -> String {
+    let trimmed = s.trim();
+    if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
+        trimmed[1..trimmed.len() - 1].to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// 从 CSV/TSV 导入单词列表（兼容 Quizlet/扇贝/Anki 导出）
@@ -569,5 +597,38 @@ mod tests {
         let (pending, _invalid) = parse_wordlist_content(content, ',');
         assert_eq!(pending.len(), 3);
         assert_eq!(pending[0].0, "apple");
+    }
+
+    #[test]
+    fn parse_wordlist_quoted_definition_with_delimiter() {
+        // 引号包裹的释义含逗号: 应整体作为 definition, 不拆分, 且移除外层引号
+        let content = "hello,\"hi, nice to meet you\"\nworld,\"a, b\"\n";
+        let (pending, invalid) = parse_wordlist_content(content, ',');
+        assert_eq!(invalid, 0);
+        assert_eq!(pending.len(), 2);
+        assert_eq!(pending[0].0, "hello");
+        assert_eq!(pending[0].1, "hi, nice to meet you");
+        assert_eq!(pending[1].0, "world");
+        assert_eq!(pending[1].1, "a, b");
+    }
+
+    #[test]
+    fn parse_wordlist_unquoted_delimiter_still_splits() {
+        // 未加引号时行为不变: 按第一个逗号拆分
+        let content = "cat,a cute cat\n";
+        let (pending, invalid) = parse_wordlist_content(content, ',');
+        assert_eq!(invalid, 0);
+        assert_eq!(pending[0].0, "cat");
+        assert_eq!(pending[0].1, "a cute cat");
+    }
+
+    #[test]
+    fn parse_wordlist_unmatched_quote_keeps_raw() {
+        // 只有开头引号(未闭合): 保守处理, 保留原样(含引号)
+        let content = "dog,\"unclosed\n";
+        let (pending, invalid) = parse_wordlist_content(content, ',');
+        assert_eq!(invalid, 0);
+        assert_eq!(pending[0].0, "dog");
+        assert_eq!(pending[0].1, "\"unclosed");
     }
 }
