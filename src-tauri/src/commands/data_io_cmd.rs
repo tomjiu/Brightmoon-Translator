@@ -464,11 +464,18 @@ pub async fn auto_backup(
     // 创建备份目录
     std::fs::create_dir_all(&backup_dir).map_err(|e| format!("创建备份目录失败: {}", e))?;
 
+    // 规范化路径，防符号链接/相对路径绕过，并校验确实是目录
+    let canonical = std::fs::canonicalize(&backup_dir)
+        .map_err(|e| format!("校验备份目录失败: {}", e))?;
+    if !canonical.is_dir() {
+        return Err("备份路径不是有效目录".to_string());
+    }
+
     let filename = format!(
         "moontranslator_backup_{}.json",
         chrono::Utc::now().format("%Y%m%d_%H%M%S")
     );
-    let file_path = std::path::Path::new(&backup_dir).join(&filename);
+    let file_path = canonical.join(&filename);
 
     let json =
         serde_json::to_string_pretty(&export_data).map_err(|e| format!("序列化失败: {}", e))?;
