@@ -443,6 +443,7 @@ async fn pick_semantic_distractors(
     };
 
     // 候选词向量（批量加载，未命中则从释义构建）
+    // T9 优化：只对尚未缓存的候选构建向量（已缓存的直接复用，避免重复计算）
     let cand_words: Vec<String> = candidates.iter().map(|(w, _)| w.clone()).collect();
     let mut vec_map = crate::infrastructure::load_embeddings(emb_pool, &cand_words, "ecdict")
         .await
