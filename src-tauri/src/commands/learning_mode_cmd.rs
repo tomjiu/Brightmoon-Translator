@@ -672,3 +672,124 @@ fn shuffle_vec<T>(v: &mut Vec<T>) {
         v.swap(i, j);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::SqlitePool;
+
+    /// 建测试所需的内存表：stardict（候选词池）+ embeddings（向量缓存）
+    async fn test_pools() -> (SqlitePool, SqlitePool) {
+        let dict_pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE stardict (
+                word TEXT PRIMARY KEY,
+                translation TEXT NOT NULL,
+                frq INTEGER
+            )",
+        )
+        .execute(&dict_pool)
+        .await
+        .unwrap();
+
+        let emb_pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                word TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'ecdict',
+                vector TEXT NOT NULL,
+                dim INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                UNIQUE(word, source)
+            )",
+        )
+        .execute(&emb_pool)
+        .await
+        .unwrap();
+
+        (dict_pool, emb_pool)
+    }
+
+    #[tokio::test]
+    async fn test_pick_semantic_distractors_returns_count_words() {
+        let (dict_pool, emb_pool) = test_pools().await;
+
+        // 目标词 + 5 个候选词（frq <= 6000 才进候选池）
+        let words = [
+            ("happy", "快乐的 高兴的 开心的 幸福", 100),
+            ("glad", "高兴的 快乐的 愉快的 欢喜", 200),
+            ("joyful", "快乐的 高兴的 欣喜的 欢快", 300),
+            ("sad", "悲伤的 难过的 忧愁的 哀伤", 400),
+            ("fast", "快的 迅速的 快速的 敏捷", 500),
+            ("slow", "慢的 迟缓的 缓慢的 徐徐", 600),
+        ];
+        for (w, t, f) in words {
+            sqlx::query("INSERT INTO stardict (word, translation, frq) VALUES (?, ?, ?)")
+                .bind(w)
+                .bind(t)
+                .bind(f)
+                .execute(&dict_pool)
+                .await
+                .unwrap();
+        }
+
+        let result = pick_semantic_distractors(&emb_pool, &dict_pool, "happy", &[], 3).await;
+
+        assert_eq!(result.len(), 3, "应返回 3 个干扰项");
+        assert!(!result.contains(&"happy".to_string()), "干扰项不能包含目标词");
+        for w in &result {
+            assert!(words.iter().any(|(word, _, _)| word == w), "干扰项必须来自候选池");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pick_semantic_distractors_excludes_used_words() {
+        let (dict_pool, emb_pool) = test_pools().await;
+
+        let words = [
+            ("apple", "苹果 一种水果 清脆 甘甜", 100),
+            ("pear", "梨 一种水果 多汁 香甜", 200),
+            ("peach", "桃 一种水果 甜美 软糯", 300),
+            ("car", "汽车 交通工具 引擎 速度", 400),
+            ("bike", "自行车 交通工具 骑行 轮子", 500),
+            ("bus", "公共汽车 交通工具 载客 路线", 600),
+        ];
+        for (w, t, f) in words {
+            sqlx::query("INSERT INTO stardict (word, translation, frq) VALUES (?, ?, ?)")
+                .bind(w)
+                .bind(t)
+                .bind(f)
+                .execute(&dict_pool)
+                .await
+                .unwrap();
+        }
+
+        // 排除 pear（已被其他题使用）
+        let exclude = vec!["pear".to_string()];
+        let result = pick_semantic_distractors(&emb_pool, &dict_pool, "apple", &exclude, 3).await;
+
+        assert_eq!(result.len(), 3, "应返回 3 个干扰项");
+        assert!(
+            !result.contains(&"pear".to_string()),
+            "已被排除的词不应出现在干扰项中"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pick_semantic_distractors_empty_pool_returns_empty() {
+        let (dict_pool, emb_pool) = test_pools().await;
+
+        // 候选池为空（只有目标词，frq <= 6000 的候选中不含其他词）
+        sqlx::query("INSERT INTO stardict (word, translation, frq) VALUES (?, ?, ?)")
+            .bind("alone")
+            .bind("独自的 孤单的 单独的 孑然")
+            .bind(100)
+            .execute(&dict_pool)
+            .await
+            .unwrap();
+
+        let result = pick_semantic_distractors(&emb_pool, &dict_pool, "alone", &[], 3).await;
+        assert!(result.is_empty(), "候选池不足时返回空");
+    }
+}
