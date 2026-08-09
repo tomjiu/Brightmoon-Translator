@@ -1012,6 +1012,8 @@ pub fn run() {
             commands::dictionary_cmd::import_dictionary_data,
             commands::dictionary_cmd::check_dictionary_imported,
             commands::dictionary_cmd::ecdict_status,
+            commands::dictionary_cmd::get_dictionary_history,
+            commands::dictionary_cmd::clear_dictionary_history,
             commands::learning_plan_cmd::get_exam_wordlists,
             commands::learning_plan_cmd::create_learning_plan,
             commands::learning_plan_cmd::get_learning_plans,

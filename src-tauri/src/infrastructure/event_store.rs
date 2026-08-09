@@ -275,6 +275,20 @@ impl EventStore {
         .execute(&self.pool)
         .await?;
 
+        // 查词历史表（DictionarySearch 历史记录 + 清空）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS dictionary_history (
+                word TEXT PRIMARY KEY,
+                lookup_count INTEGER NOT NULL DEFAULT 1,
+                first_looked_up INTEGER NOT NULL,
+                last_looked_up INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         // T8: AI 批注持久化（annotations 表）
         sqlx::query(
             r#"
@@ -744,5 +758,47 @@ mod tests {
         let results = store.search_cards("app", 10).await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].word, "apple");
+    }
+
+    #[tokio::test]
+    async fn test_dictionary_history_table_exists() {
+        let store = EventStore::new("sqlite::memory:").await.unwrap();
+        store.init_schema().await.unwrap();
+
+        // 建表后可插入 + upsert + 查询（查词历史写入依赖此表）
+        sqlx::query(
+            "INSERT INTO dictionary_history (word, lookup_count, first_looked_up, last_looked_up)
+             VALUES ('hello', 1, 1000, 1000)
+             ON CONFLICT(word) DO UPDATE SET lookup_count = lookup_count + 1, last_looked_up = 2000",
+        )
+        .execute(&store.pool)
+        .await
+        .unwrap();
+
+        let (word, count): (String, i64) = sqlx::query_as(
+            "SELECT word, lookup_count FROM dictionary_history WHERE word = 'hello'",
+        )
+        .fetch_one(&store.pool)
+        .await
+        .unwrap();
+        assert_eq!(word, "hello");
+        assert_eq!(count, 1);
+
+        // 二次 upsert 递增
+        sqlx::query(
+            "INSERT INTO dictionary_history (word, lookup_count, first_looked_up, last_looked_up)
+             VALUES ('hello', 1, 1000, 3000)
+             ON CONFLICT(word) DO UPDATE SET lookup_count = lookup_count + 1, last_looked_up = 3000",
+        )
+        .execute(&store.pool)
+        .await
+        .unwrap();
+        let count: i64 = sqlx::query_scalar(
+            "SELECT lookup_count FROM dictionary_history WHERE word = 'hello'",
+        )
+        .fetch_one(&store.pool)
+        .await
+        .unwrap();
+        assert_eq!(count, 2);
     }
 }
