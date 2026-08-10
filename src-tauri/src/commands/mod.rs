@@ -15,7 +15,6 @@ pub mod fsrs_optimization_cmd;
 pub mod furigana_cmd;
 pub mod github_export_cmd;
 pub mod glossary_cmd;
-pub mod history_cmd;
 pub mod hook_cmd;
 pub mod hook_inject_cmd;
 pub mod hook_profile_cmd;
