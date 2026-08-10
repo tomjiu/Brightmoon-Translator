@@ -6,7 +6,7 @@
 //! bilingual PDF generation.
 //!
 //! Coordinate system: PDF origin is bottom-left, y grows upward. We preserve
-//! this in IL (matching pdf_il.rs convention).
+//! this in IL (matching `pdf_il.rs` convention).
 
 use crate::pdf_il::{
     IlCharacter, IlDocument, IlFont, IlFontEncoding, IlMetadata, IlPage, IlParagraph,
@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 /// Thread-safe singleton Pdfium binding. Pdfium is NOT thread-safe internally,
-/// so all extraction must happen on a single thread (we use spawn_blocking).
+/// so all extraction must happen on a single thread (we use `spawn_blocking`).
 static PDFIUM: OnceLock<Option<Pdfium>> = OnceLock::new();
 
 /// Initialize the Pdfium library. Tries (in order):
@@ -38,16 +38,16 @@ fn get_pdfium() -> Result<&'static Pdfium, String> {
     })
 }
 
-/// P2: Extract an IlDocument from a PDF file.
+/// P2: Extract an `IlDocument` from a PDF file.
 ///
 /// Opens the PDF, iterates all pages, extracts per-character data (Unicode,
 /// position, font, size), clusters characters into paragraphs, and returns
-/// a fully populated IlDocument ready for translation and writeback.
+/// a fully populated `IlDocument` ready for translation and writeback.
 pub fn extract_il_from_pdf(file_path: &str) -> Result<IlDocument, String> {
     let pdfium = get_pdfium()?;
     let document = pdfium
         .load_pdf_from_file(file_path, None)
-        .map_err(|e| format!("Failed to open PDF '{}': {}", file_path, e))?;
+        .map_err(|e| format!("Failed to open PDF '{file_path}': {e}"))?;
 
     let total_pages = document.pages().len() as usize;
     tracing::info!("[P2] Extracting IL from PDF: {} pages", total_pages);
@@ -83,7 +83,7 @@ pub fn extract_il_from_pdf(file_path: &str) -> Result<IlDocument, String> {
     })
 }
 
-/// Extract IL data from a single PdfPage.
+/// Extract IL data from a single `PdfPage`.
 fn extract_page(
     page: &PdfPage,
     page_number: usize,
@@ -94,7 +94,7 @@ fn extract_page(
     let page_height = page.height().value;
 
     let text = page.text()
-        .map_err(|e| format!("Failed to extract text from page {}: {}", page_number, e))?;
+        .map_err(|e| format!("Failed to extract text from page {page_number}: {e}"))?;
     let mut characters: Vec<IlCharacter> = Vec::new();
     let mut raw_chars: Vec<RawChar> = Vec::new();
 
@@ -153,9 +153,9 @@ fn extract_page(
         let color = match char_obj.fill_color() {
             Ok(c) => {
                 [
-                    c.red() as f32 / 255.0,
-                    c.green() as f32 / 255.0,
-                    c.blue() as f32 / 255.0,
+                    f32::from(c.red()) / 255.0,
+                    f32::from(c.green()) / 255.0,
+                    f32::from(c.blue()) / 255.0,
                 ]
             }
             Err(_) => [0.0, 0.0, 0.0],
@@ -211,7 +211,7 @@ fn extract_page(
     })
 }
 
-/// Raw character data used for clustering (avoids borrowing IlCharacter).
+/// Raw character data used for clustering (avoids borrowing `IlCharacter`).
 struct RawChar {
     x: f32,
     y: f32,
@@ -242,9 +242,9 @@ fn is_likely_formula_char(c: &char, font_name: &str) -> bool {
 ///
 /// Algorithm:
 /// 1. Sort characters by (y descending, x ascending) — top-to-bottom, left-to-right
-/// 2. Group into lines: same y (within tolerance = font_size * 0.3)
+/// 2. Group into lines: same y (within tolerance = `font_size` * 0.3)
 /// 3. Group lines into paragraphs: consecutive lines with similar x-start
-///    and line spacing < 1.5x font_size
+///    and line spacing < 1.5x `font_size`
 fn cluster_characters_into_paragraphs(
     characters: &[IlCharacter],
     raw_chars: &[RawChar],
@@ -329,7 +329,7 @@ fn cluster_characters_into_paragraphs(
         if should_split {
             // Flush current paragraph
             if !para_line_indices.is_empty() {
-                if let Some(p) = build_paragraph(&para_line_indices, &raw_chars, characters) {
+                if let Some(p) = build_paragraph(&para_line_indices, raw_chars, characters) {
                     paragraphs.push(p);
                 }
             }
@@ -344,7 +344,7 @@ fn cluster_characters_into_paragraphs(
 
     // Flush last paragraph
     if !para_line_indices.is_empty() {
-        if let Some(p) = build_paragraph(&para_line_indices, &raw_chars, characters) {
+        if let Some(p) = build_paragraph(&para_line_indices, raw_chars, characters) {
             paragraphs.push(p);
         }
     }
@@ -352,7 +352,7 @@ fn cluster_characters_into_paragraphs(
     paragraphs
 }
 
-/// Build an IlParagraph from a group of line indices.
+/// Build an `IlParagraph` from a group of line indices.
 fn build_paragraph(
     line_indices: &[Vec<usize>],
     raw_chars: &[RawChar],

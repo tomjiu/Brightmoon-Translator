@@ -3,7 +3,7 @@
 //! Unlike the single transient `overlay` window, pinned cards persist on
 //! screen until the user dismisses them. This module maintains a pool of
 //! reusable webview windows (`pin-0`, `pin-1`, …) so that pinning a new
-//! card does not pay the full WebView2 create cost every time.
+//! card does not pay the full `WebView2` create cost every time.
 //!
 //! - O1 retain pool: hidden windows are reused instead of destroyed.
 //! - O2 stackedOrigin: each new pin cascades +24/+24 from the last active pin.
@@ -86,29 +86,25 @@ impl PinWindowManager {
 
         // O1: find a free slot in the retain pool.
         let free_idx = self.slots.iter().position(|s| !s.in_use);
-        let (label, is_new) = match free_idx {
-            Some(_) => {
-                let label = self.slots[free_idx.unwrap()].label.clone();
-                (label, false)
+        let (label, is_new) = if free_idx.is_some() {
+            let label = self.slots[free_idx.unwrap()].label.clone();
+            (label, false)
+        } else {
+            if self.slots.len() >= MAX_POOL_SIZE {
+                return Err(format!(
+                    "Pin pool is full (max {MAX_POOL_SIZE}); dismiss a pinned card first"
+                ));
             }
-            None => {
-                if self.slots.len() >= MAX_POOL_SIZE {
-                    return Err(format!(
-                        "Pin pool is full (max {}); dismiss a pinned card first",
-                        MAX_POOL_SIZE
-                    ));
-                }
-                let label = format!("pin-{}", self.next_id);
-                self.next_id += 1;
-                (label, true)
-            }
+            let label = format!("pin-{}", self.next_id);
+            self.next_id += 1;
+            (label, true)
         };
 
         let content = OverlayContent {
             source: source.to_string(),
             translated: translated.to_string(),
-            source_app: source_app.map(|s| s.to_string()),
-            window_title: window_title.map(|s| s.to_string()),
+            source_app: source_app.map(std::string::ToString::to_string),
+            window_title: window_title.map(std::string::ToString::to_string),
         };
         // Pinned cards use Full level so copy/close controls are available.
         // Tier4-3: pass the pin label so the HTML includes a resize listener
@@ -120,9 +116,9 @@ impl PinWindowManager {
 
         if is_new {
             let encoded = urlencoding::encode(&html);
-            let url_str = format!("data:text/html,{}", encoded);
+            let url_str = format!("data:text/html,{encoded}");
             let url = tauri::Url::parse(&url_str)
-                .map_err(|e| format!("Failed to parse pin URL: {}", e))?;
+                .map_err(|e| format!("Failed to parse pin URL: {e}"))?;
             let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(url))
                 .title("Pinned Translation")
                 .inner_size(w, h)
@@ -144,7 +140,7 @@ impl PinWindowManager {
                     tauri::window::Color(26, 26, 30, 255)
                 })
                 .build()
-                .map_err(|e| format!("Failed to create pin window: {}", e))?;
+                .map_err(|e| format!("Failed to create pin window: {e}"))?;
 
             let _ = window.set_position(tauri::Position::Physical(
                 tauri::PhysicalPosition::new(px, py),
@@ -166,7 +162,7 @@ impl PinWindowManager {
             // Reuse: hide → move/size → write content → show (no destroy flash).
             let window = app
                 .get_webview_window(&label)
-                .ok_or_else(|| format!("Pin window {} vanished from pool", label))?;
+                .ok_or_else(|| format!("Pin window {label} vanished from pool"))?;
             let _ = window.hide();
             let _ = window.set_position(tauri::Position::Physical(
                 tauri::PhysicalPosition::new(px, py),
@@ -194,8 +190,8 @@ impl PinWindowManager {
             label: label.clone(),
             source: source.to_string(),
             translated: translated.to_string(),
-            source_app: source_app.map(|s| s.to_string()),
-            window_title: window_title.map(|s| s.to_string()),
+            source_app: source_app.map(std::string::ToString::to_string),
+            window_title: window_title.map(std::string::ToString::to_string),
             x: final_x,
             y: final_y,
             width: w,
@@ -333,7 +329,7 @@ pub fn pin_card(
 ) -> Result<String, String> {
     let mut mgr = pin_manager()
         .lock()
-        .map_err(|e| format!("PinManager lock: {}", e))?;
+        .map_err(|e| format!("PinManager lock: {e}"))?;
     mgr.pin_card(app, source, translated, x, y, width, height, source_app, window_title)
 }
 
@@ -374,8 +370,7 @@ pub fn active_pins() -> Vec<PinSlot> {
 pub fn active_count() -> usize {
     pin_manager()
         .lock()
-        .map(|mgr| mgr.active_count())
-        .unwrap_or(0)
+        .map_or(0, |mgr| mgr.active_count())
 }
 
 #[cfg(test)]

@@ -238,10 +238,10 @@ fn save_keys(keys: &HashMap<String, KeyEntry>) {
 
 fn md5_hex(input: &str) -> String {
     let digest = md5::compute(input.as_bytes());
-    format!("{:x}", digest)
+    format!("{digest:x}")
 }
 
-/// v3_sign: sorts ALL non-empty params alphabetically, appends key, MD5
+/// `v3_sign`: sorts ALL non-empty params alphabetically, appends key, MD5
 fn v3_sign(params: &mut HashMap<String, String>, key: &str) {
     let mut valid_keys: Vec<String> = params
         .iter()
@@ -258,7 +258,7 @@ fn v3_sign(params: &mut HashMap<String, String>, key: &str) {
         } else {
             params.get(k).cloned().unwrap_or_default()
         };
-        parts.push(format!("{}={}", k, val));
+        parts.push(format!("{k}={val}"));
     }
     let raw = parts.join("&");
     let sig = md5_hex(&raw);
@@ -282,6 +282,12 @@ pub struct YoudaoEngine {
 }
 
 #[allow(dead_code)]
+impl Default for YoudaoEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl YoudaoEngine {
     pub fn new() -> Self {
         Self {
@@ -306,13 +312,13 @@ impl YoudaoEngine {
     /// Update keys from CDN (called lazily on first use)
     async fn ensure_cdn_synced(&self) {
         {
-            let synced = self.cdn_synced.lock().unwrap_or_else(|e| e.into_inner());
+            let synced = self.cdn_synced.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             if *synced {
                 return;
             }
         }
         self.sync_keys_from_cdn().await;
-        let mut synced = self.cdn_synced.lock().unwrap_or_else(|e| e.into_inner());
+        let mut synced = self.cdn_synced.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         *synced = true;
     }
 
@@ -344,7 +350,7 @@ impl YoudaoEngine {
                     }
                 } else {
                     keys.insert(
-                        format!("cdn_{}", kid),
+                        format!("cdn_{kid}"),
                         KeyEntry {
                             k: k.clone(),
                             id: kid.clone(),
@@ -381,8 +387,7 @@ impl YoudaoEngine {
 
     async fn update_keys_from_cdn(&self, cdn_version: &str) -> HashMap<String, String> {
         let cdn_base = format!(
-            "https://shared.ydstatic.com/dict/translation-website/{}/js",
-            cdn_version
+            "https://shared.ydstatic.com/dict/translation-website/{cdn_version}/js"
         );
 
         let Ok(resp) = self
@@ -407,12 +412,12 @@ impl YoudaoEngine {
         let mut found: HashMap<String, String> = HashMap::new();
 
         for file in &js_files {
-            let url = format!("{}/{}", cdn_base, file);
+            let url = format!("{cdn_base}/{file}");
             let Ok(resp) = self
                 .client
                 .get(&url)
                 .header("User-Agent", "Mozilla/5.0 Chrome/120")
-                .timeout(std::time::Duration::from_secs(60))
+                .timeout(std::time::Duration::from_mins(1))
                 .send()
                 .await
             else {
@@ -500,7 +505,7 @@ impl YoudaoEngine {
     /// Ensure we have a dynamic text translation key+token
     async fn ensure_text_key(&self) -> bool {
         {
-            let ts = self.text_secret.lock().unwrap_or_else(|e| e.into_inner());
+            let ts = self.text_secret.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             if ts.is_some() {
                 return true;
             }
@@ -562,8 +567,8 @@ impl YoudaoEngine {
         };
         if body.code == 0 {
             if let Some(data) = body.data {
-                let mut ts = self.text_secret.lock().unwrap_or_else(|e| e.into_inner());
-                let mut tt = self.text_token.lock().unwrap_or_else(|e| e.into_inner());
+                let mut ts = self.text_secret.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                let mut tt = self.text_token.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 *ts = Some(data.secret_key);
                 *tt = data.token;
                 return true;
@@ -677,7 +682,7 @@ impl YoudaoEngine {
 
         let status = resp.status();
         if !status.is_success() {
-            return Err(anyhow::anyhow!("Youdao text API error: {}", status));
+            return Err(anyhow::anyhow!("Youdao text API error: {status}"));
         }
 
         let body = resp.text().await?;
@@ -730,7 +735,7 @@ impl YoudaoEngine {
 
 #[async_trait]
 impl TranslationEngine for YoudaoEngine {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Youdao"
     }
 

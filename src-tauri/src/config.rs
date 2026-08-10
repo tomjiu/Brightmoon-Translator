@@ -168,16 +168,16 @@ impl AppConfig {
 }
 
 impl ProxyConfig {
-    /// Platform-specific: create a reqwest ClientBuilder with proxy settings applied
+    /// Platform-specific: create a reqwest `ClientBuilder` with proxy settings applied
     pub fn to_client_builder(&self) -> reqwest::ClientBuilder {
         let mut builder = reqwest::Client::builder();
         if self.enabled && !self.host.is_empty() {
             let proxy_url = format!("{}://{}:{}", self.proxy_type, self.host, self.port);
             if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
-                let proxy = if !self.username.is_empty() {
-                    proxy.basic_auth(&self.username, &self.password)
-                } else {
+                let proxy = if self.username.is_empty() {
                     proxy
+                } else {
+                    proxy.basic_auth(&self.username, &self.password)
                 };
                 builder = builder.proxy(proxy);
             }

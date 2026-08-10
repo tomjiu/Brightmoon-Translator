@@ -128,7 +128,7 @@ impl SkillRegistry {
         let name = skill.name().to_string();
 
         if self.skills.contains_key(&name) {
-            anyhow::bail!("Skill '{}' already registered", name);
+            anyhow::bail!("Skill '{name}' already registered");
         }
 
         self.skills
@@ -146,14 +146,14 @@ impl SkillRegistry {
     pub async fn execute(&self, name: &str, input: SkillInput) -> Result<SkillOutput> {
         let skill = self
             .get(name)
-            .ok_or_else(|| anyhow::anyhow!("Skill '{}' not found", name))?;
+            .ok_or_else(|| anyhow::anyhow!("Skill '{name}' not found"))?;
 
         // 验证输入
         skill.validate_input(&input)?;
 
         // 检查可用性
         if !skill.is_available() {
-            anyhow::bail!("Skill '{}' is not available", name);
+            anyhow::bail!("Skill '{name}' is not available");
         }
 
         // 执行

@@ -94,8 +94,8 @@ fn calculate_bleu_approx(original: &str, translated: &str, details: &mut Vec<Str
     }
 
     // Count matching n-grams
-    let orig_set: HashSet<&str> = orig_ngrams.iter().map(|s| s.as_str()).collect();
-    let trans_set: HashSet<&str> = trans_ngrams.iter().map(|s| s.as_str()).collect();
+    let orig_set: HashSet<&str> = orig_ngrams.iter().map(std::string::String::as_str).collect();
+    let trans_set: HashSet<&str> = trans_ngrams.iter().map(std::string::String::as_str).collect();
 
     let intersection_count = orig_set.iter().filter(|n| trans_set.contains(*n)).count();
     let precision = if trans_set.is_empty() {
@@ -200,18 +200,15 @@ fn calculate_terminology_score(
     glossary: Option<&HashMap<String, Vec<crate::models::glossary::GlossaryEntry>>>,
     details: &mut Vec<String>,
 ) -> f64 {
-    let glossary = match glossary {
-        Some(g) => g,
-        None => {
-            details.push("No glossary loaded, terminology score neutral".to_string());
-            return 75.0; // Neutral score when no glossary
-        },
+    let glossary = if let Some(g) = glossary { g } else {
+        details.push("No glossary loaded, terminology score neutral".to_string());
+        return 75.0; // Neutral score when no glossary
     };
 
     let entries = match glossary.get(lang_pair) {
         Some(e) if !e.is_empty() => e,
         _ => {
-            details.push(format!("No glossary entries for {}", lang_pair));
+            details.push(format!("No glossary entries for {lang_pair}"));
             return 75.0;
         },
     };
@@ -235,10 +232,9 @@ fn calculate_terminology_score(
         return 75.0;
     }
 
-    let score = (matched as f64 / total as f64) * 100.0;
+    let score = (f64::from(matched) / f64::from(total)) * 100.0;
     details.push(format!(
-        "Glossary terms: {}/{} matched ({:.0}%)",
-        matched, total, score
+        "Glossary terms: {matched}/{total} matched ({score:.0}%)"
     ));
 
     score
@@ -266,31 +262,25 @@ fn calculate_fluency_score(translated: &str, lang_pair: &str, details: &mut Vec<
     }
     if max_repeat > 5 {
         penalties += 25.0;
-        details.push(format!("Excessive character repetition ({})", max_repeat));
+        details.push(format!("Excessive character repetition ({max_repeat})"));
     }
 
     // 2. Check for mixed language issues (random CJK in European text or vice versa)
     let to_lang = lang_pair.split('-').nth(1).unwrap_or("en");
-    let has_cjk = translated.chars().any(|c| is_cjk(c));
+    let has_cjk = translated.chars().any(is_cjk);
     let has_latin = translated.chars().any(|c| c.is_ascii_alphabetic());
 
     let mixed_penalty = match to_lang {
-        "zh" | "ja" | "ko" => {
+        "zh" | "ja" | "ko"
             // For CJK target, some Latin is OK (proper nouns)
-            if has_latin && !has_cjk {
+            if has_latin && !has_cjk => {
                 30.0 // Entirely Latin for CJK target is bad
-            } else {
-                0.0
-            }
-        },
-        "en" | "fr" | "de" | "es" | "ru" => {
+            },
+        "en" | "fr" | "de" | "es" | "ru"
             // For European target, CJK characters are usually wrong
-            if has_cjk {
+            if has_cjk => {
                 25.0
-            } else {
-                0.0
-            }
-        },
+            },
         _ => 0.0,
     };
 
@@ -325,7 +315,7 @@ fn calculate_fluency_score(translated: &str, lang_pair: &str, details: &mut Vec<
     }
 
     let score = (100.0_f64 - penalties).max(0.0_f64);
-    details.push(format!("Fluency base score: {:.0}", score));
+    details.push(format!("Fluency base score: {score:.0}"));
 
     score
 }
@@ -336,21 +326,18 @@ fn check_bracket_balance(text: &str) -> bool {
     for c in text.chars() {
         match c {
             '(' | '[' | '{' => stack.push(c),
-            ')' => {
-                if stack.pop() != Some('(') {
+            ')'
+                if stack.pop() != Some('(') => {
                     return true;
-                }
-            },
-            ']' => {
-                if stack.pop() != Some('[') {
+                },
+            ']'
+                if stack.pop() != Some('[') => {
                     return true;
-                }
-            },
-            '}' => {
-                if stack.pop() != Some('{') {
+                },
+            '}'
+                if stack.pop() != Some('{') => {
                     return true;
-                }
-            },
+                },
             _ => {},
         }
     }

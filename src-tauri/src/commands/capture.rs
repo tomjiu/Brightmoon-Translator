@@ -34,7 +34,7 @@ pub struct ScreenshotSnapshot {
     pub info: ScreenshotSnapshotInfo,
 }
 
-/// pot-style: CompressionType::Fast for snapshot files (preview via asset protocol, not base64).
+/// pot-style: `CompressionType::Fast` for snapshot files (preview via asset protocol, not base64).
 /// Crops / OCR still use base64 of small regions only.
 fn encode_png_bytes_fast(image: &screenshots::image::DynamicImage) -> Result<Vec<u8>, String> {
     use image::codecs::png::{CompressionType, FilterType, PngEncoder};
@@ -48,7 +48,7 @@ fn encode_png_bytes_fast(image: &screenshots::image::DynamicImage) -> Result<Vec
             PngEncoder::new_with_quality(&mut buf, CompressionType::Fast, FilterType::NoFilter);
         encoder
             .write_image(rgba.as_raw(), w, h, image::ExtendedColorType::Rgba8)
-            .map_err(|e| format!("Failed to encode PNG: {}", e))?;
+            .map_err(|e| format!("Failed to encode PNG: {e}"))?;
     }
     Ok(buf)
 }
@@ -56,7 +56,7 @@ fn encode_png_bytes_fast(image: &screenshots::image::DynamicImage) -> Result<Vec
 fn image_to_base64_png(image: &screenshots::image::DynamicImage) -> Result<String, String> {
     let raw = encode_png_bytes_fast(image)?;
     let base64_str = base64::engine::general_purpose::STANDARD.encode(raw);
-    Ok(format!("data:image/png;base64,{}", base64_str))
+    Ok(format!("data:image/png;base64,{base64_str}"))
 }
 
 fn ocr_snapshot_image_path() -> PathBuf {
@@ -67,7 +67,7 @@ fn ocr_snapshot_meta_path() -> PathBuf {
     std::env::temp_dir().join("moontranslator_ocr_snapshot.json")
 }
 
-/// Unique path per capture so asset protocol / WebView2 never serves a stale freeze
+/// Unique path per capture so asset protocol / `WebView2` never serves a stale freeze
 /// (same fixed filename + cache can paint black or old desktop).
 fn ocr_snapshot_image_path_unique() -> PathBuf {
     let id = Uuid::new_v4().to_string();
@@ -85,7 +85,7 @@ fn snapshot_path_string() -> String {
 /// Generate a unique temp file path for OCR to avoid race conditions
 fn unique_ocr_temp_path() -> PathBuf {
     let id = Uuid::new_v4().to_string();
-    std::env::temp_dir().join(format!("moontranslator_ocr_{}.png", id))
+    std::env::temp_dir().join(format!("moontranslator_ocr_{id}.png"))
 }
 
 /// RAII guard that deletes a temp file on drop.
@@ -108,7 +108,7 @@ struct CachedSnapshot {
     png_bytes: Vec<u8>,
     /// Absolute path written for FE convertFileSrc (unique per capture when possible).
     image_path: PathBuf,
-    /// Lazily decoded for crop (avoid re-decode PNG on every crop_screenshot_snapshot).
+    /// Lazily decoded for crop (avoid re-decode PNG on every `crop_screenshot_snapshot`).
     decoded: Option<screenshots::image::DynamicImage>,
     info: ScreenshotSnapshotInfo,
     timestamp: u64, // Unix timestamp in seconds
@@ -238,7 +238,7 @@ pub fn capture_area_gdi(
             let _ = DeleteObject(HGDIOBJ(bitmap.0));
             let _ = DeleteDC(mem_dc);
             let _ = ReleaseDC(hwnd, screen_dc);
-            return Err(format!("BitBlt failed: {}", err));
+            return Err(format!("BitBlt failed: {err}"));
         }
 
         let mut info = BITMAPINFO {
@@ -259,8 +259,8 @@ pub fn capture_area_gdi(
             bitmap,
             0,
             height,
-            Some(bgra.as_mut_ptr() as *mut _),
-            &mut info,
+            Some(bgra.as_mut_ptr().cast()),
+            &raw mut info,
             DIB_RGB_COLORS,
         );
 
@@ -367,7 +367,7 @@ unsafe extern "system" fn monitor_enum_proc(
     let mut info = MONITORINFOEXW::default();
     info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
     // Cast *mut MONITORINFOEXW → *mut MONITORINFO (first field, #[repr(C)]).
-    if GetMonitorInfoW(hmon, &mut info as *mut _ as *mut _).as_bool() {
+    if GetMonitorInfoW(hmon, (&raw mut info).cast()).as_bool() {
         monitors.push(PhysicalMonitor {
             x: r.left,
             y: r.top,
@@ -393,7 +393,7 @@ fn enumerate_physical_monitors() -> Vec<PhysicalMonitor> {
             None,
             None,
             Some(monitor_enum_proc),
-            LPARAM(&mut monitors as *mut _ as isize),
+            LPARAM(&raw mut monitors as isize),
         );
     }
     monitors
@@ -477,8 +477,8 @@ fn capture_monitor_dc(monitor: &PhysicalMonitor) -> Result<screenshots::image::D
             bitmap,
             0,
             height,
-            Some(bgra.as_mut_ptr() as *mut _),
-            &mut info,
+            Some(bgra.as_mut_ptr().cast()),
+            &raw mut info,
             DIB_RGB_COLORS,
         );
 
@@ -627,19 +627,19 @@ fn fingerprint_dynamic_image(image: &screenshots::image::DynamicImage) -> String
             let y = (gy * h / GRID).min(h.saturating_sub(1));
             let p = image.get_pixel(x, y).0;
             // Rec. 601 luma
-            let y8 = ((p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000) as u8;
-            hash = hash.wrapping_mul(16777619) ^ (y8 as u32);
+            let y8 = ((u32::from(p[0]) * 299 + u32::from(p[1]) * 587 + u32::from(p[2]) * 114) / 1000) as u8;
+            hash = hash.wrapping_mul(16777619) ^ u32::from(y8);
         }
     }
-    format!("{}x{}:{:x}", w, h, hash)
+    format!("{w}x{h}:{hash:x}")
 }
 
 fn decode_data_url_image(data_url: &str) -> Result<screenshots::image::DynamicImage, String> {
-    let b64 = data_url.split_once(',').map(|(_, b)| b).unwrap_or(data_url);
+    let b64 = data_url.split_once(',').map_or(data_url, |(_, b)| b);
     let raw = base64::engine::general_purpose::STANDARD
         .decode(b64.trim())
-        .map_err(|e| format!("base64 decode: {}", e))?;
-    screenshots::image::load_from_memory(&raw).map_err(|e| format!("image decode: {}", e))
+        .map_err(|e| format!("base64 decode: {e}"))?;
+    screenshots::image::load_from_memory(&raw).map_err(|e| format!("image decode: {e}"))
 }
 
 /// Fingerprint a crop/region image (data URL) for watch-mode skip gate.
@@ -653,7 +653,7 @@ pub async fn image_data_url_fingerprint(data_url: String) -> Result<String, Stri
         Ok(fingerprint_dynamic_image(&image))
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Task join error: {e}"))?
 }
 
 #[command]
@@ -663,7 +663,7 @@ pub async fn capture_screen(x: i32, y: i32, width: u32, height: u32) -> Result<S
         #[cfg(target_os = "windows")]
         {
             let img = capture_area_gdi(x, y, width, height)?;
-            return image_to_base64_png(&img);
+            image_to_base64_png(&img)
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -686,7 +686,7 @@ pub async fn capture_screen(x: i32, y: i32, width: u32, height: u32) -> Result<S
         }
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Task join error: {e}"))?
 }
 
 #[command]
@@ -793,7 +793,7 @@ pub async fn prepare_screenshot_snapshot(
         Ok(info)
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Task join error: {e}"))?
 }
 
 #[command]
@@ -806,13 +806,13 @@ pub async fn load_screenshot_snapshot() -> Result<ScreenshotSnapshot, String> {
     // Fallback to disk read
     let image_path = ocr_snapshot_image_path();
     let raw = std::fs::read(&image_path)
-        .map_err(|e| format!("Failed to read screenshot snapshot: {}", e))?;
+        .map_err(|e| format!("Failed to read screenshot snapshot: {e}"))?;
     let info = if let Ok(meta) = std::fs::read(ocr_snapshot_meta_path()) {
         serde_json::from_slice::<ScreenshotSnapshotInfo>(&meta)
-            .map_err(|e| format!("Failed to parse screenshot metadata: {}", e))?
+            .map_err(|e| format!("Failed to parse screenshot metadata: {e}"))?
     } else {
         let image = screenshots::image::load_from_memory(&raw)
-            .map_err(|e| format!("Failed to inspect screenshot snapshot: {}", e))?;
+            .map_err(|e| format!("Failed to inspect screenshot snapshot: {e}"))?;
         ScreenshotSnapshotInfo {
             screen_x: 0,
             screen_y: 0,
@@ -846,7 +846,7 @@ pub async fn crop_screenshot_snapshot(
                         match screenshots::image::load_from_memory(&cached.png_bytes) {
                             Ok(img) => cached.decoded = Some(img),
                             Err(e) => {
-                                return Err(format!("Failed to load screenshot snapshot: {}", e));
+                                return Err(format!("Failed to load screenshot snapshot: {e}"));
                             },
                         }
                     }
@@ -859,9 +859,9 @@ pub async fn crop_screenshot_snapshot(
                     } else {
                         drop(guard);
                         let raw = std::fs::read(ocr_snapshot_image_path())
-                            .map_err(|e| format!("Failed to read screenshot snapshot: {}", e))?;
+                            .map_err(|e| format!("Failed to read screenshot snapshot: {e}"))?;
                         let image = screenshots::image::load_from_memory(&raw)
-                            .map_err(|e| format!("Failed to load screenshot snapshot: {}", e))?;
+                            .map_err(|e| format!("Failed to load screenshot snapshot: {e}"))?;
                         let l = left.min(image.width().saturating_sub(1));
                         let t = top.min(image.height().saturating_sub(1));
                         let w = width.min(image.width().saturating_sub(l)).max(1);
@@ -871,9 +871,9 @@ pub async fn crop_screenshot_snapshot(
                 } else {
                     drop(guard);
                     let raw = std::fs::read(ocr_snapshot_image_path())
-                        .map_err(|e| format!("Failed to read screenshot snapshot: {}", e))?;
+                        .map_err(|e| format!("Failed to read screenshot snapshot: {e}"))?;
                     let image = screenshots::image::load_from_memory(&raw)
-                        .map_err(|e| format!("Failed to load screenshot snapshot: {}", e))?;
+                        .map_err(|e| format!("Failed to load screenshot snapshot: {e}"))?;
                     let l = left.min(image.width().saturating_sub(1));
                     let t = top.min(image.height().saturating_sub(1));
                     let w = width.min(image.width().saturating_sub(l)).max(1);
@@ -882,9 +882,9 @@ pub async fn crop_screenshot_snapshot(
                 }
             } else {
                 let raw = std::fs::read(ocr_snapshot_image_path())
-                    .map_err(|e| format!("Failed to read screenshot snapshot: {}", e))?;
+                    .map_err(|e| format!("Failed to read screenshot snapshot: {e}"))?;
                 let image = screenshots::image::load_from_memory(&raw)
-                    .map_err(|e| format!("Failed to load screenshot snapshot: {}", e))?;
+                    .map_err(|e| format!("Failed to load screenshot snapshot: {e}"))?;
                 let l = left.min(image.width().saturating_sub(1));
                 let t = top.min(image.height().saturating_sub(1));
                 let w = width.min(image.width().saturating_sub(l)).max(1);
@@ -895,7 +895,7 @@ pub async fn crop_screenshot_snapshot(
         image_to_base64_png(&cropped)
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Task join error: {e}"))?
 }
 
 #[command]
@@ -910,7 +910,7 @@ pub async fn capture_screenshot_region(
         #[cfg(target_os = "windows")]
         {
             let img = capture_area_gdi(left, top, width, height)?;
-            return image_to_base64_png(&img);
+            image_to_base64_png(&img)
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -927,7 +927,7 @@ pub async fn capture_screenshot_region(
         }
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Task join error: {e}"))?
 }
 
 /// Detect the foreground window HWND.
@@ -1050,7 +1050,7 @@ pub async fn get_window_rect_cmd(hwnd: isize) -> Result<Option<serde_json::Value
                 right: 0,
                 bottom: 0,
             };
-            let result = GetWindowRect(hwnd as *mut std::ffi::c_void, &mut rect);
+            let result = GetWindowRect(hwnd as *mut std::ffi::c_void, &raw mut rect);
             if result != 0 {
                 return Ok(Some(serde_json::json!({
                     "x": rect.left,
@@ -1073,7 +1073,7 @@ fn decode_base64_png(data_url: &str) -> Result<Vec<u8>, String> {
         .unwrap_or(data_url);
     base64::engine::general_purpose::STANDARD
         .decode(b64)
-        .map_err(|e| format!("Base64 decode failed: {}", e))
+        .map_err(|e| format!("Base64 decode failed: {e}"))
 }
 
 /// Per-line OCR result with bounding box.
@@ -1165,11 +1165,10 @@ pub fn synthetic_ocr_lines_from_text(text: &str, img_w: f64, img_h: f64) -> OcrR
 
 fn png_dimensions(png_bytes: &[u8]) -> (f64, f64) {
     image::load_from_memory(png_bytes)
-        .map(|img| (img.width() as f64, img.height() as f64))
-        .unwrap_or((1.0, 1.0))
+        .map_or((1.0, 1.0), |img| (f64::from(img.width()), f64::from(img.height())))
 }
 
-/// Offline Rapid/Paddle sidecar OCR for screenshot path (same as image_translate).
+/// Offline Rapid/Paddle sidecar OCR for screenshot path (same as `image_translate`).
 /// Sidecars lack boxes — synthesize stacked line bands from newlines + image size.
 #[command]
 pub async fn offline_ocr(
@@ -1229,14 +1228,14 @@ pub async fn run_offline_ocr_detailed(
     Ok(result)
 }
 
-/// Run WinRT OCR on raw PNG bytes (for use by other modules).
+/// Run `WinRT` OCR on raw PNG bytes (for use by other modules).
 pub async fn run_winrt_ocr_detailed_from_bytes(
     png_bytes: &[u8],
     lang: Option<&str>,
 ) -> Result<OcrResultDetailed, String> {
     let base64_data = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png_bytes);
-    let data_url = format!("data:image/png;base64,{}", base64_data);
-    system_ocr_detailed(data_url, lang.map(|s| s.to_string())).await
+    let data_url = format!("data:image/png;base64,{base64_data}");
+    system_ocr_detailed(data_url, lang.map(std::string::ToString::to_string)).await
 }
 
 /// Run Youdao OCR on raw PNG bytes (for use by other modules).
@@ -1249,7 +1248,7 @@ pub async fn run_youdao_ocr_from_bytes(
     _timeout_secs: u64,
 ) -> Result<OcrResultDetailed, String> {
     let base64_data = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png_bytes);
-    let data_url = format!("data:image/png;base64,{}", base64_data);
+    let data_url = format!("data:image/png;base64,{base64_data}");
 
     // Create a minimal state for the Youdao OCR function
     // Since we can't easily create a Tauri State outside of Tauri, we'll call the internal implementation directly
@@ -1262,19 +1261,19 @@ pub async fn run_youdao_ocr_from_bytes(
             raw.len() / 1024
         );
         let img = screenshots::image::load_from_memory(&raw)
-            .map_err(|e| format!("Failed to load image for compression: {}", e))?;
+            .map_err(|e| format!("Failed to load image for compression: {e}"))?;
 
         let max_dim = 2000u32;
         let (w, h) = (img.width(), img.height());
         let scale = if w > h {
-            max_dim as f64 / w as f64
+            f64::from(max_dim) / f64::from(w)
         } else {
-            max_dim as f64 / h as f64
+            f64::from(max_dim) / f64::from(h)
         };
 
         let resized = if scale < 1.0 {
-            let new_w = (w as f64 * scale) as u32;
-            let new_h = (h as f64 * scale) as u32;
+            let new_w = (f64::from(w) * scale) as u32;
+            let new_h = (f64::from(h) * scale) as u32;
             img.resize(
                 new_w,
                 new_h,
@@ -1287,7 +1286,7 @@ pub async fn run_youdao_ocr_from_bytes(
         let mut buf = std::io::Cursor::new(Vec::new());
         resized
             .write_to(&mut buf, screenshots::image::ImageFormat::Jpeg)
-            .map_err(|e| format!("Failed to compress image: {}", e))?;
+            .map_err(|e| format!("Failed to compress image: {e}"))?;
         let compressed = buf.into_inner();
         tracing::info!("[Youdao OCR] Compressed to {}KB", compressed.len() / 1024);
         compressed
@@ -1311,20 +1310,20 @@ pub async fn run_youdao_ocr_from_bytes(
         .multipart(form)
         .send()
         .await
-        .map_err(|e| format!("Youdao OCR request failed: {}", e))?;
+        .map_err(|e| format!("Youdao OCR request failed: {e}"))?;
 
     let status = resp.status();
     let body = resp
         .text()
         .await
-        .map_err(|e| format!("Failed to read response: {}", e))?;
+        .map_err(|e| format!("Failed to read response: {e}"))?;
 
     if !status.is_success() {
-        return Err(format!("Youdao OCR returned status {}: {}", status, body));
+        return Err(format!("Youdao OCR returned status {status}: {body}"));
     }
 
     let json: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| format!("Failed to parse Youdao OCR response: {}", e))?;
+        .map_err(|e| format!("Failed to parse Youdao OCR response: {e}"))?;
 
     let mut lines = Vec::new();
     if let Some(regions) = json.get("regions").and_then(|r| r.as_array()) {
@@ -1336,10 +1335,10 @@ pub async fn run_youdao_ocr_from_bytes(
                         .and_then(|t| t.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let x = line.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                    let y = line.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                    let width = line.get("width").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                    let height = line.get("height").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    let x = line.get("x").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+                    let y = line.get("y").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+                    let width = line.get("width").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+                    let height = line.get("height").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
 
                     lines.push(OcrLineResult {
                         text: text.clone(),
@@ -1374,7 +1373,7 @@ pub async fn run_youdao_ocr_from_bytes(
 
 /// Run Windows.Media.Ocr on a base64 PNG data-URL, returning per-line details.
 /// Returns structured OCR result with bounding boxes for each detected line.
-/// Note: OcrLine bounding rect is computed from word bounding rects (union).
+/// Note: `OcrLine` bounding rect is computed from word bounding rects (union).
 #[command]
 pub async fn system_ocr_detailed(
     base64_data: String,
@@ -1393,70 +1392,70 @@ pub async fn system_ocr_detailed(
         let raw = decode_base64_png(&base64_data)?;
         tracing::info!("[WinRT OCR Detailed] Image decoded: {} bytes", raw.len());
         let temp_path = unique_ocr_temp_path();
-        std::fs::write(&temp_path, &raw).map_err(|e| format!("Temp write failed: {}", e))?;
+        std::fs::write(&temp_path, &raw).map_err(|e| format!("Temp write failed: {e}"))?;
         let _guard = TempFileGuard(temp_path.clone());
 
         let path_str = temp_path.to_string_lossy().replace("\\\\?\\", "");
 
         let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(&path_str))
-            .map_err(|e| format!("StorageFile: {}", e))?
+            .map_err(|e| format!("StorageFile: {e}"))?
             .get()
-            .map_err(|e| format!("StorageFile await: {}", e))?;
+            .map_err(|e| format!("StorageFile await: {e}"))?;
 
         let stream = file
             .OpenAsync(FileAccessMode::Read)
-            .map_err(|e| format!("OpenAsync: {}", e))?
+            .map_err(|e| format!("OpenAsync: {e}"))?
             .get()
-            .map_err(|e| format!("OpenAsync await: {}", e))?;
+            .map_err(|e| format!("OpenAsync await: {e}"))?;
 
         let decoder = BitmapDecoder::CreateWithIdAsync(
-            BitmapDecoder::PngDecoderId().map_err(|e| format!("PngDecoderId: {}", e))?,
+            BitmapDecoder::PngDecoderId().map_err(|e| format!("PngDecoderId: {e}"))?,
             &stream,
         )
-        .map_err(|e| format!("BitmapDecoder: {}", e))?
+        .map_err(|e| format!("BitmapDecoder: {e}"))?
         .get()
-        .map_err(|e| format!("BitmapDecoder await: {}", e))?;
+        .map_err(|e| format!("BitmapDecoder await: {e}"))?;
 
         let bitmap = decoder
             .GetSoftwareBitmapAsync()
-            .map_err(|e| format!("SoftwareBitmap: {}", e))?
+            .map_err(|e| format!("SoftwareBitmap: {e}"))?
             .get()
-            .map_err(|e| format!("SoftwareBitmap await: {}", e))?;
+            .map_err(|e| format!("SoftwareBitmap await: {e}"))?;
 
         let engine = match lang.as_deref() {
             Some(l) if l != "auto" => {
                 let language = Language::CreateLanguage(&HSTRING::from(l))
-                    .map_err(|e| format!("Language: {}", e))?;
+                    .map_err(|e| format!("Language: {e}"))?;
                 OcrEngine::TryCreateFromLanguage(&language)
-                    .map_err(|e| format!("OcrEngine: {}", e))?
+                    .map_err(|e| format!("OcrEngine: {e}"))?
             },
             _ => OcrEngine::TryCreateFromUserProfileLanguages()
-                .map_err(|e| format!("OcrEngine: {}", e))?,
+                .map_err(|e| format!("OcrEngine: {e}"))?,
         };
 
         let result = engine
             .RecognizeAsync(&bitmap)
-            .map_err(|e| format!("RecognizeAsync: {}", e))?
+            .map_err(|e| format!("RecognizeAsync: {e}"))?
             .get()
-            .map_err(|e| format!("RecognizeAsync await: {}", e))?;
+            .map_err(|e| format!("RecognizeAsync await: {e}"))?;
 
-        let lines_vec = result.Lines().map_err(|e| format!("Lines: {}", e))?;
+        let lines_vec = result.Lines().map_err(|e| format!("Lines: {e}"))?;
 
-        let count = lines_vec.Size().map_err(|e| format!("Lines.Size: {}", e))?;
+        let count = lines_vec.Size().map_err(|e| format!("Lines.Size: {e}"))?;
         let mut line_results = Vec::with_capacity(count as usize);
 
         for i in 0..count {
             let line = lines_vec
                 .GetAt(i)
-                .map_err(|e| format!("Lines.GetAt({}): {}", i, e))?;
+                .map_err(|e| format!("Lines.GetAt({i}): {e}"))?;
 
             let line_text = line
                 .Text()
-                .map_err(|e| format!("Line.Text: {}", e))?
+                .map_err(|e| format!("Line.Text: {e}"))?
                 .to_string_lossy();
 
-            let words_vec = line.Words().map_err(|e| format!("Words: {}", e))?;
-            let word_count = words_vec.Size().map_err(|e| format!("Words.Size: {}", e))?;
+            let words_vec = line.Words().map_err(|e| format!("Words: {e}"))?;
+            let word_count = words_vec.Size().map_err(|e| format!("Words.Size: {e}"))?;
 
             let mut word_results = Vec::with_capacity(word_count as usize);
             let mut min_x = f64::MAX;
@@ -1467,18 +1466,18 @@ pub async fn system_ocr_detailed(
             for j in 0..word_count {
                 let word = words_vec
                     .GetAt(j)
-                    .map_err(|e| format!("Words.GetAt({}): {}", j, e))?;
+                    .map_err(|e| format!("Words.GetAt({j}): {e}"))?;
                 let wtext = word
                     .Text()
-                    .map_err(|e| format!("Word.Text: {}", e))?
+                    .map_err(|e| format!("Word.Text: {e}"))?
                     .to_string_lossy();
                 let wrect = word
                     .BoundingRect()
-                    .map_err(|e| format!("Word.BoundingRect: {}", e))?;
-                let wx = wrect.X as f64;
-                let wy = wrect.Y as f64;
-                let ww = wrect.Width as f64;
-                let wh = wrect.Height as f64;
+                    .map_err(|e| format!("Word.BoundingRect: {e}"))?;
+                let wx = f64::from(wrect.X);
+                let wy = f64::from(wrect.Y);
+                let ww = f64::from(wrect.Width);
+                let wh = f64::from(wrect.Height);
 
                 // Track line bounding box (union of word rects)
                 if wx < min_x {
@@ -1586,36 +1585,36 @@ fn extract_bounding_box(item: &serde_json::Value) -> (f64, f64, f64, f64) {
     // Try various bounding box formats
     if let Some(bounding) = item.get("bounding") {
         // Format: { "bounding": { "x": 0, "y": 0, "width": 100, "height": 20 } }
-        let x = bounding.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let y = bounding.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let x = bounding.get("x").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+        let y = bounding.get("y").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
         let w = bounding
             .get("width")
-            .and_then(|v| v.as_f64())
+            .and_then(serde_json::Value::as_f64)
             .unwrap_or(0.0);
         let h = bounding
             .get("height")
-            .and_then(|v| v.as_f64())
+            .and_then(serde_json::Value::as_f64)
             .unwrap_or(0.0);
         return (x, y, w, h);
     }
     if let Some(rect) = item.get("rect") {
         // Format: { "rect": { "left": 0, "top": 0, "right": 100, "bottom": 20 } }
-        let left = rect.get("left").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let top = rect.get("top").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let right = rect.get("right").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let bottom = rect.get("bottom").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let left = rect.get("left").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+        let top = rect.get("top").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+        let right = rect.get("right").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+        let bottom = rect.get("bottom").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
         return (left, top, right - left, bottom - top);
     }
     // Try direct fields
-    let x = item.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let y = item.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let w = item.get("width").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let h = item.get("height").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let x = item.get("x").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+    let y = item.get("y").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+    let w = item.get("width").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+    let h = item.get("height").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
     (x, y, w, h)
 }
 
 /// Run Youdao OCR using the reverse-engineered imgtranocr endpoint (free, no API key needed).
-/// Uses the signing algorithm from YodaoDict analysis.
+/// Uses the signing algorithm from `YodaoDict` analysis.
 /// Returns per-line details with bounding boxes.
 #[command]
 pub async fn youdao_ocr(
@@ -1635,19 +1634,19 @@ pub async fn youdao_ocr(
             raw.len() / 1024
         );
         let img = screenshots::image::load_from_memory(&raw)
-            .map_err(|e| format!("Failed to load image for compression: {}", e))?;
+            .map_err(|e| format!("Failed to load image for compression: {e}"))?;
 
         let max_dim = 2000u32;
         let (w, h) = (img.width(), img.height());
         let scale = if w > h {
-            max_dim as f64 / w as f64
+            f64::from(max_dim) / f64::from(w)
         } else {
-            max_dim as f64 / h as f64
+            f64::from(max_dim) / f64::from(h)
         };
 
         let resized = if scale < 1.0 {
-            let new_w = (w as f64 * scale) as u32;
-            let new_h = (h as f64 * scale) as u32;
+            let new_w = (f64::from(w) * scale) as u32;
+            let new_h = (f64::from(h) * scale) as u32;
             img.resize(
                 new_w,
                 new_h,
@@ -1660,7 +1659,7 @@ pub async fn youdao_ocr(
         let mut buf = std::io::Cursor::new(Vec::new());
         resized
             .write_to(&mut buf, screenshots::image::ImageFormat::Jpeg)
-            .map_err(|e| format!("Failed to compress image: {}", e))?;
+            .map_err(|e| format!("Failed to compress image: {e}"))?;
         let compressed = buf.into_inner();
         tracing::info!("[Youdao OCR] Compressed to {}KB", compressed.len() / 1024);
         compressed
@@ -1708,8 +1707,7 @@ pub async fn youdao_ocr(
     };
 
     let sign_raw = format!(
-        "deskdict{}{}{}{}{}",
-        b64_first10, b64_len, b64_last10, salt, ocr_key
+        "deskdict{b64_first10}{b64_len}{b64_last10}{salt}{ocr_key}"
     );
     let sign = format!("{:x}", md5::compute(sign_raw.as_bytes()));
 
@@ -1723,13 +1721,13 @@ pub async fn youdao_ocr(
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
-        .map_err(|e| format!("HTTP client: {}", e))?;
+        .map_err(|e| format!("HTTP client: {e}"))?;
 
     // Build multipart form with image file
     let part = reqwest::multipart::Part::bytes(image_bytes)
         .file_name("img.png")
         .mime_str("image/png")
-        .map_err(|e| format!("Failed to create multipart: {}", e))?;
+        .map_err(|e| format!("Failed to create multipart: {e}"))?;
 
     let form = reqwest::multipart::Form::new()
         .part("multipartFile", part)
@@ -1747,7 +1745,7 @@ pub async fn youdao_ocr(
     let resp = match client.post(endpoint).multipart(form).send().await {
         Ok(r) => r,
         Err(e) => {
-            let err_msg = format!("Request failed: {}", e);
+            let err_msg = format!("Request failed: {e}");
             tracing::error!("[Youdao OCR] {}", err_msg);
             return Err(err_msg);
         },
@@ -1756,7 +1754,7 @@ pub async fn youdao_ocr(
     let status = resp.status();
     tracing::info!("[Youdao OCR] Response status: {}", status);
 
-    let body = resp.text().await.map_err(|e| format!("Body read: {}", e))?;
+    let body = resp.text().await.map_err(|e| format!("Body read: {e}"))?;
     tracing::info!(
         "[Youdao OCR] Response body ({} bytes): {}",
         body.len(),
@@ -1765,18 +1763,18 @@ pub async fn youdao_ocr(
 
     // Parse response - try multiple formats
     let json: serde_json::Value =
-        serde_json::from_str(&body).map_err(|e| format!("JSON parse: {}", e))?;
+        serde_json::from_str(&body).map_err(|e| format!("JSON parse: {e}"))?;
 
     // Check for error codes
     if let Some(code) = json.get("errorCode").and_then(|v| v.as_str()) {
         if code != "0" && code != "true" {
-            return Err(format!("Youdao OCR errorCode={}", code));
+            return Err(format!("Youdao OCR errorCode={code}"));
         }
     }
 
-    if let Some(code) = json.get("code").and_then(|v| v.as_i64()) {
+    if let Some(code) = json.get("code").and_then(serde_json::Value::as_i64) {
         if code != 0 && code != 200 {
-            return Err(format!("Youdao OCR code={}", code));
+            return Err(format!("Youdao OCR code={code}"));
         }
     }
 

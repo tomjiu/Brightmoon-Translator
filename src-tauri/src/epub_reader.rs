@@ -45,12 +45,10 @@ pub struct TranslatedEpub {
 
 pub fn extract_text_from_epub(file_path: &str) -> Result<EpubDocument, String> {
     let mut epub =
-        EpubDoc::new(file_path).map_err(|e| format!("Failed to open EPUB file: {}", e))?;
+        EpubDoc::new(file_path).map_err(|e| format!("Failed to open EPUB file: {e}"))?;
 
     let title = epub
-        .mdata("title")
-        .map(|m| m.value.clone())
-        .unwrap_or_else(|| "Unknown".to_string());
+        .mdata("title").map_or_else(|| "Unknown".to_string(), |m| m.value.clone());
 
     let mut chapters = Vec::new();
     let mut chapter_num = 0;
@@ -68,7 +66,7 @@ pub fn extract_text_from_epub(file_path: &str) -> Result<EpubDocument, String> {
                 chapter_num += 1;
                 chapters.push(EpubChapter {
                     chapter_number: chapter_num,
-                    title: format!("Chapter {}", chapter_num),
+                    title: format!("Chapter {chapter_num}"),
                     text: extracted,
                     html_content: html,
                     spine_id: spine_item.idref.clone(),
@@ -90,7 +88,7 @@ pub fn extract_text_from_epub(file_path: &str) -> Result<EpubDocument, String> {
                         chapter_number: chapter_num,
                         title: epub
                             .get_title()
-                            .unwrap_or_else(|| format!("Chapter {}", chapter_num)),
+                            .unwrap_or_else(|| format!("Chapter {chapter_num}")),
                         text: extracted,
                         html_content: html,
                         spine_id: String::new(),
@@ -144,7 +142,7 @@ fn extract_text_from_html(html: &str) -> String {
                     in_style = true;
                 } else if tag_lower.starts_with("/style") {
                     in_style = false;
-                } else if tag_lower.starts_with("p")
+                } else if tag_lower.starts_with('p')
                     || tag_lower.starts_with("br")
                     || tag_lower.starts_with("div")
                 {
@@ -162,7 +160,7 @@ fn extract_text_from_html(html: &str) -> String {
 
     // Clean up whitespace
     text.lines()
-        .map(|l| l.trim())
+        .map(str::trim)
         .filter(|l| !l.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
@@ -174,7 +172,7 @@ fn extract_text_from_html(html: &str) -> String {
 // and the translation uses a blue that is readable on both light and dark
 // backgrounds. The separator and label use `currentColor` + opacity so they
 // adapt to whatever text color the reader applies.
-const BILINGUAL_CSS: &str = r#"
+const BILINGUAL_CSS: &str = r"
 .bilingual-orig { color: inherit; margin-bottom: 1.5em; }
 .bilingual-trans { color: #2563eb; margin-bottom: 1.5em; padding-left: 1em; border-left: 3px solid #2563eb; }
 .bilingual-sep { border: none; border-top: 1px dashed currentColor; opacity: 0.3; margin: 1.5em 0; }
@@ -182,7 +180,7 @@ const BILINGUAL_CSS: &str = r#"
 @media (prefers-color-scheme: dark) {
   .bilingual-trans { color: #60a5fa; border-left-color: #60a5fa; }
 }
-"#;
+";
 
 /// Create a bilingual EPUB file preserving original formatting with translated text interleaved.
 ///
@@ -195,14 +193,14 @@ pub fn create_bilingual_epub(
     original_chapters: &[EpubChapter],
 ) -> Result<(), String> {
     let original_file = fs::File::open(original_path)
-        .map_err(|e| format!("Failed to open original EPUB: {}", e))?;
+        .map_err(|e| format!("Failed to open original EPUB: {e}"))?;
     let mut archive =
-        zip::ZipArchive::new(original_file).map_err(|e| format!("Failed to read EPUB as ZIP: {}", e))?;
+        zip::ZipArchive::new(original_file).map_err(|e| format!("Failed to read EPUB as ZIP: {e}"))?;
 
     // Build index: spine_id → translated text
     let mut trans_map: HashMap<String, &str> = HashMap::new();
     let mut html_map: HashMap<String, &str> = HashMap::new();
-    for (_i, ch) in original_chapters.iter().enumerate() {
+    for ch in original_chapters {
         if !ch.spine_id.is_empty() {
             html_map.insert(ch.spine_id.clone(), &ch.html_content);
             if let Some(tc) = translated_chapters.iter().find(|t| t.chapter_number == ch.chapter_number) {
@@ -212,7 +210,7 @@ pub fn create_bilingual_epub(
     }
 
     let out_file = fs::File::create(output_path)
-        .map_err(|e| format!("Failed to create output EPUB: {}", e))?;
+        .map_err(|e| format!("Failed to create output EPUB: {e}"))?;
     let mut writer = zip::ZipWriter::new(out_file);
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
@@ -221,11 +219,11 @@ pub fn create_bilingual_epub(
     let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)
-            .map_err(|e| format!("Failed to read ZIP entry {}: {}", i, e))?;
+            .map_err(|e| format!("Failed to read ZIP entry {i}: {e}"))?;
         let name = entry.name().to_string();
         let mut data = Vec::new();
         entry.read_to_end(&mut data)
-            .map_err(|e| format!("Failed to read entry {}: {}", name, e))?;
+            .map_err(|e| format!("Failed to read entry {name}: {e}"))?;
         entries.push((name, data));
     }
 
@@ -242,26 +240,26 @@ pub fn create_bilingual_epub(
             None
         };
 
-        let content = modified.as_deref().unwrap_or_else(|| data.as_slice());
+        let content = modified.as_deref().unwrap_or(data.as_slice());
 
         // mimetype must be stored uncompressed and first
         if name == "mimetype" {
             writer
                 .start_file("mimetype", zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored))
-                .map_err(|e| format!("Failed to write mimetype: {}", e))?;
+                .map_err(|e| format!("Failed to write mimetype: {e}"))?;
         } else {
             writer
                 .start_file(name, options)
-                .map_err(|e| format!("Failed to start file {}: {}", name, e))?;
+                .map_err(|e| format!("Failed to start file {name}: {e}"))?;
         }
         writer
             .write_all(content)
-            .map_err(|e| format!("Failed to write {}: {}", name, e))?;
+            .map_err(|e| format!("Failed to write {name}: {e}"))?;
     }
 
     writer
         .finish()
-        .map_err(|e| format!("Failed to finalize EPUB: {}", e))?;
+        .map_err(|e| format!("Failed to finalize EPUB: {e}"))?;
 
     Ok(())
 }
@@ -309,9 +307,8 @@ fn inject_bilingual_content(
         r#"<hr class="bilingual-sep"/>
 <div class="bilingual-trans">
 <p class="bilingual-label">Translation</p>
-{}
-</div>"#,
-        trans_html
+{trans_html}
+</div>"#
     );
 
     // Inject before </body>
@@ -328,7 +325,7 @@ fn inject_bilingual_content(
 
     // Inject CSS into <head>
     if let Some(pos) = result.to_lowercase().rfind("</head>") {
-        let style_block = format!("<style>{}</style>", BILINGUAL_CSS);
+        let style_block = format!("<style>{BILINGUAL_CSS}</style>");
         let mut final_html = String::new();
         final_html.push_str(&result[..pos]);
         final_html.push_str(&style_block);
@@ -336,8 +333,8 @@ fn inject_bilingual_content(
         Some(final_html.into_bytes())
     } else {
         // No head tag, prepend style
-        let style_block = format!("<style>{}</style>", BILINGUAL_CSS);
-        Some(format!("{}{}", style_block, result).into_bytes())
+        let style_block = format!("<style>{BILINGUAL_CSS}</style>");
+        Some(format!("{style_block}{result}").into_bytes())
     }
 }
 

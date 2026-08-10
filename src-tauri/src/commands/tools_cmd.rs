@@ -1,6 +1,6 @@
 /// Variable name transformation tool
 /// Converts between different naming conventions:
-/// snake_case, SNAKE_CASE, kebab-case, camelCase, PascalCase, dot.notation, Title Case
+/// `snake_case`, `SNAKE_CASE`, kebab-case, camelCase, `PascalCase`, dot.notation, Title Case
 #[tauri::command]
 pub fn transform_variable_name(text: String, target_format: String) -> String {
     if text.trim().is_empty() {
@@ -115,7 +115,7 @@ fn detect_format(text: &str) -> &str {
         "dot.notation"
     } else if text.contains(' ') {
         "Title Case"
-    } else if text.chars().next().map_or(false, |c| c.is_uppercase()) {
+    } else if text.chars().next().is_some_and(char::is_uppercase) {
         "PascalCase"
     } else {
         "camelCase"

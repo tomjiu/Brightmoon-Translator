@@ -57,7 +57,7 @@ pub async fn generate_choice_questions(
         .iter()
         .map(|(word, definition)| {
             let pool = pool_clone.clone();
-            let ecdict_pool = ecdict_pool.map(|p| p.clone());
+            let ecdict_pool = ecdict_pool.cloned();
             let words_clone: Vec<(String, String)> = words
                 .iter()
                 .map(|(w, d)| (w.clone(), d.clone()))
@@ -80,10 +80,8 @@ pub async fn generate_choice_questions(
 
     let results = futures::future::join_all(futures).await;
     let mut questions = Vec::new();
-    for q in results {
-        if let Some(q) = q {
-            questions.push(q);
-        }
+    for q in results.into_iter().flatten() {
+        questions.push(q);
     }
 
     // 如果本地卡牌不够，从 ECDICT 补充
@@ -127,7 +125,7 @@ pub async fn generate_choice_questions(
 
                     questions.push(ChoiceQuestion {
                         word,
-                        question: format!("哪个单词的意思是「{}」？", def_short),
+                        question: format!("哪个单词的意思是「{def_short}」？"),
                         options,
                         correct_index,
                         explanation: None,
@@ -140,7 +138,7 @@ pub async fn generate_choice_questions(
 
                     questions.push(ChoiceQuestion {
                         word,
-                        question: format!("哪个单词的意思是「{}」？", def_short),
+                        question: format!("哪个单词的意思是「{def_short}」？"),
                         options,
                         correct_index,
                         explanation: None,
@@ -186,7 +184,7 @@ async fn build_choice_for_word(
             let correct_index = options.iter().position(|o| o == word).unwrap_or(0);
             return Some(ChoiceQuestion {
                 word: word.to_string(),
-                question: format!("哪个单词的意思是「{}」？", definition),
+                question: format!("哪个单词的意思是「{definition}」？"),
                 options,
                 correct_index,
                 explanation: None,
@@ -243,7 +241,7 @@ async fn build_choice_for_word(
 
     Some(ChoiceQuestion {
         word: word.to_string(),
-        question: format!("哪个单词的意思是「{}」？", definition),
+        question: format!("哪个单词的意思是「{definition}」？"),
         options,
         correct_index,
         explanation: None,
@@ -303,7 +301,7 @@ pub async fn generate_cloze_questions(
 
     for (word, definition) in &words {
         // 用释义构造简单填空句
-        let sentence = format!("意思为「{}」的英文单词是：____", definition);
+        let sentence = format!("意思为「{definition}」的英文单词是：____");
 
         // 获取干扰选项
         let distractors: Vec<String> =
@@ -383,7 +381,7 @@ pub async fn submit_swipe_rating(
         "hard" => crate::domain::Rating::Hard,
         "good" => crate::domain::Rating::Good,
         "easy" => crate::domain::Rating::Easy,
-        _ => return Err(format!("无效评分: {}", rating)),
+        _ => return Err(format!("无效评分: {rating}")),
     };
     crate::commands::vocabulary_cmd::submit_review(state, card_id, rating_enum).await
 }
@@ -395,7 +393,7 @@ pub async fn submit_swipe_rating(
 /// 语义化选择干扰项（T9）
 ///
 /// 从候选词池中挑选与目标词语义相近(余弦相似度 0.4-0.8)的 3 个词作干扰项,
-/// 替代原来的 ORDER BY RANDOM() 完全随机。
+/// 替代原来的 ORDER BY `RANDOM()` 完全随机。
 /// 向量基于 ECDICT 释义文本构建,懒加载并缓存到 embeddings 表。
 async fn pick_semantic_distractors(
     emb_pool: &sqlx::SqlitePool,
@@ -433,14 +431,11 @@ async fn pick_semantic_distractors(
     .flatten();
 
     // 目标词向量（优先读缓存，未命中则从释义构建）
-    let target_vec = match crate::infrastructure::load_embedding(emb_pool, word, "ecdict").await {
-        Ok(Some(v)) => v,
-        _ => {
-            let text = target_text.clone().unwrap_or_else(|| word.to_string());
-            let v = crate::infrastructure::build_vector(&text, 256);
-            crate::infrastructure::upsert_embedding(emb_pool, word, "ecdict", &v).await.ok();
-            v
-        },
+    let target_vec = if let Ok(Some(v)) = crate::infrastructure::load_embedding(emb_pool, word, "ecdict").await { v } else {
+        let text = target_text.clone().unwrap_or_else(|| word.to_string());
+        let v = crate::infrastructure::build_vector(&text, 256);
+        crate::infrastructure::upsert_embedding(emb_pool, word, "ecdict", &v).await.ok();
+        v
     };
 
     // 候选词向量（批量加载，未命中则从释义构建）
@@ -526,11 +521,7 @@ async fn verify_options_with_llm(
         .join("\n");
 
     let prompt = format!(
-        "你是一个单词学习题质量检查器。题目是「哪个单词的意思是「{}」？」，正确答案是「{}」。\n\n干扰选项：\n{}\n\n请判断：是否有某个干扰选项的意思是\"可以理解为 {} 或与之非常接近、会导致歧义\"？\n只返回 JSON，格式：\n{{\"ambiguous_indices\": [下标数组，1起（与上面列表的编号一致）], \"reason\": \"简述\"}}\n如果没有歧义，返回 {{\"ambiguous_indices\": [], \"reason\": \"\"}}\n只返回 JSON。",
-        definition,
-        correct_word,
-        options_text,
-        definition
+        "你是一个单词学习题质量检查器。题目是「哪个单词的意思是「{definition}」？」，正确答案是「{correct_word}」。\n\n干扰选项：\n{options_text}\n\n请判断：是否有某个干扰选项的意思是\"可以理解为 {definition} 或与之非常接近、会导致歧义\"？\n只返回 JSON，格式：\n{{\"ambiguous_indices\": [下标数组，1起（与上面列表的编号一致）], \"reason\": \"简述\"}}\n如果没有歧义，返回 {{\"ambiguous_indices\": [], \"reason\": \"\"}}\n只返回 JSON。"
     );
 
     let request = LlmRequest::new(vec![
@@ -560,7 +551,7 @@ async fn verify_options_with_llm(
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| v.as_u64())
+                .filter_map(serde_json::Value::as_u64)
                 .filter_map(|u| u.checked_sub(1).map(|x| x as usize)) // LLM 返回 1-based（与选项列表编号一致），转为 0-based
                 .collect()
         })
@@ -622,7 +613,7 @@ async fn get_quiz_words(
                         })
                     })
                 })
-                .unwrap_or_else(|| format!("单词: {}", word));
+                .unwrap_or_else(|| format!("单词: {word}"));
 
             Some((word, definition))
         })
@@ -631,7 +622,7 @@ async fn get_quiz_words(
     Ok(words)
 }
 
-/// 打乱数组（Fisher-Yates 洗牌，使用数据库的 RANDOM() 作为随机源的补充）
+/// 打乱数组（Fisher-Yates 洗牌，使用数据库的 `RANDOM()` 作为随机源的补充）
 fn shuffle_vec<T>(v: &mut Vec<T>) {
     let len = v.len();
     if len <= 1 {

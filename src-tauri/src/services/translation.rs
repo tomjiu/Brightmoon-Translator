@@ -64,7 +64,7 @@ impl TranslationService {
 
     /// Prepare text for translation: pre-process -> glossary -> blacklist protect
     async fn prepare(&self, text: &str, from: &str, to: &str) -> PreparedText {
-        let lang_pair = format!("{}-{}", from, to);
+        let lang_pair = format!("{from}-{to}");
         let mut processed_text = self.pre_processor.process(text, Some(&lang_pair));
 
         let glossary = self.glossary.lock().await;
@@ -253,8 +253,7 @@ impl TranslationService {
         {
             TranslateOutcome::Full(r) => Ok(r),
             other => Err(TranslationError::Internal(format!(
-                "unexpected outcome for full: {:?}",
-                other
+                "unexpected outcome for full: {other:?}"
             ))),
         }
     }
@@ -274,8 +273,7 @@ impl TranslationService {
         {
             TranslateOutcome::Full(r) => Ok(r),
             other => Err(TranslationError::Internal(format!(
-                "unexpected outcome for quick: {:?}",
-                other
+                "unexpected outcome for quick: {other:?}"
             ))),
         }
     }
@@ -300,8 +298,7 @@ impl TranslationService {
         {
             TranslateOutcome::Primary(s) => Ok(s),
             other => Err(TranslationError::Internal(format!(
-                "unexpected outcome for primary: {:?}",
-                other
+                "unexpected outcome for primary: {other:?}"
             ))),
         }
     }
@@ -321,7 +318,7 @@ impl TranslationService {
             self.metrics.record_cache_hit();
             return Ok(self
                 .finalize(
-                    &cached.results.first().map(|r| r.1.as_str()).unwrap_or(""),
+                    cached.results.first().map_or("", |r| r.1.as_str()),
                     text, from, to, &prepared.blacklist,
                 )
                 .await);
@@ -489,15 +486,12 @@ impl TranslationService {
 
             let prepared = self.prepare(text, from, to).await;
 
-            let strategy = match strategy_override {
-                Some(s) => s,
-                None => {
-                    let config = self.config.lock().await;
-                    Self::strategy_for_channel(
-                        channel,
-                        config.routing_strategy.clone().unwrap_or_default(),
-                    )
-                },
+            let strategy = if let Some(s) = strategy_override { s } else {
+                let config = self.config.lock().await;
+                Self::strategy_for_channel(
+                    channel,
+                    config.routing_strategy.clone().unwrap_or_default(),
+                )
             };
             let want_multi = matches!(strategy, RoutingStrategy::ParallelCompare);
 
@@ -684,7 +678,7 @@ impl TranslationService {
             let engine_names: Vec<String> = router
                 .engine_names()
                 .iter()
-                .map(|s| s.to_string())
+                .map(std::string::ToString::to_string)
                 .collect();
             drop(router);
 
@@ -833,7 +827,7 @@ impl TranslationService {
                     self.metrics.record_failure("LLM", &e.to_string()).await;
                     Err(TranslationError::EngineError {
                         engine: "LLM".to_string(),
-                        message: format!("Streaming failed: {}", e),
+                        message: format!("Streaming failed: {e}"),
                     })
                 },
             }
@@ -857,7 +851,7 @@ impl TranslationService {
             if let Some(cached) = self.cache.get(&prepared.text, from, to).await {
                 self.metrics.record_cache_hit();
                 let final_text = self
-                    .finalize(&cached.results.first().map(|r| r.1.as_str()).unwrap_or(""), text, from, to, &prepared.blacklist)
+                    .finalize(cached.results.first().map_or("", |r| r.1.as_str()), text, from, to, &prepared.blacklist)
                     .await;
                 return Ok(final_text);
             }
@@ -958,7 +952,7 @@ impl TranslationService {
             self.metrics.record_cache_hit();
             return Ok(self
                 .finalize(
-                    &cached.results.first().map(|r| r.1.as_str()).unwrap_or(""),
+                    cached.results.first().map_or("", |r| r.1.as_str()),
                     text, from, to, &prepared.blacklist,
                 )
                 .await);
@@ -993,7 +987,7 @@ impl TranslationService {
         &self.engine_router
     }
 
-    /// Core batch translation logic shared by translate_batch and translate_embedded_batch.
+    /// Core batch translation logic shared by `translate_batch` and `translate_embedded_batch`.
     /// Spawns concurrent translation tasks with context reuse and optional progress callback.
     /// When primary is LLM and multi-seg, uses numbered pack/parse (A4) instead of N calls.
     /// OCR channel uses ordered engine fallback per segment (or after LLM pack failure).
@@ -1180,7 +1174,7 @@ impl TranslationService {
                         }
                     };
 
-                    for ((idx, original, prepared), raw) in chunk.iter().zip(raws.into_iter()) {
+                    for ((idx, original, prepared), raw) in chunk.iter().zip(raws) {
                         let translated = self
                             .finalize(&raw, original, from, to, &prepared.blacklist)
                             .await;

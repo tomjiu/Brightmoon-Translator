@@ -9,15 +9,15 @@ use crate::models::error::TranslationError;
 use crate::selection::SelectionProviderManager;
 use crate::services::TranslationService;
 
-/// Default desktop implementation of InputReplacement.
-/// Composes: SelectionProviderManager -> TranslationService -> clipboard/type replace.
+/// Default desktop implementation of `InputReplacement`.
+/// Composes: `SelectionProviderManager` -> `TranslationService` -> clipboard/type replace.
 pub struct DefaultInputReplacement {
     selection_manager: Arc<SelectionProviderManager>,
     translation_service: Arc<TranslationService>,
     in_flight: AtomicBool,
     /// Shared cancel flag (also passed into type-SendInput loop).
     cancel: Arc<AtomicBool>,
-    /// Config for dynamic exclude_processes (same pattern as DefaultSelectionTranslation).
+    /// Config for dynamic `exclude_processes` (same pattern as `DefaultSelectionTranslation`).
     config: Arc<Mutex<AppConfig>>,
 }
 
@@ -148,7 +148,7 @@ impl InputReplacement for DefaultInputReplacement {
                 )
             })
             .await
-            .map_err(|e| TranslationError::Internal(format!("Task join error: {}", e)))?;
+            .map_err(|e| TranslationError::Internal(format!("Task join error: {e}")))?;
 
             match result {
                 Ok(()) => Ok(ReplacementResult {
@@ -200,7 +200,7 @@ impl InputReplacement for DefaultInputReplacement {
             }
         })
         .await
-        .map_err(|e| TranslationError::Internal(format!("Task join error: {}", e)));
+        .map_err(|e| TranslationError::Internal(format!("Task join error: {e}")));
         self.end();
         match result {
             Ok(Ok(())) => Ok(true),
@@ -261,7 +261,7 @@ impl InputReplacement for DefaultInputReplacement {
                 }
             })
             .await
-            .map_err(|e| TranslationError::Internal(format!("Task join error: {}", e)))?;
+            .map_err(|e| TranslationError::Internal(format!("Task join error: {e}")))?;
 
             match result {
                 Ok(()) => Ok(ReplacementResult {

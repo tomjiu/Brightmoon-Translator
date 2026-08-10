@@ -155,7 +155,7 @@ impl AiEnhancedService {
         self.llm_engine
             .translate(&prompt, from_lang, to_lang)
             .await
-            .map_err(|e| format!("Polish failed: {}", e))
+            .map_err(|e| format!("Polish failed: {e}"))
     }
 
     /// Extract terms from source text and existing translations
@@ -210,10 +210,10 @@ impl AiEnhancedService {
             .llm_engine
             .translate(&prompt, from_lang, to_lang)
             .await
-            .map_err(|e| format!("Term extraction failed: {}", e))?;
+            .map_err(|e| format!("Term extraction failed: {e}"))?;
 
         // Parse JSON response
-        serde_json::from_str(&response).map_err(|e| format!("Failed to parse terms: {}", e))
+        serde_json::from_str(&response).map_err(|e| format!("Failed to parse terms: {e}"))
     }
 
     /// Learn translation style from user history
@@ -271,9 +271,9 @@ impl AiEnhancedService {
             .llm_engine
             .translate(&prompt, from_lang, to_lang)
             .await
-            .map_err(|e| format!("Style learning failed: {}", e))?;
+            .map_err(|e| format!("Style learning failed: {e}"))?;
 
-        serde_json::from_str(&response).map_err(|e| format!("Failed to parse style: {}", e))
+        serde_json::from_str(&response).map_err(|e| format!("Failed to parse style: {e}"))
     }
 
     /// Context-aware translation with previous translations as context
@@ -325,9 +325,7 @@ impl AiEnhancedService {
 
 要求：
 1. 保持与之前翻译一致的术语和风格
-2. 只返回翻译结果，不要添加解释",
-            text = text,
-            context_text = context_text
+2. 只返回翻译结果，不要添加解释"
         );
 
         self.llm_engine
@@ -426,7 +424,7 @@ impl AiEnhancedService {
             .llm_engine
             .translate(&prompt, from_lang, to_lang)
             .await
-            .map_err(|e| format!("Selection failed: {}", e))?;
+            .map_err(|e| format!("Selection failed: {e}"))?;
 
         // Parse the index
         let index: usize = response
@@ -434,8 +432,7 @@ impl AiEnhancedService {
             .chars()
             .next()
             .and_then(|c| c.to_digit(10))
-            .map(|d| d as usize - 1)
-            .unwrap_or(0);
+            .map_or(0, |d| d as usize - 1);
 
         Ok(index.min(translations.len() - 1))
     }

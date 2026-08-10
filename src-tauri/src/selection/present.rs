@@ -1,4 +1,4 @@
-//! Unified selection/hover presentation router (QTranslate D vs Q + Easydict pop).
+//! Unified selection/hover presentation router (`QTranslate` D vs Q + Easydict pop).
 //! Word → dictionary card only; sentence/phrase → MT card; junk → reject (never MT).
 
 use super::hover_pick::{is_ui_chrome_word, looks_like_app_or_process_name};
@@ -133,7 +133,7 @@ impl DictCard {
                 if t.starts_with('/') || t.starts_with('[') {
                     t.to_string()
                 } else {
-                    format!("/{}/", t)
+                    format!("/{t}/")
                 }
             })
             .filter(|p| !p.is_empty());
@@ -332,7 +332,7 @@ async fn hover_dict_source(app: &AppHandle) -> String {
     source.to_ascii_lowercase()
 }
 
-/// ECDICT → DictionaryResult (shared by hover + selection word path).
+/// ECDICT → `DictionaryResult` (shared by hover + selection word path).
 async fn lookup_ecdict(
     word: &str,
     pool: &sqlx::SqlitePool,
@@ -405,7 +405,7 @@ async fn lookup_ecdict(
             if p.starts_with('/') || p.starts_with('[') {
                 p
             } else {
-                format!("/{}/", p)
+                format!("/{p}/")
             }
         }),
         meanings,
@@ -547,8 +547,8 @@ fn cursor_pos() -> (f64, f64) {
         use windows::Win32::Foundation::POINT;
         use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
         let mut pt = POINT::default();
-        if unsafe { GetCursorPos(&mut pt).is_ok() } {
-            return (pt.x as f64, pt.y as f64);
+        if unsafe { GetCursorPos(&raw mut pt).is_ok() } {
+            return (f64::from(pt.x), f64::from(pt.y));
         }
     }
     (100.0, 100.0)
@@ -734,7 +734,7 @@ pub async fn present_mt_card(
             let display = {
                 let joined = resp.display_text();
                 if joined.is_empty() {
-                    format!("（无翻译结果）\n{}", source)
+                    format!("（无翻译结果）\n{source}")
                 } else {
                     joined
                 }

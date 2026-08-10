@@ -175,7 +175,7 @@ async fn create_notepad(
     let v: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| format!("Maimemo JSON: {e} — {}", truncate_body(&body)))?;
 
-    if v.get("success").and_then(|s| s.as_bool()) == Some(false) {
+    if v.get("success").and_then(serde_json::Value::as_bool) == Some(false) {
         return Err(format!("Maimemo create failed: {}", truncate_body(&body)));
     }
 
@@ -282,7 +282,7 @@ async fn add_to_existing(
     }
 
     let pv: serde_json::Value = serde_json::from_str(&post_body).unwrap_or(serde_json::json!({}));
-    if pv.get("success").and_then(|s| s.as_bool()) == Some(false) {
+    if pv.get("success").and_then(serde_json::Value::as_bool) == Some(false) {
         return Err(format!(
             "Maimemo update failed: {}",
             truncate_body(&post_body)

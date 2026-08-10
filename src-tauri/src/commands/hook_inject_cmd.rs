@@ -100,6 +100,12 @@ pub struct HookState {
     dedup: Mutex<HookDedup>,
 }
 
+impl Default for HookState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HookState {
     pub fn new() -> Self {
         Self {
@@ -146,7 +152,7 @@ impl HookState {
     }
 }
 
-/// One pump / command tick: drain shared memory → TranslationService → emit.
+/// One pump / command tick: drain shared memory → `TranslationService` → emit.
 async fn process_hook_messages_once(
     hook_state: &HookState,
     app_state: &AppState,
@@ -223,7 +229,7 @@ async fn process_hook_messages_once(
                         "process_name": process_name,
                         "original": text,
                         "translated": response.results.first().map(|r| r.text.clone()).unwrap_or_default(),
-                        "engine": response.results.first().map(|r| r.engine.clone()).unwrap_or_else(|| "hook".into()),
+                        "engine": response.results.first().map_or_else(|| "hook".into(), |r| r.engine.clone()),
                         "timestamp": msg.timestamp as i64,
                         "source": "hook",
                         "text_rect": if msg.x != 0 || msg.y != 0 {
@@ -263,7 +269,7 @@ pub async fn hook_inject(
             unsafe {
                 let hwnd = GetForegroundWindow();
                 let mut process_id = 0u32;
-                GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+                GetWindowThreadProcessId(hwnd, Some(&raw mut process_id));
                 process_id
             }
         }
@@ -309,7 +315,7 @@ pub async fn hook_status(state: State<'_, HookState>) -> Result<HookStatus, AppE
     Ok(manager.status())
 }
 
-/// Preflight: is moon_hook.dll present on disk?
+/// Preflight: is `moon_hook.dll` present on disk?
 #[tauri::command]
 pub async fn hook_dll_available(state: State<'_, HookState>) -> Result<bool, AppError> {
     let manager = state.manager.lock()?;
@@ -324,10 +330,10 @@ pub async fn hook_dll_path(state: State<'_, HookState>) -> Result<Option<String>
 }
 
 /// Query hook statistics from the injected DLL (IAT hits, late-loaded patches,
-/// send_text counters, inline hooks installed).
+/// `send_text` counters, inline hooks installed).
 ///
-/// Calls the remote `HookGetStats` export via CreateRemoteThread +
-/// ReadProcessMemory, parses the returned JSON into [`HookStats`].
+/// Calls the remote `HookGetStats` export via `CreateRemoteThread` +
+/// `ReadProcessMemory`, parses the returned JSON into [`HookStats`].
 /// Returns `HookStats::default()` when not injected (no-op).
 #[tauri::command]
 pub async fn hook_get_stats(state: State<'_, HookState>) -> Result<HookStats, AppError> {

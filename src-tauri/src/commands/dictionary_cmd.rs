@@ -81,7 +81,7 @@ pub async fn lookup_word_multi_source(
     state: State<'_, crate::AppState>,
 ) -> Result<ComprehensiveEntry, String> {
     let pool = state.ecdict_pool.as_ref();
-    let vocab_db = state.event_store.as_ref().map(|s| s.pool());
+    let vocab_db = state.event_store.as_ref().map(super::super::infrastructure::event_store::EventStore::pool);
 
     // 并行查询 ECDICT + DictionaryAPI.dev + 有道
     // v2 S2-8: share a single MultiSourceDictionary instance across both online
@@ -190,7 +190,7 @@ pub async fn lookup_word_multi_source(
             if entry
                 .chinese_translation
                 .as_ref()
-                .map_or(true, |existing| youdao_zh.len() > existing.len())
+                .is_none_or(|existing| youdao_zh.len() > existing.len())
             {
                 entry.chinese_translation = Some(youdao_zh);
             }
@@ -266,7 +266,7 @@ pub async fn lookup_word_multi_source(
 
     if entry.sources.is_empty() {
         return Err(if pool.is_some() {
-            format!("单词 '{}' 未找到", word)
+            format!("单词 '{word}' 未找到")
         } else {
             "本地词典未加载".into()
         });
@@ -280,13 +280,13 @@ pub async fn lookup_word_multi_source(
             // v2 S2-7: log failures instead of silently swallowing, so that
             // missing history rows can be diagnosed.
             if let Err(e) = sqlx::query(
-                r#"
+                r"
                 INSERT INTO dictionary_history (word, lookup_count, first_looked_up, last_looked_up)
                 VALUES (?, 1, strftime('%s', 'now'), strftime('%s', 'now'))
                 ON CONFLICT(word) DO UPDATE SET
                     lookup_count = lookup_count + 1,
                     last_looked_up = strftime('%s', 'now')
-                "#,
+                ",
             )
             .bind(&w)
             .execute(&pool)
@@ -322,20 +322,20 @@ pub async fn get_dictionary_history(
         .ok_or("数据库未初始化")?
         .pool();
 
-    let limit = limit.unwrap_or(50).clamp(1, 200) as i64;
+    let limit = i64::from(limit.unwrap_or(50).clamp(1, 200));
 
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT word, lookup_count, first_looked_up, last_looked_up
         FROM dictionary_history
         ORDER BY last_looked_up DESC
         LIMIT ?
-        "#,
+        ",
     )
     .bind(limit)
     .fetch_all(pool)
     .await
-    .map_err(|e| format!("查询历史失败: {}", e))?;
+    .map_err(|e| format!("查询历史失败: {e}"))?;
 
     let items = rows
         .into_iter()
@@ -364,7 +364,7 @@ pub async fn clear_dictionary_history(
     sqlx::query("DELETE FROM dictionary_history")
         .execute(pool)
         .await
-        .map_err(|e| format!("清空历史失败: {}", e))?;
+        .map_err(|e| format!("清空历史失败: {e}"))?;
 
     Ok(())
 }
@@ -409,13 +409,11 @@ async fn parse_youdao(dict: &MultiSourceDictionary, word: &str) -> Option<Youdao
             // 有道音频字段是 usspeech/ukspeech（无连字符），值是相对路径
             if let Some(speech) = word_list.get("usspeech").and_then(|v| v.as_str()) {
                 result.audio_url = Some(format!(
-                    "https://dict.youdao.com/dictvoice?audio={}",
-                    speech
+                    "https://dict.youdao.com/dictvoice?audio={speech}"
                 ));
             } else if let Some(speech) = word_list.get("ukspeech").and_then(|v| v.as_str()) {
                 result.audio_url = Some(format!(
-                    "https://dict.youdao.com/dictvoice?audio={}",
-                    speech
+                    "https://dict.youdao.com/dictvoice?audio={speech}"
                 ));
             }
         }
@@ -760,14 +758,14 @@ pub async fn search_word_suggestions(
 ) -> Result<Vec<SuggestionItem>, String> {
     let pool = state.ecdict_pool.as_ref().ok_or("本地词典数据库未加载")?;
 
-    let pattern = format!("{}%", query);
+    let pattern = format!("{query}%");
 
     let rows = sqlx::query("SELECT word, translation FROM stardict WHERE word LIKE ?1 ORDER BY frq DESC, word ASC LIMIT ?2")
         .bind(&pattern)
         .bind(limit)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("查询建议失败: {}", e))?;
+        .map_err(|e| format!("查询建议失败: {e}"))?;
 
     Ok(rows
         .into_iter()
@@ -877,8 +875,8 @@ pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result
                     if let Some((word, meaning)) = parse_oxford_line(line) {
                         let w = word.trim().trim_start_matches('\n').to_lowercase();
                         let m = meaning.trim();
-                        if !w.is_empty() && !m.is_empty() {
-                            if sqlx::query(
+                        if !w.is_empty() && !m.is_empty()
+                            && sqlx::query(
                                 "INSERT OR IGNORE INTO oxford_dict (word, meaning) VALUES (?, ?)",
                             )
                             .bind(&w)
@@ -889,7 +887,6 @@ pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result
                             {
                                 oxford_count += 1;
                             }
-                        }
                     }
                     if oxford_count % 5000 == 0 && oxford_count > 0 {
                         tx.commit().await.map_err(|e| e.to_string())?;
@@ -975,8 +972,7 @@ pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result
     }
 
     Ok(format!(
-        "导入完成: Oxford {}, GPT4 {}, 核心词库 {}",
-        oxford_count, gpt_count, vocab_count
+        "导入完成: Oxford {oxford_count}, GPT4 {gpt_count}, 核心词库 {vocab_count}"
     ))
 }
 
@@ -1100,7 +1096,7 @@ pub async fn lookup_word_detail(
             source_urls: vec![],
         })
     } else {
-        Err(format!("Word '{}' not found", word))
+        Err(format!("Word '{word}' not found"))
     }
 }
 
@@ -1113,11 +1109,11 @@ pub async fn fuzzy_search_words(
 ) -> Result<Vec<String>, String> {
     let pool = state.ecdict_pool.as_ref().ok_or("本地词典数据库未加载")?;
 
-    let pattern = format!("%{}%", query);
-    let prefix_pattern = format!("{}%", query);
+    let pattern = format!("%{query}%");
+    let prefix_pattern = format!("{query}%");
 
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT word
         FROM stardict
         WHERE word LIKE ?1
@@ -1130,7 +1126,7 @@ pub async fn fuzzy_search_words(
             END,
             word ASC
         LIMIT ?4
-        "#,
+        ",
     )
     .bind(&pattern)
     .bind(&query)
@@ -1143,7 +1139,7 @@ pub async fn fuzzy_search_words(
     Ok(rows.into_iter().map(|r| r.get("word")).collect())
 }
 
-/// Look up a Japanese word using Jisho.org (JMdict) API.
+/// Look up a Japanese word using Jisho.org (`JMdict`) API.
 #[tauri::command]
 pub async fn lookup_japanese(
     word: String,
@@ -1151,7 +1147,7 @@ pub async fn lookup_japanese(
     let dict = crate::services::JapaneseDictionary::new();
     dict.lookup(&word)
         .await
-        .map_err(|e| format!("Japanese lookup failed: {}", e))
+        .map_err(|e| format!("Japanese lookup failed: {e}"))
 }
 
 #[cfg(test)]

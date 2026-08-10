@@ -13,18 +13,15 @@ pub struct PdfPage {
 /// S5-1: layout mode for bilingual PDF export.
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub enum BilingualPdfLayout {
     /// Original and translation side-by-side in two columns.
+    #[default]
     SideBySide,
     /// Original paragraph followed by translation paragraph.
     Interleaved,
 }
 
-impl Default for BilingualPdfLayout {
-    fn default() -> Self {
-        Self::SideBySide
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -109,8 +106,7 @@ pub fn is_text_garbled(text: &str) -> bool {
             w.len() == 1
                 && w.chars()
                     .next()
-                    .map(|c| c.is_ascii_alphabetic())
-                    .unwrap_or(false)
+                    .is_some_and(|c| c.is_ascii_alphabetic())
         })
         .count();
     if scattered > 5 {
@@ -184,7 +180,7 @@ fn finalize_document(pages: Vec<PdfPage>, force_scanned: Option<bool>) -> PdfDoc
     let total_chars: usize = pages.iter().map(|p| p.text.len()).sum();
     let page_count = pages.len().max(1);
     let avg_chars_per_page = total_chars / page_count;
-    let is_scanned = force_scanned.unwrap_or_else(|| {
+    let is_scanned = force_scanned.unwrap_or({
         pages.is_empty()
             || (avg_chars_per_page < SCANNED_PDF_CHAR_THRESHOLD && total_chars < 200)
     });
@@ -214,7 +210,7 @@ fn finalize_document(pages: Vec<PdfPage>, force_scanned: Option<bool>) -> PdfDoc
 }
 
 /// Maximum PDF size we are willing to slurp into memory for pdf-extract.
-/// pdf_extract::extract_text_from_mem requires the whole file in memory, so
+/// `pdf_extract::extract_text_from_mem` requires the whole file in memory, so
 /// streaming wouldn't help; instead we refuse pathologically large files to
 /// avoid OOM. 256 MB is well above any normal text PDF and matches the
 /// upper bound of scanned-book PDFs we have tested.
@@ -230,7 +226,7 @@ const PDF_MAX_INMEMORY_BYTES: u64 = 256 * 1024 * 1024;
 /// whole file in memory anyway, so streaming would not help here.
 pub fn extract_text_via_pdf_extract(file_path: &str) -> Result<PdfDocument, String> {
     let metadata = std::fs::metadata(file_path)
-        .map_err(|e| format!("Failed to stat PDF file: {}", e))?;
+        .map_err(|e| format!("Failed to stat PDF file: {e}"))?;
     if metadata.len() > PDF_MAX_INMEMORY_BYTES {
         return Err(format!(
             "PDF file is too large ({} bytes > {} limit). Please use a scanned-PDF OCR sidecar (ocrmypdf) for large files.",
@@ -238,7 +234,7 @@ pub fn extract_text_via_pdf_extract(file_path: &str) -> Result<PdfDocument, Stri
             PDF_MAX_INMEMORY_BYTES
         ));
     }
-    let data = std::fs::read(file_path).map_err(|e| format!("Failed to read PDF file: {}", e))?;
+    let data = std::fs::read(file_path).map_err(|e| format!("Failed to read PDF file: {e}"))?;
 
     // Catch panics from pdf-extract on unsupported PDF features
     let text = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -246,7 +242,7 @@ pub fn extract_text_via_pdf_extract(file_path: &str) -> Result<PdfDocument, Stri
     })) {
         Ok(Ok(t)) => t,
         Ok(Err(e)) => {
-            return Err(format!("Failed to extract text from PDF: {}", e));
+            return Err(format!("Failed to extract text from PDF: {e}"));
         }
         Err(_) => {
             return Err(
@@ -272,8 +268,7 @@ pub fn extract_pages_via_ocr(
     }
 
     let limit = max_pages
-        .map(|m| m.min(page_count))
-        .unwrap_or(page_count);
+        .map_or(page_count, |m| m.min(page_count));
 
     tracing::info!(
         "[PDF] OCR extract: {} pages (of {}), lang={:?}",
@@ -446,7 +441,7 @@ pub fn run_pdf_sidecar(
         .map_err(|e| format!("Failed to spawn {engine} ({}): {e}", program.display()))?;
 
     // Soft timeout ~120s
-    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    let deadline = std::time::Instant::now() + Duration::from_mins(2);
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
@@ -515,8 +510,7 @@ fn find_first_markdown(dir: &Path) -> Option<String> {
             } else if p
                 .extension()
                 .and_then(|x| x.to_str())
-                .map(|x| x.eq_ignore_ascii_case("md"))
-                .unwrap_or(false)
+                .is_some_and(|x| x.eq_ignore_ascii_case("md"))
             {
                 if let Ok(s) = std::fs::read_to_string(&p) {
                     if !s.trim().is_empty() {
@@ -676,18 +670,18 @@ pub fn get_pdf_page_count(file_path: &str) -> Result<u32, String> {
     let path_str = file_path.to_string();
 
     let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(&path_str))
-        .map_err(|e| format!("StorageFile: {}", e))?
+        .map_err(|e| format!("StorageFile: {e}"))?
         .get()
-        .map_err(|e| format!("StorageFile await: {}", e))?;
+        .map_err(|e| format!("StorageFile await: {e}"))?;
 
     let pdf_doc = PdfDocument::LoadFromFileAsync(&file)
-        .map_err(|e| format!("LoadPdf: {}", e))?
+        .map_err(|e| format!("LoadPdf: {e}"))?
         .get()
-        .map_err(|e| format!("LoadPdf await: {}", e))?;
+        .map_err(|e| format!("LoadPdf await: {e}"))?;
 
     let page_count = pdf_doc
         .PageCount()
-        .map_err(|e| format!("PageCount: {}", e))?;
+        .map_err(|e| format!("PageCount: {e}"))?;
 
     Ok(page_count)
 }
@@ -708,65 +702,65 @@ pub fn render_pdf_page_to_png(file_path: &str, page_index: u32) -> Result<Vec<u8
     let path_str = file_path.to_string();
 
     let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(&path_str))
-        .map_err(|e| format!("StorageFile: {}", e))?
+        .map_err(|e| format!("StorageFile: {e}"))?
         .get()
-        .map_err(|e| format!("StorageFile await: {}", e))?;
+        .map_err(|e| format!("StorageFile await: {e}"))?;
 
     let pdf_doc = PdfDocument::LoadFromFileAsync(&file)
-        .map_err(|e| format!("LoadPdf: {}", e))?
+        .map_err(|e| format!("LoadPdf: {e}"))?
         .get()
-        .map_err(|e| format!("LoadPdf await: {}", e))?;
+        .map_err(|e| format!("LoadPdf await: {e}"))?;
 
     let page = pdf_doc
         .GetPage(page_index)
-        .map_err(|e| format!("GetPage({}): {}", page_index, e))?;
+        .map_err(|e| format!("GetPage({page_index}): {e}"))?;
 
-    let stream = InMemoryRandomAccessStream::new().map_err(|e| format!("InMemoryStream: {}", e))?;
+    let stream = InMemoryRandomAccessStream::new().map_err(|e| format!("InMemoryStream: {e}"))?;
 
     let render_options =
-        PdfPageRenderOptions::new().map_err(|e| format!("RenderOptions: {}", e))?;
+        PdfPageRenderOptions::new().map_err(|e| format!("RenderOptions: {e}"))?;
 
     let width = 2048u32;
     let height = 2896u32;
     render_options
         .SetDestinationWidth(width)
-        .map_err(|e| format!("SetDestinationWidth: {}", e))?;
+        .map_err(|e| format!("SetDestinationWidth: {e}"))?;
     render_options
         .SetDestinationHeight(height)
-        .map_err(|e| format!("SetDestinationHeight: {}", e))?;
+        .map_err(|e| format!("SetDestinationHeight: {e}"))?;
 
     page.RenderToStreamAsync(&stream)
-        .map_err(|e| format!("RenderPage: {}", e))?
+        .map_err(|e| format!("RenderPage: {e}"))?
         .get()
-        .map_err(|e| format!("RenderPage await: {}", e))?;
+        .map_err(|e| format!("RenderPage await: {e}"))?;
 
-    let size = stream.Size().map_err(|e| format!("StreamSize: {}", e))? as usize;
+    let size = stream.Size().map_err(|e| format!("StreamSize: {e}"))? as usize;
     let input = windows::Storage::Streams::InputStreamOptions::None;
     // Seek to start
     stream
         .Seek(0)
-        .map_err(|e| format!("StreamSeek: {}", e))?;
+        .map_err(|e| format!("StreamSeek: {e}"))?;
 
     let reader = windows::Storage::Streams::DataReader::CreateDataReader(&stream)
-        .map_err(|e| format!("DataReader: {}", e))?;
+        .map_err(|e| format!("DataReader: {e}"))?;
     let _ = input;
 
     reader
         .LoadAsync(size as u32)
-        .map_err(|e| format!("LoadAsync: {}", e))?
+        .map_err(|e| format!("LoadAsync: {e}"))?
         .get()
-        .map_err(|e| format!("LoadAsync await: {}", e))?;
+        .map_err(|e| format!("LoadAsync await: {e}"))?;
 
     let mut bytes = vec![0u8; size];
     reader
         .ReadBytes(&mut bytes)
-        .map_err(|e| format!("ReadBytes: {}", e))?;
+        .map_err(|e| format!("ReadBytes: {e}"))?;
 
-    let img = image::load_from_memory(&bytes).map_err(|e| format!("LoadBmp: {}", e))?;
+    let img = image::load_from_memory(&bytes).map_err(|e| format!("LoadBmp: {e}"))?;
 
     let mut png_buf = std::io::Cursor::new(Vec::new());
     img.write_to(&mut png_buf, image::ImageFormat::Png)
-        .map_err(|e| format!("EncodePng: {}", e))?;
+        .map_err(|e| format!("EncodePng: {e}"))?;
 
     Ok(png_buf.into_inner())
 }
@@ -781,14 +775,13 @@ pub fn is_pdf_file(file_path: &str) -> bool {
     let path = std::path::Path::new(file_path);
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| e.eq_ignore_ascii_case("pdf"))
-        .unwrap_or(false)
+        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
 }
 
 // ── S5-1: bilingual PDF writer ─────────────────────────────────────────────
 
 /// Resolve a system CJK-capable font file path. We prefer Windows' Microsoft
-/// YaHei (msyh.ttc) and Microsoft YaHei UI, then fall back to a few common
+/// `YaHei` (msyh.ttc) and Microsoft `YaHei` UI, then fall back to a few common
 /// candidates. Returns `None` only if no candidate exists — the caller then
 /// falls back to the built-in Helvetica (Latin only) so export still works
 /// for ASCII-heavy documents.
@@ -838,68 +831,65 @@ pub fn write_bilingual_pdf(
     );
 
     // Load CJK font if available; otherwise fall back to Helvetica.
-    let font = match resolve_cjk_font() {
-        Some(font_path) => {
-            let font_data = std::fs::read(&font_path)
-                .map_err(|e| format!("Failed to read font {:?}: {}", font_path, e))?;
-            // printpdf expects Vec<u8> for both TTF and TTC.
-            // msyh.ttc is a TrueType Collection; printpdf's TTF loader reads
-            // only the first face, which is YaHei Regular — exactly what we want.
-            //
-            // P7: attempt to subset the font to only the glyphs used in the
-            // translated text. This can shrink msyh.ttf (17 MB) to ~50 KB,
-            // keeping the bilingual PDF small. Falls back to the full font
-            // if subsetting fails or printpdf rejects the subsetted font.
-            let all_text: Vec<&str> = pages
-                .iter()
-                .flat_map(|p| [p.original_text.as_str(), p.translated_text.as_str()])
-                .collect();
-            let subset_text = crate::font_subset::collect_text_chars(&all_text);
-            let subset_bytes: Option<Vec<u8>> = match crate::font_subset::subset_font_for_text(
-                &font_data,
-                &subset_text,
-            ) {
-                Ok(result) => {
-                    tracing::info!(
-                        "[P7] using subsetted font ({} KB → {} KB)",
-                        font_data.len() / 1024,
-                        result.font_bytes.len() / 1024
-                    );
-                    Some(result.font_bytes)
-                }
+    let font = if let Some(font_path) = resolve_cjk_font() {
+        let font_data = std::fs::read(&font_path)
+            .map_err(|e| format!("Failed to read font {font_path:?}: {e}"))?;
+        // printpdf expects Vec<u8> for both TTF and TTC.
+        // msyh.ttc is a TrueType Collection; printpdf's TTF loader reads
+        // only the first face, which is YaHei Regular — exactly what we want.
+        //
+        // P7: attempt to subset the font to only the glyphs used in the
+        // translated text. This can shrink msyh.ttf (17 MB) to ~50 KB,
+        // keeping the bilingual PDF small. Falls back to the full font
+        // if subsetting fails or printpdf rejects the subsetted font.
+        let all_text: Vec<&str> = pages
+            .iter()
+            .flat_map(|p| [p.original_text.as_str(), p.translated_text.as_str()])
+            .collect();
+        let subset_text = crate::font_subset::collect_text_chars(&all_text);
+        let subset_bytes: Option<Vec<u8>> = match crate::font_subset::subset_font_for_text(
+            &font_data,
+            &subset_text,
+        ) {
+            Ok(result) => {
+                tracing::info!(
+                    "[P7] using subsetted font ({} KB → {} KB)",
+                    font_data.len() / 1024,
+                    result.font_bytes.len() / 1024
+                );
+                Some(result.font_bytes)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[P7] font subsetting failed, using full font ({} KB): {}",
+                    font_data.len() / 1024,
+                    e
+                );
+                None
+            }
+        };
+        // Try the subsetted font first; fall back to full font if printpdf
+        // rejects it (subsetter removes cmap, which some loaders require).
+        if let Some(sub) = subset_bytes {
+            match doc.add_external_font(sub.as_slice()) {
+                Ok(f) => f,
                 Err(e) => {
                     tracing::warn!(
-                        "[P7] font subsetting failed, using full font ({} KB): {}",
-                        font_data.len() / 1024,
+                        "[P7] printpdf rejected subsetted font, using full font: {}",
                         e
                     );
-                    None
+                    doc.add_external_font(font_data.as_slice())
+                        .map_err(|e| format!("Failed to load CJK font: {e}"))?
                 }
-            };
-            // Try the subsetted font first; fall back to full font if printpdf
-            // rejects it (subsetter removes cmap, which some loaders require).
-            if let Some(sub) = subset_bytes {
-                match doc.add_external_font(sub.as_slice()) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        tracing::warn!(
-                            "[P7] printpdf rejected subsetted font, using full font: {}",
-                            e
-                        );
-                        doc.add_external_font(font_data.as_slice())
-                            .map_err(|e| format!("Failed to load CJK font: {}", e))?
-                    }
-                }
-            } else {
-                doc.add_external_font(font_data.as_slice())
-                    .map_err(|e| format!("Failed to load CJK font: {}", e))?
             }
-        },
-        None => {
-            tracing::warn!("[PDF export] No CJK font found; falling back to Helvetica (Latin only)");
-            doc.add_builtin_font(BuiltinFont::Helvetica)
-                .map_err(|e| format!("Failed to load builtin font: {}", e))?
-        },
+        } else {
+            doc.add_external_font(font_data.as_slice())
+                .map_err(|e| format!("Failed to load CJK font: {e}"))?
+        }
+    } else {
+        tracing::warn!("[PDF export] No CJK font found; falling back to Helvetica (Latin only)");
+        doc.add_builtin_font(BuiltinFont::Helvetica)
+            .map_err(|e| format!("Failed to load builtin font: {e}"))?
     };
 
     let page_margin = Mm(15.0);
@@ -1015,9 +1005,9 @@ pub fn write_bilingual_pdf(
     }
 
     let out = std::fs::File::create(output_path)
-        .map_err(|e| format!("Failed to create output PDF: {}", e))?;
+        .map_err(|e| format!("Failed to create output PDF: {e}"))?;
     doc.save(&mut std::io::BufWriter::new(out))
-        .map_err(|e| format!("Failed to save PDF: {}", e))?;
+        .map_err(|e| format!("Failed to save PDF: {e}"))?;
     tracing::info!("[PDF export] Bilingual PDF saved: {}", output_path);
     Ok(())
 }
@@ -1077,7 +1067,7 @@ fn wrap_text(text: &str, font_size: f32) -> Vec<String> {
 /// - `Dual`: each original page is followed by an interleaved translation page,
 ///   producing a bilingual PDF where original and translation alternate.
 ///
-/// Uses the same CJK font resolution and wrap_text helper as `write_bilingual_pdf`.
+/// Uses the same CJK font resolution and `wrap_text` helper as `write_bilingual_pdf`.
 pub fn write_translated_pdf(
     output_path: &str,
     pages: &[TranslatedPage],
@@ -1097,18 +1087,15 @@ pub fn write_translated_pdf(
         "Layer 1",
     );
 
-    let font = match resolve_cjk_font() {
-        Some(font_path) => {
-            let font_data = std::fs::read(&font_path)
-                .map_err(|e| format!("Failed to read font {:?}: {}", font_path, e))?;
-            doc.add_external_font(font_data.as_slice())
-                .map_err(|e| format!("Failed to load CJK font: {}", e))?
-        },
-        None => {
-            tracing::warn!("[PDF export] No CJK font found; falling back to Helvetica (Latin only)");
-            doc.add_builtin_font(BuiltinFont::Helvetica)
-                .map_err(|e| format!("Failed to load builtin font: {}", e))?
-        },
+    let font = if let Some(font_path) = resolve_cjk_font() {
+        let font_data = std::fs::read(&font_path)
+            .map_err(|e| format!("Failed to read font {font_path:?}: {e}"))?;
+        doc.add_external_font(font_data.as_slice())
+            .map_err(|e| format!("Failed to load CJK font: {e}"))?
+    } else {
+        tracing::warn!("[PDF export] No CJK font found; falling back to Helvetica (Latin only)");
+        doc.add_builtin_font(BuiltinFont::Helvetica)
+            .map_err(|e| format!("Failed to load builtin font: {e}"))?
     };
 
     let page_margin = Mm(15.0);
@@ -1199,9 +1186,9 @@ pub fn write_translated_pdf(
     }
 
     let out = std::fs::File::create(output_path)
-        .map_err(|e| format!("Failed to create output PDF: {}", e))?;
+        .map_err(|e| format!("Failed to create output PDF: {e}"))?;
     doc.save(&mut std::io::BufWriter::new(out))
-        .map_err(|e| format!("Failed to save PDF: {}", e))?;
+        .map_err(|e| format!("Failed to save PDF: {e}"))?;
     tracing::info!("[PDF export] Translated PDF ({:?}) saved: {}", mode, output_path);
     Ok(())
 }

@@ -100,7 +100,7 @@ pub async fn lookup_word_all_sources(
     Ok(registry.lookup_all(&word).await)
 }
 
-/// 构建源注册表（从配置 + AppState 组装）
+/// 构建源注册表（从配置 + `AppState` 组装）
 async fn build_registry(state: &tauri::State<'_, crate::AppState>) -> SourceRegistry {
     use crate::services::dictionary_source::{
         AiPromptSource, EcdictSource, OnlineApiSource,
@@ -151,10 +151,10 @@ async fn build_registry(state: &tauri::State<'_, crate::AppState>) -> SourceRegi
                 // 从 config 读取 LLM 配置
                 let config = state.system.config.lock().await;
                 let llm = &config.llm;
-                let api_key = if !llm.api_key.is_empty() {
-                    Some(llm.api_key.clone())
-                } else {
+                let api_key = if llm.api_key.is_empty() {
                     llm.api_keys.first().cloned()
+                } else {
+                    Some(llm.api_key.clone())
                 };
                 let base_url = llm.base_url.clone();
                 let model = llm.model.clone();
@@ -208,13 +208,13 @@ pub async fn save_dict_sources(
 
     for s in sources {
         sqlx::query(
-            r#"
+            r"
             UPDATE dictionary_sources
             SET enabled = ?, priority = ?, prompt_template = ?, updated_at = ?
             WHERE id = ?
-            "#,
+            ",
         )
-        .bind(if s.enabled { 1 } else { 0 })
+        .bind(i32::from(s.enabled))
         .bind(s.priority)
         .bind(&s.prompt_template)
         .bind(chrono::Utc::now().timestamp())

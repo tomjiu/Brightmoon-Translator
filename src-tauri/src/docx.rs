@@ -54,12 +54,12 @@ pub struct DocxTranslationResult {
 
 /// Extract text from DOCX file
 pub fn extract_text_from_docx(file_path: &str) -> Result<DocxDocument, String> {
-    let file = File::open(file_path).map_err(|e| format!("Failed to open DOCX file: {}", e))?;
+    let file = File::open(file_path).map_err(|e| format!("Failed to open DOCX file: {e}"))?;
     let mut buf = Vec::new();
     std::io::Read::read_to_end(&mut std::io::BufReader::new(file), &mut buf)
-        .map_err(|e| format!("Failed to read DOCX file: {}", e))?;
+        .map_err(|e| format!("Failed to read DOCX file: {e}"))?;
 
-    let docx = docx_rs::read_docx(&buf).map_err(|e| format!("Failed to parse DOCX file: {}", e))?;
+    let docx = docx_rs::read_docx(&buf).map_err(|e| format!("Failed to parse DOCX file: {e}"))?;
 
     let mut paragraphs: Vec<DocxParagraph> = Vec::new();
     let mut title = String::from("Untitled");
@@ -226,12 +226,12 @@ pub fn write_translated_docx(
     output_path: &str,
     translations: &[(usize, String)],
 ) -> Result<DocxTranslationResult, String> {
-    let file = File::open(input_path).map_err(|e| format!("Failed to open DOCX file: {}", e))?;
+    let file = File::open(input_path).map_err(|e| format!("Failed to open DOCX file: {e}"))?;
     let mut buf = Vec::new();
     std::io::Read::read_to_end(&mut std::io::BufReader::new(file), &mut buf)
-        .map_err(|e| format!("Failed to read DOCX file: {}", e))?;
+        .map_err(|e| format!("Failed to read DOCX file: {e}"))?;
 
-    let docx = docx_rs::read_docx(&buf).map_err(|e| format!("Failed to parse DOCX file: {}", e))?;
+    let docx = docx_rs::read_docx(&buf).map_err(|e| format!("Failed to parse DOCX file: {e}"))?;
 
     let mut new_doc = Docx::new();
     let mut para_index = 0;
@@ -291,12 +291,12 @@ pub fn write_translated_docx(
 
     // Write output file
     let output_file =
-        File::create(output_path).map_err(|e| format!("Failed to create output file: {}", e))?;
+        File::create(output_path).map_err(|e| format!("Failed to create output file: {e}"))?;
 
     new_doc
         .build()
         .pack(std::io::BufWriter::new(output_file))
-        .map_err(|e| format!("Failed to write DOCX file: {}", e))?;
+        .map_err(|e| format!("Failed to write DOCX file: {e}"))?;
 
     let warning = if skipped_non_para > 0 {
         Some(format!(
@@ -320,7 +320,7 @@ pub fn write_translated_docx(
 ///
 /// P0#7 fix: when the original paragraph has MULTIPLE runs with different
 /// formatting (e.g. "Hello **bold** world"), the translated text is split back
-/// across the same run count, each run keeping its own run_property — instead
+/// across the same run count, each run keeping its own `run_property` — instead
 /// of collapsing everything into the first run's format. Split is proportional
 /// to each original run's text length, so the formatting skeleton (bold /
 /// italic / color per segment) survives the translation.
@@ -395,7 +395,7 @@ fn create_translated_paragraph(original: &Paragraph, translated_text: &str) -> P
 
 /// D-fix: Translate paragraphs inside a table in place. Consumes the same
 /// `para_index` sequence as `collect_table_paragraphs` (extract side) so the
-/// lookup map lines up. Returns (translated_count, words_count).
+/// lookup map lines up. Returns (`translated_count`, `words_count`).
 fn patch_table_paragraphs(
     table: &mut docx_rs::Table,
     translation_map: &std::collections::HashMap<usize, &String>,

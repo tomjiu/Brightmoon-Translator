@@ -80,3 +80,13 @@ src-tauri/icons/ios/
 
 # Dev-only example binaries
 src-tauri/examples/
+
+# Offline engine spike (throwaway; keep verdict/config reference only)
+spike/target/
+# Large model binaries (compressed models ~87MB) — keep configs + VERDICT.md in git
+spike/bergamot-cjk/*.gz
+spike/bergamot-cjk/*.bin
+spike/bergamot-cjk/*.spm
+
+# Native bergamot build outputs (built by scripts/build-bergamot-native.ps1)
+src-tauri/native/

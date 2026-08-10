@@ -1,4 +1,4 @@
-//! Reusable WinRT OCR engine for screenshot text recognition.
+//! Reusable `WinRT` OCR engine for screenshot text recognition.
 //! Used by hook monitor (OCR fallback), capture commands, PDF, and hover pick.
 
 use uuid::Uuid;
@@ -18,16 +18,16 @@ impl Drop for TempFileGuard {
     }
 }
 
-/// Run the shared WinRT OCR pipeline up to the `OcrResult`.
+/// Run the shared `WinRT` OCR pipeline up to the `OcrResult`.
 ///
-/// Writes `png_bytes` to a unique temp file, opens it as a WinRT
+/// Writes `png_bytes` to a unique temp file, opens it as a `WinRT`
 /// `StorageFile`, decodes the PNG, creates an `OcrEngine` for `lang`
 /// (or the user profile languages when `None`/`"auto"`), and runs
 /// `RecognizeAsync`. Returns the raw `OcrResult` so callers can extract
 /// either just the text (via [`run_winrt_ocr`]) or detailed line/word
 /// bounding boxes (via `system_ocr_detailed` in `capture.rs`).
 ///
-/// S1-4: this is the single implementation of the WinRT OCR pipeline —
+/// S1-4: this is the single implementation of the `WinRT` OCR pipeline —
 /// previously duplicated between `ocr_engine::run_winrt_ocr` (text only)
 /// and `capture::system_ocr_detailed` (detailed with bounding boxes).
 ///
@@ -95,7 +95,7 @@ pub(crate) fn run_winrt_ocr_raw(
     }
 }
 
-/// Run WinRT OCR on raw PNG bytes.
+/// Run `WinRT` OCR on raw PNG bytes.
 /// Returns the recognized text, or `None` if empty.
 /// `lang` is an optional BCP-47 language tag (e.g. "en", "zh-Hans").
 /// If `None` or `"auto"`, uses the user's profile language.
@@ -128,12 +128,12 @@ pub fn run_winrt_ocr(png_bytes: &[u8], lang: Option<&str>) -> Result<Option<Stri
     }
 }
 
-/// Async wrapper around [`run_winrt_ocr`] that runs the blocking WinRT
+/// Async wrapper around [`run_winrt_ocr`] that runs the blocking `WinRT`
 /// pipeline on a tokio blocking thread. Use this from async call sites;
 /// keep the sync [`run_winrt_ocr`] for code already executing inside
-/// `spawn_blocking` (hook_monitor, hover_pick, pdf::extract_pages_via_ocr).
+/// `spawn_blocking` (`hook_monitor`, `hover_pick`, `pdf::extract_pages_via_ocr`).
 ///
-/// S0-4: WinRT OCR internally `.get()`s every IAsyncOperation, which
+/// S0-4: `WinRT` OCR internally `.get()`s every `IAsyncOperation`, which
 /// blocks the tokio worker thread. Routing through `spawn_blocking`
 /// releases the worker for other tasks during OCR.
 ///
@@ -163,10 +163,10 @@ pub async fn run_winrt_ocr_async(
 }
 
 /// Read the `winrt_ocr_use_subprocess` flag from app config without
-/// requiring an `AppHandle` (callers in hook_monitor / hover_pick don't
+/// requiring an `AppHandle` (callers in `hook_monitor` / `hover_pick` don't
 /// have one handy). Returns `false` when the config is unavailable.
 ///
-/// Tier4-6: this is a best-effort read — if the AppState is not yet
+/// Tier4-6: this is a best-effort read — if the `AppState` is not yet
 /// initialized (early app startup), we default to in-process OCR.
 async fn read_winrt_ocr_use_subprocess_flag() -> bool {
     // Try to read from the global AppState via tauri::AppHandle. If we
@@ -199,7 +199,7 @@ pub async fn read_winrt_ocr_use_subprocess_flag_from_app(
     }
 }
 
-/// O7: Hot-start the WinRT OCR engine by running a tiny dummy recognition.
+/// O7: Hot-start the `WinRT` OCR engine by running a tiny dummy recognition.
 ///
 /// The first `OcrEngine::RecognizeAsync` call lazily loads the ONNX models
 /// for the requested language (200–800 ms on cold cache). Calling this once

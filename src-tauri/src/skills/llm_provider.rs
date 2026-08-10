@@ -109,7 +109,7 @@ pub trait LlmProvider: Send + Sync {
     }
 }
 
-/// OpenAI 兼容的 Provider（适用于 GPT-4, DeepSeek 等）
+/// OpenAI 兼容的 Provider（适用于 GPT-4, `DeepSeek` 等）
 pub struct OpenAiCompatibleProvider {
     api_key: String,
     base_url: String,
@@ -120,7 +120,7 @@ pub struct OpenAiCompatibleProvider {
 impl OpenAiCompatibleProvider {
     pub fn new(api_key: String, base_url: String, model: String) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_mins(2))
             .connect_timeout(std::time::Duration::from_secs(10))
             .build()
             .unwrap_or_default();
@@ -143,7 +143,7 @@ impl OpenAiCompatibleProvider {
         self.model.clone()
     }
 
-    /// DeepSeek
+    /// `DeepSeek`
     pub fn deepseek(api_key: String) -> Self {
         Self::new(
             api_key,
@@ -155,7 +155,7 @@ impl OpenAiCompatibleProvider {
 
 #[async_trait]
 impl LlmProvider for OpenAiCompatibleProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "openai_compatible"
     }
 
@@ -194,8 +194,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
         if let Some(schema) = &request.json_schema {
             let schema_str = serde_json::to_string_pretty(schema).unwrap_or_default();
             let instruction = format!(
-                "\n\n请严格按照以下 JSON Schema 返回结果，不要包含任何其他文字，只返回合法的 JSON：\n```json\n{}\n```",
-                schema_str
+                "\n\n请严格按照以下 JSON Schema 返回结果，不要包含任何其他文字，只返回合法的 JSON：\n```json\n{schema_str}\n```"
             );
             if let Some(last) = messages.last_mut() {
                 if last.role == "user" {
@@ -228,7 +227,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await?;
-            anyhow::bail!("LLM API error {}: {}", status, body);
+            anyhow::bail!("LLM API error {status}: {body}");
         }
 
         let api_response: ApiResponse = response.json().await?;
@@ -256,17 +255,17 @@ impl LlmProvider for OpenAiCompatibleProvider {
 }
 
 /// 从 LLM 配置构建可用的 OpenAI 兼容 Provider。
-/// 优先使用 api_key，其次 api_keys 列表第一个；api_key 为空或 base_url 为空时返回 None。
+/// 优先使用 `api_key，其次` `api_keys` `列表第一个；api_key` 为空或 `base_url` 为空时返回 None。
 pub fn provider_from_config(
     llm: &crate::models::config::LlmConfig,
 ) -> Option<OpenAiCompatibleProvider> {
     if llm.base_url.is_empty() {
         return None;
     }
-    let api_key = if !llm.api_key.is_empty() {
-        Some(llm.api_key.clone())
-    } else {
+    let api_key = if llm.api_key.is_empty() {
         llm.api_keys.first().cloned()
+    } else {
+        Some(llm.api_key.clone())
     };
     let key = api_key?;
     Some(OpenAiCompatibleProvider::new(
@@ -294,7 +293,7 @@ pub fn extract_json(content: &str) -> &str {
     for (open, close) in [('{', '}'), ('[', ']')] {
         if let Some(start) = trimmed.find(open) {
             if let Some(end) = trimmed[start..].rfind(close) {
-                return &trimmed[start..start + end + 1];
+                return &trimmed[start..=(start + end)];
             }
         }
     }

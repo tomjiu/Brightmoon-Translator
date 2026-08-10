@@ -106,7 +106,7 @@ pub async fn export_subtitle_file(
     let content = subtitle::export_subtitle(&doc, bilingual);
 
     std::fs::write(&output_path, content)
-        .map_err(|e| format!("Failed to write subtitle file: {}", e))?;
+        .map_err(|e| format!("Failed to write subtitle file: {e}"))?;
 
     Ok(output_path)
 }

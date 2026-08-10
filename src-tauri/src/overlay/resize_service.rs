@@ -1,4 +1,4 @@
-//! Tier 4 P2: ResizeWindowService — aspect-ratio-constrained resize for pin
+//! Tier 4 P2: `ResizeWindowService` — aspect-ratio-constrained resize for pin
 //! windows.
 //!
 //! Reference: snow-shot `resize_window_service.rs` (30fps mouse sampling,
@@ -55,7 +55,7 @@ impl ResizeAnchor {
     /// unrecognized input so callers can fall back to a default rather than
     /// crashing the resize flow.
     pub fn parse(s: &str) -> Option<Self> {
-        let norm: String = s.to_ascii_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+        let norm: String = s.to_ascii_lowercase().chars().filter(char::is_ascii_alphanumeric).collect();
         match norm.as_str() {
             "topleft" | "tl" => Some(Self::TopLeft),
             "topright" | "tr" => Some(Self::TopRight),
@@ -121,7 +121,7 @@ fn constrain_size(req_w: f64, req_h: f64, ratio: f64) -> (f64, f64) {
 /// * `cur_w`, `cur_h` — current window size (physical px).
 /// * `req_w`, `req_h` — requested new size (from the drag delta).
 /// * `anchor` — the corner that stays fixed (opposite the dragged handle).
-/// * `ratio` — target `width / height`. Non-positive / NaN disables the
+/// * `ratio` — target `width / height`. Non-positive / `NaN` disables the
 ///   constraint (returns the clamped requested size at the fixed corner).
 ///
 /// # Returns

@@ -172,7 +172,7 @@ pub fn mock_handle_browser_request(
     let response = TranslateResponse {
         results: vec![TranslationResult {
             engine: "mock".to_string(),
-            text: format!("[translated] {}", text),
+            text: format!("[translated] {text}"),
             latency_ms: None,
         }],
         detected_language: Some("en".to_string()),

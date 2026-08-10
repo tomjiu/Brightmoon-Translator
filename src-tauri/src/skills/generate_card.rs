@@ -73,7 +73,7 @@ impl GenerateCardSkill {
 
     /// 构建系统提示
     fn build_system_prompt(&self) -> String {
-        r#"你是一个专业的英语学习内容生成助手，拥有语言学博士学位和十年教学经验。你的任务是为英语单词生成高质量、精细化的学习内容。
+        r"你是一个专业的英语学习内容生成助手，拥有语言学博士学位和十年教学经验。你的任务是为英语单词生成高质量、精细化的学习内容。
 
 ## 核心原则
 
@@ -117,7 +117,7 @@ impl GenerateCardSkill {
 - 与易混词的区别
 - 常见的搭配错误
 
-输出格式：严格按照 JSON Schema 输出，确保 JSON 格式正确。"#
+输出格式：严格按照 JSON Schema 输出，确保 JSON 格式正确。"
             .to_string()
     }
 
@@ -126,11 +126,11 @@ impl GenerateCardSkill {
         let mut prompt = format!("## 目标单词\n\n**{}**\n\n", context.word);
 
         if let Some(phonetic) = &context.phonetic {
-            prompt.push_str(&format!("**音标**: {}\n", phonetic));
+            prompt.push_str(&format!("**音标**: {phonetic}\n"));
         }
 
         if let Some(pos) = &context.pos {
-            prompt.push_str(&format!("**词性**: {}\n", pos));
+            prompt.push_str(&format!("**词性**: {pos}\n"));
         }
 
         if let Some(freq) = &context.frequency {
@@ -143,21 +143,21 @@ impl GenerateCardSkill {
             } else {
                 "进阶词汇"
             };
-            prompt.push_str(&format!("**词频**: {}（{}）\n", freq, level));
+            prompt.push_str(&format!("**词频**: {freq}（{level}）\n"));
         }
 
         prompt.push('\n');
 
         if let Some(def) = &context.definition {
-            prompt.push_str(&format!("**英文定义**: {}\n", def));
+            prompt.push_str(&format!("**英文定义**: {def}\n"));
         }
 
         if let Some(trans) = &context.translation {
-            prompt.push_str(&format!("**中文释义**: {}\n", trans));
+            prompt.push_str(&format!("**中文释义**: {trans}\n"));
         }
 
         if let Some(morph) = &context.morphology {
-            prompt.push_str(&format!("**词根拆解**: {}\n", morph));
+            prompt.push_str(&format!("**词根拆解**: {morph}\n"));
         }
 
         prompt.push_str("\n## 请生成以下内容\n\n");
@@ -285,7 +285,7 @@ impl GenerateCardSkill {
         })
     }
 
-    /// 转换 AI 输出为 AiContent
+    /// 转换 AI 输出为 `AiContent`
     fn convert_to_ai_content(&self, generated: AiGeneratedContent) -> AiContent {
         let etymology = generated.etymology.map(|e| Etymology {
             origin: e.origin,
@@ -355,11 +355,11 @@ impl GenerateCardSkill {
 
 #[async_trait]
 impl Skill for GenerateCardSkill {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "generate_card"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "使用 AI 生成单词卡牌的学习内容（词源、助记法、例句）"
     }
 
@@ -395,7 +395,7 @@ impl Skill for GenerateCardSkill {
         let mut response = None;
         let mut last_err: Option<anyhow::Error> = None;
 
-        for (attempt, temperature) in [(0, 0.7f32), (1, 0.3f32)].iter() {
+        for (attempt, temperature) in &[(0, 0.7f32), (1, 0.3f32)] {
             let request = LlmRequest::new(vec![
                 LlmMessage::system(system_prompt.clone()),
                 LlmMessage::user(user_prompt.clone()),
@@ -427,8 +427,7 @@ impl Skill for GenerateCardSkill {
                             preview
                         );
                         last_err = Some(anyhow::anyhow!(
-                            "AI 返回 JSON 解析失败: 原始内容: {}",
-                            preview
+                            "AI 返回 JSON 解析失败: 原始内容: {preview}"
                         ));
                     }
                 }

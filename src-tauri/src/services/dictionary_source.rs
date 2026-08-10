@@ -70,11 +70,11 @@ impl EcdictSource {
 
 #[async_trait]
 impl DictionarySource for EcdictSource {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "ecdict"
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "ECDICT"
     }
 
@@ -90,7 +90,7 @@ impl DictionarySource for EcdictSource {
         .context("ECDICT 查询失败")?;
 
         let Some(row) = row else {
-            bail!("ECDICT: 未找到 '{}'", word);
+            bail!("ECDICT: 未找到 '{word}'");
         };
 
         let definition: Option<String> = row.try_get("definition").unwrap_or_default();
@@ -186,16 +186,16 @@ struct OnlineApiDefinition {
 
 #[async_trait]
 impl DictionarySource for OnlineApiSource {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "online_api"
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "DictionaryAPI.dev"
     }
 
     async fn lookup(&self, word: &str) -> Result<DictEntryResult> {
-        let url = format!("https://api.dictionaryapi.dev/api/v2/entries/en/{}", word);
+        let url = format!("https://api.dictionaryapi.dev/api/v2/entries/en/{word}");
         let response = self.client.get(&url).send().await?;
         if !response.status().is_success() {
             bail!("在线词典请求失败: {}", response.status());
@@ -287,11 +287,11 @@ const DEFAULT_TEMPLATE: &str = r#"
 
 #[async_trait]
 impl DictionarySource for AiPromptSource {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "ai_prompt"
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "AI Prompt"
     }
 
@@ -332,7 +332,7 @@ impl DictionarySource for AiPromptSource {
         let mut payload: Option<AiDictPayload> = None;
         let mut last_err: Option<anyhow::Error> = None;
 
-        for (attempt, temperature) in [(0, 0.5f32), (1, 0.2f32)].iter() {
+        for (attempt, temperature) in &[(0, 0.5f32), (1, 0.2f32)] {
             let request = LlmRequest::new(vec![
                 LlmMessage::system("你是严格的词典工具，只返回合法 JSON。"),
                 LlmMessage::user(user_prompt.clone()),
@@ -356,8 +356,7 @@ impl DictionarySource for AiPromptSource {
                                 e
                             );
                             last_err = Some(anyhow::anyhow!(
-                                "AI 词典返回格式错误: {}",
-                                e
+                                "AI 词典返回格式错误: {e}"
                             ));
                         },
                     }

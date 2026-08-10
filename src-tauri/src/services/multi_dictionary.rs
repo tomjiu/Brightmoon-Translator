@@ -88,7 +88,7 @@ impl MultiSourceDictionary {
         }
 
         if results.is_empty() {
-            anyhow::bail!("No results found for '{}'", word);
+            anyhow::bail!("No results found for '{word}'");
         }
 
         Ok(results)
@@ -96,7 +96,7 @@ impl MultiSourceDictionary {
 
     /// dictionaryapi.dev - free English dictionary API
     async fn lookup_dictionaryapi(&self, word: &str) -> anyhow::Result<DictionaryEntry> {
-        let url = format!("https://api.dictionaryapi.dev/api/v2/entries/en/{}", word);
+        let url = format!("https://api.dictionaryapi.dev/api/v2/entries/en/{word}");
 
         let response = self.client.get(&url).send().await?;
 
@@ -165,8 +165,7 @@ impl MultiSourceDictionary {
     /// Iciba（金山词霸）免费接口
     pub async fn lookup_iciba(&self, word: &str) -> anyhow::Result<String> {
         let url = format!(
-            "http://dict-co.iciba.com/api/dictionary.php?w={}&type=json",
-            word
+            "http://dict-co.iciba.com/api/dictionary.php?w={word}&type=json"
         );
 
         let response = self.client.get(&url).send().await?;

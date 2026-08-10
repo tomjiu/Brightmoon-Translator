@@ -682,6 +682,12 @@
       "offlineOcrNote": "截图识字（WinRT / Tesseract / Rapid / Paddle）在「OCR 识别」；本区仅本地文字翻译。",
       "downloadedModels": "已下载模型: {count} 个",
       "autoOffline": "离线可用时自动切换",
+      "download": "下载",
+      "delete": "删除",
+      "pivotHint": "无直接语言对时经英语中转",
+      "downloaded": "已下载",
+      "notDownloaded": "未下载",
+      "noPairs": "暂无可用模型",
       "moveUp": "上移（更高优先级）",
       "moveDown": "下移"
     },

@@ -92,5 +92,5 @@ pub async fn save_bilingual_epub(
         epub_reader::create_bilingual_epub(&orig, &out, &chs, &doc.chapters)
     })
     .await
-    .map_err(|e| format!("EPUB creation join error: {}", e))?
+    .map_err(|e| format!("EPUB creation join error: {e}"))?
 }

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct TranslationResult {
     pub engine: String,
     pub text: String,
-    /// Optional latency in milliseconds (populated by LatencyFirst strategy)
+    /// Optional latency in milliseconds (populated by `LatencyFirst` strategy)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latency_ms: Option<u64>,
 }
@@ -47,10 +47,12 @@ impl TranslateResponse {
 /// Engine routing strategy
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum RoutingStrategy {
     /// Use primary engine only, fail if it fails
     PrimaryOnly,
     /// Try primary, fallback to others on error
+    #[default]
     FallbackOnError,
     /// Run all engines in parallel, return all results
     ParallelCompare,
@@ -60,11 +62,6 @@ pub enum RoutingStrategy {
     LatencyFirst,
 }
 
-impl Default for RoutingStrategy {
-    fn default() -> Self {
-        Self::FallbackOnError
-    }
-}
 
 /// Context from previous translations for document-level consistency
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,7 +134,7 @@ pub struct TranslateRequest {
     pub segments: Vec<(usize, String)>,
     /// M4: per-region translate engine override ('' = global router primary).
     /// When set, the full/primary path uses this named engine instead of the
-    /// router's primary. Mirrors `BatchConfig.engine` semantics (translate_named).
+    /// router's primary. Mirrors `BatchConfig.engine` semantics (`translate_named`).
     #[serde(default)]
     pub engine: Option<String>,
 }

@@ -31,8 +31,8 @@ pub async fn send_desktop_notification(
             <toast>
                 <visual>
                     <binding template='ToastText02'>
-                        <text id='1'>{}</text>
-                        <text id='2'>{}</text>
+                        <text id='1'>{title}</text>
+                        <text id='2'>{body}</text>
                     </binding>
                 </visual>
             </toast>
@@ -41,8 +41,7 @@ pub async fn send_desktop_notification(
             $xml.LoadXml($template)
             $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
             [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("MoonTranslator").Show($toast)
-            "#,
-            title, body
+            "#
         );
 
         let _ = std::process::Command::new("powershell")
@@ -148,8 +147,7 @@ pub async fn check_due_cards_reminder(
             app_handle,
             "⏰ 复习提醒".to_string(),
             format!(
-                "有 {} 个单词等待复习！趁记忆还清晰，赶紧巩固一下吧 📖",
-                due_count
+                "有 {due_count} 个单词等待复习！趁记忆还清晰，赶紧巩固一下吧 📖"
             ),
         )
         .await?;
@@ -171,7 +169,7 @@ pub async fn check_milestone_celebration(
     let streak_days = calculate_streak_days(pool).await.unwrap_or(0);
 
     // 里程碑天数
-    let milestones = vec![3, 7, 14, 30, 60, 100, 365];
+    let milestones = [3, 7, 14, 30, 60, 100, 365];
 
     if milestones.contains(&streak_days) {
         let emoji = match streak_days {
@@ -187,10 +185,9 @@ pub async fn check_milestone_celebration(
 
         send_desktop_notification(
             app_handle,
-            format!("{} 学习里程碑！", emoji),
+            format!("{emoji} 学习里程碑！"),
             format!(
-                "恭喜你！已连续学习 {} 天！坚持就是胜利，继续加油！{}",
-                streak_days, emoji
+                "恭喜你！已连续学习 {streak_days} 天！坚持就是胜利，继续加油！{emoji}"
             ),
         )
         .await?;
@@ -226,7 +223,7 @@ pub async fn check_plan_progress_reminder(
                 .await
                 .unwrap_or(0);
 
-        let completion_rate = (learned as f64 / total as f64) * 100.0;
+        let completion_rate = (learned as f64 / f64::from(total)) * 100.0;
 
         // 每完成 25% 提醒一次
         let milestones = vec![25.0, 50.0, 75.0, 100.0];
@@ -242,7 +239,7 @@ pub async fn check_plan_progress_reminder(
 
                 send_desktop_notification(
                     app_handle.clone(),
-                    format!("{} 计划进度更新", emoji),
+                    format!("{emoji} 计划进度更新"),
                     format!(
                         "「{}」已完成 {}%！已学习 {}/{} 个单词 {}",
                         name, milestone as i32, learned, total, emoji
@@ -273,12 +270,12 @@ pub async fn check_plan_progress_reminder(
         .await
         .unwrap_or(0);
 
-        if today_learned < daily_target as i64 {
-            let remaining = daily_target as i64 - today_learned;
+        if today_learned < i64::from(daily_target) {
+            let remaining = i64::from(daily_target) - today_learned;
             send_desktop_notification(
                 app_handle,
                 "🎯 今日学习目标".to_string(),
-                format!("「{}」今日还需学习 {} 个单词才能达标！", name, remaining),
+                format!("「{name}」今日还需学习 {remaining} 个单词才能达标！"),
             )
             .await?;
         }

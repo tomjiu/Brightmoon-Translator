@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 
 /// DocLayout-YOLO 模型的下载源。
-/// 优先 GitHub Releases（官方），失败时回退到镜像。
+/// 优先 `GitHub` Releases（官方），失败时回退到镜像。
 const MODEL_DOWNLOAD_URLS: &[&str] = &[
     "https://github.com/PaddlePaddle/PaddleOCR/releases/download/v2.6.0/doclayout_yolo.onnx",
     // 备用镜像（如果主源不可用）
@@ -37,7 +37,6 @@ pub fn model_dir(app: &AppHandle) -> PathBuf {
     let mut path = app
         .path()
         .app_data_dir()
-        .map(|p| p.to_path_buf())
         .unwrap_or_else(|_| {
             // Fallback: dirs::data_dir() (Windows: %APPDATA%, macOS: ~/Library/Application Support)
             let mut p = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
@@ -162,7 +161,7 @@ async fn download_from_url(
     use futures::StreamExt;
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
+        .timeout(std::time::Duration::from_mins(10))
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
 

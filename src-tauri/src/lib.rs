@@ -127,7 +127,7 @@ fn saved_window_bounds_are_visible(
 
 /// Top-level application state.
 /// Composed of sub-contexts for separation of concerns.
-/// Commands can access either the full AppState or specific sub-contexts.
+/// Commands can access either the full `AppState` or specific sub-contexts.
 pub struct AppState {
     // Sub-contexts
     pub translation: app_context::TranslationContext,
@@ -164,7 +164,7 @@ pub struct AppState {
 pub(crate) fn resolve_ecdict_db_path() -> Option<std::path::PathBuf> {
     let exe_dir = std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
     if let Some(ref dir) = exe_dir {
@@ -710,7 +710,7 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     // Delay first poll so startup is quiet
                     tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
-                    let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(60));
+                    let mut ticker = tokio::time::interval(tokio::time::Duration::from_mins(1));
                     loop {
                         ticker.tick().await;
                         let state = app_handle.state::<AppState>();
@@ -958,7 +958,6 @@ pub fn run() {
             commands::offline_cmd::delete_offline_model,
             commands::offline_cmd::toggle_offline_engine,
             commands::offline_cmd::update_offline_settings,
-            commands::offline_cmd::generate_sample_offline_models,
             commands::offline_cmd::get_offline_status,
             commands::sync_cmd::test_webdav_connection,
             commands::sync_cmd::sync_now,

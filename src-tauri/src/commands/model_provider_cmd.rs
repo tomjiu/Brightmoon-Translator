@@ -59,22 +59,22 @@ async fn fetch_openai_models(
 
     let response = client
         .get(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Authorization", format!("Bearer {api_key}"))
         .header("Content-Type", "application/json")
         .send()
         .await
-        .map_err(|e| format!("请求失败: {}", e))?;
+        .map_err(|e| format!("请求失败: {e}"))?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("API 返回错误 {}: {}", status, body));
+        return Err(format!("API 返回错误 {status}: {body}"));
     }
 
     let body: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| format!("解析响应失败: {}", e))?;
+        .map_err(|e| format!("解析响应失败: {e}"))?;
 
     let mut models = Vec::new();
 
@@ -84,7 +84,7 @@ async fn fetch_openai_models(
                 models.push(ModelInfo {
                     id: id.to_string(),
                     name: item["name"].as_str().unwrap_or(id).to_string(),
-                    owned_by: item["owned_by"].as_str().map(|s| s.to_string()),
+                    owned_by: item["owned_by"].as_str().map(std::string::ToString::to_string),
                 });
             }
         }
@@ -94,7 +94,7 @@ async fn fetch_openai_models(
                 models.push(ModelInfo {
                     id: name.to_string(),
                     name: name.to_string(),
-                    owned_by: item["details"]["family"].as_str().map(|s| s.to_string()),
+                    owned_by: item["details"]["family"].as_str().map(std::string::ToString::to_string),
                 });
             }
         }
@@ -172,8 +172,7 @@ async fn fetch_gemini_models(
                         let id = name.trim_start_matches("models/");
                         let supports = item["supportedGenerationMethods"]
                             .as_array()
-                            .map(|a| a.iter().any(|m| m.as_str() == Some("generateContent")))
-                            .unwrap_or(true);
+                            .is_none_or(|a| a.iter().any(|m| m.as_str() == Some("generateContent")));
                         if supports {
                             models.push(ModelInfo {
                                 id: id.to_string(),
@@ -238,29 +237,29 @@ async fn test_openai(
 
     let response = client
         .post(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Authorization", format!("Bearer {api_key}"))
         .header("Content-Type", "application/json")
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("请求失败: {}", e))?;
+        .map_err(|e| format!("请求失败: {e}"))?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("API 返回错误 {}: {}", status, body));
+        return Err(format!("API 返回错误 {status}: {body}"));
     }
 
     let result: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| format!("解析响应失败: {}", e))?;
+        .map_err(|e| format!("解析响应失败: {e}"))?;
 
     let reply = result["choices"][0]["message"]["content"]
         .as_str()
         .unwrap_or("(空)");
 
-    Ok(format!("连接成功！模型回复: {}", reply))
+    Ok(format!("连接成功！模型回复: {reply}"))
 }
 
 async fn test_anthropic(
@@ -283,15 +282,15 @@ async fn test_anthropic(
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("请求失败: {}", e))?;
+        .map_err(|e| format!("请求失败: {e}"))?;
 
     let status = response.status();
     let text = response.text().await.unwrap_or_default();
     if !status.is_success() {
-        return Err(format!("API 返回错误 {}: {}", status, text));
+        return Err(format!("API 返回错误 {status}: {text}"));
     }
     let v: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| format!("解析失败: {}", e))?;
+        serde_json::from_str(&text).map_err(|e| format!("解析失败: {e}"))?;
     let mut reply = String::new();
     if let Some(arr) = v["content"].as_array() {
         for p in arr {
@@ -328,18 +327,18 @@ async fn test_gemini(
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("请求失败: {}", e))?;
+        .map_err(|e| format!("请求失败: {e}"))?;
 
     let status = response.status();
     let text = response.text().await.unwrap_or_default();
     if !status.is_success() {
-        return Err(format!("API 返回错误 {}: {}", status, text));
+        return Err(format!("API 返回错误 {status}: {text}"));
     }
     let v: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| format!("解析失败: {}", e))?;
+        serde_json::from_str(&text).map_err(|e| format!("解析失败: {e}"))?;
     let reply = v
         .pointer("/candidates/0/content/parts/0/text")
         .and_then(|t| t.as_str())
         .unwrap_or("(空)");
-    Ok(format!("连接成功！模型回复: {}", reply))
+    Ok(format!("连接成功！模型回复: {reply}"))
 }

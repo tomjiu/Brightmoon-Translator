@@ -10,7 +10,7 @@ pub async fn get_foreground_window_rect() -> Result<[i32; 4], String> {
     tokio::task::spawn_blocking(|| unsafe {
         let hwnd = GetForegroundWindow();
         let mut rect = windows::Win32::Foundation::RECT::default();
-        GetWindowRect(hwnd, &mut rect).map_err(|e| e.to_string())?;
+        GetWindowRect(hwnd, &raw mut rect).map_err(|e| e.to_string())?;
         Ok([
             rect.left,
             rect.top,

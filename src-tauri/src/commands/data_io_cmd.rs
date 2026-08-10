@@ -69,7 +69,7 @@ pub async fn export_learning_data_json(
 
     // 使用聚合查询避免 N+1 问题
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT
             c.id, c.word, c.fsrs_state, c.ai_content, c.created_at,
             COUNT(e.id) as event_count,
@@ -78,7 +78,7 @@ pub async fn export_learning_data_json(
         LEFT JOIN card_events e ON c.id = e.card_id
         GROUP BY c.id
         ORDER BY c.created_at DESC
-        "#,
+        ",
     )
     .fetch_all(pool)
     .await
@@ -165,12 +165,12 @@ pub async fn export_anki_tsv(state: State<'_, crate::AppState>) -> Result<Vec<An
             if let Ok(ai) = serde_json::from_str::<serde_json::Value>(ai_str) {
                 if let Some(mnemonics) = ai["mnemonics"].as_str() {
                     if !mnemonics.is_empty() {
-                        back_parts.push(format!("<b>助记：</b>{}", mnemonics));
+                        back_parts.push(format!("<b>助记：</b>{mnemonics}"));
                     }
                 }
                 if let Some(tips) = ai["tips"].as_str() {
                     if !tips.is_empty() {
-                        back_parts.push(format!("<b>技巧：</b>{}", tips));
+                        back_parts.push(format!("<b>技巧：</b>{tips}"));
                     }
                 }
                 if let Some(examples) = ai["examples"].as_array() {
@@ -193,7 +193,7 @@ pub async fn export_anki_tsv(state: State<'_, crate::AppState>) -> Result<Vec<An
 
             if let Some(d) = def {
                 let short_def: String = d.lines().take(3).collect::<Vec<&str>>().join(" | ");
-                back_parts.insert(0, format!("<b>释义：</b>{}", short_def));
+                back_parts.insert(0, format!("<b>释义：</b>{short_def}"));
             }
         }
 
@@ -231,10 +231,10 @@ pub async fn import_learning_data_json(
 ) -> Result<ImportResult, String> {
     let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
     let content =
-        std::fs::read_to_string(&file_path).map_err(|e| format!("读取文件失败: {}", e))?;
+        std::fs::read_to_string(&file_path).map_err(|e| format!("读取文件失败: {e}"))?;
 
     let data: ExportData =
-        serde_json::from_str(&content).map_err(|e| format!("解析JSON失败: {}", e))?;
+        serde_json::from_str(&content).map_err(|e| format!("解析JSON失败: {e}"))?;
 
     let mut imported = 0;
     let mut skipped = 0;
@@ -246,7 +246,7 @@ pub async fn import_learning_data_json(
             .bind(&card.word)
             .fetch_optional(store.pool())
             .await
-            .map_err(|e| format!("查询已存在卡牌失败: {}", e))?;
+            .map_err(|e| format!("查询已存在卡牌失败: {e}"))?;
 
         if exists.is_some() {
             skipped += 1;
@@ -360,7 +360,7 @@ pub async fn import_wordlist_csv(
 ) -> Result<ImportResult, String> {
     let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
     let content =
-        std::fs::read_to_string(&file_path).map_err(|e| format!("读取文件失败: {}", e))?;
+        std::fs::read_to_string(&file_path).map_err(|e| format!("读取文件失败: {e}"))?;
 
     let delimiter = if content.contains('\t') { '\t' } else { ',' };
     let mut imported = 0;
@@ -377,7 +377,7 @@ pub async fn import_wordlist_csv(
             continue;
         }
         let placeholders = vec!["?"; chunk.len()].join(",");
-        let sql = format!("SELECT word FROM cards WHERE word IN ({})", placeholders);
+        let sql = format!("SELECT word FROM cards WHERE word IN ({placeholders})");
         let mut q = sqlx::query(&sql);
         for (w, _) in chunk {
             q = q.bind(w);
@@ -386,7 +386,7 @@ pub async fn import_wordlist_csv(
         let rows = q
             .fetch_all(store.pool())
             .await
-            .map_err(|e| format!("查询已存在单词失败: {}", e))?;
+            .map_err(|e| format!("查询已存在单词失败: {e}"))?;
         for row in rows {
             use sqlx::Row;
             if let Ok(w) = row.try_get::<String, _>("word") {
@@ -462,11 +462,11 @@ pub async fn auto_backup(
     let export_data = export_learning_data_json(state).await?;
 
     // 创建备份目录
-    std::fs::create_dir_all(&backup_dir).map_err(|e| format!("创建备份目录失败: {}", e))?;
+    std::fs::create_dir_all(&backup_dir).map_err(|e| format!("创建备份目录失败: {e}"))?;
 
     // 规范化路径，防符号链接/相对路径绕过，并校验确实是目录
     let canonical = std::fs::canonicalize(&backup_dir)
-        .map_err(|e| format!("校验备份目录失败: {}", e))?;
+        .map_err(|e| format!("校验备份目录失败: {e}"))?;
     if !canonical.is_dir() {
         return Err("备份路径不是有效目录".to_string());
     }
@@ -478,9 +478,9 @@ pub async fn auto_backup(
     let file_path = canonical.join(&filename);
 
     let json =
-        serde_json::to_string_pretty(&export_data).map_err(|e| format!("序列化失败: {}", e))?;
+        serde_json::to_string_pretty(&export_data).map_err(|e| format!("序列化失败: {e}"))?;
 
-    std::fs::write(&file_path, json).map_err(|e| format!("写入文件失败: {}", e))?;
+    std::fs::write(&file_path, json).map_err(|e| format!("写入文件失败: {e}"))?;
 
     Ok(file_path.to_string_lossy().to_string())
 }
@@ -499,7 +499,7 @@ pub async fn auto_backup_with_cleanup(
         let keep = keep as usize;
         if let Ok(entries) = std::fs::read_dir(&backup_dir) {
             let mut backups: Vec<(std::path::PathBuf, u128)> = entries
-                .filter_map(|e| e.ok())
+                .filter_map(std::result::Result::ok)
                 .filter(|e| {
                     e.file_name()
                         .to_string_lossy()
@@ -511,8 +511,7 @@ pub async fn auto_backup_with_cleanup(
                         .ok()
                         .and_then(|m| m.modified().ok())
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| d.as_millis())
-                        .unwrap_or(0);
+                        .map_or(0, |d| d.as_millis());
                     Some((path, mtime))
                 })
                 .collect();
@@ -542,7 +541,7 @@ pub struct ImportResult {
 /// 写入文件内容（用于导出功能）
 #[tauri::command]
 pub async fn write_file_content(file_path: String, content: String) -> Result<(), String> {
-    std::fs::write(&file_path, content).map_err(|e| format!("写入文件失败: {}", e))
+    std::fs::write(&file_path, content).map_err(|e| format!("写入文件失败: {e}"))
 }
 
 /// Write raw bytes from base64 (OCR region PNG export, etc.)
@@ -555,8 +554,8 @@ pub async fn write_file_base64(file_path: String, base64_data: String) -> Result
         .unwrap_or(base64_data.as_str());
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(raw.trim())
-        .map_err(|e| format!("base64 decode: {}", e))?;
-    std::fs::write(&file_path, bytes).map_err(|e| format!("写入文件失败: {}", e))
+        .map_err(|e| format!("base64 decode: {e}"))?;
+    std::fs::write(&file_path, bytes).map_err(|e| format!("写入文件失败: {e}"))
 }
 
 #[cfg(test)]

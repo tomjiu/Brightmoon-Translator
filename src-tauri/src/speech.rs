@@ -63,6 +63,12 @@ pub struct SpeechState {
     pub language: String,
 }
 
+impl Default for SpeechState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SpeechState {
     pub fn new() -> Self {
         Self {

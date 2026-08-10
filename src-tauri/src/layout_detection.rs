@@ -16,18 +16,18 @@
 //! ## Model
 //! The user provides a DocLayout-YOLO `.onnx` model path in config. The
 //! model is typically ~50 MB and is NOT bundled with the app. Download
-//! from the DocLayout-YOLO GitHub releases.
+//! from the DocLayout-YOLO `GitHub` releases.
 //!
 //! ## Classes (DocLayout-YOLO standard)
-//! 0: title, 1: plain text, 2: abandon, 3: figure, 4: figure_caption,
-//! 5: table, 6: table_caption, 7: table_footnote, 8: is_list,
-//! 9: formula, 10: page_header, 11: page_footer
+//! 0: title, 1: plain text, 2: abandon, 3: figure, 4: `figure_caption`,
+//! 5: table, 6: `table_caption`, 7: `table_footnote`, 8: `is_list`,
+//! 9: formula, 10: `page_header`, 11: `page_footer`
 
 use serde::{Deserialize, Serialize};
 
 /// Default confidence threshold for keeping detections.
 pub const DEFAULT_CONF_THRESHOLD: f32 = 0.25;
-/// Default IoU threshold for Non-Maximum Suppression.
+/// Default `IoU` threshold for Non-Maximum Suppression.
 pub const DEFAULT_NMS_IOU_THRESHOLD: f32 = 0.45;
 /// Default model input size (DocLayout-YOLO uses 1024×1024).
 pub const DEFAULT_MODEL_INPUT_SIZE: u32 = 1024;
@@ -52,7 +52,7 @@ pub const DOC_LAYOUT_CLASSES: &[&str] = &[
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LayoutRegion {
-    /// Class index (0-11, see DOC_LAYOUT_CLASSES).
+    /// Class index (0-11, see `DOC_LAYOUT_CLASSES`).
     pub class_id: u32,
     /// Human-readable class name.
     pub class_name: String,
@@ -102,7 +102,7 @@ impl BBox {
         self.width.max(0.0) * self.height.max(0.0)
     }
 
-    /// Intersection-over-Union (IoU) with another box.
+    /// Intersection-over-Union (`IoU`) with another box.
     pub fn iou(&self, other: &BBox) -> f32 {
         let x1 = self.x.max(other.x);
         let y1 = self.y.max(other.y);
@@ -122,8 +122,8 @@ impl BBox {
 
 /// Decode a single YOLO detection from raw model output.
 ///
-/// YOLOv8/v10 output format per anchor: [cx, cy, w, h, class_0_score,
-/// class_1_score, ...]. The box is in model-input pixel coordinates and
+/// YOLOv8/v10 output format per anchor: [cx, cy, w, h, `class_0_score`,
+/// `class_1_score`, ...]. The box is in model-input pixel coordinates and
 /// needs to be scaled back to original image coordinates.
 ///
 /// Returns the best (highest-confidence) class and its detection.
@@ -177,7 +177,7 @@ fn decode_yolo_anchor(
 /// Apply Non-Maximum Suppression to a list of detections.
 ///
 /// Removes overlapping boxes of the same class, keeping the highest-
-/// confidence one. Boxes with IoU > `iou_threshold` are considered
+/// confidence one. Boxes with `IoU` > `iou_threshold` are considered
 /// duplicates.
 pub fn non_max_suppression(
     detections: Vec<LayoutRegion>,
@@ -229,7 +229,7 @@ pub fn non_max_suppression(
 /// the final detections in original image coordinates.
 ///
 /// `scale_x`/`scale_y` convert from model-input coordinates to original
-/// image coordinates (original_width / model_input_width, etc.).
+/// image coordinates (`original_width` / `model_input_width`, etc.).
 pub fn post_process_yolo(
     raw_output: &[f32],
     num_anchors: usize,

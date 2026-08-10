@@ -37,16 +37,16 @@ pub(crate) fn text_range_bounds(
             return None;
         }
         let mut upper: i32 = -1;
-        SafeArrayGetUBound(rects_ptr as *mut std::ffi::c_void, 1, &mut upper);
+        SafeArrayGetUBound(rects_ptr.cast::<std::ffi::c_void>(), 1, &raw mut upper);
         if upper < 3 {
             return None;
         }
         let mut r = [0.0f64; 4];
         for j in 0..4i32 {
             SafeArrayGetElement(
-                rects_ptr as *mut std::ffi::c_void,
-                &j as *const i32,
-                &mut r[j as usize] as *mut f64 as *mut std::ffi::c_void,
+                rects_ptr.cast::<std::ffi::c_void>(),
+                &raw const j,
+                (&raw mut r[j as usize]).cast::<std::ffi::c_void>(),
             );
         }
         Some(SelectionBounds {
@@ -62,11 +62,11 @@ pub(crate) fn text_range_bounds(
 /// Falls back gracefully when the focused element doesn't support text patterns.
 pub struct UiAutomationSelectionProvider;
 
-/// Easydict `_automationSemaphore` (SemaphoreSlim 1,1) + UiaSemaphoreTimeoutMs=200.
-/// Serializes UIA calls so concurrent selection requests (hotkey + auto_select + hover)
+/// Easydict `_automationSemaphore` (`SemaphoreSlim` 1,1) + UiaSemaphoreTimeoutMs=200.
+/// Serializes UIA calls so concurrent selection requests (hotkey + `auto_select` + hover)
 /// don't contend on the focused element / COM apartment. If busy past the timeout we skip
 /// rather than piling up — matches Easydict's "Wait then give up" behavior.
-/// P1: 200ms was too short and dropped words under concurrent hotkey + auto_select — now 500ms.
+/// P1: 200ms was too short and dropped words under concurrent hotkey + `auto_select` — now 500ms.
 static UIA_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(1));
 
 #[async_trait::async_trait]
@@ -202,20 +202,17 @@ fn get_uia_selection() -> Option<SelectionResult> {
                             e2
                         );
                         // Children: TextPattern selection only (no full value)
-                        match find_text_selection_in_children(&element, &automation, 0) {
-                            Some(result) => {
-                                tracing::info!(
-                                    "[uiautomation] child TextPattern selection: {} chars",
-                                    result.0.len()
-                                );
-                                result
-                            },
-                            None => {
-                                tracing::debug!(
-                                    "[uiautomation] no selection — fall through to clipboard"
-                                );
-                                return None;
-                            },
+                        if let Some(result) = find_text_selection_in_children(&element, &automation, 0) {
+                            tracing::info!(
+                                "[uiautomation] child TextPattern selection: {} chars",
+                                result.0.len()
+                            );
+                            result
+                        } else {
+                            tracing::debug!(
+                                "[uiautomation] no selection — fall through to clipboard"
+                            );
+                            return None;
                         }
                     },
                 }
@@ -238,22 +235,22 @@ fn get_uia_selection() -> Option<SelectionResult> {
     }
 }
 
-/// Try to read selected text via the TextPattern (rich text controls, browsers, etc.)
+/// Try to read selected text via the `TextPattern` (rich text controls, browsers, etc.)
 /// Concatenates all selected ranges and merges their bounds.
-/// Try to read selected text via TextPattern.
+/// Try to read selected text via `TextPattern`.
 /// SAFETY: UI Automation COM interface calls.
 ///
 /// S1-7: this is intentionally a SEPARATE function from
-/// `hover_pick::try_text_pattern_at_point`. Both touch UIA TextPattern but
+/// `hover_pick::try_text_pattern_at_point`. Both touch UIA `TextPattern` but
 /// serve different purposes and use different UIA APIs:
 ///   - this fn reads the user's *current selection* via `GetSelection()`
 ///     and concatenates all selected ranges (used by selection translation)
-///   - hover_pick fn reads the word/sentence *under the cursor* via
+///   - `hover_pick` fn reads the word/sentence *under the cursor* via
 ///     `RangeFromPoint(pt)` + `ExpandToEnclosingUnit` (used by hover dict)
 /// The only shared logic is `range.GetText(max_chars).to_string()` — a
 /// one-liner not worth a shared module. `GetBoundingRectangles` (the
 /// non-trivial SAFEARRAY parsing below) is only called here, not in
-/// hover_pick, so there is no real duplication to extract.
+/// `hover_pick`, so there is no real duplication to extract.
 unsafe fn try_text_pattern(
     element: &IUIAutomationElement,
 ) -> Result<(String, Option<SelectionBounds>), Box<dyn std::error::Error>> {
@@ -300,9 +297,9 @@ unsafe fn try_text_pattern(
     Ok((all_text, merged_bounds))
 }
 
-/// Try ValuePattern to get full value, then cross-reference with TextPattern
+/// Try `ValuePattern` to get full value, then cross-reference with `TextPattern`
 /// to extract the selected portion.
-/// Try ValuePattern with TextPattern cross-reference.
+/// Try `ValuePattern` with `TextPattern` cross-reference.
 /// SAFETY: UI Automation COM interface calls.
 unsafe fn try_value_pattern_with_selection(
     element: &IUIAutomationElement,
@@ -338,10 +335,10 @@ unsafe fn try_value_pattern_with_selection(
                             // Found the selected portion within the full value
                             let bounds = element.CurrentBoundingRectangle().ok().map(|rect| {
                                 SelectionBounds {
-                                    x: rect.left as f64,
-                                    y: rect.top as f64,
-                                    width: (rect.right - rect.left) as f64,
-                                    height: (rect.bottom - rect.top) as f64,
+                                    x: f64::from(rect.left),
+                                    y: f64::from(rect.top),
+                                    width: f64::from(rect.right - rect.left),
+                                    height: f64::from(rect.bottom - rect.top),
                                 }
                             });
                             return Ok((selected, bounds));
@@ -358,9 +355,9 @@ unsafe fn try_value_pattern_with_selection(
     Err("ValuePattern: no confirmed selection, only full text available".into())
 }
 
-/// Full ValuePattern — not used for selection (would return whole document).
+/// Full `ValuePattern` — not used for selection (would return whole document).
 /// SAFETY: Read-only UI Automation COM calls on a borrowed element.
-/// COM pointers from GetCurrentPattern are reference-counted.
+/// COM pointers from `GetCurrentPattern` are reference-counted.
 #[allow(dead_code)]
 unsafe fn try_value_pattern_full(
     element: &IUIAutomationElement,
@@ -376,16 +373,16 @@ unsafe fn try_value_pattern_full(
         .CurrentBoundingRectangle()
         .ok()
         .map(|rect| SelectionBounds {
-            x: rect.left as f64,
-            y: rect.top as f64,
-            width: (rect.right - rect.left) as f64,
-            height: (rect.bottom - rect.top) as f64,
+            x: f64::from(rect.left),
+            y: f64::from(rect.top),
+            width: f64::from(rect.right - rect.left),
+            height: f64::from(rect.bottom - rect.top),
         });
 
     Ok((text, bounds))
 }
 
-/// Walk children for TextPattern **selection** only (Easydict — no full Value).
+/// Walk children for `TextPattern` **selection** only (Easydict — no full Value).
 /// Max depth 3, max 8 children (bounded for 800ms timeout).
 /// SAFETY: UI Automation COM calls on borrowed elements; depth/width are
 /// bounded so the walk always terminates. COM pointers are reference-counted.
@@ -449,7 +446,7 @@ fn merge_bounds(a: &SelectionBounds, b: &SelectionBounds) -> SelectionBounds {
 
 /// Get window title from HWND
 /// Get window title from HWND.
-/// SAFETY: GetWindowTextW is a standard Win32 API.
+/// SAFETY: `GetWindowTextW` is a standard Win32 API.
 unsafe fn get_window_title(hwnd: HWND) -> String {
     let mut buf = [0u16; 512];
     let len = windows::Win32::UI::WindowsAndMessaging::GetWindowTextW(hwnd, &mut buf);

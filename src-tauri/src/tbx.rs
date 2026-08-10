@@ -1,4 +1,4 @@
-//! TBX (TermBase eXchange) parser and exporter.
+//! TBX (`TermBase` eXchange) parser and exporter.
 //!
 //! Supports TBX-Basic and TBX-Min formats for importing/exporting terminology entries.
 //! Uses quick-xml for XML parsing.
@@ -88,7 +88,7 @@ pub fn parse_tbx(xml: &str) -> Result<TbxData> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+            Ok(Event::Start(ref e) | Event::Empty(ref e)) => {
                 let tag_name = String::from_utf8_lossy(e.name().as_ref())
                     .to_string()
                     .to_lowercase();
@@ -290,7 +290,7 @@ pub fn parse_tbx(xml: &str) -> Result<TbxData> {
             },
             Ok(Event::Eof) => break,
             Err(e) => {
-                return Err(anyhow::anyhow!("TBX parse error: {}", e));
+                return Err(anyhow::anyhow!("TBX parse error: {e}"));
             },
             _ => {},
         }

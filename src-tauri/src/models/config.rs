@@ -44,7 +44,7 @@ pub struct LlmProviderEntry {
     pub api_format: String,
 }
 
-/// Resolved LLM endpoint for Router / LlmEngine (key + URL + model + format).
+/// Resolved LLM endpoint for Router / `LlmEngine` (key + URL + model + format).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LlmEndpoint {
     pub label: String,
@@ -71,7 +71,7 @@ pub fn normalize_api_format(s: &str) -> String {
 }
 
 impl LlmConfig {
-    /// Get all API keys (merges api_key + api_keys, deduplicates, removes empty)
+    /// Get all API keys (merges `api_key` + `api_keys`, deduplicates, removes empty)
     pub fn all_keys(&self) -> Vec<String> {
         let mut keys = Vec::new();
         if !self.api_key.is_empty() {
@@ -85,8 +85,8 @@ impl LlmConfig {
         keys
     }
 
-    /// Enabled providers with non-empty api_key, sorted by priority ascending
-    /// (lower number = tried first). If none, fall back to top-level api_key/api_keys + base_url + model.
+    /// Enabled providers with non-empty `api_key`, sorted by priority ascending
+    /// (lower number = tried first). If none, fall back to top-level `api_key/api_keys` + `base_url` + model.
     pub fn resolve_endpoints(&self) -> Vec<LlmEndpoint> {
         let mut from_providers: Vec<&LlmProviderEntry> = self
             .providers
@@ -169,7 +169,7 @@ pub struct EnginesConfig {
     /// Volcengine CRX free path (unofficial).
     #[serde(default, rename = "volcengineWeb")]
     pub volcengine_web: SimpleToggleEngine,
-    /// Tencent TranSmart free API.
+    /// Tencent `TranSmart` free API.
     #[serde(default)]
     pub transmart: SimpleToggleEngine,
     /// Naver Papago free web.
@@ -179,16 +179,12 @@ pub struct EnginesConfig {
 
 /// Enabled-only engine config (no credentials).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct SimpleToggleEngine {
     #[serde(default)]
     pub enabled: bool,
 }
 
-impl Default for SimpleToggleEngine {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoogleConfig {
@@ -209,10 +205,10 @@ pub struct YoudaoConfig {
     pub enabled: bool,
     #[serde(default)]
     pub use_ai: bool,
-    /// Youdao OCR API key (default: YoudaoDict built-in key)
+    /// Youdao OCR API key (default: `YoudaoDict` built-in key)
     #[serde(default = "default_youdao_ocr_app_key")]
     pub ocr_app_key: String,
-    /// Youdao OCR API secret (default: YoudaoDict built-in secret)
+    /// Youdao OCR API secret (default: `YoudaoDict` built-in secret)
     #[serde(default = "default_youdao_ocr_app_secret")]
     pub ocr_app_secret: String,
 }
@@ -227,24 +223,17 @@ fn default_youdao_ocr_app_secret() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct DeepLConfig {
     pub enabled: bool,
     pub api_key: String,
     pub pro: bool,
 }
 
-impl Default for DeepLConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            api_key: String::new(),
-            pro: false,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct DeepLXConfig {
     pub enabled: bool,
     #[serde(default)]
@@ -253,37 +242,20 @@ pub struct DeepLXConfig {
     pub pro: bool,
 }
 
-impl Default for DeepLXConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            api_key: None,
-            pro: false,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct MicrosoftConfig {
     pub enabled: bool,
 }
 
-impl Default for MicrosoftConfig {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct YandexConfig {
     pub enabled: bool,
 }
 
-impl Default for YandexConfig {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -314,19 +286,12 @@ impl Default for OfflineConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct CaiyunConfig {
     pub enabled: bool,
     pub api_token: String,
 }
 
-impl Default for CaiyunConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            api_token: String::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -392,7 +357,7 @@ pub struct SelectionUxConfig {
     /// Min selection length for auto-on-select (chars)
     #[serde(default = "default_selection_min_chars")]
     pub auto_min_chars: u32,
-    /// Min mouse drag distance (px) before auto-on-select fires (Easydict MinDragDistance)
+    /// Min mouse drag distance (px) before auto-on-select fires (Easydict `MinDragDistance`)
     #[serde(default = "default_min_drag_px")]
     pub min_drag_px: u32,
     /// Process names (no .exe) to never auto/hover-select, e.g. "potplayer"
@@ -538,7 +503,7 @@ fn default_tm_threshold() -> f64 {
     0.8
 }
 
-/// S5-10: default cache TTL in hours (3 days). Used by TranslationCache.
+/// S5-10: default cache TTL in hours (3 days). Used by `TranslationCache`.
 fn default_cache_ttl_hours() -> i64 {
     72
 }
@@ -566,7 +531,7 @@ pub struct OfflineOcrConfig {
     /// "rapid" | "paddle"
     #[serde(default = "default_offline_ocr_backend")]
     pub backend: String,
-    /// Directory with RapidOcrOnnx / PaddleOCR-json + models.
+    /// Directory with `RapidOcrOnnx` / PaddleOCR-json + models.
     #[serde(default)]
     pub plugin_dir: String,
 }
@@ -584,7 +549,7 @@ impl Default for OfflineOcrConfig {
     }
 }
 
-/// External PDF text extractors (MinerU / Marker / OCRmyPDF). Empty = bare command on PATH.
+/// External PDF text extractors (`MinerU` / Marker / `OCRmyPDF`). Empty = bare command on PATH.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfExtractionSidecarConfig {
@@ -656,7 +621,7 @@ impl Default for OpenAiTtsConfig {
     }
 }
 
-/// Fish Audio TTS (https://docs.fish.audio) — free model `s2.1-pro-free` for dev/test.
+/// Fish Audio TTS (<https://docs.fish.audio>) — free model `s2.1-pro-free` for dev/test.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FishTtsConfig {
@@ -713,23 +678,23 @@ fn default_sync_remote_dir() -> String {
     "moontranslator".to_string()
 }
 
-/// WebDAV cloud sync configuration
+/// `WebDAV` cloud sync configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncConfig {
     /// Whether cloud sync is enabled
     #[serde(default)]
     pub enabled: bool,
-    /// WebDAV server URL (e.g., "https://dav.jianguoyun.com/dav/")
+    /// `WebDAV` server URL (e.g., "<https://dav.jianguoyun.com/dav>/")
     #[serde(default)]
     pub server_url: String,
-    /// WebDAV username
+    /// `WebDAV` username
     #[serde(default)]
     pub username: String,
-    /// WebDAV password (encrypted when saved to disk)
+    /// `WebDAV` password (encrypted when saved to disk)
     #[serde(default)]
     pub password: String,
-    /// Remote directory path on the WebDAV server
+    /// Remote directory path on the `WebDAV` server
     #[serde(default = "default_sync_remote_dir")]
     pub remote_dir: String,
     /// Auto-sync interval in minutes (0 = manual only)
@@ -863,7 +828,7 @@ pub struct AppConfig {
     /// OCR engine preference: "auto", "winrt", "youdao", "tesseract", "rapid", "paddle"
     #[serde(default = "default_ocr_engine")]
     pub ocr_engine: String,
-    /// Offline OCR sidecar paths (when ocr_engine is rapid/paddle).
+    /// Offline OCR sidecar paths (when `ocr_engine` is rapid/paddle).
     #[serde(default)]
     pub offline_ocr: OfflineOcrConfig,
     /// PDF text extraction: "pdf-extract" | "ocr" | "mineru" | "marker" | "ocrmypdf"
@@ -876,8 +841,8 @@ pub struct AppConfig {
     pub overlay_level: u8,
     #[serde(default = "default_overlay_auto_dismiss_ms")]
     pub overlay_auto_dismiss_ms: u64,
-    /// Overlay follow mode: "none", "cursor", "target_bounds"
-    /// Separate from window_follow_mode which controls main window behavior.
+    /// Overlay follow mode: "none", "cursor", "`target_bounds`"
+    /// Separate from `window_follow_mode` which controls main window behavior.
     #[serde(default = "default_overlay_follow_mode")]
     pub overlay_follow_mode: String,
     /// OCR monitor interval in milliseconds
@@ -914,7 +879,7 @@ pub struct AppConfig {
     /// TTS provider: "edge" | "openai" | "youdao" | "fish"
     #[serde(default = "default_tts_provider")]
     pub tts_provider: String,
-    /// Preferred engine id for BatchManager when BatchConfig.engine is unset (e.g. "google").
+    /// Preferred engine id for `BatchManager` when BatchConfig.engine is unset (e.g. "google").
     #[serde(default)]
     pub batch_preferred_engine: String,
     /// OpenAI-compatible TTS settings
@@ -944,7 +909,7 @@ pub struct AppConfig {
     /// Edge TTS token (default: built-in token, can be overridden)
     #[serde(default = "default_edge_tts_token")]
     pub edge_tts_token: String,
-    /// Cloud sync configuration (WebDAV)
+    /// Cloud sync configuration (`WebDAV`)
     #[serde(default)]
     pub sync: SyncConfig,
     /// External vocabulary collection (Eudic / Anki / Shanbay / Youdao / Maimemo). Not FSRS learning.
@@ -954,7 +919,7 @@ pub struct AppConfig {
     /// Default false — model (~50MB) is downloaded on demand when enabled.
     #[serde(default)]
     pub layout_detection_enabled: bool,
-    /// Tier4-6: Run WinRT OCR in a one-shot subprocess so the OS reclaims
+    /// Tier4-6: Run `WinRT` OCR in a one-shot subprocess so the OS reclaims
     /// the ONNX model memory when the child exits. Slower per-call (~200ms
     /// spawn overhead) but bounded memory for occasional-OCR users.
     /// Default false — in-process path is faster for heavy continuous OCR.
@@ -1054,25 +1019,17 @@ impl Default for AnkiCollectionConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct ShanbayCollectionConfig {
     #[serde(default)]
     pub enabled: bool,
-    /// Cookie auth_token from Shanbay web login (see pot-app-collection-plugin-shanbay).
+    /// Cookie `auth_token` from Shanbay web login (see pot-app-collection-plugin-shanbay).
     #[serde(default)]
     pub credential: String,
     #[serde(default)]
     pub wordbook_id: String,
 }
 
-impl Default for ShanbayCollectionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            credential: String::new(),
-            wordbook_id: String::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

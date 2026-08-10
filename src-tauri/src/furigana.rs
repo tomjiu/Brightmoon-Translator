@@ -30,11 +30,11 @@ pub fn add_furigana(text: &str) -> Result<Vec<FuriganaSegment>, String> {
     };
 
     let tokenizer =
-        Tokenizer::from_config(config).map_err(|e| format!("Failed to create tokenizer: {}", e))?;
+        Tokenizer::from_config(config).map_err(|e| format!("Failed to create tokenizer: {e}"))?;
 
     let tokens = tokenizer
         .tokenize(text)
-        .map_err(|e| format!("Failed to tokenize: {}", e))?;
+        .map_err(|e| format!("Failed to tokenize: {e}"))?;
 
     let mut segments = Vec::new();
 

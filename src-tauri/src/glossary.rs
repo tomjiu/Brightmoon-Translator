@@ -87,7 +87,7 @@ impl Glossary {
     pub async fn add_entry(&mut self, lang_pair: String, entry: GlossaryEntry) {
         self.entries
             .entry(lang_pair)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(entry);
         self.save().await;
     }

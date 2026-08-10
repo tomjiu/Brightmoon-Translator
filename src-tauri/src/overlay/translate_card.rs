@@ -3,14 +3,14 @@
 //! show reuses the window, positions it near the selection/cursor, emits
 //! structured `translate-card-data` to the FE, then shows it.
 //!
-//! Focus semantics (pot / STranslate / Youdao):
+//! Focus semantics (pot / `STranslate` / Youdao):
 //! - Hover & dictionary cards → no-focus (`WS_EX_NOACTIVATE`, shown via
-//!   SW_SHOWNOACTIVATE); `auto_watch` dismisses them on mouse-leave.
+//!   `SW_SHOWNOACTIVATE`); `auto_watch` dismisses them on mouse-leave.
 //! - User-initiated selection translate → takes focus; the FE closes the card
-//!   on window blur (pot OnDeactivated).
+//!   on window blur (pot `OnDeactivated`).
 //!
-//! The FE self-sizes the card: it measures content with a ResizeObserver and
-//! calls `set_size` (same pattern as OcrRegionFrame). The initial size passed
+//! The FE self-sizes the card: it measures content with a `ResizeObserver` and
+//! calls `set_size` (same pattern as `OcrRegionFrame`). The initial size passed
 //! here is only a placement estimate.
 
 use serde::Serialize;
@@ -37,7 +37,7 @@ pub const TRANSLATE_CARD_RENDERED_EVENT: &str = "translate-card-rendered";
 /// instantly reappear under the still-hovering cursor.
 pub const TRANSLATE_CARD_CLOSED_EVENT: &str = "translate-card-closed";
 /// FE → backend: user clicked "translate remaining engines" on a quick card.
-/// Payload: `{ source, from, to }`. Backend replies via TRANSLATE_CARD_EXPAND_RESULT.
+/// Payload: `{ source, from, to }`. Backend replies via `TRANSLATE_CARD_EXPAND_RESULT`.
 pub const TRANSLATE_CARD_EXPAND_REQUEST: &str = "translate-card-expand-request";
 /// Backend → FE: full (all-engine) result for the expand request. Payload:
 /// `{ source, from, to, response }` — the FE applies it only if `source` still
@@ -93,7 +93,7 @@ pub struct TranslateCardEvent {
 pub struct TranslateCardOptions {
     /// `true` → the window takes keyboard focus (user-initiated 划词; the FE
     /// auto-closes on blur). `false` → hover/dictionary: never steals focus
-    /// (`WS_EX_NOACTIVATE` + SW_SHOWNOACTIVATE).
+    /// (`WS_EX_NOACTIVATE` + `SW_SHOWNOACTIVATE`).
     pub steal_focus: bool,
     /// Screen region (e.g. the hovered word) that keeps a no-focus card alive:
     /// mouse-leave dismissal is skipped while the cursor is over it. Parking on
@@ -169,8 +169,7 @@ pub fn translate_card_close_latch_hit(cx: f64, cy: f64) -> bool {
 /// True if the translate-card window is currently visible.
 pub fn translate_card_is_visible(app: &AppHandle) -> bool {
     app.get_webview_window(TRANSLATE_CARD_LABEL)
-        .map(|w| w.is_visible().unwrap_or(false))
-        .unwrap_or(false)
+        .is_some_and(|w| w.is_visible().unwrap_or(false))
 }
 
 /// True if the card was shown within `ms` — the no-flicker dismiss guard.
@@ -178,7 +177,7 @@ pub fn translate_card_shown_within_ms(ms: u64) -> bool {
     LAST_SHOW
         .lock()
         .unwrap()
-        .map(|t| t.elapsed().as_millis() < ms as u128)
+        .map(|t| t.elapsed().as_millis() < u128::from(ms))
         .unwrap_or(false)
 }
 
@@ -188,7 +187,7 @@ pub fn translate_card_closed_within_ms(ms: u64) -> bool {
     CARD_CLOSED_AT
         .lock()
         .unwrap()
-        .map(|t| t.elapsed().as_millis() < ms as u128)
+        .map(|t| t.elapsed().as_millis() < u128::from(ms))
         .unwrap_or(false)
 }
 
@@ -239,7 +238,7 @@ pub fn ensure_translate_card_window(app: &AppHandle) -> Result<(), String> {
     .background_color(tauri::window::Color(12, 12, 14, 255))
     .visible(false)
     .build()
-    .map_err(|e| format!("Failed to create translate card: {}", e))?;
+    .map_err(|e| format!("Failed to create translate card: {e}"))?;
 
     // Default no-activate so hover/dict shows never steal focus; focus mode
     // clears the style at show time.
@@ -255,7 +254,7 @@ pub fn ensure_translate_card_window(app: &AppHandle) -> Result<(), String> {
 }
 
 /// Preload the translate-card webview at startup so the first show skips the
-/// WebView2 create cost and the FE listener is already mounted.
+/// `WebView2` create cost and the FE listener is already mounted.
 pub fn preload_translate_card(app: &tauri::AppHandle) -> Result<(), String> {
     ensure_translate_card_window(app)
 }
@@ -396,9 +395,9 @@ pub fn translate_card_screen_bounds(app: &AppHandle) -> Option<(f64, f64, f64, f
     let pos = w.outer_position().ok()?;
     let size = w.outer_size().ok()?;
     Some((
-        pos.x as f64,
-        pos.y as f64,
-        size.width as f64,
-        size.height as f64,
+        f64::from(pos.x),
+        f64::from(pos.y),
+        f64::from(size.width),
+        f64::from(size.height),
     ))
 }

@@ -61,7 +61,7 @@ pub fn align_paragraphs(source: &str, target: &str) -> Vec<AlignedSegment> {
 
 /// Split text into paragraphs by common delimiters.
 fn split_paragraphs(text: &str) -> Vec<String> {
-    text.split(|c: char| c == '\n' || c == '\r')
+    text.split(['\n', '\r'])
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
@@ -89,7 +89,7 @@ fn align_by_ratio(source: &[String], target: &[String]) -> Vec<AlignedSegment> {
             let remaining_src = src_count - src_idx;
             let remaining_tgt = tgt_count - tgt_idx;
             // ceil division: how many targets this source should get
-            let count = (remaining_tgt + remaining_src - 1) / remaining_src;
+            let count = remaining_tgt.div_ceil(remaining_src);
 
             let end = (tgt_idx + count).min(tgt_count);
             let group = target[tgt_idx..end].join("\n");
@@ -111,7 +111,7 @@ fn align_by_ratio(source: &[String], target: &[String]) -> Vec<AlignedSegment> {
         for (tgt_idx, tgt) in target.iter().enumerate() {
             let remaining_tgt = tgt_count - tgt_idx;
             let remaining_src = src_count - src_idx;
-            let count = (remaining_src + remaining_tgt - 1) / remaining_tgt;
+            let count = remaining_src.div_ceil(remaining_tgt);
 
             let end = (src_idx + count).min(src_count);
             let group = source[src_idx..end].join("\n");

@@ -5,7 +5,7 @@
 //! `worker_lock: Mutex<()>` serializes spawns.
 //!
 //! ## Why
-//! - In-process WinRT OCR holds the ONNX model in our address space for the
+//! - In-process `WinRT` OCR holds the ONNX model in our address space for the
 //!   process lifetime. Long-running sessions accumulate heap fragmentation
 //!   inside the ONNX runtime that is never returned to the OS.
 //! - For occasional OCR users (one snip every few minutes), loading the model
@@ -15,7 +15,7 @@
 //!
 //! ## Protocol
 //! 1. Parent acquires `OCR_WORKER_LOCK` (serialize — prevents N children
-//!    competing for the same WinRT OCR engine registry keys).
+//!    competing for the same `WinRT` OCR engine registry keys).
 //! 2. Parent spawns `current_exe() --ocr-worker --lang <lang>`.
 //! 3. Parent writes PNG bytes to child's stdin, then closes stdin.
 //! 4. Child reads stdin, runs `run_winrt_ocr(bytes, lang)`, writes JSON to
@@ -34,13 +34,13 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-/// Default subprocess timeout. WinRT OCR cold-start is 200–800 ms; 30 s is
+/// Default subprocess timeout. `WinRT` OCR cold-start is 200–800 ms; 30 s is
 /// generous enough for any reasonable image while preventing zombie children.
 const DEFAULT_WORKER_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Serializes subprocess OCR spawns. Without this, N concurrent OCR calls
 /// would spawn N children, each loading the ONNX model — memory spikes and
-/// WinRT OCR engine registry contention slows everything down.
+/// `WinRT` OCR engine registry contention slows everything down.
 static OCR_WORKER_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn worker_lock() -> &'static Mutex<()> {
@@ -64,7 +64,7 @@ struct OcrWorkerResult {
     error: Option<String>,
 }
 
-/// Run WinRT OCR via a one-shot subprocess.
+/// Run `WinRT` OCR via a one-shot subprocess.
 ///
 /// Acquires `OCR_WORKER_LOCK`, spawns `current_exe() --ocr-worker --lang <lang>`,
 /// pipes `png_bytes` to stdin, reads JSON result from stdout.
@@ -81,10 +81,10 @@ pub fn run_winrt_ocr_via_subprocess(
     // Hold the lock for the entire subprocess lifetime — release on drop.
     let _guard = worker_lock()
         .lock()
-        .map_err(|e| format!("OCR worker lock poisoned: {}", e))?;
+        .map_err(|e| format!("OCR worker lock poisoned: {e}"))?;
 
     let exe = std::env::current_exe()
-        .map_err(|e| format!("current_exe failed: {}", e))?;
+        .map_err(|e| format!("current_exe failed: {e}"))?;
 
     let mut cmd = Command::new(&exe);
     cmd.arg("--ocr-worker");
@@ -104,7 +104,7 @@ pub fn run_winrt_ocr_via_subprocess(
 
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("OCR worker spawn failed: {}", e))?;
+        .map_err(|e| format!("OCR worker spawn failed: {e}"))?;
 
     // Write PNG to stdin. If the child exits early (e.g., bad lang), the
     // write will fail — capture the error but still try to read stdout.
@@ -135,7 +135,7 @@ pub fn run_winrt_ocr_via_subprocess(
             }
             let stdout = String::from_utf8_lossy(&output.stdout);
             let parsed: OcrWorkerResult = serde_json::from_str(stdout.trim())
-                .map_err(|e| format!("OCR worker JSON parse failed: {} — stdout={:?}", e, stdout))?;
+                .map_err(|e| format!("OCR worker JSON parse failed: {e} — stdout={stdout:?}"))?;
             match (parsed.ok, parsed.text, parsed.error) {
                 (Some(true), Some(text), _) => Ok(Some(text)),
                 (Some(false), _, _) => Ok(None),
@@ -144,7 +144,7 @@ pub fn run_winrt_ocr_via_subprocess(
             }
         }
         Ok(Err(e)) => {
-            Err(format!("OCR worker wait_with_output failed: {}", e))
+            Err(format!("OCR worker wait_with_output failed: {e}"))
         }
         Err(_) => {
             // Timeout — kill the child by pid to avoid zombies. The waiter
@@ -197,7 +197,7 @@ pub fn run_worker(lang: Option<String>) -> i32 {
     let mut stdin = std::io::stdin();
     let mut bytes = Vec::new();
     if let Err(e) = stdin.read_to_end(&mut bytes) {
-        eprintln!("OCR worker: stdin read failed: {}", e);
+        eprintln!("OCR worker: stdin read failed: {e}");
         return 2;
     }
     if bytes.is_empty() {
@@ -230,14 +230,10 @@ pub fn run_worker(lang: Option<String>) -> i32 {
             let _ = std::io::stdout().write_all(json.as_bytes());
             let _ = std::io::stdout().write_all(b"\n");
             let _ = std::io::stdout().flush();
-            if wire.ok == Some(true) || wire.ok == Some(false) {
-                0
-            } else {
-                1
-            }
+            i32::from(!(wire.ok == Some(true) || wire.ok == Some(false)))
         }
         Err(e) => {
-            eprintln!("OCR worker: JSON serialize failed: {}", e);
+            eprintln!("OCR worker: JSON serialize failed: {e}");
             2
         }
     }

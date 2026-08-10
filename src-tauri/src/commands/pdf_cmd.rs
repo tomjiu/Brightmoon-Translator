@@ -119,7 +119,9 @@ pub async fn translate_pdf(
     }
 
     // Translate only cache-miss pages
-    let batch_results = if !pages_to_translate.is_empty() {
+    let batch_results = if pages_to_translate.is_empty() {
+        Vec::new()
+    } else {
         state
             .translation
             .service
@@ -131,8 +133,6 @@ pub async fn translate_pdf(
                 2,
             )
             .await
-    } else {
-        Vec::new()
     };
 
     // Apply results + P10: store new translations in cache

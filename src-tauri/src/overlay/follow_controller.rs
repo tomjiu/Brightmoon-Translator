@@ -60,7 +60,7 @@ const FOLLOW_POLL_MS: u64 = 100;
 const MOVE_THRESHOLD: f64 = 3.0;
 
 impl FollowController {
-    /// Create an uninitialized controller. Call `init()` with the AppHandle
+    /// Create an uninitialized controller. Call `init()` with the `AppHandle`
     /// once it becomes available (typically in Tauri `setup()`).
     pub fn new() -> Self {
         Self {
@@ -74,7 +74,7 @@ impl FollowController {
         }
     }
 
-    /// Initialize with the Tauri AppHandle. Must be called once during `setup()`.
+    /// Initialize with the Tauri `AppHandle`. Must be called once during `setup()`.
     /// Returns `Err` if already initialized.
     pub fn init(&self, app_handle: tauri::AppHandle) {
         let _ = self.app_handle.set(app_handle);

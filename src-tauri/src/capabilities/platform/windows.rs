@@ -26,7 +26,7 @@ unsafe fn set_clipboard_text(text: &str) -> Result<(), String> {
     let h_mem = GlobalAlloc(GMEM_MOVEABLE, size);
     if h_mem.is_null() {
         CloseClipboard();
-        return Err(format!("GlobalAlloc failed for {} bytes", size));
+        return Err(format!("GlobalAlloc failed for {size} bytes"));
     }
 
     let p_mem = GlobalLock(h_mem);
@@ -36,7 +36,7 @@ unsafe fn set_clipboard_text(text: &str) -> Result<(), String> {
         return Err("GlobalLock failed when setting clipboard".to_string());
     }
 
-    std::ptr::copy_nonoverlapping(wide.as_ptr(), p_mem as *mut u16, wide.len());
+    std::ptr::copy_nonoverlapping(wide.as_ptr(), p_mem.cast::<u16>(), wide.len());
     GlobalUnlock(h_mem);
 
     let h_result = SetClipboardData(CF_UNICODETEXT, h_mem);
@@ -69,7 +69,7 @@ fn make_key_input(
     }
 }
 
-/// Release stuck modifiers so hotkey chords do not break Ctrl+V / typing (STranslate).
+/// Release stuck modifiers so hotkey chords do not break Ctrl+V / typing (`STranslate`).
 fn release_modifiers() {
     use std::mem::size_of;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -122,7 +122,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
     // selection Ctrl+C) for the whole save→set→paste→restore window.
     let _clip_lock = crate::clipboard_dedupe::clipboard_lock()
         .lock()
-        .unwrap_or_else(|e| e.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
 
     const CF_UNICODETEXT: u32 = 13;
 
@@ -145,20 +145,20 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
     unsafe {
         let saved_text = if OpenClipboard(std::ptr::null_mut()) != 0 {
             let h_data = GetClipboardData(CF_UNICODETEXT);
-            let saved = if !h_data.is_null() {
+            let saved = if h_data.is_null() {
+                None
+            } else {
                 let p_data = GlobalLock(h_data);
-                if !p_data.is_null() {
+                if p_data.is_null() {
+                    tracing::warn!("[replace] save clipboard: GlobalLock failed");
+                    None
+                } else {
                     let size = GlobalSize(h_data);
                     let slice = std::slice::from_raw_parts(p_data as *const u8, size);
                     let saved = slice.to_vec();
                     GlobalUnlock(h_data);
                     Some(saved)
-                } else {
-                    tracing::warn!("[replace] save clipboard: GlobalLock failed");
-                    None
                 }
-            } else {
-                None
             };
             CloseClipboard();
             saved
@@ -169,7 +169,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
 
         set_clipboard_text(text).map_err(|e| {
             tracing::error!("[replace] set translated clipboard failed: {}", e);
-            format!("set translated clipboard failed: {}", e)
+            format!("set translated clipboard failed: {e}")
         })?;
 
         release_modifiers();
@@ -196,19 +196,19 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
                 std::thread::sleep(std::time::Duration::from_millis(30));
                 if OpenClipboard(std::ptr::null_mut()) != 0 {
                     let h_data = GetClipboardData(CF_UNICODETEXT);
-                    let has_content = if !h_data.is_null() {
+                    let has_content = if h_data.is_null() {
+                        false
+                    } else {
                         let p_data = GlobalLock(h_data);
-                        let size = if !p_data.is_null() {
-                            GlobalSize(h_data)
-                        } else {
+                        let size = if p_data.is_null() {
                             0
+                        } else {
+                            GlobalSize(h_data)
                         };
                         if !p_data.is_null() {
                             GlobalUnlock(h_data);
                         }
                         size > 2
-                    } else {
-                        false
                     };
                     CloseClipboard();
                     if has_content {
@@ -230,21 +230,21 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
             if let Some(saved) = saved_text {
                 const GMEM_MOVEABLE: u32 = 0x0002;
                 let h_mem = GlobalAlloc(GMEM_MOVEABLE, saved.len());
-                if !h_mem.is_null() {
+                if h_mem.is_null() {
+                    tracing::warn!("[replace] restore clipboard: GlobalAlloc failed");
+                } else {
                     let p_mem = GlobalLock(h_mem);
-                    if !p_mem.is_null() {
+                    if p_mem.is_null() {
+                        tracing::warn!("[replace] restore clipboard: GlobalLock failed");
+                    } else {
                         std::ptr::copy_nonoverlapping(
                             saved.as_ptr(),
-                            p_mem as *mut u8,
+                            p_mem.cast::<u8>(),
                             saved.len(),
                         );
                         GlobalUnlock(h_mem);
                         SetClipboardData(CF_UNICODETEXT, h_mem);
-                    } else {
-                        tracing::warn!("[replace] restore clipboard: GlobalLock failed");
                     }
-                } else {
-                    tracing::warn!("[replace] restore clipboard: GlobalAlloc failed");
                 }
             }
 
@@ -262,7 +262,7 @@ pub fn replace_text_via_clipboard(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Type text into the foreground app via Unicode SendInput (no clipboard clobber).
+/// Type text into the foreground app via Unicode `SendInput` (no clipboard clobber).
 /// `cancel` polled between characters when provided.
 pub fn type_text_via_sendinput(
     text: &str,
@@ -298,7 +298,7 @@ pub fn type_text_via_sendinput(
     }
 
     for ch in text.encode_utf16() {
-        if cancel.map(|c| c.load(Ordering::Acquire)).unwrap_or(false) {
+        if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
             return Err("cancelled".to_string());
         }
         // Surrogate pairs need down/up for each code unit.
@@ -309,7 +309,7 @@ pub fn type_text_via_sendinput(
         if sent == 0 {
             return Err("SendInput type failed".to_string());
         }
-        if ch == b'\n' as u16 || ch == b'\r' as u16 {
+        if ch == u16::from(b'\n') || ch == u16::from(b'\r') {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
@@ -377,7 +377,7 @@ pub fn detect_foreground_app() -> Option<ForegroundAppInfo> {
 
         // Get PID
         let mut pid: u32 = 0;
-        GetWindowThreadProcessId(hwnd, &mut pid);
+        GetWindowThreadProcessId(hwnd, &raw mut pid);
         if pid == 0 {
             return None;
         }
@@ -409,7 +409,7 @@ pub fn detect_foreground_app() -> Option<ForegroundAppInfo> {
                 let mut exe_buf = [0u16; 1024];
                 let mut exe_size = 1024u32;
                 let result =
-                    QueryFullProcessImageNameW(h_process, 0, exe_buf.as_mut_ptr(), &mut exe_size);
+                    QueryFullProcessImageNameW(h_process, 0, exe_buf.as_mut_ptr(), &raw mut exe_size);
                 CloseHandle(h_process);
 
                 if result != 0 && exe_size > 0 {

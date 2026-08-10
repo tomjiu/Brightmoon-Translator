@@ -169,7 +169,7 @@ pub async fn synthesize_openai(
     Ok(resp.bytes().await?.to_vec())
 }
 
-/// Fish Audio OpenAPI TTS (`POST https://api.fish.audio/v1/tts`).
+/// Fish Audio `OpenAPI` TTS (`POST https://api.fish.audio/v1/tts`).
 /// Free tier model: `s2.1-pro-free` (same quality as s2.1-pro, fair-use, no SLA).
 /// `voice` / config `reference_id` is a Fish voice model id from the library or your clone.
 pub async fn synthesize_fish(
@@ -283,16 +283,14 @@ pub async fn synthesize_with_token(
     let url = format!(
         "{}&ConnectionId={}",
         EDGE_TTS_URL.replace("{}", &token),
-        uuid::Uuid::new_v4().to_string().replace("-", "")
+        uuid::Uuid::new_v4().to_string().replace('-', "")
     );
 
     let (mut ws_stream, _) = connect_async(&url).await?;
 
     // Send speech config
-    let config_msg = format!(
-        "Content-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n\
-        {{\"context\":{{\"synthesis\":{{\"audio\":{{\"metadataoptions\":{{\"sentenceBoundaryEnabled\":\"false\",\"wordBoundaryEnabled\":\"true\"}},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}}}}}"
-    );
+    let config_msg = "Content-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n\
+        {\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":\"false\",\"wordBoundaryEnabled\":\"true\"},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}".to_string();
     ws_stream.send(Message::Text(config_msg)).await?;
 
     // Send SSML
@@ -305,7 +303,7 @@ pub async fn synthesize_with_token(
         voice,
         xml_escape(text)
     );
-    let request_id = uuid::Uuid::new_v4().to_string().replace("-", "");
+    let request_id = uuid::Uuid::new_v4().to_string().replace('-', "");
     let ssml_msg = format!(
         "Content-Type:application/ssml+xml\r\nPath:ssml\r\nX-RequestId:{}\r\nX-Timestamp:{}\r\n\r\n{}",
         request_id,
@@ -319,21 +317,19 @@ pub async fn synthesize_with_token(
 
     while let Some(msg) = ws_stream.next().await {
         match msg? {
-            Message::Binary(data) => {
+            Message::Binary(data)
                 // Extract audio from binary message
                 // Format: header length (2 bytes) + header + audio data
-                if data.len() > 2 {
+                if data.len() > 2 => {
                     let header_len = u16::from_be_bytes([data[0], data[1]]) as usize;
                     if data.len() > 2 + header_len {
                         audio_data.extend_from_slice(&data[2 + header_len..]);
                     }
-                }
-            },
-            Message::Text(text) => {
-                if text.contains("Path:turn.end") {
+                },
+            Message::Text(text)
+                if text.contains("Path:turn.end") => {
                     break;
-                }
-            },
+                },
             _ => {},
         }
     }

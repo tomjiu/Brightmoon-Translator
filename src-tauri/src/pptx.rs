@@ -77,9 +77,9 @@ pub struct PptxTranslationResult {
 
 /// Extract text from PPTX file
 pub fn extract_text_from_pptx(file_path: &str) -> Result<PptxDocument, String> {
-    let file = File::open(file_path).map_err(|e| format!("Failed to open PPTX file: {}", e))?;
+    let file = File::open(file_path).map_err(|e| format!("Failed to open PPTX file: {e}"))?;
     let mut archive =
-        ZipArchive::new(file).map_err(|e| format!("Failed to read PPTX archive: {}", e))?;
+        ZipArchive::new(file).map_err(|e| format!("Failed to read PPTX archive: {e}"))?;
 
     let mut slides: Vec<PptxSlide> = Vec::new();
     let mut total_words = 0;
@@ -90,7 +90,7 @@ pub fn extract_text_from_pptx(file_path: &str) -> Result<PptxDocument, String> {
     for i in 0..archive.len() {
         let entry = archive
             .by_index(i)
-            .map_err(|e| format!("Failed to read archive entry: {}", e))?;
+            .map_err(|e| format!("Failed to read archive entry: {e}"))?;
         let name = entry.name().to_string();
         if name.starts_with("ppt/slides/slide") && name.ends_with(".xml") {
             slide_files.push(name);
@@ -99,19 +99,19 @@ pub fn extract_text_from_pptx(file_path: &str) -> Result<PptxDocument, String> {
     slide_files.sort();
 
     // Re-open archive to read slide contents
-    let file = File::open(file_path).map_err(|e| format!("Failed to open PPTX file: {}", e))?;
+    let file = File::open(file_path).map_err(|e| format!("Failed to open PPTX file: {e}"))?;
     let mut archive =
-        ZipArchive::new(file).map_err(|e| format!("Failed to read PPTX archive: {}", e))?;
+        ZipArchive::new(file).map_err(|e| format!("Failed to read PPTX archive: {e}"))?;
 
     for (slide_idx, slide_name) in slide_files.iter().enumerate() {
         let mut slide_file = archive
             .by_name(slide_name)
-            .map_err(|e| format!("Failed to read slide {}: {}", slide_name, e))?;
+            .map_err(|e| format!("Failed to read slide {slide_name}: {e}"))?;
 
         let mut xml_content = String::new();
         slide_file
             .read_to_string(&mut xml_content)
-            .map_err(|e| format!("Failed to read slide XML: {}", e))?;
+            .map_err(|e| format!("Failed to read slide XML: {e}"))?;
 
         let text_blocks = extract_text_from_xml(&xml_content, slide_idx);
 
@@ -186,7 +186,7 @@ fn extract_text_from_xml(xml: &str, slide_index: usize) -> Vec<PptxTextBlock> {
                         let trimmed = current_text.trim().to_string();
                         if !trimmed.is_empty() {
                             text_blocks.push(PptxTextBlock {
-                                id: format!("{}_{}", slide_index, block_id),
+                                id: format!("{slide_index}_{block_id}"),
                                 text: trimmed,
                                 slide_index,
                             });
@@ -264,12 +264,12 @@ pub fn write_translated_pptx(
     translations: &[(String, String)], // (block_id, translated_text)
 ) -> Result<PptxTranslationResult, String> {
     let input_file =
-        File::open(input_path).map_err(|e| format!("Failed to open PPTX file: {}", e))?;
+        File::open(input_path).map_err(|e| format!("Failed to open PPTX file: {e}"))?;
     let mut archive =
-        ZipArchive::new(input_file).map_err(|e| format!("Failed to read PPTX archive: {}", e))?;
+        ZipArchive::new(input_file).map_err(|e| format!("Failed to read PPTX archive: {e}"))?;
 
     let output_file =
-        File::create(output_path).map_err(|e| format!("Failed to create output file: {}", e))?;
+        File::create(output_path).map_err(|e| format!("Failed to create output file: {e}"))?;
     let mut zip_writer = ZipWriter::new(output_file);
 
     // Create translation map
@@ -285,18 +285,18 @@ pub fn write_translated_pptx(
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
-            .map_err(|e| format!("Failed to read archive entry: {}", e))?;
+            .map_err(|e| format!("Failed to read archive entry: {e}"))?;
         let name = entry.name().to_string();
 
         let mut content = Vec::new();
         entry
             .read_to_end(&mut content)
-            .map_err(|e| format!("Failed to read entry content: {}", e))?;
+            .map_err(|e| format!("Failed to read entry content: {e}"))?;
 
         // Process slide XML files
         if name.starts_with("ppt/slides/slide") && name.ends_with(".xml") {
             let xml_content =
-                String::from_utf8(content).map_err(|e| format!("Invalid UTF-8 in slide: {}", e))?;
+                String::from_utf8(content).map_err(|e| format!("Invalid UTF-8 in slide: {e}"))?;
 
             // Extract slide index from filename
             let slide_idx = extract_slide_index(&name).unwrap_or(0);
@@ -312,24 +312,24 @@ pub fn write_translated_pptx(
 
             zip_writer
                 .start_file(&name, SimpleFileOptions::default())
-                .map_err(|e| format!("Failed to write to archive: {}", e))?;
+                .map_err(|e| format!("Failed to write to archive: {e}"))?;
             zip_writer
                 .write_all(translated_xml.as_bytes())
-                .map_err(|e| format!("Failed to write slide content: {}", e))?;
+                .map_err(|e| format!("Failed to write slide content: {e}"))?;
         } else {
             // Copy other files as-is
             zip_writer
                 .start_file(&name, SimpleFileOptions::default())
-                .map_err(|e| format!("Failed to write to archive: {}", e))?;
+                .map_err(|e| format!("Failed to write to archive: {e}"))?;
             zip_writer
                 .write_all(&content)
-                .map_err(|e| format!("Failed to write entry content: {}", e))?;
+                .map_err(|e| format!("Failed to write entry content: {e}"))?;
         }
     }
 
     zip_writer
         .finish()
-        .map_err(|e| format!("Failed to finalize PPTX file: {}", e))?;
+        .map_err(|e| format!("Failed to finalize PPTX file: {e}"))?;
 
     Ok(PptxTranslationResult {
         input_path: input_path.to_string(),
@@ -398,7 +398,7 @@ fn translate_slide_xml(
                         in_text_body = true;
                         writer
                             .write_event(Event::Start(e.clone()))
-                            .map_err(|err| format!("Write error: {}", err))?;
+                            .map_err(|err| format!("Write error: {err}"))?;
                     }
                     b"p" if in_text_body => {
                         in_paragraph = true;
@@ -406,18 +406,18 @@ fn translate_slide_xml(
                         para_translation = paragraph_translations.get(&para_index).copied();
                         writer
                             .write_event(Event::Start(e.clone()))
-                            .map_err(|err| format!("Write error: {}", err))?;
+                            .map_err(|err| format!("Write error: {err}"))?;
                     }
                     b"t" if in_paragraph => {
                         in_text_elem = true;
                         writer
                             .write_event(Event::Start(e.clone()))
-                            .map_err(|err| format!("Write error: {}", err))?;
+                            .map_err(|err| format!("Write error: {err}"))?;
                     }
                     _ => {
                         writer
                             .write_event(Event::Start(e.clone()))
-                            .map_err(|err| format!("Write error: {}", err))?;
+                            .map_err(|err| format!("Write error: {err}"))?;
                     }
                 }
             }
@@ -428,14 +428,14 @@ fn translate_slide_xml(
                         in_text_body = false;
                         writer
                             .write_event(Event::End(e.clone()))
-                            .map_err(|err| format!("Write error: {}", err))?;
+                            .map_err(|err| format!("Write error: {err}"))?;
                     }
                     b"p" if in_text_body => {
                         in_paragraph = false;
                         para_translation = None;
                         writer
                             .write_event(Event::End(e.clone()))
-                            .map_err(|err| format!("Write error: {}", err))?;
+                            .map_err(|err| format!("Write error: {err}"))?;
                         para_index += 1;
                     }
                     b"t" if in_paragraph => {
@@ -443,12 +443,12 @@ fn translate_slide_xml(
                         t_index_in_para += 1;
                         writer
                             .write_event(Event::End(e.clone()))
-                            .map_err(|err| format!("Write error: {}", err))?;
+                            .map_err(|err| format!("Write error: {err}"))?;
                     }
                     _ => {
                         writer
                             .write_event(Event::End(e.clone()))
-                            .map_err(|err| format!("Write error: {}", err))?;
+                            .map_err(|err| format!("Write error: {err}"))?;
                     }
                 }
             }
@@ -457,31 +457,31 @@ fn translate_slide_xml(
                     if t_index_in_para == 0 {
                         writer
                             .write_event(Event::Text(BytesText::new(translated)))
-                            .map_err(|err| format!("Write error: {}", err))?;
+                            .map_err(|err| format!("Write error: {err}"))?;
                     } else {
                         // Clear extra runs' text so layout/rPr stay, content not duplicated
                         writer
                             .write_event(Event::Text(BytesText::new("")))
-                            .map_err(|err| format!("Write error: {}", err))?;
+                            .map_err(|err| format!("Write error: {err}"))?;
                     }
                 } else {
                     writer
                         .write_event(Event::Text(e.clone()))
-                        .map_err(|err| format!("Write error: {}", err))?;
+                        .map_err(|err| format!("Write error: {err}"))?;
                 }
             }
             Ok(Event::Eof) => break,
             Ok(ref other) => {
                 writer
                     .write_event(other.clone())
-                    .map_err(|err| format!("Write error: {}", err))?;
+                    .map_err(|err| format!("Write error: {err}"))?;
             }
-            Err(e) => return Err(format!("XML parse error: {}", e)),
+            Err(e) => return Err(format!("XML parse error: {e}")),
         }
     }
 
     let output =
-        String::from_utf8(writer.into_inner()).map_err(|e| format!("UTF-8 error: {}", e))?;
+        String::from_utf8(writer.into_inner()).map_err(|e| format!("UTF-8 error: {e}"))?;
     Ok((output, blocks_translated, words_translated))
 }
 

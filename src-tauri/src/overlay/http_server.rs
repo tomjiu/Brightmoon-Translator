@@ -11,6 +11,12 @@ pub struct OverlayServerState {
     pub html: Arc<RwLock<String>>,
 }
 
+impl Default for OverlayServerState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OverlayServerState {
     pub fn new() -> Self {
         Self {
@@ -32,7 +38,7 @@ impl OverlayServerState {
 /// Overlay HTTP server handle. Keeps the server running and provides
 /// the base URL for overlay windows to load from.
 pub struct OverlayHttpServer {
-    /// Base URL like "http://127.0.0.1:19830"
+    /// Base URL like "<http://127.0.0.1:19830>"
     pub base_url: String,
     /// Port the server is listening on
     pub port: u16,
@@ -48,17 +54,17 @@ impl OverlayHttpServer {
 
         // Find an available port
         let listener =
-            TcpListener::bind("127.0.0.1:0").map_err(|e| format!("Failed to bind: {}", e))?;
+            TcpListener::bind("127.0.0.1:0").map_err(|e| format!("Failed to bind: {e}"))?;
         let port = listener
             .local_addr()
-            .map_err(|e| format!("Failed to get port: {}", e))?
+            .map_err(|e| format!("Failed to get port: {e}"))?
             .port();
 
         // Drop the listener so axum can bind to the same port
         drop(listener);
 
         let state_clone = Arc::clone(&state);
-        let base_url = format!("http://127.0.0.1:{}", port);
+        let base_url = format!("http://127.0.0.1:{port}");
 
         // Spawn the axum server
         tokio::spawn(async move {
@@ -104,7 +110,7 @@ impl OverlayHttpServer {
                 )
                 .layer(cors);
 
-            let addr = format!("127.0.0.1:{}", port);
+            let addr = format!("127.0.0.1:{port}");
             let listener = match tokio::net::TcpListener::bind(&addr).await {
                 Ok(l) => l,
                 Err(e) => {
@@ -133,7 +139,7 @@ impl OverlayHttpServer {
     }
 
     /// Update the overlay HTML content. The webview will need to
-    /// navigate or eval() to pick up the new content.
+    /// navigate or `eval()` to pick up the new content.
     pub async fn update_html(&self, html: String) {
         self.state.set_html(html).await;
     }

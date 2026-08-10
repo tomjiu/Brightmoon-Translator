@@ -1,4 +1,4 @@
-//! Batch / multi-segment response validation (AiNiee ResponseChecker style).
+//! Batch / multi-segment response validation (`AiNiee` `ResponseChecker` style).
 //! Used when LLM returns numbered or multi-line segment batches.
 
 use serde::{Deserialize, Serialize};

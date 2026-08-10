@@ -55,7 +55,7 @@ pub async fn remove_glossary_entry(
 }
 
 /// Import glossary entries from TMX file content.
-/// Returns (imported_count, skipped_count).
+/// Returns (`imported_count`, `skipped_count`).
 #[command]
 pub async fn import_glossary_tmx(
     xml: String,
@@ -63,7 +63,7 @@ pub async fn import_glossary_tmx(
 ) -> Result<(usize, usize), String> {
     security::validate_text_length(&xml, 10_000_000)?; // 10MB limit
 
-    let data = tmx::parse_tmx(&xml).map_err(|e| format!("TMX parse error: {}", e))?;
+    let data = tmx::parse_tmx(&xml).map_err(|e| format!("TMX parse error: {e}"))?;
 
     let mut glossary = state.translation.glossary.lock().await;
     let mut imported = 0;
@@ -120,11 +120,11 @@ pub async fn export_glossary_tmx(
         }
     }
 
-    tmx::export_tmx(&units, "en", "MoonTranslator").map_err(|e| format!("TMX export error: {}", e))
+    tmx::export_tmx(&units, "en", "MoonTranslator").map_err(|e| format!("TMX export error: {e}"))
 }
 
 /// Import glossary entries from TBX file content.
-/// Returns (imported_count, skipped_count).
+/// Returns (`imported_count`, `skipped_count`).
 #[command]
 pub async fn import_glossary_tbx(
     xml: String,
@@ -132,7 +132,7 @@ pub async fn import_glossary_tbx(
 ) -> Result<(usize, usize), String> {
     security::validate_text_length(&xml, 10_000_000)?; // 10MB limit
 
-    let data = tbx::parse_tbx(&xml).map_err(|e| format!("TBX parse error: {}", e))?;
+    let data = tbx::parse_tbx(&xml).map_err(|e| format!("TBX parse error: {e}"))?;
 
     let mut glossary = state.translation.glossary.lock().await;
     let mut imported = 0;
@@ -188,7 +188,7 @@ pub async fn export_glossary_tbx(
         }
     }
 
-    tbx::export_tbx(&entries, "en", "zh").map_err(|e| format!("TBX export error: {}", e))
+    tbx::export_tbx(&entries, "en", "zh").map_err(|e| format!("TBX export error: {e}"))
 }
 
 /// Align source and translated text at paragraph level.

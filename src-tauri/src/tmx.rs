@@ -93,7 +93,7 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
                 // XML declaration - continue
                 let _ = decl;
             },
-            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+            Ok(Event::Start(ref e) | Event::Empty(ref e)) => {
                 let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 match tag_name.as_str() {
                     "tmx" => {
@@ -239,7 +239,7 @@ pub fn parse_tmx(xml: &str) -> Result<TmxData> {
             },
             Ok(Event::Eof) => break,
             Err(e) => {
-                return Err(anyhow::anyhow!("TMX parse error: {}", e));
+                return Err(anyhow::anyhow!("TMX parse error: {e}"));
             },
             _ => {},
         }
@@ -281,7 +281,7 @@ fn parse_tmx_lenient(xml: &str, version: &str) -> Result<TmxData> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+            Ok(Event::Start(ref e) | Event::Empty(ref e)) => {
                 let tag_name = String::from_utf8_lossy(e.name().as_ref())
                     .to_string()
                     .to_lowercase();
@@ -390,7 +390,7 @@ fn parse_tmx_lenient(xml: &str, version: &str) -> Result<TmxData> {
             },
             Ok(Event::Eof) => break,
             Err(e) => {
-                return Err(anyhow::anyhow!("TMX parse error: {}", e));
+                return Err(anyhow::anyhow!("TMX parse error: {e}"));
             },
             _ => {},
         }

@@ -1,4 +1,4 @@
-//! AnkiConnect collection — aligned with pot-desktop Anki service.
+//! `AnkiConnect` collection — aligned with pot-desktop Anki service.
 
 use super::{CollectionItem, CollectionTargetResult};
 use crate::models::config::AnkiCollectionConfig;

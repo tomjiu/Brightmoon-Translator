@@ -10,7 +10,7 @@ pub fn needs_reoptimization(rating: f32) -> bool {
     rating < 3.0
 }
 
-/// 若传入 word 而非 card_id，查 cards 表解析
+/// 若传入 word 而非 `card_id，查` cards 表解析
 pub async fn resolve_card_id(pool: &sqlx::SqlitePool, word_or_id: &str) -> Option<String> {
     sqlx::query_scalar("SELECT id FROM cards WHERE id = ?1 OR word = ?1")
         .bind(word_or_id)
@@ -20,7 +20,7 @@ pub async fn resolve_card_id(pool: &sqlx::SqlitePool, word_or_id: &str) -> Optio
         .flatten()
 }
 
-/// user_profile upsert（单测与命令共用）
+/// `user_profile` upsert（单测与命令共用）
 pub async fn upsert_profile(
     pool: &sqlx::SqlitePool,
     card_id: &str,
@@ -30,14 +30,14 @@ pub async fn upsert_profile(
     now: i64,
 ) -> Result<(), String> {
     sqlx::query(
-        r#"
+        r"
         INSERT INTO user_profile (card_id, field, rating, feedback, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT (card_id, field) DO UPDATE SET
             rating = excluded.rating,
             feedback = excluded.feedback,
             updated_at = excluded.updated_at
-        "#,
+        ",
     )
     .bind(card_id)
     .bind(field)
@@ -51,7 +51,7 @@ pub async fn upsert_profile(
     Ok(())
 }
 
-/// 读取某组卡片的 user_profile 行
+/// 读取某组卡片的 `user_profile` 行
 pub async fn load_preference_rows(
     pool: &sqlx::SqlitePool,
     card_ids: &[&str],
@@ -72,7 +72,7 @@ pub async fn load_preference_rows(
     rows
 }
 
-/// 给字段打分（表达偏好）：写 user_profile + UserRated 事件
+/// 给字段打分（表达偏好）：写 `user_profile` + `UserRated` 事件
 #[tauri::command]
 pub async fn rate_card_field(
     state: tauri::State<'_, crate::AppState>,
@@ -87,7 +87,7 @@ pub async fn rate_card_field(
 
     let card_id = resolve_card_id(pool, &card_id).await.ok_or("单词不存在")?;
 
-    upsert_profile(pool, &card_id, &field, rating as f64, feedback.clone(), now).await?;
+    upsert_profile(pool, &card_id, &field, f64::from(rating), feedback.clone(), now).await?;
 
     let event = crate::domain::CardEvent::UserRated {
         field: field.clone(),
@@ -146,13 +146,13 @@ pub async fn get_inferred_weak_fields(
     let store = state.event_store.as_ref().ok_or("词汇数据库未初始化")?;
     let pool = store.pool();
     let raw = sqlx::query_as::<_, (String, bool, i64)>(
-        r#"
+        r"
         SELECT quiz_type,
                (CASE WHEN user_answer = correct_answer THEN 1 ELSE 0 END) AS correct,
                COUNT(*) AS cnt
         FROM quiz_errors
         GROUP BY quiz_type, correct
-        "#,
+        ",
     )
     .fetch_all(pool)
     .await

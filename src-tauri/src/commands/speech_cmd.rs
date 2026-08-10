@@ -12,7 +12,7 @@ pub async fn start_speech_recognition(
 
     speech::start_recognition(speech_state, &lang)
         .await
-        .map_err(|e| format!("Failed to start speech recognition: {}", e))?;
+        .map_err(|e| format!("Failed to start speech recognition: {e}"))?;
 
     Ok(())
 }
@@ -24,7 +24,7 @@ pub async fn stop_speech_recognition(state: State<'_, AppState>) -> Result<(), S
 
     speech::stop_recognition(speech_state)
         .await
-        .map_err(|e| format!("Failed to stop speech recognition: {}", e))?;
+        .map_err(|e| format!("Failed to stop speech recognition: {e}"))?;
 
     Ok(())
 }

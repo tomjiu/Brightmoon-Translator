@@ -127,33 +127,30 @@ impl PatchValidator {
     /// 验证值类型
     fn validate_value_type(&self, patch: &CardPatch) -> Result<()> {
         match patch.target_field.as_str() {
-            "mnemonic" => {
+            "mnemonic"
                 // 单个助记法：应该是对象
-                if !patch.proposed_value.is_object() {
+                if !patch.proposed_value.is_object() => {
                     bail!(PatchValidationError::TypeMismatch {
                         expected: "Object (Mnemonic)".to_string(),
                         actual: value_type_name(&patch.proposed_value),
                     });
-                }
-            },
-            "mnemonics" => {
+                },
+            "mnemonics"
                 // 多个助记法：应该是数组
-                if !patch.proposed_value.is_array() {
+                if !patch.proposed_value.is_array() => {
                     bail!(PatchValidationError::TypeMismatch {
                         expected: "Array[Mnemonic]".to_string(),
                         actual: value_type_name(&patch.proposed_value),
                     });
-                }
-            },
-            "etymology" => {
+                },
+            "etymology"
                 // 词源：应该是对象
-                if !patch.proposed_value.is_object() && !patch.proposed_value.is_null() {
+                if !patch.proposed_value.is_object() && !patch.proposed_value.is_null() => {
                     bail!(PatchValidationError::TypeMismatch {
                         expected: "Object (Etymology) or null".to_string(),
                         actual: value_type_name(&patch.proposed_value),
                     });
-                }
-            },
+                },
             "examples" | "example" => {
                 // 例句：数组或单个对象
                 if patch.target_field == "examples" && !patch.proposed_value.is_array() {
@@ -244,8 +241,7 @@ impl PatchValidator {
                 if let Some(type_str) = mnemonic_type.as_str() {
                     if !valid_types.contains(&type_str) {
                         bail!(PatchValidationError::InvalidValue(format!(
-                            "无效的助记法类型: {}",
-                            type_str
+                            "无效的助记法类型: {type_str}"
                         )));
                     }
                 }

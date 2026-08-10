@@ -20,10 +20,10 @@ pub struct PostProcessConfig {
     pub fix_punctuation: bool,
     pub fix_newlines: bool,
     pub auto_correct: bool,
-    /// Align dialogue quotes / CJK punctuation with source (AiNiee TextSymbolRepair).
+    /// Align dialogue quotes / CJK punctuation with source (`AiNiee` `TextSymbolRepair`).
     #[serde(default = "default_true")]
     pub symbol_repair: bool,
-    /// Run batch segment response checks (AiNiee ResponseChecker; warn-only).
+    /// Run batch segment response checks (`AiNiee` `ResponseChecker`; warn-only).
     #[serde(default = "default_true")]
     pub response_check: bool,
 }
@@ -111,7 +111,7 @@ fn has_garbled_chars(text: &str) -> bool {
     let mojibake_patterns = [
         "Ã¡",
         "Ã©",
-        "Ã­",
+        "Ã\u{ad}",
         "Ã³",
         "Ãº", // Spanish accented vowels
         "Ã¤",
@@ -209,7 +209,7 @@ impl PostProcessor {
     }
 
     pub fn save(&self) {
-        let config = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let config = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let path = config_path();
         match serde_json::to_string_pretty(&*config) {
             Ok(data) => {
@@ -226,33 +226,33 @@ impl PostProcessor {
     pub fn get_config(&self) -> PostProcessConfig {
         self.config
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
     }
 
     pub fn update_config(&self, config: PostProcessConfig) {
-        let mut current = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let mut current = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         *current = config;
         drop(current);
         self.save();
     }
 
     pub fn add_rule(&self, rule: ReplacementRule) {
-        let mut config = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let mut config = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         config.rules.push(rule);
         drop(config);
         self.save();
     }
 
     pub fn remove_rule(&self, id: &str) {
-        let mut config = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let mut config = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         config.rules.retain(|r| r.id != id);
         drop(config);
         self.save();
     }
 
     pub fn update_rule(&self, id: &str, rule: ReplacementRule) {
-        let mut config = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let mut config = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(existing) = config.rules.iter_mut().find(|r| r.id == id) {
             *existing = rule;
         }
@@ -266,7 +266,7 @@ impl PostProcessor {
 
     /// Post-process translation; when `source` is set, apply AiNiee-style symbol repair.
     pub fn process_with_source(&self, text: &str, source: Option<&str>) -> String {
-        let config = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let config = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut result = text.to_string();
 
         for rule in &config.rules {
@@ -313,7 +313,7 @@ impl PostProcessor {
         source_lang: &str,
         target_lang: &str,
     ) -> AutoCorrectResult {
-        let config = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let config = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if !config.auto_correct {
             return AutoCorrectResult {
                 corrected: translated.to_string(),
@@ -391,7 +391,7 @@ fn fix_punctuation(text: &str) -> String {
     result
 }
 
-/// AiNiee TextSymbolRepair: restore source dialogue brackets / CJK punctuation in translation.
+/// `AiNiee` `TextSymbolRepair`: restore source dialogue brackets / CJK punctuation in translation.
 pub fn repair_text_symbols(original_text: &str, translated_text: &str) -> String {
     let leading: String = original_text
         .chars()
@@ -435,7 +435,7 @@ pub fn repair_text_symbols(original_text: &str, translated_text: &str) -> String
                     && translated_stripped.ends_with(alt_end)
                 {
                     let inner = strip_prefix_suffix(&translated_stripped, alt_start, alt_end);
-                    translated_stripped = format!("{}{}{}", orig_start, inner, orig_end);
+                    translated_stripped = format!("{orig_start}{inner}{orig_end}");
                     matched = true;
                     break;
                 }
@@ -453,12 +453,12 @@ pub fn repair_text_symbols(original_text: &str, translated_text: &str) -> String
     if orig_open > 0
         && orig_open == orig_close
         && quote_count > 0
-        && quote_count % 2 == 0
+        && quote_count.is_multiple_of(2)
         && orig_open == quote_count / 2
     {
         let mut chars: Vec<char> = translated_stripped.chars().collect();
         let mut open_next = true;
-        for ch in chars.iter_mut() {
+        for ch in &mut chars {
             if *ch == '"' {
                 *ch = if open_next { '「' } else { '」' };
                 open_next = !open_next;
@@ -482,7 +482,7 @@ pub fn repair_text_symbols(original_text: &str, translated_text: &str) -> String
 
     translated_stripped = adjust_spurious_line_quotes(original_stripped, &translated_stripped);
 
-    format!("{}{}{}", leading, translated_stripped, trailing)
+    format!("{leading}{translated_stripped}{trailing}")
 }
 
 fn strip_prefix_suffix(s: &str, prefix: &str, suffix: &str) -> String {

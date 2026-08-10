@@ -141,11 +141,11 @@ pub async fn get_daily_activity(
     let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
     let pool = store.pool();
 
-    let start_date = chrono::Utc::now() - chrono::Duration::days(days as i64);
+    let start_date = chrono::Utc::now() - chrono::Duration::days(i64::from(days));
     let start_timestamp = start_date.timestamp();
 
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT
             date(timestamp, 'unixepoch') as date,
             COUNT(CASE WHEN event_type = 'word_imported' THEN 1 END) as new_cards,
@@ -159,7 +159,7 @@ pub async fn get_daily_activity(
         WHERE timestamp >= ?
         GROUP BY date(timestamp, 'unixepoch')
         ORDER BY date ASC
-        "#,
+        ",
     )
     .bind(start_timestamp)
     .fetch_all(pool)
@@ -189,11 +189,11 @@ pub async fn get_heatmap_data(
     let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
     let pool = store.pool();
 
-    let start_date = format!("{}-01-01", year);
-    let end_date = format!("{}-12-31", year);
+    let start_date = format!("{year}-01-01");
+    let end_date = format!("{year}-12-31");
 
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT
             date(timestamp, 'unixepoch') as date,
             COUNT(DISTINCT card_id) as count
@@ -202,7 +202,7 @@ pub async fn get_heatmap_data(
           AND date(timestamp, 'unixepoch') BETWEEN ? AND ?
         GROUP BY date(timestamp, 'unixepoch')
         ORDER BY date ASC
-        "#,
+        ",
     )
     .bind(&start_date)
     .bind(&end_date)
@@ -231,7 +231,7 @@ pub async fn get_weak_words(
     let pool = store.pool();
 
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT
             c.word,
             c.fsrs_state,
@@ -245,7 +245,7 @@ pub async fn get_weak_words(
         HAVING total_reviews >= 3 AND again_count > 0
         ORDER BY CAST(again_count AS FLOAT) / total_reviews DESC
         LIMIT ?
-        "#,
+        ",
     )
     .bind(limit)
     .fetch_all(pool)
@@ -293,11 +293,11 @@ pub async fn get_retention_curve(
     let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
     let pool = store.pool();
     let start_timestamp =
-        (chrono::Utc::now() - chrono::Duration::days(days as i64)).timestamp();
+        (chrono::Utc::now() - chrono::Duration::days(i64::from(days))).timestamp();
 
     // 关联每张卡的首次学习时间与历次复习，计算间隔天数
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT
             CAST((e.timestamp - first_seen.t) / 86400.0 AS INTEGER) as interval_days,
             json_extract(e.event_data, '$.grade') as grade
@@ -311,7 +311,7 @@ pub async fn get_retention_curve(
         WHERE e.event_type = 'fsrs_updated'
           AND e.timestamp >= ?
           AND e.timestamp > first_seen.t
-        "#,
+        ",
     )
     .bind(start_timestamp)
     .fetch_all(pool)
@@ -329,7 +329,7 @@ pub async fn get_retention_curve(
         let bucket = bucket_of(interval_days as i32);
         let entry = buckets.entry(bucket).or_insert((0, 0));
         entry.1 += 1;
-        if matches!(grade.as_deref(), Some("good") | Some("easy")) {
+        if matches!(grade.as_deref(), Some("good" | "easy")) {
             entry.0 += 1;
         }
     }
@@ -343,13 +343,13 @@ pub async fn get_retention_curve(
             }
             Some(RetentionPoint {
                 interval_days: bucket_labels[b as usize],
-                retention: (correct as f64 / total as f64) * 100.0,
+                retention: (f64::from(correct) / f64::from(total)) * 100.0,
                 review_count: total,
             })
         })
         .collect();
 
-    points.sort_by(|a, b| a.interval_days.cmp(&b.interval_days));
+    points.sort_by_key(|a| a.interval_days);
     Ok(points)
 }
 
@@ -361,7 +361,7 @@ pub struct ForecastPoint {
     pub due_count: i32,
 }
 
-/// 获取未来 N 天的到期复习量预测（基于 FSRS next_review）
+/// 获取未来 N 天的到期复习量预测（基于 FSRS `next_review`）
 #[tauri::command]
 pub async fn get_review_forecast_stats(
     state: State<'_, crate::AppState>,
@@ -372,7 +372,7 @@ pub async fn get_review_forecast_stats(
 
     let today = chrono::Utc::now().date_naive();
     let today_start = today.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
-    let window_end = (today + chrono::Duration::days(days as i64))
+    let window_end = (today + chrono::Duration::days(i64::from(days)))
         .and_hms_opt(0, 0, 0)
         .unwrap()
         .and_utc()
@@ -400,8 +400,8 @@ pub async fn get_review_forecast_stats(
     let mut counts: std::collections::HashMap<i64, i64> =
         rows.into_iter().collect();
     for offset in 0..days {
-        let day = today + chrono::Duration::days(offset as i64);
-        let due = counts.remove(&(offset as i64)).unwrap_or(0);
+        let day = today + chrono::Duration::days(i64::from(offset));
+        let due = counts.remove(&i64::from(offset)).unwrap_or(0);
         points.push(ForecastPoint {
             date: day.format("%Y-%m-%d").to_string(),
             due_count: due as i32,
@@ -475,13 +475,13 @@ async fn calculate_streak_days(pool: &sqlx::SqlitePool) -> Result<i32, sqlx::Err
 /// 计算记忆保持率
 async fn calculate_retention_rate(pool: &sqlx::SqlitePool) -> Result<f64, sqlx::Error> {
     let row: (i32, i32) = sqlx::query_as(
-        r#"
+        r"
         SELECT
             COUNT(CASE WHEN json_extract(event_data, '$.grade') IN ('good', 'easy') THEN 1 END) as correct,
             COUNT(*) as total
         FROM card_events
         WHERE event_type = 'fsrs_updated'
-        "#,
+        ",
     )
     .fetch_one(pool)
     .await?;
@@ -491,7 +491,7 @@ async fn calculate_retention_rate(pool: &sqlx::SqlitePool) -> Result<f64, sqlx::
         return Ok(0.0);
     }
 
-    Ok((correct as f64 / total as f64) * 100.0)
+    Ok((f64::from(correct) / f64::from(total)) * 100.0)
 }
 
 /// 计算平均每日新学
@@ -508,7 +508,7 @@ async fn calculate_avg_daily_new(pool: &sqlx::SqlitePool) -> Result<f64, sqlx::E
     .fetch_one(pool)
     .await?;
 
-    Ok(total as f64 / days as f64)
+    Ok(f64::from(total) / days as f64)
 }
 
 /// 计算平均每日复习
@@ -525,7 +525,7 @@ async fn calculate_avg_daily_review(pool: &sqlx::SqlitePool) -> Result<f64, sqlx
     .fetch_one(pool)
     .await?;
 
-    Ok(total as f64 / days as f64)
+    Ok(f64::from(total) / days as f64)
 }
 
 #[cfg(test)]

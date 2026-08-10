@@ -41,7 +41,7 @@ fn sanitize_config(config: &AppConfig) -> serde_json::Value {
     if let Some(llm) = v.get_mut("llm") {
         if let Some(key) = llm
             .get_mut("apiKey")
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .and_then(|v| v.as_str().map(std::string::ToString::to_string))
         {
             if let Some(obj) = llm.as_object_mut() {
                 obj.insert(
@@ -71,7 +71,7 @@ fn sanitize_config(config: &AppConfig) -> serde_json::Value {
                 for secret_field in &["apiKey", "secret", "apiToken"] {
                     if let Some(val) = engine_cfg
                         .get(*secret_field)
-                        .and_then(|v| v.as_str().map(|s| s.to_string()))
+                        .and_then(|v| v.as_str().map(std::string::ToString::to_string))
                     {
                         if let Some(obj) = engine_cfg.as_object_mut() {
                             obj.insert(
@@ -86,7 +86,7 @@ fn sanitize_config(config: &AppConfig) -> serde_json::Value {
         if let Some(youdao) = engines.get_mut("youdao") {
             if let Some(val) = youdao
                 .get("ocrAppSecret")
-                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .and_then(|v| v.as_str().map(std::string::ToString::to_string))
             {
                 if let Some(obj) = youdao.as_object_mut() {
                     obj.insert(
@@ -102,7 +102,7 @@ fn sanitize_config(config: &AppConfig) -> serde_json::Value {
         if let Some(obj_sec) = v.get_mut(*section) {
             if let Some(val) = obj_sec
                 .get("password")
-                .and_then(|v| v.as_str().map(|s| s.to_string()))
+                .and_then(|v| v.as_str().map(std::string::ToString::to_string))
             {
                 if let Some(obj) = obj_sec.as_object_mut() {
                     obj.insert(
@@ -117,7 +117,7 @@ fn sanitize_config(config: &AppConfig) -> serde_json::Value {
     if let Some(token) = v
         .get("apiServerToken")
         .and_then(|x| x.as_str())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
     {
         if let Some(obj) = v.as_object_mut() {
             obj.insert(
@@ -392,7 +392,7 @@ async fn update_config(
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ApiError {
-                    error: format!("Failed to serialize config: {}", e),
+                    error: format!("Failed to serialize config: {e}"),
                 }),
             )
                 .into_response();
@@ -423,7 +423,7 @@ async fn update_config(
         Err(e) => (
             StatusCode::BAD_REQUEST,
             Json(ApiError {
-                error: format!("Invalid config: {}", e),
+                error: format!("Invalid config: {e}"),
             }),
         )
             .into_response(),
@@ -612,7 +612,7 @@ async fn control_show(AxumState(state): AxumState<ApiState>) -> impl IntoRespons
     control_ok().into_response()
 }
 
-/// POST /control/selection_translate — same as tray/hotkey selection translate
+/// POST /`control/selection_translate` — same as tray/hotkey selection translate
 async fn control_selection_translate(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
     let Some(app) = state.app_handle.as_ref() else {
         return control_unavailable();
@@ -623,7 +623,7 @@ async fn control_selection_translate(AxumState(state): AxumState<ApiState>) -> i
     control_ok().into_response()
 }
 
-/// POST /control/ocr_translate — same as tray OCR
+/// POST /`control/ocr_translate` — same as tray OCR
 async fn control_ocr_translate(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
     let Some(app) = state.app_handle.as_ref() else {
         return control_unavailable();
@@ -634,7 +634,7 @@ async fn control_ocr_translate(AxumState(state): AxumState<ApiState>) -> impl In
     control_ok().into_response()
 }
 
-/// POST /control/open_settings — show main + navigate settings
+/// POST /`control/open_settings` — show main + navigate settings
 async fn control_open_settings(AxumState(state): AxumState<ApiState>) -> impl IntoResponse {
     let Some(app) = state.app_handle.as_ref() else {
         return control_unavailable();
@@ -711,10 +711,10 @@ pub async fn ensure_api_token(state: &ApiState) -> String {
 pub async fn start_server(port: u16, state: ApiState) -> Result<(), String> {
     let _token = ensure_api_token(&state).await;
     let app = create_router(state);
-    let addr = format!("127.0.0.1:{}", port);
+    let addr = format!("127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
-        .map_err(|e| format!("Failed to bind to {}: {}", addr, e))?;
+        .map_err(|e| format!("Failed to bind to {addr}: {e}"))?;
 
     tracing::info!(
         "API server listening on http://{} (auth required except GET /health)",
@@ -723,7 +723,7 @@ pub async fn start_server(port: u16, state: ApiState) -> Result<(), String> {
 
     axum::serve(listener, app)
         .await
-        .map_err(|e| format!("Server error: {}", e))?;
+        .map_err(|e| format!("Server error: {e}"))?;
 
     Ok(())
 }
