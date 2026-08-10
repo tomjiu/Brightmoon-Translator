@@ -340,6 +340,55 @@ impl EventStore {
         .execute(&self.pool)
         .await?;
 
+        // 多源词典表（Oxford / GPT4-Dict 导入与查询依赖）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS oxford_dict (
+                word TEXT PRIMARY KEY,
+                meaning TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS gpt_dict (
+                word TEXT PRIMARY KEY,
+                content TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // 核心词库表（CoreVocabularyList 与 get_dict_stats 依赖）
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS core_vocabulary (
+                word TEXT PRIMARY KEY,
+                frequency_rank INTEGER NOT NULL,
+                frq INTEGER,
+                bnc INTEGER,
+                collins INTEGER,
+                oxford INTEGER,
+                tag TEXT
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_core_vocab_rank
+            ON core_vocabulary(frequency_rank)
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         // FTS5 全文搜索索引（word + ai_content 可搜索）
         let fts_result = sqlx::query(
             r#"
@@ -800,5 +849,35 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_multi_source_dict_tables_exist() {
+        let store = EventStore::new("sqlite::memory:").await.unwrap();
+        store.init_schema().await.unwrap();
+
+        // oxford_dict：插入 + 精确查询
+        sqlx::query("INSERT INTO oxford_dict (word, meaning) VALUES ('hello', 'int. 你好')")
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        let meaning: String =
+            sqlx::query_scalar("SELECT meaning FROM oxford_dict WHERE word = 'hello'")
+                .fetch_one(&store.pool)
+                .await
+                .unwrap();
+        assert_eq!(meaning, "int. 你好");
+
+        // gpt_dict：插入 + 查询
+        sqlx::query("INSERT INTO gpt_dict (word, content) VALUES ('serendipity', '意外发现')")
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        let content: String =
+            sqlx::query_scalar("SELECT content FROM gpt_dict WHERE word = 'serendipity'")
+                .fetch_one(&store.pool)
+                .await
+                .unwrap();
+        assert_eq!(content, "意外发现");
     }
 }
