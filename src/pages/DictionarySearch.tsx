@@ -21,6 +21,7 @@ import { detectSpeakLang } from '../utils/speech';
 import { useI18n } from '../i18n';
 import { saveAndCollect, summarizeReport } from '../hooks/useCollectionPush';
 import { extractWordsAndStudy } from '../services/vocabulary';
+import { CoreVocabularyList } from '../components/vocabulary';
 import {
   getDictSources,
   saveDictSources,
@@ -484,11 +485,29 @@ function DictionarySearch() {
             </div>
           )}
           {!result && !isLoading && !error && (
-            <div className="text-center text-text-secondary py-12">
-              <Search size={48} className="mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">输入英文单词开始查询</p>
-              <p className="text-sm mt-2">多源聚合：自动合并多个词典的数据</p>
-            </div>
+            searchQuery ? (
+              <div className="text-center text-text-secondary py-12">
+                <Search size={48} className="mx-auto mb-4 opacity-50" />
+                <p className="text-lg font-medium">按回车查询单词</p>
+                <p className="text-sm mt-2">多源聚合：自动合并多个词典的数据</p>
+              </div>
+            ) : (
+              <div className="bg-bg-secondary border border-border rounded-lg overflow-hidden">
+                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-text-primary flex items-center gap-2">
+                    <Database size={14} />
+                    核心词库浏览
+                  </h3>
+                  <span className="text-xs text-text-tertiary">
+                    点击单词直接查询 · 按词频排序
+                  </span>
+                </div>
+                <CoreVocabularyList
+                  className="h-64"
+                  onSelectWord={(w) => void handleLookup(w)}
+                />
+              </div>
+            )
           )}
           {result && <ResultCard result={result} onPlayAudio={playAudio} onSpeak={playTts} />}
         </div>
