@@ -840,7 +840,8 @@ pub struct DictionaryImportStatus {
 pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result<String, String> {
     let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
     let pool = store.pool();
-    let ecdict_pool = state.ecdict_pool.as_ref().ok_or("ECDICT 未连接")?;
+    // ECDICT 仅核心词库需要；缺失时只跳过核心词库，Oxford/GPT 照常导入
+    let ecdict_pool = state.ecdict_pool.as_ref();
 
     // S1-2: tables (oxford_dict / gpt_dict / core_vocabulary) are now created
     // by EventStore::init_schema at startup (and documented in migrations
@@ -877,15 +878,17 @@ pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result
                         let w = word.trim().trim_start_matches('\n').to_lowercase();
                         let m = meaning.trim();
                         if !w.is_empty() && !m.is_empty() {
-                            sqlx::query(
+                            if sqlx::query(
                                 "INSERT OR IGNORE INTO oxford_dict (word, meaning) VALUES (?, ?)",
                             )
                             .bind(&w)
                             .bind(m)
                             .execute(&mut *tx)
                             .await
-                            .ok();
-                            oxford_count += 1;
+                            .is_ok()
+                            {
+                                oxford_count += 1;
+                            }
                         }
                     }
                     if oxford_count % 5000 == 0 && oxford_count > 0 {
@@ -917,13 +920,15 @@ pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result
                         continue;
                     }
                     if let Ok(entry) = serde_json::from_str::<GptEntry>(line) {
-                        sqlx::query("INSERT OR IGNORE INTO gpt_dict (word, content) VALUES (?, ?)")
+                        if sqlx::query("INSERT OR IGNORE INTO gpt_dict (word, content) VALUES (?, ?)")
                             .bind(entry.word.to_lowercase())
                             .bind(&entry.content)
                             .execute(&mut *tx)
                             .await
-                            .ok();
-                        gpt_count += 1;
+                            .is_ok()
+                        {
+                            gpt_count += 1;
+                        }
                     }
                     if gpt_count % 1000 == 0 && gpt_count > 0 {
                         tx.commit().await.map_err(|e| e.to_string())?;
@@ -935,32 +940,38 @@ pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result
         }
     }
 
-    // 导入核心词库
+    // 导入核心词库（依赖 ECDICT；未连接时跳过）
     if existing_vocab == 0 {
-        let rows = sqlx::query(
-            "SELECT word, frq, bnc, collins, oxford, tag FROM stardict WHERE frq IS NOT NULL ORDER BY frq DESC LIMIT 15000",
-        ).fetch_all(ecdict_pool).await.map_err(|e| e.to_string())?;
+        if let Some(ecdict_pool) = ecdict_pool {
+            let rows = sqlx::query(
+                "SELECT word, frq, bnc, collins, oxford, tag FROM stardict WHERE frq IS NOT NULL ORDER BY frq DESC LIMIT 15000",
+            ).fetch_all(ecdict_pool).await.map_err(|e| e.to_string())?;
 
-        let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-        for (rank, row) in rows.iter().enumerate() {
-            let word: String = row.get("word");
-            let frq: Option<i64> = row.get("frq");
-            let bnc: Option<i64> = row.get("bnc");
-            let collins: Option<i64> = row.get("collins");
-            let oxford: Option<i64> = row.get("oxford");
-            let tag: Option<String> = row.get("tag");
+            let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+            for (rank, row) in rows.iter().enumerate() {
+                let word: String = row.get("word");
+                let frq: Option<i64> = row.get("frq");
+                let bnc: Option<i64> = row.get("bnc");
+                let collins: Option<i64> = row.get("collins");
+                let oxford: Option<i64> = row.get("oxford");
+                let tag: Option<String> = row.get("tag");
 
-            sqlx::query("INSERT OR IGNORE INTO core_vocabulary (word, frequency_rank, frq, bnc, collins, oxford, tag) VALUES (?, ?, ?, ?, ?, ?, ?)")
-                .bind(&word).bind((rank + 1) as i64).bind(frq).bind(bnc).bind(collins).bind(oxford).bind(&tag)
-                .execute(&mut *tx).await.ok();
-            vocab_count += 1;
+                let inserted = sqlx::query("INSERT OR IGNORE INTO core_vocabulary (word, frequency_rank, frq, bnc, collins, oxford, tag) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                    .bind(&word).bind((rank + 1) as i64).bind(frq).bind(bnc).bind(collins).bind(oxford).bind(&tag)
+                    .execute(&mut *tx).await;
+                if inserted.is_ok() {
+                    vocab_count += 1;
+                }
 
-            if vocab_count % 5000 == 0 {
-                tx.commit().await.map_err(|e| e.to_string())?;
-                tx = pool.begin().await.map_err(|e| e.to_string())?;
+                if vocab_count % 5000 == 0 {
+                    tx.commit().await.map_err(|e| e.to_string())?;
+                    tx = pool.begin().await.map_err(|e| e.to_string())?;
+                }
             }
+            tx.commit().await.map_err(|e| e.to_string())?;
+        } else {
+            tracing::warn!("import_dictionary_data: ECDICT 未连接，跳过核心词库导入");
         }
-        tx.commit().await.map_err(|e| e.to_string())?;
     }
 
     Ok(format!(
@@ -978,15 +989,18 @@ struct GptEntry {
 /// 解析 Oxford SQL INSERT 行
 /// 格式: (id, 'letter', 'word', 'meaning')
 fn parse_oxford_line(line: &str) -> Option<(String, String)> {
+    // 实际格式: (word_id, 'letter', 'word', 'meaning')
+    // 例如: (1, 'a', 'A-', ' prefix (also an-...)')
     // 去掉开头的 ( 和结尾的 ),
     let inner = line.trim().trim_start_matches('(').trim_end_matches(',');
     let inner = inner.trim_end_matches(')');
 
-    // 找到第3个和第4个 ' 分隔的字段
-    let parts: Vec<&str> = inner.splitn(4, "', '").collect();
-    if parts.len() >= 4 {
-        let word = parts[2].trim_start_matches('\'').trim_end_matches('\'');
-        let meaning = parts[3].trim_start_matches('\'').trim_end_matches('\'');
+    // 找 word 字段：word 是第 3 个字段（第 2 个引号字符串）
+    // 用 splitn(3, "', '") 拿到前 3 段，第 2 段即 word
+    let parts: Vec<&str> = inner.splitn(3, "', '").collect();
+    if parts.len() >= 3 {
+        let word = parts[1].trim_start_matches('\'').trim_end_matches('\'');
+        let meaning = parts[2].trim_start_matches('\'').trim_end_matches('\'');
         Some((word.to_string(), meaning.to_string()))
     } else {
         // 备用解析：按逗号分割（前两个是数字和单字母）
@@ -1211,5 +1225,41 @@ mod tests {
         let pool = test_pool().await;
         let lemma = resolve_lemma("zzqxwv", &pool).await.unwrap();
         assert_eq!(lemma, None);
+    }
+
+    #[test]
+    fn parse_oxford_line_real_oedict_format() {
+        // 与 dictionaries/oxford-41k/oedict.sql 实际数据格式一致
+        let line = "(1, 'a', 'A-', ' prefix (also an- before a vowel sound) not, without (amoral). [greek]'),";
+        let (word, meaning) = parse_oxford_line(line).unwrap();
+        assert_eq!(word, "A-");
+        assert_eq!(meaning, " prefix (also an- before a vowel sound) not, without (amoral). [greek]");
+
+        // 含换行转义 \n 的 word（如 '\nAa'）
+        let line2 = "(2, 'a', '\nAa', ' abbr. 1 automobile association.'),";
+        let (word2, _) = parse_oxford_line(line2).unwrap();
+        assert_eq!(word2, "\nAa");
+    }
+
+    #[test]
+    fn parse_oxford_line_ignores_non_insert_lines() {
+        // 非 ( 开头行应返回 None（调用方已用 starts_with('(') 过滤）
+        assert_eq!(parse_oxford_line("INSERT INTO `oedict` ..."), None);
+        assert_eq!(parse_oxford_line(""), None);
+    }
+
+    #[test]
+    fn parse_gpt_entry_real_format() {
+        // 与 dictionaries/gpt4-dict/gptwords.json 实际格式一致（每行一个 JSON）
+        let line = "{\"word\":\"A.M.\",\"content\":\"### 基本释义\\nA.M. 是拉丁语 Ante Meridiem 的缩写。\"}";
+        let entry: GptEntry = serde_json::from_str(line).unwrap();
+        assert_eq!(entry.word, "A.M.");
+        assert!(entry.content.contains("Ante Meridiem"));
+
+        // 含中文 + 转义 \n 的内容
+        let line2 = "{\"word\":\"serendipity\",\"content\":\"意外发现好东西的能力\"}";
+        let entry2: GptEntry = serde_json::from_str(line2).unwrap();
+        assert_eq!(entry2.word, "serendipity");
+        assert_eq!(entry2.content, "意外发现好东西的能力");
     }
 }
