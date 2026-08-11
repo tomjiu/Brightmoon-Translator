@@ -193,18 +193,18 @@ impl LlmEngine {
         let to_lang = lang_map(to);
 
         let base = if self.custom_prompt.is_empty() {
-                    format!(
-                        r"你是一个专业的翻译专家。请遵循以下规则：
-        1. 准确传达原文含义，保持自然流畅
-        2. 专业术语使用标准译法
-        3. 保持原文的语气和风格
-        4. 对于代码/技术内容，保留原文格式
-        5. 只返回翻译结果，不要添加任何解释或前缀
+            format!(
+                r"你是一个专业的翻译专家。请遵循以下规则：
+1. 准确传达原文含义，保持自然流畅
+2. 专业术语使用标准译法
+3. 保持原文的语气和风格
+4. 对于代码/技术内容，保留原文格式
+5. 只返回翻译结果，不要添加任何解释或前缀
 
-        源语言：{from_lang}
-        目标语言：{to_lang}"
-                    )
-                } else {
+源语言：{from_lang}
+目标语言：{to_lang}"
+            )
+        } else {
                     self.custom_prompt
                         .replace("{from}", &from_lang)
                         .replace("{to}", &to_lang)
