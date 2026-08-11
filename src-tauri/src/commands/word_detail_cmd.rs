@@ -223,6 +223,147 @@ pub async fn get_related_words(
     Ok(related)
 }
 
+/// 词根图谱：词根拆解 + 同根词列表
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootGraph {
+    pub word: String,
+    /// 从 morphology 拆解出的词根（不含前后缀）
+    pub roots: Vec<String>,
+    /// 共享词根的单词（带释义，来自 ECDICT）
+    pub root_mates: Vec<RelatedWord>,
+    /// 数据来源: morphology / heuristic
+    pub source: String,
+}
+
+/// 从 parts JSON 提取所有词根（`part_type` == "root"）
+fn extract_roots(parts_json: &str) -> Vec<String> {
+    let parts: Vec<serde_json::Value> = serde_json::from_str(parts_json).unwrap_or_default();
+    parts
+        .iter()
+        .filter_map(|p| {
+            let pt = p.get("part_type").and_then(|v| v.as_str()).unwrap_or("");
+            if pt == "root" {
+                Some(p.get("part").and_then(|v| v.as_str()).unwrap_or("").to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// 词缀启发式：剥离常见前缀/后缀，剩余部分视为词根
+fn heuristic_roots(word: &str) -> Vec<String> {
+    const PREFIXES: &[&str] = &["un", "re", "in", "im", "dis", "pre", "over", "under"];
+    const SUFFIXES: &[&str] = &["ly", "tion", "ment", "ness", "ful", "ing", "ed", "er", "est"];
+
+    let mut candidate = word.to_string();
+    for p in PREFIXES {
+        if let Some(stripped) = candidate.strip_prefix(p) {
+            if stripped.len() >= 3 {
+                candidate = stripped.to_string();
+            }
+            break;
+        }
+    }
+    for s in SUFFIXES {
+        if let Some(stripped) = candidate.strip_suffix(s) {
+            if stripped.len() >= 3 {
+                candidate = stripped.to_string();
+            }
+            break;
+        }
+    }
+    if candidate.len() >= 3 {
+        vec![candidate]
+    } else {
+        vec![word.to_string()]
+    }
+}
+
+/// 获取词根图谱：真实词根拆解 + 同根词（基于 morphology 表）
+#[tauri::command]
+pub async fn get_root_graph(
+    state: State<'_, crate::AppState>,
+    word: String,
+) -> Result<RootGraph, String> {
+    let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
+    let ecdict_pool = state.ecdict_pool.as_ref().ok_or("ECDICT 未连接")?;
+    let word_lower = word.to_lowercase();
+
+    // 1. 尝试从 morphology 表获取拆解
+    let mut roots = Vec::new();
+    if let Ok(Some(row)) = sqlx::query("SELECT parts FROM morphology WHERE word = ?")
+        .bind(&word_lower)
+        .fetch_optional(store.pool())
+        .await
+    {
+        let parts_json: String = row.try_get("parts").unwrap_or_default();
+        roots = extract_roots(&parts_json);
+    }
+
+    // 2. fallback: 词缀启发式（前缀/后缀剥离，剩余视为词根）
+    let source;
+    if roots.is_empty() {
+        roots = heuristic_roots(&word_lower);
+        source = "heuristic".to_string();
+    } else {
+        source = "morphology".to_string();
+    }
+
+    // 3. 收集同根词：主库 morphology 找共享词根的单词
+    let mut mate_words: Vec<String> = Vec::new();
+    for root in &roots {
+        if root.len() < 3 {
+            continue; // 过短的词根会导致大量误匹配
+        }
+        let rows = sqlx::query(
+            "SELECT word FROM morphology
+             WHERE word != ?
+               AND (segmentation LIKE ? OR word LIKE ?)
+             LIMIT 20",
+        )
+        .bind(&word_lower)
+        .bind(format!("%{root}%"))
+        .bind(format!("{root}%"))
+        .fetch_all(store.pool())
+        .await
+        .unwrap_or_default();
+
+        for row in rows {
+            let mate: String = row.get("word");
+            mate_words.push(mate);
+        }
+    }
+
+    // 去重
+    mate_words.sort();
+    mate_words.dedup();
+    mate_words.truncate(20);
+
+    // 4. 用 ECDICT 批量补释义
+    let mut root_mates = Vec::new();
+    for mate in &mate_words {
+        let definition: Option<String> = sqlx::query_scalar("SELECT definition FROM stardict WHERE word = ?")
+            .bind(mate)
+            .fetch_optional(ecdict_pool)
+            .await
+            .unwrap_or(None);
+        root_mates.push(RelatedWord {
+            word: mate.clone(),
+            relation_type: "root".to_string(),
+            definition: definition.map(|d| d.chars().take(50).collect()),
+        });
+    }
+
+    Ok(RootGraph {
+        word,
+        roots,
+        root_mates,
+        source,
+    })
+}
+
 /// 获取单词在语料库中的例句
 #[tauri::command]
 pub async fn get_corpus_examples(
@@ -507,5 +648,33 @@ mod tests {
     fn format_morphology_empty_everything() {
         let result = format_morphology_result("word", "", None, "[]");
         assert!(result.contains("单一词根"), "got: {result}");
+    }
+
+    // ── T13: root graph extraction ───────────────────────────────────────
+
+    #[test]
+    fn test_extract_roots_from_parts() {
+        // brilliant → bril.li.ant 结构, parts: [{part:"bril", part_type:"root"}, ...]
+        let parts_json = r#"[
+            {"part":"bril","part_type":"root","meaning":null},
+            {"part":"li","part_type":"suffix","meaning":null},
+            {"part":"ant","part_type":"suffix","meaning":null}
+        ]"#;
+        // extract_roots 在模块外实现（此处经 super:: 调用）
+        let roots = extract_roots(parts_json);
+        assert_eq!(roots, vec!["bril"]);
+    }
+
+    #[test]
+    fn test_extract_roots_empty() {
+        assert!(extract_roots("").is_empty());
+        assert!(extract_roots("not-json").is_empty());
+    }
+
+    #[test]
+    fn test_heuristic_roots_strips_affixes() {
+        assert_eq!(heuristic_roots("unhappy"), vec!["happy"]);
+        assert_eq!(heuristic_roots("happiness"), vec!["happi"]);
+        assert_eq!(heuristic_roots("sun"), vec!["sun"]); // 太短不剥离
     }
 }

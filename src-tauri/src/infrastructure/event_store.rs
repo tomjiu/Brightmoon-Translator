@@ -289,6 +289,19 @@ impl EventStore {
         .execute(&self.pool)
         .await?;
 
+        // T11: 应用设置表（FSRS 优化参数等 KV）
+        sqlx::query(
+            r"
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            ",
+        )
+        .execute(&self.pool)
+        .await?;
+
         // T8: AI 批注持久化（annotations 表）
         sqlx::query(
             r"
@@ -599,6 +612,44 @@ impl EventStore {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.map(|(t,)| t))
+    }
+
+    /// T11: 读取应用设置（KV），返回 Option<value>
+    pub async fn get_setting(&self, key: &str) -> Result<Option<String>> {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT value FROM app_settings WHERE key = ?")
+                .bind(key)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|(v,)| v))
+    }
+
+    /// T11: 写入应用设置（KV，upsert）
+    pub async fn set_setting(&self, key: &str, value: &str) -> Result<()> {
+        sqlx::query(
+            r"
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            ",
+        )
+        .bind(key)
+        .bind(value)
+        .bind(chrono::Utc::now().timestamp())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// T11: 删除应用设置（KV）
+    pub async fn delete_setting(&self, key: &str) -> Result<()> {
+        sqlx::query("DELETE FROM app_settings WHERE key = ?")
+            .bind(key)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     /// 重建卡牌（从事件流）— P0 修复:覆盖 `from_events` 生成的新 UUID 为真实 `card_id`

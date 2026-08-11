@@ -35,8 +35,22 @@ export interface DifficultyBucket {
   count: number;
 }
 
+export interface ApplyParamsResult {
+  applied: boolean;
+  params: number[];
+  reason: string;
+}
+
 export async function getFsrsAnalysis(): Promise<FsrsAnalysis> {
   return invokeOrThrow('get_fsrs_analysis');
+}
+
+export async function applyFsrsParams(): Promise<ApplyParamsResult> {
+  return invokeOrThrow('apply_fsrs_params');
+}
+
+export async function resetFsrsParams(): Promise<void> {
+  return invokeOrThrow('reset_fsrs_params');
 }
 
 export async function getForgettingCurve(stability: number): Promise<ForgettingCurvePoint[]> {
