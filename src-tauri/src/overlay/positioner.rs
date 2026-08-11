@@ -134,7 +134,7 @@ mod tests {
         assert!(y >= 100.0 + 20.0 + 8.0, "should be below the word, got y={y}");
         assert!(y + 200.0 <= 1080.0);
         // Card is wider than the word → centered position clamps to the work area.
-        assert!(x >= 4.0 && x <= 1616.0, "x inside work area, got x={x}");
+        assert!((4.0..=1616.0).contains(&x), "x inside work area, got x={x}");
     }
 
     #[test]

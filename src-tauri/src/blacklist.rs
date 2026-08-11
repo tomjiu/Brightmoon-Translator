@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn test_protect_skips_empty_blacklist_words() {
         let processor =
-            BlacklistProcessor::new(vec!["".to_string(), "API".to_string(), "".to_string()]);
+            BlacklistProcessor::new(vec![String::new(), "API".to_string(), String::new()]);
         let (protected, map) = processor.protect("Use API");
         // Empty strings are skipped, index 1 is "API"
         assert!(protected.contains("__BLACKLIST_1__"));

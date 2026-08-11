@@ -833,7 +833,7 @@ pub fn write_bilingual_pdf(
     // Load CJK font if available; otherwise fall back to Helvetica.
     let font = if let Some(font_path) = resolve_cjk_font() {
         let font_data = std::fs::read(&font_path)
-            .map_err(|e| format!("Failed to read font {font_path:?}: {e}"))?;
+            .map_err(|e| format!("Failed to read font {}: {e}", font_path.display()))?;
         // printpdf expects Vec<u8> for both TTF and TTC.
         // msyh.ttc is a TrueType Collection; printpdf's TTF loader reads
         // only the first face, which is YaHei Regular — exactly what we want.
@@ -1089,7 +1089,7 @@ pub fn write_translated_pdf(
 
     let font = if let Some(font_path) = resolve_cjk_font() {
         let font_data = std::fs::read(&font_path)
-            .map_err(|e| format!("Failed to read font {font_path:?}: {e}"))?;
+            .map_err(|e| format!("Failed to read font {}: {e}", font_path.display()))?;
         doc.add_external_font(font_data.as_slice())
             .map_err(|e| format!("Failed to load CJK font: {e}"))?
     } else {

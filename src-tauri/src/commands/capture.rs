@@ -1032,19 +1032,19 @@ pub async fn get_window_rect_cmd(hwnd: isize) -> Result<Option<serde_json::Value
     #[cfg(target_os = "windows")]
     {
         #[repr(C)]
-        struct RECT {
+        struct Rect {
             left: i32,
             top: i32,
             right: i32,
             bottom: i32,
         }
         extern "system" {
-            fn GetWindowRect(hWnd: *mut std::ffi::c_void, lpRect: *mut RECT) -> i32;
+            fn GetWindowRect(hWnd: *mut std::ffi::c_void, lpRect: *mut Rect) -> i32;
         }
         // SAFETY: GetWindowRect is a standard Win32 API. Buffer is stack-allocated.
         // SAFETY: GetWindowRect is a standard Win32 API.
         unsafe {
-            let mut rect = RECT {
+            let mut rect = Rect {
                 left: 0,
                 top: 0,
                 right: 0,

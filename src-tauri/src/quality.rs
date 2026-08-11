@@ -389,7 +389,7 @@ mod tests {
     fn test_bleu_approx_identical() {
         let mut details = Vec::new();
         let score = calculate_bleu_approx("hello world", "hello world", &mut details);
-        assert!(score > 80.0, "Identical texts should score high: {}", score);
+        assert!(score > 80.0, "Identical texts should score high: {score}");
     }
 
     #[test]
@@ -403,21 +403,21 @@ mod tests {
     fn test_length_score_balanced() {
         let mut details = Vec::new();
         let score = calculate_length_score("hello", "你好", "en-zh", &mut details);
-        assert!(score > 50.0, "Reasonable length should score OK: {}", score);
+        assert!(score > 50.0, "Reasonable length should score OK: {score}");
     }
 
     #[test]
     fn test_fluency_score_clean() {
         let mut details = Vec::new();
         let score = calculate_fluency_score("这是一段正常的翻译", "en-zh", &mut details);
-        assert!(score > 80.0, "Clean text should score high: {}", score);
+        assert!(score > 80.0, "Clean text should score high: {score}");
     }
 
     #[test]
     fn test_fluency_score_repeated() {
         let mut details = Vec::new();
         let score = calculate_fluency_score("哈哈哈哈哈哈哈哈哈哈哈哈哈", "en-zh", &mut details);
-        assert!(score < 80.0, "Repeated text should score lower: {}", score);
+        assert!(score < 80.0, "Repeated text should score lower: {score}");
     }
 
     #[test]

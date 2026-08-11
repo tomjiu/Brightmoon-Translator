@@ -1,6 +1,7 @@
 //! Sample English book paragraphs → zh via Google (no API key).
 //!
 //! cargo run --manifest-path src-tauri/Cargo.toml --example en_book_translate_smoke -- path1.pdf [path2...]
+#![allow(clippy::doc_markdown)]
 
 use moontranslator_lib::engine::google::GoogleEngine;
 use moontranslator_lib::engine::TranslationEngine;
@@ -16,7 +17,7 @@ async fn main() {
 
     let engine = GoogleEngine::new();
     for path in &args {
-        println!("========== {}", path);
+        println!("========== {path}");
         match pdf::extract_text_from_pdf(path) {
             Ok(doc) => {
                 let full: String = doc
@@ -55,7 +56,7 @@ async fn main() {
 fn pick_english_samples(full: &str, n: usize, min_len: usize, max_len: usize) -> Vec<String> {
     let mut out = Vec::new();
     // Prefer paragraph-ish chunks
-    for para in full.split(|c: char| c == '\n' || c == '\u{0c}') {
+    for para in full.split(['\n', '\u{0c}']) {
         let t = para.split_whitespace().collect::<Vec<_>>().join(" ");
         if t.len() < min_len {
             continue;
@@ -64,7 +65,7 @@ fn pick_english_samples(full: &str, n: usize, min_len: usize, max_len: usize) ->
             continue;
         }
         // skip pure TOC / page numbers
-        let digit_ratio = t.chars().filter(|c| c.is_ascii_digit()).count() as f64 / t.len() as f64;
+        let digit_ratio = t.chars().filter(char::is_ascii_digit).count() as f64 / t.len() as f64;
         if digit_ratio > 0.25 {
             continue;
         }
@@ -97,7 +98,7 @@ fn pick_english_samples(full: &str, n: usize, min_len: usize, max_len: usize) ->
 }
 
 fn one_line(s: &str, max: usize) -> String {
-    let t = s.replace('\n', " ").replace('\r', " ");
+    let t = s.replace(['\n', '\r'], " ");
     if t.chars().count() <= max {
         t
     } else {
@@ -108,7 +109,7 @@ fn one_line(s: &str, max: usize) -> String {
 }
 
 fn ascii_letter_ratio(s: &str) -> f64 {
-    let letters = s.chars().filter(|c| c.is_ascii_alphabetic()).count();
+    let letters = s.chars().filter(char::is_ascii_alphabetic).count();
     let total = s.chars().filter(|c| !c.is_whitespace()).count().max(1);
     letters as f64 / total as f64
 }

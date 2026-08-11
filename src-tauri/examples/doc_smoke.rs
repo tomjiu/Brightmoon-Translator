@@ -2,6 +2,7 @@
 //!
 //! Usage:
 //!   cargo run --manifest-path src-tauri/Cargo.toml --example doc_smoke -- "E:\book\foo.pdf" "E:\book\bar.epub"
+#![allow(clippy::doc_markdown)]
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

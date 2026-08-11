@@ -185,7 +185,7 @@ mod tests {
     fn test_check_empty() {
         let r = check_segments(
             &["hello".into()],
-            &["".into()],
+            &[String::new()],
             &ResponseCheckOptions {
                 reject_empty: true,
                 ..Default::default()

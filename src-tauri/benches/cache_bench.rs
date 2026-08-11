@@ -79,11 +79,11 @@ fn bench_cache_write(c: &mut Criterion) {
                 let mut counter = 0;
                 b.iter(|| {
                     rt.block_on(async {
-                        let key = format!("key_{}", counter);
-                        let value = format!("value_{}", counter);
+                        let key = format!("key_{counter}");
+                        let value = format!("value_{counter}");
                         cache.set(black_box(&key), black_box(&value)).await;
                         counter += 1;
-                    })
+                    });
                 });
             },
         );
@@ -103,7 +103,7 @@ fn bench_cache_read_hit(c: &mut Criterion) {
     rt.block_on(async {
         for i in 0..1000 {
             cache
-                .set(&format!("key_{}", i), &format!("value_{}", i))
+                .set(&format!("key_{i}"), &format!("value_{i}"))
                 .await;
         }
     });
@@ -134,7 +134,7 @@ fn bench_cache_read_miss(c: &mut Criterion) {
         let mut counter = 0usize;
         b.iter(|| {
             rt.block_on(async {
-                let key = format!("nonexistent_{}", counter);
+                let key = format!("nonexistent_{counter}");
                 counter += 1;
                 cache.get(black_box(&key)).await
             })
@@ -157,7 +157,7 @@ fn bench_cache_concurrent(c: &mut Criterion) {
         rt.block_on(async {
             for i in 0..1000 {
                 cache
-                    .set(&format!("key_{}", i), &format!("value_{}", i))
+                    .set(&format!("key_{i}"), &format!("value_{i}"))
                     .await;
             }
         });
@@ -217,13 +217,13 @@ fn bench_cache_eviction(c: &mut Criterion) {
                         // Fill cache to capacity
                         for i in 0..cache_size {
                             cache
-                                .set(&format!("key_{}", i), &format!("value_{}", i))
+                                .set(&format!("key_{i}"), &format!("value_{i}"))
                                 .await;
                         }
                         // Trigger evictions
                         for i in 0..100 {
                             cache
-                                .set(&format!("new_key_{}", i), &format!("new_value_{}", i))
+                                .set(&format!("new_key_{i}"), &format!("new_value_{i}"))
                                 .await;
                         }
                         cache.size().await

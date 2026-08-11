@@ -330,7 +330,7 @@ pub fn generate_srt(entries: &[SubtitleEntry], bilingual: bool) -> String {
 ///   - `\r\n` line endings (the `\r` survived and corrupted the line)
 ///   - `{` / `}` in text (ASS interprets these as override-tag delimiters)
 ///   - empty translations (produced a trailing `\N` with nothing after it)
-/// We now route through `escape_ass_text` which handles all three cases.
+///   We now route through `escape_ass_text` which handles all three cases.
 pub fn generate_ass_bilingual(original_content: &str, entries: &[SubtitleEntry]) -> String {
     let mut output = String::new();
     let mut in_events = false;

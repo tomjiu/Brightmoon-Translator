@@ -49,7 +49,7 @@ pub struct OverlayHttpServer {
 impl OverlayHttpServer {
     /// Start the overlay HTTP server on an available port.
     /// Returns the server handle with the base URL.
-    pub async fn start() -> Result<Self, String> {
+    pub fn start() -> Result<Self, String> {
         let state = Arc::new(OverlayServerState::new());
 
         // Find an available port

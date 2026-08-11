@@ -148,7 +148,7 @@ pub async fn run_winrt_ocr_async(
     // Tier4-6: check config flag without holding the lock across await.
     // The config is read once per call; subprocess mode serializes via
     // OCR_WORKER_LOCK inside the worker function.
-    let use_subprocess = read_winrt_ocr_use_subprocess_flag().await;
+    let use_subprocess = read_winrt_ocr_use_subprocess_flag();
     if use_subprocess {
         tokio::task::spawn_blocking(move || {
             crate::ocr_worker::run_winrt_ocr_via_subprocess(&png_bytes, lang.as_deref())
@@ -168,7 +168,7 @@ pub async fn run_winrt_ocr_async(
 ///
 /// Tier4-6: this is a best-effort read — if the `AppState` is not yet
 /// initialized (early app startup), we default to in-process OCR.
-async fn read_winrt_ocr_use_subprocess_flag() -> bool {
+fn read_winrt_ocr_use_subprocess_flag() -> bool {
     // Try to read from the global AppState via tauri::AppHandle. If we
     // can't get it (no app context, e.g. in tests), return false.
     // This avoids needing to thread the config through every OCR call site.

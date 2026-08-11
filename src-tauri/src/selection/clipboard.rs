@@ -681,7 +681,7 @@ mod tests {
         );
     }
 
-    /// S5-6: ClipboardOpenError distinguishes open_clipboard_retry failure
+    /// S5-6: `ClipboardOpenError` distinguishes `open_clipboard_retry` failure
     /// (which should trigger UIA fallback) from a normal None (timeout /
     /// unchanged / non-text payload, which should NOT).
     #[test]
@@ -744,7 +744,7 @@ mod tests {
     }
 
     /// UTF-8 must win even when the codepage says otherwise: modern apps
-    /// (browsers, Electron, VS Code) put UTF-8 into CF_TEXT on every locale.
+    /// (browsers, Electron, VS Code) put UTF-8 into `CF_TEXT` on every locale.
     #[test]
     fn decode_prefers_utf8_over_codepage() {
         // "日本語" as UTF-8 bytes, but pretend the codepage is 1252.

@@ -253,9 +253,9 @@ pub fn default_fish_voices() -> Vec<TtsVoice> {
 }
 
 /// Youdao dictvoice (good for words; weak for long text).
-pub async fn synthesize_youdao_dictvoice(text: &str, lang: &str) -> anyhow::Result<Vec<u8>> {
-    // type=1 UK, type=2 US; default US for en, type=2 otherwise
-    let voice_type = if lang.starts_with("en") { "2" } else { "2" };
+pub async fn synthesize_youdao_dictvoice(text: &str, _lang: &str) -> anyhow::Result<Vec<u8>> {
+    // type=2 US; both variants resolve to the same voice for now
+    let voice_type = "2";
     let url = format!(
         "https://dict.youdao.com/dictvoice?audio={}&type={}",
         urlencoding::encode(text),

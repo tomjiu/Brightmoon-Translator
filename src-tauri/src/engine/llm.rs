@@ -281,7 +281,6 @@ impl LlmEngine {
                         attempt + 1,
                         crate::security::sanitize_log_message(&last_error)
                     );
-                    continue;
                 },
             }
         }
@@ -584,7 +583,6 @@ impl LlmEngine {
                         total,
                         crate::security::sanitize_log_message(&last_error)
                     );
-                    continue;
                 },
             }
         }

@@ -93,7 +93,6 @@ pub async fn export_subtitle_file(
 
     let format = match format.to_lowercase().as_str() {
         "srt" | "vtt" | "lrc" | "ass" | "ssa" => format.to_lowercase(),
-        other if other.is_empty() => "srt".into(),
         _ => "srt".into(),
     };
 

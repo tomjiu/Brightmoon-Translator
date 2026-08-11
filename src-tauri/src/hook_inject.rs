@@ -679,7 +679,7 @@ impl HookManager {
             let json_str = std::str::from_utf8(&buf[..nul])
                 .map_err(|e| format!("get_stats: invalid UTF-8 in stats JSON: {e}"))?;
 
-            parse_stats_json(json_str)
+            Ok(parse_stats_json(json_str))
         }
     }
 
@@ -728,7 +728,7 @@ impl HookManager {
             // Step 1+2: resolve absolute hook address.
             let resolved_addr = if crate::hook_code::is_rva(code.addr) {
                 // RVA into module — find module base in remote process.
-                let base = find_remote_module_base(process, self.target_pid, &code.module)?
+                let base = find_remote_module_base(process, self.target_pid, &code.module)
                     .ok_or_else(|| format!(
                         "install_h_code: module '{}' not found in target PID {}",
                         code.module, self.target_pid
@@ -1144,7 +1144,7 @@ unsafe fn find_remote_module_base(
     process: HANDLE,
     _pid: u32,
     target_basename: &str,
-) -> Result<Option<usize>, String> {
+) -> Option<usize> {
     use windows::Win32::System::ProcessStatus::EnumProcessModules;
 
     let mut mods: [HMODULE; 1024] = [HMODULE::default(); 1024];
@@ -1152,7 +1152,7 @@ unsafe fn find_remote_module_base(
     if EnumProcessModules(process, mods.as_mut_ptr(), std::mem::size_of_val(&mods) as u32, &raw mut needed)
         .is_err()
     {
-        return Ok(None);
+        return None;
     }
     let count = (needed as usize / std::mem::size_of::<HMODULE>()).min(mods.len());
 
@@ -1166,11 +1166,11 @@ unsafe fn find_remote_module_base(
             // Extract basename (handle both \ and /).
             let basename = path.rsplit(['\\', '/']).next().unwrap_or("");
             if basename.to_ascii_lowercase() == target_lower {
-                return Ok(Some(m.0 as usize));
+                return Some(m.0 as usize);
             }
         }
     }
-    Ok(None)
+    None
 }
 
 // ── 4b: HookStats JSON parser ─────────────────────────────────────────
@@ -1180,7 +1180,7 @@ unsafe fn find_remote_module_base(
 /// We use a tiny hand-rolled parser instead of pulling in `serde_json` for
 /// a single fixed-shape object — the DLL's output format is stable and
 /// documented in `hook_text.cpp::HookGetStats`.
-fn parse_stats_json(json: &str) -> Result<HookStats, String> {
+fn parse_stats_json(json: &str) -> HookStats {
     let mut stats = HookStats::default();
     // Strip braces.
     let inner = json.trim().trim_start_matches('{').trim_end_matches('}');
@@ -1203,7 +1203,7 @@ fn parse_stats_json(json: &str) -> Result<HookStats, String> {
             _ => {}
         }
     }
-    Ok(stats)
+    stats
 }
 
 fn parse_u64(s: &str) -> u64 {
@@ -1217,7 +1217,7 @@ mod stats_parser_tests {
     #[test]
     fn parse_full_stats_json() {
         let json = r#"{"modulesScanned":42,"iatHits":128,"lateLoadedPatched":3,"sendTextCalls":1024,"sendTextFiltered":200,"sendTextEjectBlocked":0,"inlineHooks":2,"hooksInstalled":true,"ldrCookie":true}"#;
-        let stats = parse_stats_json(json).unwrap();
+        let stats = parse_stats_json(json);
         assert_eq!(stats.modules_scanned, 42);
         assert_eq!(stats.iat_hits, 128);
         assert_eq!(stats.late_loaded_patched, 3);
@@ -1232,7 +1232,7 @@ mod stats_parser_tests {
     #[test]
     fn parse_stats_after_eject() {
         let json = r#"{"modulesScanned":42,"iatHits":128,"lateLoadedPatched":3,"sendTextCalls":1024,"sendTextFiltered":200,"sendTextEjectBlocked":5,"inlineHooks":0,"hooksInstalled":false,"ldrCookie":false}"#;
-        let stats = parse_stats_json(json).unwrap();
+        let stats = parse_stats_json(json);
         assert_eq!(stats.send_text_eject_blocked, 5);
         assert!(!stats.hooks_installed);
         assert!(!stats.ldr_cookie);
@@ -1240,7 +1240,7 @@ mod stats_parser_tests {
 
     #[test]
     fn parse_stats_empty_object() {
-        let stats = parse_stats_json("{}").unwrap();
+        let stats = parse_stats_json("{}");
         assert_eq!(stats.modules_scanned, 0);
         assert!(!stats.hooks_installed);
     }
@@ -1248,7 +1248,7 @@ mod stats_parser_tests {
     #[test]
     fn parse_stats_with_whitespace() {
         let json = r#"{"modulesScanned":  7 , "iatHits": 11}"#;
-        let stats = parse_stats_json(json).unwrap();
+        let stats = parse_stats_json(json);
         assert_eq!(stats.modules_scanned, 7);
         assert_eq!(stats.iat_hits, 11);
     }
@@ -1256,7 +1256,7 @@ mod stats_parser_tests {
     #[test]
     fn parse_stats_unknown_field_ignored() {
         let json = r#"{"modulesScanned":1,"unknownField":"ignore me"}"#;
-        let stats = parse_stats_json(json).unwrap();
+        let stats = parse_stats_json(json);
         assert_eq!(stats.modules_scanned, 1);
     }
 

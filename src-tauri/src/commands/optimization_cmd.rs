@@ -617,7 +617,7 @@ pub async fn resolve_weak_point(
 mod tests {
     use super::*;
 
-    /// 建带 UNIQUE 约束的 weak_points 表（与 init_schema 保持一致）
+    /// 建带 UNIQUE 约束的 `weak_points` 表（与 `init_schema` 保持一致）
     async fn weak_pool() -> sqlx::SqlitePool {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         sqlx::query(

@@ -44,7 +44,7 @@ pub struct OfflineEngine {
     model_dir: PathBuf,
 }
 
-/// Shared native service (one AsyncService worker pool per process).
+/// Shared native service (one `AsyncService` worker pool per process).
 fn shared_service() -> Option<Arc<NativeService>> {
     static SERVICE: std::sync::OnceLock<Option<Arc<NativeService>>> = std::sync::OnceLock::new();
     SERVICE
@@ -52,7 +52,7 @@ fn shared_service() -> Option<Arc<NativeService>> {
         .clone()
 }
 
-/// Shared model cache (pair id -> loaded handle), so every OfflineEngine
+/// Shared model cache (pair id -> loaded handle), so every `OfflineEngine`
 /// instance (Router + commands) reuses loaded models and evictions are global.
 fn shared_models() -> &'static AsyncMutex<HashMap<String, Arc<bridge::NativeModel>>> {
     static MODELS: std::sync::OnceLock<AsyncMutex<HashMap<String, Arc<bridge::NativeModel>>>> =

@@ -623,7 +623,7 @@ async fn get_quiz_words(
 }
 
 /// 打乱数组（Fisher-Yates 洗牌，使用数据库的 `RANDOM()` 作为随机源的补充）
-fn shuffle_vec<T>(v: &mut Vec<T>) {
+fn shuffle_vec<T>(v: &mut [T]) {
     let len = v.len();
     if len <= 1 {
         return;

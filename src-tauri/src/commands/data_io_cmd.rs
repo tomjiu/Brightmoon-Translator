@@ -505,19 +505,19 @@ pub async fn auto_backup_with_cleanup(
                         .to_string_lossy()
                         .starts_with("moontranslator_backup_")
                 })
-                .filter_map(|e| {
+                .map(|e| {
                     let path = e.path();
                     let mtime = std::fs::metadata(&path)
                         .ok()
                         .and_then(|m| m.modified().ok())
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                         .map_or(0, |d| d.as_millis());
-                    Some((path, mtime))
+                    (path, mtime)
                 })
                 .collect();
 
             // 按修改时间倒序（最新在前）
-            backups.sort_by(|a, b| b.1.cmp(&a.1));
+            backups.sort_by_key(|b| std::cmp::Reverse(b.1));
 
             for (path, _) in backups.into_iter().skip(keep) {
                 let _ = std::fs::remove_file(path);

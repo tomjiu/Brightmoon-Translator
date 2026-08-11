@@ -1550,8 +1550,7 @@ mod tests {
         for ch in full_pipeline {
             assert!(
                 !TranslationService::is_lean_ocr_channel(ch),
-                "{:?} must NOT be lean — document/image/batch paths need TM + cache",
-                ch
+                "{ch:?} must NOT be lean — document/image/batch paths need TM + cache"
             );
         }
     }

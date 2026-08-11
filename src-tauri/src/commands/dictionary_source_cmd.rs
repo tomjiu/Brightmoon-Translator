@@ -135,7 +135,7 @@ async fn build_registry(state: &tauri::State<'_, crate::AppState>) -> SourceRegi
 
     // 按优先级排序
     let mut ordered = configs;
-    ordered.sort_by(|a, b| b.2.cmp(&a.2));
+    ordered.sort_by_key(|a| std::cmp::Reverse(a.2));
 
     for (id, _name, _priority, template) in ordered {
         match id.as_str() {

@@ -70,7 +70,7 @@ fn bench_parallel_translation(c: &mut Criterion) {
 
     for engine_count in [1, 2, 3, 5] {
         let engines: Vec<MockTranslationEngine> = (0..engine_count)
-            .map(|i| MockTranslationEngine::new(&format!("engine_{}", i), 50))
+            .map(|i| MockTranslationEngine::new(&format!("engine_{i}"), 50))
             .collect();
 
         let text = "Hello, world!";
@@ -114,7 +114,7 @@ fn bench_batch_translation(c: &mut Criterion) {
 
     for batch_size in [1, 5, 10, 20, 50] {
         let texts: Vec<String> = (0..batch_size)
-            .map(|i| format!("Test sentence number {}", i))
+            .map(|i| format!("Test sentence number {i}"))
             .collect();
 
         group.bench_with_input(

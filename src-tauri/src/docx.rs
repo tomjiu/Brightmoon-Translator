@@ -532,11 +532,11 @@ mod tests {
         let docx_rs::TableRowChild::TableCell(c1) = &row.cells[1];
         let p0 = match &c0.children[0] {
             docx_rs::TableCellContent::Paragraph(p) => p,
-            _ => panic!("expected paragraph"),
+            _ => unreachable!("expected paragraph"),
         };
         let p1 = match &c1.children[0] {
             docx_rs::TableCellContent::Paragraph(p) => p,
-            _ => panic!("expected paragraph"),
+            _ => unreachable!("expected paragraph"),
         };
         assert_eq!(extract_paragraph_text(p0), "你好");
         assert_eq!(extract_paragraph_text(p1), "World");

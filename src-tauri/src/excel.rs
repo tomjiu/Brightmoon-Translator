@@ -589,6 +589,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 here is a formatting fixture, not an approximation of PI
     fn test_data_to_string() {
         assert_eq!(data_to_string(&Data::Empty), "");
         assert_eq!(data_to_string(&Data::String("hello".to_string())), "hello");

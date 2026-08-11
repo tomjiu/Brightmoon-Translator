@@ -331,7 +331,7 @@ mod tests {
                 synonyms: vec![],
                 antonyms: vec![],
             }),
-            fsrs_state: Default::default(),
+            fsrs_state: crate::domain::CardState::default(),
             error_records: vec![],
             annotations: vec![],
             created_at: 0,

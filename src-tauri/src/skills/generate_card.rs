@@ -417,19 +417,18 @@ impl Skill for GenerateCardSkill {
                         );
                         response = Some((r, parsed));
                         break;
-                    } else {
-                        // P0 修复:用 chars().take() 避免在 UTF-8 多字节字符中间切断 panic
-                        let preview: String = r.content.chars().take(200).collect();
-                        tracing::warn!(
-                            "❌ AI JSON解析失败: word='{}', attempt={}, 将重试, raw_content={}",
-                            context.word,
-                            attempt,
-                            preview
-                        );
-                        last_err = Some(anyhow::anyhow!(
-                            "AI 返回 JSON 解析失败: 原始内容: {preview}"
-                        ));
                     }
+                    // P0 修复:用 chars().take() 避免在 UTF-8 多字节字符中间切断 panic
+                    let preview: String = r.content.chars().take(200).collect();
+                    tracing::warn!(
+                        "❌ AI JSON解析失败: word='{}', attempt={}, 将重试, raw_content={}",
+                        context.word,
+                        attempt,
+                        preview
+                    );
+                    last_err = Some(anyhow::anyhow!(
+                        "AI 返回 JSON 解析失败: 原始内容: {preview}"
+                    ));
                 }
                 Err(e) => {
                     tracing::warn!(

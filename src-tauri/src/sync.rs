@@ -454,34 +454,6 @@ pub async fn sync_all(
     })
 }
 
-#[cfg(test)]
-mod crypto_tests {
-    use super::*;
-
-    #[test]
-    fn sync_payload_roundtrip() {
-        let plain = br#"{"en-zh":[{"source":"hello","target":"nihao"}]}"#;
-        let enc = encrypt_sync_payload(plain, "test-password").unwrap();
-        assert!(enc.starts_with(SYNC_ENC_MAGIC));
-        assert_ne!(enc, plain);
-        let dec = decrypt_sync_payload(&enc, "test-password").unwrap();
-        assert_eq!(dec, plain);
-    }
-
-    #[test]
-    fn legacy_plaintext_still_loads() {
-        let plain = b"{\"ok\":true}";
-        let dec = decrypt_sync_payload(plain, "any").unwrap();
-        assert_eq!(dec, plain);
-    }
-
-    #[test]
-    fn wrong_password_fails() {
-        let enc = encrypt_sync_payload(b"secret-data-here", "pw-a").unwrap();
-        assert!(decrypt_sync_payload(&enc, "pw-b").is_err());
-    }
-}
-
 /// Build a local manifest from current data state.
 async fn build_local_manifest(
     config: &AppConfig,
@@ -555,4 +527,32 @@ async fn build_local_manifest(
 fn serialize_config_for_sync(config: &AppConfig) -> Result<String, AppError> {
     let masked = config.masked_copy();
     serde_json::to_string_pretty(&masked).map_err(|e| AppError::Internal(e.to_string()))
+}
+
+#[cfg(test)]
+mod crypto_tests {
+    use super::*;
+
+    #[test]
+    fn sync_payload_roundtrip() {
+        let plain = br#"{"en-zh":[{"source":"hello","target":"nihao"}]}"#;
+        let enc = encrypt_sync_payload(plain, "test-password").unwrap();
+        assert!(enc.starts_with(SYNC_ENC_MAGIC));
+        assert_ne!(enc, plain);
+        let dec = decrypt_sync_payload(&enc, "test-password").unwrap();
+        assert_eq!(dec, plain);
+    }
+
+    #[test]
+    fn legacy_plaintext_still_loads() {
+        let plain = b"{\"ok\":true}";
+        let dec = decrypt_sync_payload(plain, "any").unwrap();
+        assert_eq!(dec, plain);
+    }
+
+    #[test]
+    fn wrong_password_fails() {
+        let enc = encrypt_sync_payload(b"secret-data-here", "pw-a").unwrap();
+        assert!(decrypt_sync_payload(&enc, "pw-b").is_err());
+    }
 }

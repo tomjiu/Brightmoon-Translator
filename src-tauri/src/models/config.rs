@@ -265,7 +265,7 @@ pub struct OfflineConfig {
     /// Auto-switch to offline when network is unavailable
     #[serde(default = "default_true")]
     pub auto_switch: bool,
-    /// Downloaded language pairs (e.g., ["en-zh", "zh-en"])
+    /// Downloaded language pairs (e.g. `en-zh`, `zh-en`)
     #[serde(default)]
     pub downloaded_models: Vec<String>,
     /// Model storage directory (empty = default app data dir)
@@ -822,7 +822,7 @@ pub struct AppConfig {
     pub translation_blacklist: Vec<String>,
     #[serde(default)]
     pub routing_strategy: Option<RoutingStrategy>,
-    /// Engine execution order for fallback routing (e.g., ["llm", "youdao", "google"])
+    /// Engine execution order for fallback routing (e.g. `llm`, `youdao`, `google`)
     #[serde(default)]
     pub engine_order: Vec<String>,
     /// OCR engine preference: "auto", "winrt", "youdao", "tesseract", "rapid", "paddle"
@@ -1091,6 +1091,102 @@ fn default_true() -> bool {
     true
 }
 
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            llm: LlmConfig {
+                provider: "deepseek".into(),
+                api_key: String::new(),
+                api_keys: Vec::new(),
+                base_url: "https://api.deepseek.com/v1".into(),
+                model: "deepseek-chat".into(),
+                providers: Vec::new(),
+            },
+            engines: EnginesConfig {
+                google: GoogleConfig { enabled: true },
+                baidu: BaiduConfig {
+                    enabled: false,
+                    app_id: String::new(),
+                    secret: String::new(),
+                },
+                youdao: YoudaoConfig {
+                    enabled: true,
+                    use_ai: false,
+                    ocr_app_key: default_youdao_ocr_app_key(),
+                    ocr_app_secret: default_youdao_ocr_app_secret(),
+                },
+                deepl: DeepLConfig::default(),
+                deeplx: DeepLXConfig::default(),
+                microsoft: MicrosoftConfig::default(),
+                yandex: YandexConfig::default(),
+                offline: OfflineConfig::default(),
+                caiyun: CaiyunConfig::default(),
+                tatoeba: SimpleToggleEngine::default(),
+                baidu_web: SimpleToggleEngine::default(),
+                caiyun_web: SimpleToggleEngine::default(),
+                volcengine_web: SimpleToggleEngine::default(),
+                transmart: SimpleToggleEngine::default(),
+                papago: SimpleToggleEngine::default(),
+            },
+            default_from: "auto".into(),
+            default_to: "zh".into(),
+            custom_prompt: String::new(),
+            prompt_templates: Vec::new(),
+            clipboard_monitor: false,
+            use_clipboard_output: true,
+            auto_copy_result: false,
+            auto_copy_mode: "translated".to_string(),
+            translation_mask: false,
+            api_server_enabled: false,
+            api_server_port: 60828,
+            api_server_token: String::new(),
+            hotkeys: HotkeyConfig::default(),
+            selection_ux: SelectionUxConfig::default(),
+            proxy: ProxyConfig::default(),
+            window_x: None,
+            window_y: None,
+            window_width: None,
+            window_height: None,
+            window_follow_mode: "none".to_string(),
+            translation_blacklist: Vec::new(),
+            routing_strategy: None,
+            engine_order: Vec::new(),
+            ocr_engine: default_ocr_engine(),
+            offline_ocr: OfflineOcrConfig::default(),
+            pdf_extraction_engine: default_pdf_extraction_engine(),
+            pdf_extraction_sidecar: PdfExtractionSidecarConfig::default(),
+            overlay_level: 2,
+            overlay_auto_dismiss_ms: 3000,
+            overlay_follow_mode: "none".to_string(),
+            ocr_interval: 2000,
+            ocr_click_through: false,
+            ocr_auto_bind_window: true,
+            hook: HookConfig::default(),
+            tm_enabled: false,
+            tm_threshold: 0.8,
+            cache_ttl_hours: default_cache_ttl_hours(),
+            furigana_enabled: false,
+            tts_auto_play: false,
+            tts_voice: String::new(),
+            tts_provider: default_tts_provider(),
+            batch_preferred_engine: String::new(),
+            openai_tts: OpenAiTtsConfig::default(),
+            fish_tts: FishTtsConfig::default(),
+            http_timeout_secs: default_http_timeout_secs(),
+            ocr_timeout_secs: default_ocr_timeout_secs(),
+            llm_timeout_secs: default_llm_timeout_secs(),
+            llm_temperature: default_llm_temperature(),
+            llm_max_tokens: default_llm_max_tokens(),
+            translation_timeout_secs: default_translation_timeout_secs(),
+            edge_tts_token: default_edge_tts_token(),
+            sync: SyncConfig::default(),
+            collection: CollectionConfig::default(),
+            layout_detection_enabled: false,
+            winrt_ocr_use_subprocess: false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1303,7 +1399,7 @@ mod tests {
     #[test]
     fn test_llm_config_all_keys_skip_empty() {
         let mut llm = sample_llm();
-        llm.api_keys = vec!["".to_string(), "key2".to_string(), "".to_string()];
+        llm.api_keys = vec![String::new(), "key2".to_string(), String::new()];
         let keys = llm.all_keys();
         assert_eq!(keys, vec!["key2"]);
     }
@@ -1474,101 +1570,5 @@ mod tests {
         assert!(json_str.contains("overlayLevel"));
         assert!(!json_str.contains("default_from"));
         assert!(!json_str.contains("api_key"));
-    }
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            llm: LlmConfig {
-                provider: "deepseek".into(),
-                api_key: String::new(),
-                api_keys: Vec::new(),
-                base_url: "https://api.deepseek.com/v1".into(),
-                model: "deepseek-chat".into(),
-                providers: Vec::new(),
-            },
-            engines: EnginesConfig {
-                google: GoogleConfig { enabled: true },
-                baidu: BaiduConfig {
-                    enabled: false,
-                    app_id: String::new(),
-                    secret: String::new(),
-                },
-                youdao: YoudaoConfig {
-                    enabled: true,
-                    use_ai: false,
-                    ocr_app_key: default_youdao_ocr_app_key(),
-                    ocr_app_secret: default_youdao_ocr_app_secret(),
-                },
-                deepl: DeepLConfig::default(),
-                deeplx: DeepLXConfig::default(),
-                microsoft: MicrosoftConfig::default(),
-                yandex: YandexConfig::default(),
-                offline: OfflineConfig::default(),
-                caiyun: CaiyunConfig::default(),
-                tatoeba: SimpleToggleEngine::default(),
-                baidu_web: SimpleToggleEngine::default(),
-                caiyun_web: SimpleToggleEngine::default(),
-                volcengine_web: SimpleToggleEngine::default(),
-                transmart: SimpleToggleEngine::default(),
-                papago: SimpleToggleEngine::default(),
-            },
-            default_from: "auto".into(),
-            default_to: "zh".into(),
-            custom_prompt: String::new(),
-            prompt_templates: Vec::new(),
-            clipboard_monitor: false,
-            use_clipboard_output: true,
-            auto_copy_result: false,
-            auto_copy_mode: "translated".to_string(),
-            translation_mask: false,
-            api_server_enabled: false,
-            api_server_port: 60828,
-            api_server_token: String::new(),
-            hotkeys: HotkeyConfig::default(),
-            selection_ux: SelectionUxConfig::default(),
-            proxy: ProxyConfig::default(),
-            window_x: None,
-            window_y: None,
-            window_width: None,
-            window_height: None,
-            window_follow_mode: "none".to_string(),
-            translation_blacklist: Vec::new(),
-            routing_strategy: None,
-            engine_order: Vec::new(),
-            ocr_engine: default_ocr_engine(),
-            offline_ocr: OfflineOcrConfig::default(),
-            pdf_extraction_engine: default_pdf_extraction_engine(),
-            pdf_extraction_sidecar: PdfExtractionSidecarConfig::default(),
-            overlay_level: 2,
-            overlay_auto_dismiss_ms: 3000,
-            overlay_follow_mode: "none".to_string(),
-            ocr_interval: 2000,
-            ocr_click_through: false,
-            ocr_auto_bind_window: true,
-            hook: HookConfig::default(),
-            tm_enabled: false,
-            tm_threshold: 0.8,
-            cache_ttl_hours: default_cache_ttl_hours(),
-            furigana_enabled: false,
-            tts_auto_play: false,
-            tts_voice: String::new(),
-            tts_provider: default_tts_provider(),
-            batch_preferred_engine: String::new(),
-            openai_tts: OpenAiTtsConfig::default(),
-            fish_tts: FishTtsConfig::default(),
-            http_timeout_secs: default_http_timeout_secs(),
-            ocr_timeout_secs: default_ocr_timeout_secs(),
-            llm_timeout_secs: default_llm_timeout_secs(),
-            llm_temperature: default_llm_temperature(),
-            llm_max_tokens: default_llm_max_tokens(),
-            translation_timeout_secs: default_translation_timeout_secs(),
-            edge_tts_token: default_edge_tts_token(),
-            sync: SyncConfig::default(),
-            collection: CollectionConfig::default(),
-            layout_detection_enabled: false,
-            winrt_ocr_use_subprocess: false,
-        }
     }
 }

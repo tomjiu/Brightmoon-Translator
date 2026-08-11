@@ -475,7 +475,6 @@ impl Router {
                 Err(e) => {
                     tracing::warn!("[Router] Engine {} failed: {}, trying next...", name, e);
                     errors.push(format!("{name}: {e}"));
-                    continue;
                 },
             }
         }
@@ -572,7 +571,6 @@ impl Router {
                     Err(e) => {
                         tracing::warn!("Free engine {} failed: {}", name, e);
                         errors.push(format!("{name}: {e}"));
-                        continue;
                     },
                 }
             }
@@ -597,7 +595,6 @@ impl Router {
                     Err(e) => {
                         tracing::warn!("Paid engine {} failed: {}", name, e);
                         errors.push(format!("{name}: {e}"));
-                        continue;
                     },
                 }
             }

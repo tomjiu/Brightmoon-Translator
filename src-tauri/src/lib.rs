@@ -464,7 +464,7 @@ pub fn run() {
                 // Start the overlay HTTP server for optimized content delivery
                 let http_server_handle = app_state.overlay.http_server.clone();
                 tauri::async_runtime::spawn(async move {
-                    match overlay::OverlayHttpServer::start().await {
+                    match overlay::OverlayHttpServer::start() {
                         Ok(server) => {
                             tracing::info!(
                                 "Overlay HTTP server started on port {}",

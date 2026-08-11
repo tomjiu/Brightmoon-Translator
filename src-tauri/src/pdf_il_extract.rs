@@ -165,7 +165,7 @@ fn extract_page(
         let advance = width;
 
         // Check if char is likely a formula (symbolic font or math Unicode)
-        let is_formula = is_likely_formula_char(&unicode, &font_name);
+        let is_formula = is_likely_formula_char(unicode, &font_name);
 
         let il_char = IlCharacter {
             unicode,
@@ -221,9 +221,9 @@ struct RawChar {
 
 /// Check if a character is likely part of a formula based on Unicode block
 /// and font name. This is a heuristic; P5 does more precise detection.
-fn is_likely_formula_char(c: &char, font_name: &str) -> bool {
+fn is_likely_formula_char(c: char, font_name: &str) -> bool {
     // Math Unicode blocks
-    let code = *c as u32;
+    let code = c as u32;
     if matches!(code,
         0x2200..=0x22FF | 0x27C0..=0x27EF | 0x2980..=0x29FF
         | 0x2A00..=0x2AFF | 0x2100..=0x214F | 0x1D400..=0x1D7FF
@@ -442,22 +442,22 @@ mod tests {
 
     #[test]
     fn test_is_likely_formula_char_math_unicode() {
-        assert!(is_likely_formula_char(&'∑', "Helvetica"));
-        assert!(is_likely_formula_char(&'∫', "Helvetica"));
-        assert!(is_likely_formula_char(&'∀', "Helvetica"));
-        assert!(!is_likely_formula_char(&'a', "Helvetica"));
-        assert!(!is_likely_formula_char(&'A', "Helvetica"));
-        assert!(!is_likely_formula_char(&'中', "Helvetica"));
+        assert!(is_likely_formula_char('∑', "Helvetica"));
+        assert!(is_likely_formula_char('∫', "Helvetica"));
+        assert!(is_likely_formula_char('∀', "Helvetica"));
+        assert!(!is_likely_formula_char('a', "Helvetica"));
+        assert!(!is_likely_formula_char('A', "Helvetica"));
+        assert!(!is_likely_formula_char('中', "Helvetica"));
     }
 
     #[test]
     fn test_is_likely_formula_char_math_font() {
-        assert!(is_likely_formula_char(&'x', "CMMI12"));
-        assert!(is_likely_formula_char(&'x', "CMSY10"));
-        assert!(is_likely_formula_char(&'x', "Symbol"));
-        assert!(is_likely_formula_char(&'x', "Cambria Math"));
-        assert!(!is_likely_formula_char(&'x', "Helvetica"));
-        assert!(!is_likely_formula_char(&'x', "Arial"));
+        assert!(is_likely_formula_char('x', "CMMI12"));
+        assert!(is_likely_formula_char('x', "CMSY10"));
+        assert!(is_likely_formula_char('x', "Symbol"));
+        assert!(is_likely_formula_char('x', "Cambria Math"));
+        assert!(!is_likely_formula_char('x', "Helvetica"));
+        assert!(!is_likely_formula_char('x', "Arial"));
     }
 
     #[test]
@@ -473,7 +473,7 @@ mod tests {
         // 5 chars on the same y, increasing x → 1 paragraph, 1 line
         let characters: Vec<IlCharacter> = (0..5)
             .map(|i| IlCharacter {
-                unicode: ('A' as u8 + i as u8) as char,
+                unicode: (b'A' + i as u8) as char,
                 font_id: 0,
                 font_size: 12.0,
                 x: 72.0 + i as f32 * 6.6,
@@ -508,7 +508,7 @@ mod tests {
         let mut raw_chars = Vec::new();
         for i in 0..3 {
             characters.push(IlCharacter {
-                unicode: ('A' as u8 + i as u8) as char,
+                unicode: (b'A' + i as u8) as char,
                 font_id: 0, font_size: 12.0,
                 x: 72.0 + i as f32 * 6.6, y: 700.0,
                 render_mode: 0, color: [0.0; 3],
@@ -519,7 +519,7 @@ mod tests {
         for i in 0..3 {
             let idx = i + 3;
             characters.push(IlCharacter {
-                unicode: ('D' as u8 + i as u8) as char,
+                unicode: (b'D' + i as u8) as char,
                 font_id: 0, font_size: 12.0,
                 x: 72.0 + i as f32 * 6.6, y: 686.0,
                 render_mode: 0, color: [0.0; 3],
@@ -539,7 +539,7 @@ mod tests {
         let mut raw_chars = Vec::new();
         for i in 0..3 {
             characters.push(IlCharacter {
-                unicode: ('A' as u8 + i as u8) as char,
+                unicode: (b'A' + i as u8) as char,
                 font_id: 0, font_size: 12.0,
                 x: 72.0 + i as f32 * 6.6, y: 700.0,
                 render_mode: 0, color: [0.0; 3],
@@ -550,7 +550,7 @@ mod tests {
         for i in 0..3 {
             let idx = i + 3;
             characters.push(IlCharacter {
-                unicode: ('D' as u8 + i as u8) as char,
+                unicode: (b'D' + i as u8) as char,
                 font_id: 0, font_size: 12.0,
                 x: 72.0 + i as f32 * 6.6, y: 660.0, // 40pt gap > 18pt
                 render_mode: 0, color: [0.0; 3],

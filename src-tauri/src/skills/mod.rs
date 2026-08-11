@@ -138,8 +138,8 @@ impl SkillRegistry {
     }
 
     /// 获取技能
-    pub fn get(&self, name: &str) -> Option<&Box<dyn Skill>> {
-        self.skills.get(name).map(|w| &w.skill)
+    pub fn get(&self, name: &str) -> Option<&dyn Skill> {
+        self.skills.get(name).map(|w| w.skill.as_ref())
     }
 
     /// 执行技能
@@ -174,7 +174,7 @@ impl SkillRegistry {
             .collect();
 
         // 按优先级排序
-        skills.sort_by(|a, b| b.priority.cmp(&a.priority));
+        skills.sort_by_key(|b| std::cmp::Reverse(b.priority));
         skills
     }
 
@@ -220,7 +220,7 @@ mod tests {
             &self.name
         }
 
-        fn description(&self) -> &str {
+        fn description(&self) -> &'static str {
             "Mock skill for testing"
         }
 

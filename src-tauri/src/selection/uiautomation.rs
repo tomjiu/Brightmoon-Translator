@@ -247,6 +247,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
 ///     and concatenates all selected ranges (used by selection translation)
 ///   - `hover_pick` fn reads the word/sentence *under the cursor* via
 ///     `RangeFromPoint(pt)` + `ExpandToEnclosingUnit` (used by hover dict)
+///
 /// The only shared logic is `range.GetText(max_chars).to_string()` — a
 /// one-liner not worth a shared module. `GetBoundingRectangles` (the
 /// non-trivial SAFEARRAY parsing below) is only called here, not in

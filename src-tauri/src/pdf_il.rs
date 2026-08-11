@@ -1401,7 +1401,7 @@ mod tests {
         let stream = write_paragraph_to_content_stream(&para, &reflow, "CJK");
         let s = String::from_utf8(stream).unwrap();
         // CJK chars should use hex string <FEFFxxxx>
-        assert!(s.contains("<FEFF"), "expected hex string for CJK, got: {}", s);
+        assert!(s.contains("<FEFF"), "expected hex string for CJK, got: {s}");
         assert!(!s.contains("(你)"), "should not use literal string for CJK");
     }
 
@@ -1453,7 +1453,7 @@ mod tests {
         let stream = write_paragraph_to_content_stream(&para, &reflow, "F1");
         let s = String::from_utf8(stream).unwrap();
         // Parentheses must be escaped
-        assert!(s.contains(r"\(\)") || s.contains(r"\("), "expected escaped parens in: {}", s);
+        assert!(s.contains(r"\(\)") || s.contains(r"\("), "expected escaped parens in: {s}");
     }
 
     // ==================== P8 Coordinate Isolation Tests ====================
@@ -1545,7 +1545,7 @@ mod tests {
     fn encode_pdf_string_cjk_hex() {
         let result = encode_pdf_string('你');
         assert!(result.starts_with("<FEFF"));
-        assert!(result.ends_with(">"));
+        assert!(result.ends_with('>'));
         // 你 = U+4F60 → <FEFF4F60>
         assert!(result.contains("4F60"));
     }

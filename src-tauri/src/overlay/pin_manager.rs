@@ -86,8 +86,8 @@ impl PinWindowManager {
 
         // O1: find a free slot in the retain pool.
         let free_idx = self.slots.iter().position(|s| !s.in_use);
-        let (label, is_new) = if free_idx.is_some() {
-            let label = self.slots[free_idx.unwrap()].label.clone();
+let (label, is_new) = if let Some(idx) = free_idx {
+            let label = self.slots[idx].label.clone();
             (label, false)
         } else {
             if self.slots.len() >= MAX_POOL_SIZE {
@@ -408,8 +408,8 @@ mod tests {
         // Active pin far from the requested origin — cascade clamps.
         mgr.slots.push(PinSlot {
             label: "pin-0".into(),
-            source: "".into(),
-            translated: "".into(),
+            source: String::new(),
+            translated: String::new(),
             source_app: None,
             window_title: None,
             x: 1000.0,
@@ -453,8 +453,8 @@ mod tests {
         assert_eq!(mgr.active_count(), 0);
         mgr.slots.push(PinSlot {
             label: "pin-0".into(),
-            source: "".into(),
-            translated: "".into(),
+            source: String::new(),
+            translated: String::new(),
             source_app: None,
             window_title: None,
             x: 0.0,
@@ -466,8 +466,8 @@ mod tests {
         assert_eq!(mgr.active_count(), 1);
         mgr.slots.push(PinSlot {
             label: "pin-1".into(),
-            source: "".into(),
-            translated: "".into(),
+            source: String::new(),
+            translated: String::new(),
             source_app: None,
             window_title: None,
             x: 24.0,
@@ -486,8 +486,8 @@ mod tests {
         let mut mgr = PinWindowManager::new();
         mgr.slots.push(PinSlot {
             label: "pin-0".into(),
-            source: "".into(),
-            translated: "".into(),
+            source: String::new(),
+            translated: String::new(),
             source_app: None,
             window_title: None,
             x: 0.0,
@@ -506,8 +506,8 @@ mod tests {
         let mut mgr = PinWindowManager::new();
         mgr.slots.push(PinSlot {
             label: "pin-0".into(),
-            source: "".into(),
-            translated: "".into(),
+            source: String::new(),
+            translated: String::new(),
             source_app: None,
             window_title: None,
             x: 0.0,
@@ -537,8 +537,8 @@ mod tests {
         let mut mgr = PinWindowManager::new();
         mgr.slots.push(PinSlot {
             label: "pin-0".into(),
-            source: "".into(),
-            translated: "".into(),
+            source: String::new(),
+            translated: String::new(),
             source_app: None,
             window_title: None,
             x: 0.0,

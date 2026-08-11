@@ -294,16 +294,6 @@ impl AiEnhancedService {
                 .map_err(|e| e.to_string());
         }
 
-        let _lang_name = |code: &str| -> String {
-            match code {
-                "zh" => "中文".to_string(),
-                "en" => "English".to_string(),
-                "ja" => "日本語".to_string(),
-                "ko" => "한국어".to_string(),
-                _ => code.to_string(),
-            }
-        };
-
         // Build context text (last 5 translations)
         let context_text: String = context
             .iter()

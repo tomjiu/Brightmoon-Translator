@@ -11,8 +11,8 @@ pub struct ModelInfo {
     pub owned_by: Option<String>,
 }
 
-fn normalize_format(api_format: &Option<String>) -> String {
-    crate::models::config::normalize_api_format(api_format.as_deref().unwrap_or("openai"))
+fn normalize_format(api_format: Option<&str>) -> String {
+    crate::models::config::normalize_api_format(api_format.unwrap_or("openai"))
 }
 
 const ANTHROPIC_FALLBACK: &[&str] = &[
@@ -37,7 +37,7 @@ pub async fn fetch_available_models(
     api_key: String,
     api_format: Option<String>,
 ) -> Result<Vec<ModelInfo>, String> {
-    let format = normalize_format(&api_format);
+    let format = normalize_format(api_format.as_deref());
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
@@ -209,7 +209,7 @@ pub async fn test_llm_connection(
     model: String,
     api_format: Option<String>,
 ) -> Result<String, String> {
-    let format = normalize_format(&api_format);
+    let format = normalize_format(api_format.as_deref());
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()

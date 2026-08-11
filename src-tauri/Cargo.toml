@@ -161,6 +161,24 @@ module_name_repetitions = "allow"
 similar_names = "allow"
 too_many_lines = "allow"
 wildcard_imports = "allow"
+# Noise-level pedantic lints (high volume, rare/negligible real impact).
+# Kept off so remaining warnings stay actionable. Casts are pervasive in
+# OCR/geometry/PDF numeric code and are bounded by construction; float_cmp is
+# deliberate exact assertions in tests; the rest are pure style.
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+cast_possible_wrap = "allow"
+float_cmp = "allow"
+items_after_statements = "allow"
+many_single_char_names = "allow"
+format_push_string = "allow"
+missing_panics_doc = "allow"
+return_self_not_must_use = "allow"
+match_same_arms = "allow"
+struct_excessive_bools = "allow"
+fn_params_excessive_bools = "allow"
+ref_option = "allow"
 
 [features]
 default = ["custom-protocol"]

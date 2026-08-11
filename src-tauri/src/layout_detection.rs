@@ -457,7 +457,7 @@ mod tests {
         // Union: 400 + 400 - 100 = 700
         // IoU = 100/700 ≈ 0.143
         let iou = a.iou(&b);
-        assert!(iou > 0.14 && iou < 0.15, "expected ~0.143, got {}", iou);
+        assert!(iou > 0.14 && iou < 0.15, "expected ~0.143, got {iou}");
     }
 
     #[test]

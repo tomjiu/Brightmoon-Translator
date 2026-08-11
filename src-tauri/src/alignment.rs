@@ -293,8 +293,8 @@ mod tests {
     #[test]
     fn test_align_3_to_5_proportional() {
         // Verify 3:5 produces 2:2:1 distribution
-        let source: Vec<String> = (0..3).map(|i| format!("S{}", i)).collect();
-        let target: Vec<String> = (0..5).map(|i| format!("T{}", i)).collect();
+        let source: Vec<String> = (0..3).map(|i| format!("S{i}")).collect();
+        let target: Vec<String> = (0..5).map(|i| format!("T{i}")).collect();
         let result = align_by_ratio(&source, &target);
 
         assert_eq!(result.len(), 3);

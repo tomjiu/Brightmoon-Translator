@@ -314,7 +314,7 @@ mod tests {
         let initial = engine.initial_state();
         let t0 = Utc::now();
         let learned = engine.schedule_review(&initial, Rating::Good, t0).unwrap();
-        let t1 = t0 + Duration::days(learned.scheduled_days.max(1) as i64);
+        let t1 = t0 + Duration::days(i64::from(learned.scheduled_days.max(1)));
         let hard = engine.schedule_review(&learned, Rating::Hard, t1).unwrap();
         let good = engine.schedule_review(&learned, Rating::Good, t1).unwrap();
         assert!(
@@ -333,7 +333,7 @@ mod tests {
         let t0 = Utc::now();
         let learned = engine.schedule_review(&initial, Rating::Good, t0).unwrap();
         let d0 = learned.difficulty;
-        let t1 = t0 + Duration::days(learned.scheduled_days.max(1) as i64);
+        let t1 = t0 + Duration::days(i64::from(learned.scheduled_days.max(1)));
         let after_again = engine.schedule_review(&learned, Rating::Again, t1).unwrap();
         assert!(
             after_again.difficulty > d0,
@@ -350,7 +350,7 @@ mod tests {
         let initial = engine.initial_state();
         let t0 = Utc::now();
         let learned = engine.schedule_review(&initial, Rating::Good, t0).unwrap();
-        let t1 = t0 + Duration::days(learned.scheduled_days.max(1) as i64);
+        let t1 = t0 + Duration::days(i64::from(learned.scheduled_days.max(1)));
         let preview = engine.preview_ratings(&learned, t1).unwrap();
         let i = preview.intervals();
         assert!(i.again <= i.hard);

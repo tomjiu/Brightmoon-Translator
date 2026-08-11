@@ -335,8 +335,12 @@ pub fn build_dict_card_structured(
             .sources
             .iter()
             .take(6)
-            .map(|s| format!(r#"<span class="src">{}</span>"#, html_escape::encode_text(s)))
-            .collect();
+            .fold(String::new(), |mut out, s| {
+                out.push_str(r#"<span class="src">"#);
+                out.push_str(&html_escape::encode_text(s));
+                out.push_str("</span>");
+                out
+            });
         format!(r#"<div class="srcs">{badges}</div>"#)
     };
 
