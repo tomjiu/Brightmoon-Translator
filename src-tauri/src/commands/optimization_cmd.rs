@@ -61,7 +61,7 @@ async fn resolve_quiz_card_id(pool: &sqlx::SqlitePool, word_or_id: &str) -> Opti
         .flatten()
 }
 
-/// 记录测验结果（答错时写入错误日志 + 弱点统计）
+/// 记录测验结果（写入作答日志供观察偏好统计正确率；答错时另增弱点统计）
 #[tauri::command]
 pub async fn record_quiz_result(
     state: tauri::State<'_, crate::AppState>,
@@ -79,23 +79,24 @@ pub async fn record_quiz_result(
     let resolved: Option<String> = resolve_quiz_card_id(pool, &card_id).await;
     let card_id = resolved.unwrap_or(card_id.clone());
 
-    if !correct {
-        // 1. 写 quiz_errors 表
-        sqlx::query(
-            r"
-            INSERT INTO quiz_errors (card_id, quiz_type, user_answer, correct_answer, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            ",
-        )
-        .bind(&card_id)
-        .bind(&quiz_type)
-        .bind(&user_answer)
-        .bind(&correct_answer)
-        .bind(now)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    // 1. 写 quiz_errors 表（记录所有作答，供观察偏好统计真实正确率；
+    //    答对时 user_answer 与 correct_answer 相同）
+    sqlx::query(
+        r"
+        INSERT INTO quiz_errors (card_id, quiz_type, user_answer, correct_answer, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        ",
+    )
+    .bind(&card_id)
+    .bind(&quiz_type)
+    .bind(&user_answer)
+    .bind(&correct_answer)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
+    if !correct {
         // 2. 弱点计数 upsert
         let error_type = weak_error_type(&quiz_type);
         upsert_weak_point(pool, &card_id, error_type, now).await?;

@@ -314,7 +314,7 @@ impl EventStore {
         .execute(&self.pool)
         .await?;
 
-        // T8: 测验错误日志表
+        // T8: 测验作答日志表（含答对/答错；观察偏好据此统计真实正确率）
         sqlx::query(
             r"
             CREATE TABLE IF NOT EXISTS quiz_errors (
