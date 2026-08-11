@@ -38,11 +38,6 @@ impl PatchValidator {
         Self { min_confidence }
     }
 
-    /// 默认验证器（置信度 >= 0.7）
-    pub fn default() -> Self {
-        Self::new(0.7)
-    }
-
     /// 验证 Patch
     pub fn validate(&self, patch: &CardPatch, card: &WordCard) -> Result<()> {
         // 1. 验证置信度
@@ -75,6 +70,7 @@ impl PatchValidator {
     }
 
     /// 验证字段存在
+#[allow(clippy::unused_self)]
     fn validate_field_exists(&self, field: &str) -> Result<()> {
         const VALID_FIELDS: &[&str] = &[
             "mnemonic",
@@ -125,6 +121,7 @@ impl PatchValidator {
     }
 
     /// 验证值类型
+#[allow(clippy::unused_self)]
     fn validate_value_type(&self, patch: &CardPatch) -> Result<()> {
         match patch.target_field.as_str() {
             "mnemonic"
@@ -206,6 +203,7 @@ impl PatchValidator {
     }
 
     /// 验证助记法内容
+#[allow(clippy::unused_self)]
     fn validate_mnemonic_content(&self, value: &Value) -> Result<()> {
         let mnemonics = if value.is_array() {
             value.as_array().unwrap()
@@ -252,6 +250,7 @@ impl PatchValidator {
     }
 
     /// 验证词源内容
+#[allow(clippy::unused_self)]
     fn validate_etymology_content(&self, value: &Value) -> Result<()> {
         if value.is_null() {
             return Ok(());
@@ -274,6 +273,7 @@ impl PatchValidator {
     }
 
     /// 验证例句内容
+#[allow(clippy::unused_self)]
     fn validate_example_content(&self, value: &Value) -> Result<()> {
         let examples = if value.is_array() {
             value.as_array().unwrap()
@@ -306,11 +306,13 @@ impl PatchValidator {
     }
 
     /// 检查是否是数组字段
+#[allow(clippy::unused_self)]
     fn is_array_field(&self, field: &str) -> bool {
         matches!(field, "mnemonics" | "examples" | "scenes")
     }
 
     /// 获取数组长度
+#[allow(clippy::unused_self)]
     fn get_array_length(&self, field: &str, card: &WordCard) -> Result<usize> {
         let ai_content = card
             .ai_content
@@ -325,6 +327,12 @@ impl PatchValidator {
         };
 
         Ok(length)
+    }
+}
+
+impl Default for PatchValidator {
+    fn default() -> Self {
+        Self::new(0.7)
     }
 }
 

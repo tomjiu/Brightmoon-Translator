@@ -99,7 +99,7 @@ pub fn run_winrt_ocr_via_subprocess(
     {
         use std::os::windows::process::CommandExt;
         // CREATE_NO_WINDOW (0x08000000): no console window for the child.
-        cmd.creation_flags(0x08000000);
+        cmd.creation_flags(0x0800_0000);
     }
 
     let mut child = cmd
@@ -193,6 +193,7 @@ fn kill_process_by_pid(pid: u32) {
 /// Reads PNG bytes from stdin, runs `run_winrt_ocr`, writes JSON to stdout,
 /// exits. Returns the process exit code (0 = success, 1 = OCR error, 2 = IO
 /// error, 3 = argument error).
+#[allow(clippy::needless_pass_by_value)]
 pub fn run_worker(lang: Option<String>) -> i32 {
     let mut stdin = std::io::stdin();
     let mut bytes = Vec::new();

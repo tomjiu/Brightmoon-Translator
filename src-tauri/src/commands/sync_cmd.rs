@@ -151,6 +151,7 @@ pub async fn get_sync_config(state: State<'_, AppState>) -> Result<serde_json::V
 
 /// Save sync configuration.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn save_sync_config(
     state: State<'_, AppState>,
     enabled: bool,

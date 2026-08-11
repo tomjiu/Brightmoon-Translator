@@ -562,7 +562,7 @@ async fn handle_hook_event(
                         match mode {
                             SelectionTriggerMode::PopButton => {
                                 if let Err(e) =
-                                    super::pop_button::show(&app_c, trimmed, release_x, release_y)
+                                    super::pop_button::show(&app_c, &trimmed, release_x, release_y)
                                 {
                                     tracing::warn!("[selection_ux] pop show: {e}");
                                 }
@@ -600,7 +600,7 @@ async fn handle_hook_event(
                                 SelectionTriggerMode::PopButton => {
                                     let _ = super::pop_button::show(
                                         &app_c,
-                                        pick.word.clone(),
+                                        &pick.word.clone(),
                                         pick.x,
                                         pick.y,
                                     );

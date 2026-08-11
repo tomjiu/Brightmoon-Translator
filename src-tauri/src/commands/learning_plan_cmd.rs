@@ -341,6 +341,7 @@ async fn insert_plan_words(
 }
 
 /// 读取文件内容（支持 txt, md, docx, pdf）
+#[allow(clippy::case_sensitive_file_extension_comparisons)] // 已 to_lowercase 规范化
 fn read_file_content(path: &str) -> Result<String, String> {
     let path_lower = path.to_lowercase();
 

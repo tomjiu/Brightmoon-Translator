@@ -304,7 +304,7 @@ impl MetricsCollector {
             .map(|(name, latencies)| {
                 let count = latencies.len() as u64;
                 let total: u64 = latencies.iter().sum();
-                let avg = if count > 0 { total / count } else { 0 };
+                let avg = total.checked_div(count).unwrap_or(0);
                 let min = latencies.iter().min().copied().unwrap_or(0);
                 let max = latencies.iter().max().copied().unwrap_or(0);
                 let p50 = percentile(latencies, 50);
@@ -338,7 +338,7 @@ impl MetricsCollector {
             let total: u64 = state.ocr_latencies.iter().sum();
             Some(OcrStats {
                 count,
-                avg_ms: if count > 0 { total / count } else { 0 },
+                avg_ms: total.checked_div(count).unwrap_or(0),
             })
         };
 

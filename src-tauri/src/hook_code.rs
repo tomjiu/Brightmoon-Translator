@@ -291,7 +291,7 @@ mod tests {
     fn parse_null_terminated() {
         let hc = parse_h_code("/HN-4@DEADBEEF:game.exe").unwrap();
         assert_eq!(hc.text_type, HookTextType::NullTerminated);
-        assert_eq!(hc.addr, 0xDEADBEEF);
+        assert_eq!(hc.addr, 0xDEAD_BEEF);
         assert!(!is_rva(hc.addr)); // absolute address
     }
 
@@ -393,7 +393,7 @@ mod tests {
     fn is_rva_threshold() {
         assert!(is_rva(0xFFFF));
         assert!(!is_rva(0x10000));
-        assert!(!is_rva(0xDEADBEEF));
+        assert!(!is_rva(0xDEAD_BEEF));
     }
 
     #[test]

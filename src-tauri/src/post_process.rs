@@ -453,7 +453,7 @@ pub fn repair_text_symbols(original_text: &str, translated_text: &str) -> String
     if orig_open > 0
         && orig_open == orig_close
         && quote_count > 0
-        && quote_count.is_multiple_of(2)
+        && quote_count % 2 == 0
         && orig_open == quote_count / 2
     {
         let mut chars: Vec<char> = translated_stripped.chars().collect();

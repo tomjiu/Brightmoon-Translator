@@ -235,6 +235,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::case_sensitive_file_extension_comparisons)]
     fn entry_points_at_firefox_registry_with_sha256() {
         let spec = model_spec("en", "zh").unwrap();
         assert!(spec.files[0].url.starts_with(REGISTRY_BASE));

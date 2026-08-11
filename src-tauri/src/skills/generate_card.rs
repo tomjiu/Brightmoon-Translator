@@ -72,6 +72,7 @@ impl GenerateCardSkill {
     }
 
     /// 构建系统提示
+#[allow(clippy::unused_self)]
     fn build_system_prompt(&self) -> String {
         r"你是一个专业的英语学习内容生成助手，拥有语言学博士学位和十年教学经验。你的任务是为英语单词生成高质量、精细化的学习内容。
 
@@ -122,6 +123,7 @@ impl GenerateCardSkill {
     }
 
     /// 构建用户提示
+#[allow(clippy::unused_self)]
     fn build_user_prompt(&self, context: &CardContext) -> String {
         let mut prompt = format!("## 目标单词\n\n**{}**\n\n", context.word);
 
@@ -175,6 +177,7 @@ impl GenerateCardSkill {
     }
 
     /// 构建 JSON Schema
+#[allow(clippy::unused_self)]
     fn build_json_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -286,6 +289,7 @@ impl GenerateCardSkill {
     }
 
     /// 转换 AI 输出为 `AiContent`
+#[allow(clippy::unused_self)]
     fn convert_to_ai_content(&self, generated: AiGeneratedContent) -> AiContent {
         let etymology = generated.etymology.map(|e| Etymology {
             origin: e.origin,
@@ -442,10 +446,7 @@ impl Skill for GenerateCardSkill {
             }
         }
 
-        let (response, generated) = match response {
-            Some((r, parsed)) => (r, parsed),
-            None => return Err(last_err.unwrap_or_else(|| anyhow::anyhow!("AI 生成失败"))),
-        };
+        let Some((response, generated)) = response else { return Err(last_err.unwrap_or_else(|| anyhow::anyhow!("AI 生成失败"))) };
 
         tracing::info!(
             "✅ AI内容解析成功: word='{}', mnemonics={}, examples={}, collocations={}",

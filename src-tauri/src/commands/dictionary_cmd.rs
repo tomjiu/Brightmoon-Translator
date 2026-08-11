@@ -155,8 +155,8 @@ pub async fn lookup_word_multi_source(
         if let Ok(Some(lemma)) = resolve_lemma(&word, p).await {
             if lemma != word {
                 if let Ok((chinese, english, phonetic, _)) = lookup_ecdict(&lemma, p).await {
-                    entry.chinese_translation = chinese.clone();
-                    entry.english_definitions = english.clone();
+                    entry.chinese_translation.clone_from(&chinese);
+                    entry.english_definitions.clone_from(&english);
                     if let Some(p) = phonetic {
                         let clean = p.trim().trim_start_matches('/').trim_end_matches('/');
                         if !clean.is_empty() {
@@ -236,7 +236,7 @@ pub async fn lookup_word_multi_source(
     if let Some(online) = online_result {
         for p in &online.phonetics {
             if p.audio.is_some() && entry.audio_url.is_none() {
-                entry.audio_url = p.audio.clone();
+                entry.audio_url.clone_from(&p.audio);
             }
             if p.text.is_some() {
                 entry.phonetics.push(PhoneticInfo {

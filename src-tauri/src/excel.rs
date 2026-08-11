@@ -225,6 +225,7 @@ pub fn extract_text_from_excel(file_path: &str) -> Result<ExcelDocument, String>
 }
 
 /// Write translated content back to Excel file
+#[allow(clippy::implicit_hasher)]
 pub fn write_translated_excel(
     input_path: &str,
     output_path: &str,

@@ -334,7 +334,7 @@ impl AiEnhancedService {
     ) -> Result<MultiRoundResult, String> {
         security::validate_text_length(text, security::MAX_TRANSLATION_TEXT_LENGTH)?;
 
-        let num_rounds = rounds.min(3).max(2); // 2-3 rounds
+        let num_rounds = rounds.clamp(2, 3); // 2-3 rounds
         let mut translations = Vec::new();
 
         // Generate multiple translations with different temperatures

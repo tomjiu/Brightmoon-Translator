@@ -2,6 +2,7 @@
 /// Converts between different naming conventions:
 /// `snake_case`, `SNAKE_CASE`, kebab-case, camelCase, `PascalCase`, dot.notation, Title Case
 #[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
 pub fn transform_variable_name(text: String, target_format: String) -> String {
     if text.trim().is_empty() {
         return text;

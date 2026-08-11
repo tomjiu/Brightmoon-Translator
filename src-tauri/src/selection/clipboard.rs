@@ -41,7 +41,7 @@ struct ProcessClipStats {
 static PROCESS_STATS: Mutex<Option<HashMap<String, ProcessClipStats>>> = Mutex::new(None);
 
 const NON_TEXT_FAILURE_THRESHOLD: u32 = 2;
-const SUPPRESSION_WINDOW: Duration = Duration::from_mins(5);
+const SUPPRESSION_WINDOW: Duration = Duration::from_secs(5 * 60);
 const OPEN_CLIP_RETRIES: u32 = 10;
 const OPEN_CLIP_SLEEP_MS: u64 = 100; // STranslate 10×100ms
 const CLIPWAIT_NORMAL_MS: u64 = 450; // Easydict default

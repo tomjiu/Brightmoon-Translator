@@ -1,7 +1,7 @@
 //! Sample English book paragraphs → zh via Google (no API key).
 //!
 //! cargo run --manifest-path src-tauri/Cargo.toml --example en_book_translate_smoke -- path1.pdf [path2...]
-#![allow(clippy::doc_markdown)]
+#![allow(clippy::doc_markdown, clippy::print_stdout, clippy::print_stderr, clippy::unwrap_used)]
 
 use moontranslator_lib::engine::google::GoogleEngine;
 use moontranslator_lib::engine::TranslationEngine;

@@ -218,7 +218,7 @@ impl TranslateRequest {
             text: text.into(),
             from: from.to_string(),
             to: to.to_string(),
-            concurrency: concurrency.max(1).min(10),
+            concurrency: concurrency.clamp(1, 10),
             ..Default::default()
         }
     }
@@ -259,7 +259,7 @@ impl TranslateOutcome {
         match self {
             Self::Primary(s) => Some(s),
             Self::Full(r) => r.results.into_iter().next().map(|x| x.text),
-            _ => None,
+            Self::Batch(_) => None,
         }
     }
 

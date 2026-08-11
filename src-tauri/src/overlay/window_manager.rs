@@ -239,7 +239,7 @@ pub fn hide_overlay_window(app: &AppHandle) {
     // memory. The next create_overlay_window_ex call will recreate it.
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_mins(5)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(5 * 60)).await;
         // Only destroy if still hidden (no new show happened).
         if let Some(window) = app2.get_webview_window("overlay") {
             if !window.is_visible().unwrap_or(false) {
@@ -276,10 +276,7 @@ pub fn update_overlay_content(
     source: &str,
     translated: &str,
 ) -> Result<bool, String> {
-    let window = match app.get_webview_window("overlay") {
-        Some(w) => w,
-        None => return Ok(false),
-    };
+    let Some(window) = app.get_webview_window("overlay") else { return Ok(false) };
 
     // Escape for JS string literals
     let src_escaped = source
@@ -309,10 +306,7 @@ pub fn update_overlay_content(
 
 /// Update overlay position without rebuilding
 pub fn update_overlay_position(app: &AppHandle, x: f64, y: f64) -> Result<bool, String> {
-    let window = match app.get_webview_window("overlay") {
-        Some(w) => w,
-        None => return Ok(false),
-    };
+    let Some(window) = app.get_webview_window("overlay") else { return Ok(false) };
 
     window
         .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(

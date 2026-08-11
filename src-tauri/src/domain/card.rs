@@ -115,7 +115,7 @@ impl WordCard {
             CardEvent::WordImported {
                 word, timestamp, ..
             } => {
-                self.word = word.clone();
+                self.word.clone_from(word);
                 self.created_at = *timestamp;
                 self.updated_at = *timestamp;
             },

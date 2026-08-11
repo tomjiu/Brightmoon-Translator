@@ -2,8 +2,9 @@
 //!
 //! Usage:
 //!   cargo run --manifest-path src-tauri/Cargo.toml --example doc_smoke -- "E:\book\foo.pdf" "E:\book\bar.epub"
-#![allow(clippy::doc_markdown)]
+#![allow(clippy::doc_markdown, clippy::print_stdout, clippy::print_stderr, clippy::unwrap_used)]
 
+#[allow(clippy::case_sensitive_file_extension_comparisons)] // 已 to_ascii_lowercase 规范化
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() {

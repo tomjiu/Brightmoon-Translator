@@ -371,7 +371,7 @@ pub fn key_pressed_within_ms(ms: u64) -> bool {
 
 /// Update min drag distance used by `WH_MOUSE_LL` drag detector (settings hot-reload).
 pub fn set_min_drag_px(px: u32) {
-    MIN_DRAG_PX.store(px.max(1).min(200), Ordering::SeqCst);
+    MIN_DRAG_PX.store(px.clamp(1, 200), Ordering::SeqCst);
 }
 
 pub fn min_drag_px() -> u32 {

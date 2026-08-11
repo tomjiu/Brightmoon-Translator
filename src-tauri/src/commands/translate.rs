@@ -185,6 +185,7 @@ pub async fn stop_clipboard_monitor() -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
+#[allow(clippy::needless_pass_by_value)]
 fn main_clipboard_listener_thread(app: tauri::AppHandle) {
     use std::time::Duration;
     use windows::Win32::System::DataExchange::{
@@ -252,7 +253,7 @@ fn main_clipboard_listener_thread(app: tauri::AppHandle) {
                         let mut last = LAST_CLIPBOARD_TEXT
                             .lock()
                             .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        *last = trimmed.clone();
+                        (*last).clone_from(&trimmed);
                         drop(last);
                         let _ = app.emit("clipboard-changed", &trimmed);
                     }

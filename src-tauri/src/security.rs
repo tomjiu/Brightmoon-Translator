@@ -557,10 +557,7 @@ pub fn decrypt_secret(stored: &str) -> String {
 
     if let Some(encoded) = stored.strip_prefix(DPAPI_MAGIC) {
         use base64::Engine;
-        let ciphertext = match base64::engine::general_purpose::STANDARD.decode(encoded) {
-            Ok(c) => c,
-            Err(_) => return stored.to_string(),
-        };
+        let Ok(ciphertext) = base64::engine::general_purpose::STANDARD.decode(encoded) else { return stored.to_string() };
         match dpapi_decrypt(&ciphertext) {
             Ok(decrypted) => {
                 let result = String::from_utf8_lossy(&decrypted).to_string();
@@ -573,10 +570,7 @@ pub fn decrypt_secret(stored: &str) -> String {
         }
     } else if let Some(encoded) = stored.strip_prefix(AES_MAGIC) {
         use base64::Engine;
-        let ciphertext = match base64::engine::general_purpose::STANDARD.decode(encoded) {
-            Ok(c) => c,
-            Err(_) => return stored.to_string(),
-        };
+        let Ok(ciphertext) = base64::engine::general_purpose::STANDARD.decode(encoded) else { return stored.to_string() };
         match decrypt_aes(&ciphertext) {
             Ok(decrypted) => String::from_utf8_lossy(&decrypted).to_string(),
             Err(_) => stored.to_string(),

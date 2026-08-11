@@ -618,9 +618,9 @@ fn fingerprint_dynamic_image(image: &screenshots::image::DynamicImage) -> String
     if w == 0 || h == 0 {
         return String::new();
     }
-    let mut hash: u32 = 2166136261;
-    hash = hash.wrapping_mul(16777619) ^ w;
-    hash = hash.wrapping_mul(16777619) ^ h;
+    let mut hash: u32 = 2_166_136_261;
+    hash = hash.wrapping_mul(16_777_619) ^ w;
+    hash = hash.wrapping_mul(16_777_619) ^ h;
     for gy in 0..GRID {
         for gx in 0..GRID {
             let x = (gx * w / GRID).min(w.saturating_sub(1));
@@ -628,7 +628,7 @@ fn fingerprint_dynamic_image(image: &screenshots::image::DynamicImage) -> String
             let p = image.get_pixel(x, y).0;
             // Rec. 601 luma
             let y8 = ((u32::from(p[0]) * 299 + u32::from(p[1]) * 587 + u32::from(p[2]) * 114) / 1000) as u8;
-            hash = hash.wrapping_mul(16777619) ^ u32::from(y8);
+            hash = hash.wrapping_mul(16_777_619) ^ u32::from(y8);
         }
     }
     format!("{w}x{h}:{hash:x}")

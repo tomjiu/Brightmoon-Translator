@@ -120,7 +120,7 @@ pub struct OpenAiCompatibleProvider {
 impl OpenAiCompatibleProvider {
     pub fn new(api_key: String, base_url: String, model: String) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_mins(2))
+            .timeout(std::time::Duration::from_secs(2 * 60))
             .connect_timeout(std::time::Duration::from_secs(10))
             .build()
             .unwrap_or_default();
@@ -183,6 +183,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
         }
 
         #[derive(Deserialize)]
+        #[allow(clippy::struct_field_names)]
         struct ApiUsage {
             prompt_tokens: u32,
             completion_tokens: u32,
@@ -344,7 +345,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // 需要真实 API key
+    #[ignore = "需要真实 API key"]
     async fn test_openai_provider() {
         let provider = OpenAiCompatibleProvider::openai(
             std::env::var("OPENAI_API_KEY").unwrap(),

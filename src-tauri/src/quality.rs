@@ -38,6 +38,7 @@ const WEIGHT_TERMINOLOGY: f64 = 0.25;
 const WEIGHT_FLUENCY: f64 = 0.30;
 
 /// Calculate translation quality score
+#[allow(clippy::implicit_hasher)]
 pub fn score_translation(
     original: &str,
     translated: &str,
@@ -200,7 +201,7 @@ fn calculate_terminology_score(
     glossary: Option<&HashMap<String, Vec<crate::models::glossary::GlossaryEntry>>>,
     details: &mut Vec<String>,
 ) -> f64 {
-    let glossary = if let Some(g) = glossary { g } else {
+    let Some(glossary) = glossary else {
         details.push("No glossary loaded, terminology score neutral".to_string());
         return 75.0; // Neutral score when no glossary
     };

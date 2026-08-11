@@ -75,7 +75,7 @@ fn compute_file_sha256(path: &Path) -> Result<String, String> {
     use std::io::Read;
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut hasher = Sha256::new();
-    let mut buf = [0u8; 65536];
+    let mut buf = vec![0u8; 65536].into_boxed_slice();
     loop {
         let n = file.read(&mut buf).map_err(|e| e.to_string())?;
         if n == 0 {
@@ -161,7 +161,7 @@ async fn download_from_url(
     use futures::StreamExt;
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_mins(10))
+        .timeout(std::time::Duration::from_secs(10 * 60))
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
 

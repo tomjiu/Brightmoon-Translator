@@ -112,6 +112,7 @@ fn extract_word_at_ratio(t: &str, ratio: f64) -> Option<String> {
 }
 
 /// UI chrome / process names that UIA Name often returns instead of real text.
+#[allow(clippy::case_sensitive_file_extension_comparisons)] // 文件名可能混合大小写
 pub fn is_ui_chrome_word(w: &str) -> bool {
     let t = w.trim();
     if t.is_empty() {
@@ -127,7 +128,7 @@ pub fn is_ui_chrome_word(w: &str) -> bool {
     if t.contains(':') && !t.contains(' ') && t.chars().count() > 12 && t.chars().count() < 40 {
         return true;
     }
-    if n.ends_with(".exe") || n.contains(".exe ") {
+    if n.to_ascii_lowercase().ends_with(".exe") || n.to_ascii_lowercase().contains(".exe ") {
         return true;
     }
     matches!(
@@ -189,6 +190,7 @@ pub fn is_ui_chrome_word(w: &str) -> bool {
 }
 
 /// True if candidate looks like a process/app product name (reject for hover).
+#[allow(clippy::case_sensitive_file_extension_comparisons)] // 已 lower 归一
 pub fn looks_like_app_or_process_name(w: &str) -> bool {
     if is_ui_chrome_word(w) {
         return true;
@@ -462,10 +464,7 @@ fn is_editable_control_focused_win() -> bool {
             Ok(a) => a,
             Err(_) => return false,
         };
-        let focused = match automation.GetFocusedElement() {
-            Ok(e) => e,
-            Err(_) => return false,
-        };
+        let Ok(focused) = automation.GetFocusedElement() else { return false };
         if let Ok(ct) = focused.CurrentControlType() {
             let id = ct.0;
             // P1 fix: Document controls (PDF viewer, Word, browser doc) should
@@ -982,6 +981,7 @@ fn pick_word_near_cursor_ocr_win(half_w: i32, half_h: i32) -> Option<HoverPick> 
 }
 
 /// Simple rate limiter helper for hover (same word / same cell).
+#[allow(clippy::struct_field_names)]
 pub struct HoverDedupe {
     last_word: String,
     last_at: Instant,
@@ -992,7 +992,7 @@ impl HoverDedupe {
     pub fn new() -> Self {
         Self {
             last_word: String::new(),
-            last_at: Instant::now().checked_sub(Duration::from_mins(1)).unwrap(),
+            last_at: Instant::now().checked_sub(Duration::from_secs(60)).unwrap(),
             last_cell: (i32::MIN, i32::MIN),
         }
     }

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use image::{ImageBuffer, Rgb, RgbImage};
 use std::io::Cursor;
@@ -170,8 +172,8 @@ fn bench_base64_encoding(c: &mut Criterion) {
     let data_sizes = vec![
         ("1KB", 1024),
         ("10KB", 10240),
-        ("100KB", 102400),
-        ("1MB", 1048576),
+        ("100KB", 102_400),
+        ("1MB", 1_048_576),
     ];
 
     for (name, size) in data_sizes {

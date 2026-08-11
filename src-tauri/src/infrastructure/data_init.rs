@@ -28,7 +28,7 @@ impl DataInitializer {
         self.import_morphology().await?;
 
         // 4. 创建索引
-        self.create_indexes().await?;
+        Self::create_indexes();
 
         println!("\n✅ 数据初始化完成！");
         Ok(())
@@ -188,6 +188,7 @@ impl DataInitializer {
     }
 
     /// 解析 segmentation 为 JSON
+#[allow(clippy::unused_self)]
     fn parse_segmentation(&self, segmentation: &str) -> String {
         let parts: Vec<_> = segmentation
             .split('.')
@@ -217,12 +218,11 @@ impl DataInitializer {
     }
 
     /// 创建索引
-    async fn create_indexes(&self) -> Result<()> {
+    fn create_indexes() {
         println!("4️⃣ 创建索引");
 
         // 所有索引已在 Schema 中定义
         println!("   ✅ 索引已创建\n");
-        Ok(())
     }
 
     /// 获取统计信息
@@ -267,7 +267,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    #[ignore] // 需要真实数据库
+    #[ignore = "需要真实数据库"]
     async fn test_parse_segmentation() {
         let initializer =
             DataInitializer::new(SqlitePool::connect("sqlite::memory:").await.unwrap());

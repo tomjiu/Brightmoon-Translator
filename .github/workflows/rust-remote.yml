@@ -175,7 +175,7 @@ jobs:
           path: src-tauri/diagnostics
 
       - name: Clippy
-        if: ${{ inputs.run_clippy }}
+        if: ${{ github.event_name == 'push' || inputs.run_clippy }}
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
 

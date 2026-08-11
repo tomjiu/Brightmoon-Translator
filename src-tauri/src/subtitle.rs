@@ -256,6 +256,7 @@ fn parse_lrc(content: &str) -> Vec<SubtitleEntry> {
 }
 
 /// Detect subtitle format from file extension and content
+#[allow(clippy::case_sensitive_file_extension_comparisons)] // 已 to_lowercase 规范化
 pub fn detect_format(file_path: &str) -> String {
     let path_lower = file_path.to_lowercase();
 
@@ -330,7 +331,8 @@ pub fn generate_srt(entries: &[SubtitleEntry], bilingual: bool) -> String {
 ///   - `\r\n` line endings (the `\r` survived and corrupted the line)
 ///   - `{` / `}` in text (ASS interprets these as override-tag delimiters)
 ///   - empty translations (produced a trailing `\N` with nothing after it)
-///   We now route through `escape_ass_text` which handles all three cases.
+///
+/// We now route through `escape_ass_text` which handles all three cases.
 pub fn generate_ass_bilingual(original_content: &str, entries: &[SubtitleEntry]) -> String {
     let mut output = String::new();
     let mut in_events = false;

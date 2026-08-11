@@ -30,6 +30,9 @@ fn main() {
 #[cfg(target_os = "windows")]
 fn link_native_bergamot() {
     let native = std::path::Path::new("native/lib");
+    // Declare the cfg unconditionally so `#[cfg(bergamot_native)]` is valid
+    // even on machines that have not built the native stack (CI / clean clone).
+    println!("cargo:rustc-check-cfg=cfg(bergamot_native)");
     let libs = [
         "bergamot_bridge",
         "bergamot-translator",
@@ -52,7 +55,6 @@ fn link_native_bergamot() {
         println!("cargo:rustc-link-lib=dylib=shell32");
         println!("cargo:rustc-link-lib=dylib=shlwapi");
         println!("cargo:rustc-cfg=bergamot_native");
-        println!("cargo:rustc-check-cfg=cfg(bergamot_native)");
         println!("cargo:rerun-if-changed=native/lib");
     }
 }

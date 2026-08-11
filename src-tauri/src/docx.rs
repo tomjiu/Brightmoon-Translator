@@ -80,7 +80,7 @@ pub fn extract_text_from_docx(file_path: &str) -> Result<DocxDocument, String> {
 
             // Try to get title from first heading or first paragraph
             if title == "Untitled" && (is_heading || index == 0) {
-                title = text.clone();
+                title.clone_from(&text);
             }
 
             paragraphs.push(DocxParagraph {
@@ -530,14 +530,8 @@ mod tests {
         let docx_rs::TableChild::TableRow(row) = &patched.rows[0];
         let docx_rs::TableRowChild::TableCell(c0) = &row.cells[0];
         let docx_rs::TableRowChild::TableCell(c1) = &row.cells[1];
-        let p0 = match &c0.children[0] {
-            docx_rs::TableCellContent::Paragraph(p) => p,
-            _ => unreachable!("expected paragraph"),
-        };
-        let p1 = match &c1.children[0] {
-            docx_rs::TableCellContent::Paragraph(p) => p,
-            _ => unreachable!("expected paragraph"),
-        };
+        let docx_rs::TableCellContent::Paragraph(p0) = &c0.children[0] else { unreachable!("expected paragraph") };
+        let docx_rs::TableCellContent::Paragraph(p1) = &c1.children[0] else { unreachable!("expected paragraph") };
         assert_eq!(extract_paragraph_text(p0), "你好");
         assert_eq!(extract_paragraph_text(p1), "World");
     }

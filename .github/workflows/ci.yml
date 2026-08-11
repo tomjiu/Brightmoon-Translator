@@ -73,6 +73,10 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib --bins --no-run
 
+      - name: Clippy (deny warnings)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
       # Clean up stub files so they never accidentally ship in a build artifact.
       - name: Remove stub resource files
         if: always()

@@ -1,3 +1,8 @@
+//! Youdao (有道) reverse-engineered SDK endpoint support.
+//! The `re_*` regex set and CDN key-sync methods below are intentionally
+//! retained (not yet wired up) for future account-scoped Youdao usage.
+#![allow(dead_code)]
+
 use super::TranslationEngine;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -417,7 +422,7 @@ impl YoudaoEngine {
                 .client
                 .get(&url)
                 .header("User-Agent", "Mozilla/5.0 Chrome/120")
-                .timeout(std::time::Duration::from_mins(1))
+                .timeout(std::time::Duration::from_secs(60))
                 .send()
                 .await
             else {

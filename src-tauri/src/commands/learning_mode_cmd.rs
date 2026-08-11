@@ -596,7 +596,7 @@ async fn get_quiz_words(
 
     let words: Vec<(String, String)> = rows
         .into_iter()
-        .filter_map(|row| {
+        .map(|row| {
             let word: String = row.get("word");
             let ai_content_str: Option<String> = row.get("ai_content");
 
@@ -615,7 +615,7 @@ async fn get_quiz_words(
                 })
                 .unwrap_or_else(|| format!("单词: {word}"));
 
-            Some((word, definition))
+            (word, definition)
         })
         .collect();
 
@@ -633,7 +633,7 @@ fn shuffle_vec<T>(v: &mut [T]) {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos() as u64;
-    let mut state = seed.wrapping_add(0x9E3779B97F4A7C15);
+    let mut state = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
     for i in (1..len).rev() {
         // xorshift64
         state ^= state << 13;

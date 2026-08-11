@@ -320,9 +320,9 @@ fn parse_tmx_lenient(xml: &str, version: &str) -> Result<TmxData> {
                             }
                         }
                         if tuv_count == 1 {
-                            source_lang = current_lang.clone();
+                            source_lang.clone_from(&current_lang);
                         } else {
-                            target_lang = current_lang.clone();
+                            target_lang.clone_from(&current_lang);
                         }
                     },
                     "seg" => {

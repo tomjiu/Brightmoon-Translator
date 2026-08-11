@@ -12,6 +12,7 @@
 //! / `NativeModel` wrappers. Raw handles are never exposed outside it.
 
 use std::collections::HashMap;
+#[cfg(bergamot_native)]
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::{Arc, Mutex};
 
@@ -274,9 +275,11 @@ pub fn load_model_cached(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(bergamot_native)]
     use super::*;
 
     /// Real model dir used by the spike (also the Task 8 E2E fixture).
+    #[cfg(bergamot_native)]
     const SPIKE_CONFIG_EN_ZH: &str =
         concat!(env!("CARGO_MANIFEST_DIR"), "/../spike/bergamot-cjk/config.enzh.yml");
 

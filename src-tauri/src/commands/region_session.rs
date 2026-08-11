@@ -517,6 +517,7 @@ pub fn ocr_region_list() -> Result<Vec<RegionSessionInfo>, String> {
 /// Mirrors the frontend `RegionState.engine` so `ocr_region_list` exposes the
 /// per-region engine choice. No-op for unknown regions (frame not yet created).
 #[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
 pub fn ocr_region_set_engine(id: String, engine: String) -> Result<(), String> {
     let mut mgr = region_manager()
         .lock()

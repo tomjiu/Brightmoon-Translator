@@ -201,6 +201,7 @@ impl HistoryStore {
         self.query_contains(&conn, &normalized, from, to, threshold)
     }
 
+#[allow(clippy::unused_self)]
     fn query_exact(
         &self,
         conn: &Connection,
@@ -228,6 +229,7 @@ impl HistoryStore {
         .ok()
     }
 
+#[allow(clippy::unused_self)]
     fn query_prefix(
         &self,
         conn: &Connection,
@@ -277,6 +279,7 @@ impl HistoryStore {
         })
     }
 
+#[allow(clippy::unused_self)]
     fn query_contains(
         &self,
         conn: &Connection,
@@ -457,18 +460,15 @@ impl HistoryStore {
             .unwrap_or(0) as usize;
 
         let lang_pairs: Vec<(String, String, usize)> = {
-            let mut stmt = match conn.prepare(
+            let Ok(mut stmt) = conn.prepare(
                 "SELECT from_lang, to_lang, COUNT(*) as cnt
                  FROM history GROUP BY from_lang, to_lang ORDER BY cnt DESC",
-            ) {
-                Ok(stmt) => stmt,
-                Err(_) => {
+            ) else {
                     return TmStats {
                         total,
                         lang_pairs: Vec::new(),
                     }
-                },
-            };
+                };
             stmt.query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,

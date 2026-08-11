@@ -186,6 +186,7 @@ const BILINGUAL_CSS: &str = r"
 ///
 /// Opens the original EPUB as a ZIP, injects translated text into each chapter's HTML,
 /// and writes a new EPUB that can be opened in any EPUB reader.
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 pub fn create_bilingual_epub(
     original_path: &str,
     output_path: &str,
@@ -229,9 +230,10 @@ pub fn create_bilingual_epub(
 
     // Write all entries, modifying chapter HTML files with translations
     for (name, data) in &entries {
-        let is_chapter = name.ends_with(".xhtml")
-            || name.ends_with(".html")
-            || name.ends_with(".htm");
+        let lower_name = name.to_ascii_lowercase();
+        let is_chapter = lower_name.ends_with(".xhtml")
+            || lower_name.ends_with(".html")
+            || lower_name.ends_with(".htm");
 
         let modified = if is_chapter {
             let html_str = String::from_utf8_lossy(data);

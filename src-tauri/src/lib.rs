@@ -1,3 +1,7 @@
+// unwrap/expect are used pervasively for infallible paths and
+// test/CLI scaffolding; print_* is used by tools and examples.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stdout, clippy::print_stderr)]
+
 pub mod domain;
 pub mod infrastructure;
 pub mod skills;
@@ -710,7 +714,7 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     // Delay first poll so startup is quiet
                     tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
-                    let mut ticker = tokio::time::interval(tokio::time::Duration::from_mins(1));
+                    let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(60));
                     loop {
                         ticker.tick().await;
                         let state = app_handle.state::<AppState>();
@@ -743,7 +747,7 @@ pub fn run() {
                             Ok(result) => {
                                 let mut c = state.system.config.lock().await;
                                 c.sync.last_sync_at = result.synced_at;
-                                c.sync.last_sync_status = result.message.clone();
+                                c.sync.last_sync_status.clone_from(&result.message);
                                 c.save();
                                 if result.downloaded_config.is_some() {
                                     tracing::info!(

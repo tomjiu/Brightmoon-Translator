@@ -380,7 +380,7 @@ async fn uia_monitor_task(
                 process_name
             );
             if text != last_text || hwnd_raw != last_hwnd {
-                last_text = text.clone();
+                last_text.clone_from(&text);
                 last_hwnd = hwnd_raw;
                 let _ = tx.send(MonitoredText {
                     window_title,
@@ -442,10 +442,7 @@ async fn clipboard_monitor_task(
             None,
         );
 
-        let hwnd = match hwnd {
-            Ok(h) => h,
-            Err(_) => return,
-        };
+        let Ok(hwnd) = hwnd else { return };
 
         // Register for clipboard notifications
         let _ = AddClipboardFormatListener(hwnd);
@@ -680,7 +677,7 @@ async fn ocr_monitor_task(
         if let Some((text, window_title, process_name)) = result {
             let trimmed = text.trim().to_string();
             if !trimmed.is_empty() && trimmed != last_text {
-                last_text = trimmed.clone();
+                last_text.clone_from(&trimmed);
                 tracing::info!(
                     "[OCR Monitor] Sending text ({} chars) from {}",
                     trimmed.len(),
@@ -878,6 +875,7 @@ unsafe fn get_wm_text(hwnd: HWND) -> String {
 
 /// Capture foreground window text via UI Automation.
 /// SAFETY: Win32 API calls to get foreground window and read its text.
+#[allow(clippy::type_complexity)]
 fn capture_foreground_text() -> Option<(String, usize, String, String, Option<(i32, i32, i32, i32)>)>
 {
     unsafe {

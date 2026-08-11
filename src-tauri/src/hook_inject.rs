@@ -27,7 +27,7 @@ use windows::Win32::System::Threading::{
 
 // Shared memory constants (must match DLL; name is PID-scoped)
 const SHARED_MEMORY_SIZE: usize = 1024 * 1024; // 1MB
-const SHARED_MEMORY_MAGIC: u32 = 0x4D4F4F4E; // "MOON"
+const SHARED_MEMORY_MAGIC: u32 = 0x4D4F_4F4E; // "MOON"
 
 /// 4a-marker: reserved `code_page` sentinel used by the DLL's Ldr callback to
 /// report late-loaded module basenames through shared memory without
@@ -253,7 +253,7 @@ impl HookManager {
             // Get LoadLibraryW address
             let kernel32 = GetModuleHandleW(PCWSTR(to_wide("kernel32.dll").as_ptr()))
                 .map_err(|e| format!("GetModuleHandleW failed: {e}"))?;
-            let load_library = GetProcAddress(kernel32, PSTR(b"LoadLibraryW\0".as_ptr().cast_mut()))
+            let load_library = GetProcAddress(kernel32, PSTR(c"LoadLibraryW".as_ptr().cast_mut().cast::<u8>()))
                 .ok_or("GetProcAddress LoadLibraryW failed")?;
 
             // Create remote thread to load DLL
@@ -261,7 +261,7 @@ impl HookManager {
                 process,
                 None,
                 0,
-                Some(std::mem::transmute(load_library)),
+                Some(std::mem::transmute::<unsafe extern "system" fn() -> isize, unsafe extern "system" fn(*mut std::ffi::c_void) -> u32>(load_library)),
                 Some(remote_mem),
                 0,
                 None,
@@ -363,7 +363,7 @@ impl HookManager {
                 LoadLibraryW(PCWSTR(to_wide(&local_dll).as_ptr()))
                     .map_err(|e| format!("LoadLibraryW local hook dll failed: {e}"))?;
 
-            let local_proc = GetProcAddress(local_mod, PSTR(b"HookUninstall\0".as_ptr().cast_mut()))
+            let local_proc = GetProcAddress(local_mod, PSTR(c"HookUninstall".as_ptr().cast_mut().cast::<u8>()))
                 .ok_or_else(|| {
                     let _ = FreeLibrary(local_mod);
                     "GetProcAddress HookUninstall failed".to_string()
@@ -440,7 +440,7 @@ impl HookManager {
                 process,
                 None,
                 0,
-                Some(std::mem::transmute(remote_fn)),
+                Some(std::mem::transmute::<usize, unsafe extern "system" fn(*mut std::ffi::c_void) -> u32>(remote_fn)),
                 None,
                 0,
                 None,
@@ -782,7 +782,7 @@ impl HookManager {
 
             let local_proc = GetProcAddress(
                 local_mod,
-                PSTR(b"HookInstallAtAddressStruct\0".as_ptr().cast_mut()),
+                PSTR(c"HookInstallAtAddressStruct".as_ptr().cast_mut().cast::<u8>()),
             )
             .ok_or_else(|| {
                 let _ = FreeLibrary(local_mod);
@@ -852,7 +852,7 @@ impl HookManager {
                 process,
                 None,
                 0,
-                Some(std::mem::transmute(remote_fn)),
+                Some(std::mem::transmute::<usize, unsafe extern "system" fn(*mut std::ffi::c_void) -> u32>(remote_fn)),
                 Some(params_ptr),
                 0,
                 None,
@@ -979,7 +979,7 @@ impl HookManager {
             process,
             None,
             0,
-            Some(std::mem::transmute(remote_fn)),
+            Some(std::mem::transmute::<usize, unsafe extern "system" fn(*mut std::ffi::c_void) -> u32>(remote_fn)),
             None,
             0,
             None,
@@ -1006,6 +1006,7 @@ impl HookManager {
         self.find_hook_dll().ok()
     }
 
+#[allow(clippy::unused_self)]
     fn find_hook_dll(&self) -> Result<String, String> {
         // Look for moon_hook.dll next to the exe (release bundle), then dev build outputs.
         let exe_dir = std::env::current_exe()
@@ -1403,8 +1404,8 @@ mod s5_5_tests {
     #[test]
     fn file_size_match_passes() {
         assert!(compare_dll_metadata(
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
         )
         .is_ok());
     }
@@ -1412,8 +1413,8 @@ mod s5_5_tests {
     #[test]
     fn file_size_mismatch_fails() {
         let err = compare_dll_metadata(
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
-            Some("C:\\app\\moon_hook.dll"), Some(789012), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(789_012), 0x50000,
         )
         .unwrap_err();
         assert!(err.contains("file size mismatch"), "got: {err}");
@@ -1424,7 +1425,7 @@ mod s5_5_tests {
     fn missing_file_size_skips_size_check() {
         // File stat may fail (e.g. file deleted after load); should not fail the check.
         assert!(compare_dll_metadata(
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
             Some("C:\\app\\moon_hook.dll"), None, 0x50000,
         )
         .is_ok());
@@ -1435,8 +1436,8 @@ mod s5_5_tests {
     #[test]
     fn all_three_signals_match_passes() {
         assert!(compare_dll_metadata(
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
         )
         .is_ok());
     }
@@ -1445,8 +1446,8 @@ mod s5_5_tests {
     fn image_size_mismatch_short_circuits_before_path_check() {
         // Even if paths match, SizeOfImage mismatch should fail first.
         let err = compare_dll_metadata(
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x60000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x60000,
         )
         .unwrap_err();
         assert!(err.contains("image size mismatch"), "got: {err}");

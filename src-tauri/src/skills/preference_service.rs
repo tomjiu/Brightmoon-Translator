@@ -47,7 +47,7 @@ pub fn aggregate_preferences(rows: &[UserPreferenceRow]) -> Vec<FieldPreference>
         entry.0 += row.rating;
         entry.1 += 1;
         if row.feedback.is_some() {
-            entry.2 = row.feedback.clone();
+            entry.2.clone_from(&row.feedback);
         }
     }
     grouped

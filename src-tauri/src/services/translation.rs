@@ -383,7 +383,7 @@ impl TranslationService {
                 text: String::new(),
                 from: from.to_string(),
                 to: to.to_string(),
-                concurrency: concurrency.max(1).min(10),
+                concurrency: concurrency.clamp(1, 10),
                 segments,
                 engine,
                 ..Default::default()
@@ -1032,7 +1032,7 @@ impl TranslationService {
                 return Vec::new();
             }
 
-            let concurrency = concurrency.max(1).min(10);
+            let concurrency = concurrency.clamp(1, 10);
             let mut results = Vec::with_capacity(total);
             // Use VecDeque for O(1) pop_front when evicting old context entries
             let mut context: VecDeque<TranslationContext> = VecDeque::new();

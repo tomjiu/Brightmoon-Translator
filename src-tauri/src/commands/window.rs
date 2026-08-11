@@ -830,7 +830,7 @@ pub async fn create_ocr_region_frame(
             },
             Err(e) => {
                 let err_str = e.to_string();
-                last_error = err_str.clone();
+                last_error.clone_from(&err_str);
                 tracing::warn!(
                     "OCR region frame creation attempt {} failed: {}",
                     attempt,

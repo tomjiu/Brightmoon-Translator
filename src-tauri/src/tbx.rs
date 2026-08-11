@@ -190,12 +190,12 @@ pub fn parse_tbx(xml: &str) -> Result<TbxData> {
                     if is_source {
                         current_source_term.push_str(&text);
                         if current_source_lang.is_empty() {
-                            current_source_lang = current_lang.clone();
+                            current_source_lang.clone_from(&current_lang);
                         }
                     } else {
                         current_target_term.push_str(&text);
                         if current_target_lang.is_empty() {
-                            current_target_lang = current_lang.clone();
+                            current_target_lang.clone_from(&current_lang);
                         }
                     }
                 } else if in_term_note && in_tig {

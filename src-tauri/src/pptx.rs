@@ -76,6 +76,7 @@ pub struct PptxTranslationResult {
 }
 
 /// Extract text from PPTX file
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 pub fn extract_text_from_pptx(file_path: &str) -> Result<PptxDocument, String> {
     let file = File::open(file_path).map_err(|e| format!("Failed to open PPTX file: {e}"))?;
     let mut archive =
@@ -92,7 +93,7 @@ pub fn extract_text_from_pptx(file_path: &str) -> Result<PptxDocument, String> {
             .by_index(i)
             .map_err(|e| format!("Failed to read archive entry: {e}"))?;
         let name = entry.name().to_string();
-        if name.starts_with("ppt/slides/slide") && name.ends_with(".xml") {
+        if name.starts_with("ppt/slides/slide") && name.to_ascii_lowercase().ends_with(".xml") {
             slide_files.push(name);
         }
     }
@@ -123,7 +124,7 @@ pub fn extract_text_from_pptx(file_path: &str) -> Result<PptxDocument, String> {
         if title == "Untitled" && slide_idx == 0 {
             if let Some(first_block) = text_blocks.first() {
                 if !first_block.text.is_empty() {
-                    title = first_block.text.clone();
+                    title.clone_from(&first_block.text);
                 }
             }
         }
@@ -258,6 +259,7 @@ fn local_tag_name(tag: &[u8]) -> &[u8] {
 }
 
 /// Write translated content back to PPTX file
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 pub fn write_translated_pptx(
     input_path: &str,
     output_path: &str,
@@ -294,7 +296,7 @@ pub fn write_translated_pptx(
             .map_err(|e| format!("Failed to read entry content: {e}"))?;
 
         // Process slide XML files
-        if name.starts_with("ppt/slides/slide") && name.ends_with(".xml") {
+        if name.starts_with("ppt/slides/slide") && name.to_ascii_lowercase().ends_with(".xml") {
             let xml_content =
                 String::from_utf8(content).map_err(|e| format!("Invalid UTF-8 in slide: {e}"))?;
 

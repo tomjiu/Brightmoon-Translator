@@ -1,8 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stdout, clippy::print_stderr)]
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::EnvFilter;
 
@@ -61,7 +62,7 @@ fn resolve_log_dir() -> Option<PathBuf> {
 }
 
 /// Build the per-day log file path: `app-YYYY-MM-DD.log`.
-fn today_log_path(log_dir: &PathBuf) -> PathBuf {
+fn today_log_path(log_dir: &Path) -> PathBuf {
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
     log_dir.join(format!("app-{date}.log"))
 }
@@ -228,14 +229,8 @@ fn check_binary_freshness() {
             .to_string()
     }
 
-    let exe = match std::env::current_exe() {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    let exe_mtime = match std::fs::metadata(&exe).and_then(|m| m.modified()) {
-        Ok(t) => t,
-        Err(_) => return,
-    };
+    let Ok(exe) = std::env::current_exe() else { return };
+    let Ok(exe_mtime) = std::fs::metadata(&exe).and_then(|m| m.modified()) else { return };
 
     // Find the project root by walking up from the exe until we see
     // `src-tauri/Cargo.toml`. Works for target/debug and target/release layouts;

@@ -441,7 +441,7 @@ pub fn run_pdf_sidecar(
         .map_err(|e| format!("Failed to spawn {engine} ({}): {e}", program.display()))?;
 
     // Soft timeout ~120s
-    let deadline = std::time::Instant::now() + Duration::from_mins(2);
+    let deadline = std::time::Instant::now() + Duration::from_secs(2 * 60);
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
@@ -1068,6 +1068,7 @@ fn wrap_text(text: &str, font_size: f32) -> Vec<String> {
 ///   producing a bilingual PDF where original and translation alternate.
 ///
 /// Uses the same CJK font resolution and `wrap_text` helper as `write_bilingual_pdf`.
+#[allow(clippy::needless_pass_by_value)]
 pub fn write_translated_pdf(
     output_path: &str,
     pages: &[TranslatedPage],

@@ -109,7 +109,7 @@ fn show_existing(app: &AppHandle, x: i32, y: i32) {
     }
 }
 
-pub fn show(app: &AppHandle, text: String, screen_x: f64, screen_y: f64) -> Result<(), String> {
+pub fn show(app: &AppHandle, text: &str, screen_x: f64, screen_y: f64) -> Result<(), String> {
     let text = text.trim().to_string();
     if text.is_empty() {
         return Ok(());

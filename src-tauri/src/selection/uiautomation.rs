@@ -134,7 +134,7 @@ fn get_uia_selection() -> Option<SelectionResult> {
         // so we proceed and let UIA use the existing apartment.
         let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         // S_FALSE (1) = already initialized same mode — also OK.
-        const RPC_E_CHANGED_MODE: windows::core::HRESULT = windows::core::HRESULT(0x80010106u32 as i32);
+        const RPC_E_CHANGED_MODE: windows::core::HRESULT = windows::core::HRESULT(0x8001_0106_u32 as i32);
         if hr.is_err() && hr != RPC_E_CHANGED_MODE {
             tracing::error!("[uiautomation] CoInitializeEx failed: {:?}", hr);
             return None;
@@ -408,10 +408,7 @@ unsafe fn find_text_selection_in_children(
     let limit = count.min(8);
 
     for i in 0..limit {
-        let child = match children.GetElement(i) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
+        let Ok(child) = children.GetElement(i) else { continue };
 
         if let Ok(result) = try_text_pattern(&child) {
             if !result.0.trim().is_empty() {

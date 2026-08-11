@@ -59,6 +59,12 @@ const FOLLOW_POLL_MS: u64 = 100;
 /// Minimum pixel movement threshold to avoid jittery updates.
 const MOVE_THRESHOLD: f64 = 3.0;
 
+impl Default for FollowController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FollowController {
     /// Create an uninitialized controller. Call `init()` with the `AppHandle`
     /// once it becomes available (typically in Tauri `setup()`).

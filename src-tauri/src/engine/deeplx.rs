@@ -124,7 +124,7 @@ impl DeepLXEngine {
     /// Generate random ID matching `DeepLX` format: (100000..199998) * 1000
     fn generate_id() -> i64 {
         let mut rng = rand::thread_rng();
-        let base = rng.gen_range(100000..199999);
+        let base = rng.gen_range(100_000..199_999);
         base * 1000
     }
 
@@ -144,7 +144,7 @@ impl DeepLXEngine {
     }
 
     /// Manipulate request body like `DeepLX` does
-    fn handler_body_method(random_id: i64, body: String) -> String {
+    fn handler_body_method(random_id: i64, body: &str) -> String {
         let calc = (random_id + 5) % 29 == 0 || (random_id + 3) % 13 == 0;
         if calc {
             body.replacen("\"method\":\"", "\"method\" : \"", 1)
@@ -196,7 +196,7 @@ impl DeepLXEngine {
 
             // Format body and apply manipulation like DeepLX
             let post_str = post_data.to_string();
-            let post_str = Self::handler_body_method(id, post_str);
+            let post_str = Self::handler_body_method(id, &post_str);
 
             let resp = match self
                 .client
@@ -242,7 +242,7 @@ impl DeepLXEngine {
 
             if let Some(error) = body.error {
                 // Rate limit error code
-                if error.code == Some(1042911) {
+                if error.code == Some(1_042_911) {
                     last_error = Some("Rate limited, retrying...".to_string());
                     continue;
                 }
