@@ -13,7 +13,7 @@ fn sanitize_llm_error(status: reqwest::StatusCode, body: &str) -> String {
     let truncated: String = body.chars().take(200).collect();
     // Use centralized sanitization
     let sanitized = crate::security::sanitize_log_message(&truncated);
-    format!("LLM API error {}: {}", status, sanitized)
+    format!("LLM API error {status}: {sanitized}")
 }
 
 /// Single LLM endpoint (key + URL + model + wire format) for ordered failover.
@@ -101,7 +101,7 @@ impl LlmEngine {
         }
     }
 
-    /// Multiple keys sharing one base_url/model (legacy); each key becomes an endpoint.
+    /// Multiple keys sharing one `base_url/model` (legacy); each key becomes an endpoint.
     pub fn with_multiple_keys(api_keys: Vec<String>, base_url: &str, model: &str) -> Self {
         let base_url = base_url.trim_end_matches('/').to_string();
         let model = model.to_string();
@@ -192,15 +192,9 @@ impl LlmEngine {
         let from_lang = lang_map(from);
         let to_lang = lang_map(to);
 
-        let base = if !self.custom_prompt.is_empty() {
-            self.custom_prompt
-                .replace("{from}", &from_lang)
-                .replace("{to}", &to_lang)
-                .replace("{source_lang}", &from_lang)
-                .replace("{target_lang}", &to_lang)
-        } else {
+        let base = if self.custom_prompt.is_empty() {
             format!(
-                r#"你是一个专业的翻译专家。请遵循以下规则：
+                r"你是一个专业的翻译专家。请遵循以下规则：
 1. 准确传达原文含义，保持自然流畅
 2. 专业术语使用标准译法
 3. 保持原文的语气和风格
@@ -208,13 +202,19 @@ impl LlmEngine {
 5. 只返回翻译结果，不要添加任何解释或前缀
 
 源语言：{from_lang}
-目标语言：{to_lang}"#
+目标语言：{to_lang}"
             )
-        };
+        } else {
+                    self.custom_prompt
+                        .replace("{from}", &from_lang)
+                        .replace("{to}", &to_lang)
+                        .replace("{source_lang}", &from_lang)
+                        .replace("{target_lang}", &to_lang)
+                };
 
         // Append glossary hint if available
         match glossary_hint {
-            Some(hint) if !hint.is_empty() => format!("{}\n\n{}", base, hint),
+            Some(hint) if !hint.is_empty() => format!("{base}\n\n{hint}"),
             _ => base,
         }
     }
@@ -248,8 +248,7 @@ impl LlmEngine {
     fn primary_model(&self) -> &str {
         self.endpoints
             .first()
-            .map(|e| e.model.as_str())
-            .unwrap_or("")
+            .map_or("", |e| e.model.as_str())
     }
 
     /// Shared non-streaming LLM call with ordered endpoint failover.
@@ -282,7 +281,6 @@ impl LlmEngine {
                         attempt + 1,
                         crate::security::sanitize_log_message(&last_error)
                     );
-                    continue;
                 },
             }
         }
@@ -292,9 +290,7 @@ impl LlmEngine {
         }
 
         Err(anyhow::anyhow!(
-            "All {} endpoints failed. Last error: {}",
-            total,
-            last_error
+            "All {total} endpoints failed. Last error: {last_error}"
         ))
     }
 
@@ -515,7 +511,7 @@ impl LlmEngine {
         }
     }
 
-    /// Non-streaming LLM call with system_prompt and user_text convenience wrapper
+    /// Non-streaming LLM call with `system_prompt` and `user_text` convenience wrapper
     async fn call_llm(&self, system_prompt: &str, user_text: &str) -> anyhow::Result<String> {
         let messages = self
             .build_request(self.primary_model(), system_prompt, user_text, false)
@@ -579,7 +575,7 @@ impl LlmEngine {
                     return Ok(text);
                 },
                 Err(e) => {
-                    last_error = format!("{}", e);
+                    last_error = format!("{e}");
                     tracing::warn!(
                         "Stream endpoint '{}' attempt {} of {} failed: {}",
                         label,
@@ -587,15 +583,12 @@ impl LlmEngine {
                         total,
                         crate::security::sanitize_log_message(&last_error)
                     );
-                    continue;
                 },
             }
         }
 
         Err(anyhow::anyhow!(
-            "All {} stream endpoints failed. Last error: {}",
-            total,
-            last_error
+            "All {total} stream endpoints failed. Last error: {last_error}"
         ))
     }
 
@@ -609,7 +602,7 @@ impl LlmEngine {
         let format = crate::models::config::normalize_api_format(&ep.api_format);
         if format != "openai" {
             let content = self
-                .call_one_endpoint(ep, &format, &messages, self.temperature)
+                .call_one_endpoint(ep, &format, messages, self.temperature)
                 .await
                 .map_err(|e| anyhow::anyhow!(e))?;
             let _ = tx.send(content.clone()).await;
@@ -719,7 +712,7 @@ impl TranslationEngine for LlmEngine {
         self.call_llm(&system_prompt, text).await
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "LLM"
     }
 
@@ -876,7 +869,7 @@ fn truncate_text(text: &str, max_len: usize) -> String {
     } else {
         // Use char-based truncation to avoid panicking on multi-byte UTF-8 boundaries
         let truncated: String = text.chars().take(max_len).collect();
-        format!("{}...", truncated)
+        format!("{truncated}...")
     }
 }
 

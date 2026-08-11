@@ -8,6 +8,12 @@ pub struct VolcengineWebEngine {
     client: Client,
 }
 
+impl Default for VolcengineWebEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VolcengineWebEngine {
     pub fn new() -> Self {
         Self {
@@ -61,12 +67,12 @@ impl TranslationEngine for VolcengineWebEngine {
         let body: serde_json::Value = resp.json().await?;
         body.get("translation")
             .and_then(|t| t.as_str())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .filter(|s| !s.is_empty())
             .ok_or_else(|| anyhow::anyhow!("VolcengineWeb: missing translation field: {body}"))
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Volcengine (free)"
     }
 

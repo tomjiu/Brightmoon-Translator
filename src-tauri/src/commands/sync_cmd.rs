@@ -9,7 +9,7 @@ fn validate_sync_inputs(
     interval_mins: u64,
 ) -> Result<(), AppError> {
     let parsed = reqwest::Url::parse(server_url)
-        .map_err(|e| AppError::Config(format!("Invalid sync server URL: {}", e)))?;
+        .map_err(|e| AppError::Config(format!("Invalid sync server URL: {e}")))?;
     match parsed.scheme() {
         "http" | "https" => {},
         _ => {
@@ -45,7 +45,7 @@ fn validate_sync_inputs(
     Ok(())
 }
 
-/// Test WebDAV connection with current sync config.
+/// Test `WebDAV` connection with current sync config.
 #[tauri::command]
 pub async fn test_webdav_connection(state: State<'_, AppState>) -> Result<String, AppError> {
     let config = state.system.config.lock().await;
@@ -151,6 +151,7 @@ pub async fn get_sync_config(state: State<'_, AppState>) -> Result<serde_json::V
 
 /// Save sync configuration.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn save_sync_config(
     state: State<'_, AppState>,
     enabled: bool,

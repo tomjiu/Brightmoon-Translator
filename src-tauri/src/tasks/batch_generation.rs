@@ -118,7 +118,7 @@ impl BatchGenerationTask {
 
                 // 更新计数
                 match result {
-                    Ok(_) => {
+                    Ok(()) => {
                         let mut c = completed_clone.lock().await;
                         *c += 1;
                         let completed_count = *c;
@@ -221,20 +221,17 @@ async fn generate_word_content(
             .fetch_optional(pool)
             .await?;
 
-    let card_id = match card_id {
-        Some(id) => id,
-        None => {
-            // 如果卡牌不存在，创建一个
-            let new_id = uuid::Uuid::new_v4().to_string();
-            let now = chrono::Utc::now().timestamp();
-            let event = CardEvent::WordImported {
-                word: word.to_string(),
-                source: "batch_generation".to_string(),
-                timestamp: now,
-            };
-            event_store.append_event(&new_id, &event).await?;
-            new_id
-        },
+    let card_id = if let Some(id) = card_id { id } else {
+        // 如果卡牌不存在，创建一个
+        let new_id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().timestamp();
+        let event = CardEvent::WordImported {
+            word: word.to_string(),
+            source: "batch_generation".to_string(),
+            timestamp: now,
+        };
+        event_store.append_event(&new_id, &event).await?;
+        new_id
     };
 
     // 检查是否已有AI内容

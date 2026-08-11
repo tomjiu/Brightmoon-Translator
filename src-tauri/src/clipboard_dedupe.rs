@@ -5,10 +5,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-/// Process-wide lock serializing all Win32 OpenClipboard sections.
+/// Process-wide lock serializing all Win32 `OpenClipboard` sections.
 ///
 /// The clipboard is a single OS-wide resource: a write (replace paste) while a
-/// monitor thread holds the clipboard open makes the second OpenClipboard fail
+/// monitor thread holds the clipboard open makes the second `OpenClipboard` fail
 /// or read a half-updated buffer (M4-03). All clipboard-touching call sites
 /// (replace, hook clipboard listener, selection Ctrl+C) must take this lock for
 /// the duration of their OpenClipboard..CloseClipboard window.
@@ -56,7 +56,7 @@ pub fn claim_clipboard_text(text: &str) -> bool {
         return false;
     }
 
-    let mut guard = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    let mut guard = LAST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let now = Instant::now();
     if let Some((ref last, at)) = *guard {
         if last == trimmed && now.duration_since(at) < SAME_TEXT_COOLDOWN {
@@ -73,7 +73,7 @@ pub fn mark_clipboard_text(text: &str) {
     if trimmed.len() < 2 {
         return;
     }
-    let mut guard = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    let mut guard = LAST.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     *guard = Some((trimmed.to_string(), Instant::now()));
 }
 

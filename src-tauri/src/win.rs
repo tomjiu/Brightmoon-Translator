@@ -18,7 +18,7 @@ pub fn cursor_pos_raw() -> Option<(i32, i32)> {
         let mut pt = POINT::default();
         // SAFETY: GetCursorPos writes into a stack-allocated POINT. It is a
         // standard Win32 API with no preconditions beyond a valid pointer.
-        if unsafe { GetCursorPos(&mut pt).is_ok() } {
+        if unsafe { GetCursorPos(&raw mut pt).is_ok() } {
             return Some((pt.x, pt.y));
         }
     }
@@ -27,13 +27,13 @@ pub fn cursor_pos_raw() -> Option<(i32, i32)> {
 
 /// Return the current mouse cursor position in screen coordinates.
 ///
-/// Returns `(100.0, 100.0)` when the cursor cannot be read (GetCursorPos
+/// Returns `(100.0, 100.0)` when the cursor cannot be read (`GetCursorPos`
 /// failure) or on non-Windows platforms. This fallback matches the previous
 /// `present.rs` / `window.rs` behavior and keeps overlays on-screen rather
 /// than pinned to the top-left corner `(0, 0)`.
 pub fn cursor_pos() -> (f64, f64) {
     let (x, y) = cursor_pos_raw().unwrap_or((100, 100));
-    (x as f64, y as f64)
+    (f64::from(x), f64::from(y))
 }
 
 // ── C3+C4: no-activate window styles ────────────────────────────────────────
@@ -91,7 +91,7 @@ pub fn set_window_no_activate(_hwnd: isize, _no_activate: bool) -> bool {
 
 /// Show a window without activating it (`SW_SHOWNOACTIVATE`).
 ///
-/// Returns `true` if the window was previously visible (Win32 ShowWindow
+/// Returns `true` if the window was previously visible (Win32 `ShowWindow`
 /// semantics), `false` if it was hidden or on non-Windows platforms.
 #[cfg(windows)]
 pub fn show_window_no_activate(hwnd: isize) -> bool {
@@ -118,12 +118,9 @@ pub fn show_window_no_activate(_hwnd: isize) -> bool {
 /// regardless (via the Tauri `show()` path if the Win32 call fails).
 #[cfg(windows)]
 pub fn show_webview_no_activate(window: &tauri::WebviewWindow) -> bool {
-    let hwnd = match window.hwnd() {
-        Ok(h) => h.0 as isize,
-        Err(_) => {
-            let _ = window.show();
-            return false;
-        }
+    let hwnd = if let Ok(h) = window.hwnd() { h.0 as isize } else {
+        let _ = window.show();
+        return false;
     };
     let styled = set_window_no_activate(hwnd, true);
     show_window_no_activate(hwnd);

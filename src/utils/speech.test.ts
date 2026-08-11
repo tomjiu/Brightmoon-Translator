@@ -12,6 +12,11 @@ describe('detectSpeakLang', () => {
     expect(detectSpeakLang('学习英语')).toBe('zh');
   });
 
+  it('detects Korean Hangul', () => {
+    expect(detectSpeakLang('안녕하세요')).toBe('ko');
+    expect(detectSpeakLang('한국어 학습')).toBe('ko');
+  });
+
   it('detects English (ASCII letters)', () => {
     expect(detectSpeakLang('hello')).toBe('en');
     expect(detectSpeakLang('Hello World')).toBe('en');

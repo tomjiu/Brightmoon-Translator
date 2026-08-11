@@ -1,12 +1,12 @@
 //! Auto text region detect — improves OCR quality by running DocLayout-YOLO
 //! layout detection before OCR, then OCR-ing only text-bearing regions
-//! (title / plain_text / captions / list) while skipping non-text regions
+//! (title / `plain_text` / captions / list) while skipping non-text regions
 //! (figure / table / formula / abandon / header / footer).
 //!
 //! ## Pipeline
 //! 1. Check `layout_detection_enabled` config + model availability.
 //! 2. If disabled or model missing → delegate to existing full-image OCR.
-//! 3. Load the LayoutDetector and run inference on the screenshot.
+//! 3. Load the `LayoutDetector` and run inference on the screenshot.
 //! 4. Filter detected regions: keep text classes, skip non-text classes.
 //! 5. For each text region: crop → OCR → offset bounding boxes by region origin.
 //! 6. Merge all per-region lines, sorted top-to-bottom by y coordinate.
@@ -32,9 +32,9 @@ use tauri::AppHandle;
 /// Class IDs that are considered "text-bearing" and should be OCR'd.
 ///
 /// DocLayout-YOLO classes:
-/// 0: title, 1: plain_text, 2: abandon, 3: figure, 4: figure_caption,
-/// 5: table, 6: table_caption, 7: table_footnote, 8: is_list,
-/// 9: formula, 10: page_header, 11: page_footer
+/// 0: title, 1: `plain_text`, 2: abandon, 3: figure, 4: `figure_caption`,
+/// 5: table, 6: `table_caption`, 7: `table_footnote`, 8: `is_list`,
+/// 9: formula, 10: `page_header`, 11: `page_footer`
 const TEXT_CLASS_IDS: &[u32] = &[
     0,  // title
     1,  // plain_text

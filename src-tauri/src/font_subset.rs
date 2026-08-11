@@ -50,7 +50,7 @@ pub fn subset_font_for_text(font_data: &[u8], text: &str) -> Result<SubsetResult
             continue;
         }
         // tables().glyph_index returns Option<GlyphId>; 0 = .notdef.
-        let gid = face.glyph_index(ch).map(|g| g.0).unwrap_or(0);
+        let gid = face.glyph_index(ch).map_or(0, |g| g.0);
         char_to_gid.insert(ch, gid);
     }
 

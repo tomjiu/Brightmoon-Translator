@@ -10,21 +10,21 @@ use tokio::sync::Mutex;
 const RING_BUFFER_SIZE: usize = 1000;
 /// Maximum number of failure records to keep in memory per engine
 const MAX_FAILURES_IN_MEMORY: usize = 200;
-/// Maximum number of timeline entries in SQLite before pruning
+/// Maximum number of timeline entries in `SQLite` before pruning
 const MAX_TIMELINE_ENTRIES: i64 = 100_000;
 
-/// Translation metrics collector with SQLite persistence.
+/// Translation metrics collector with `SQLite` persistence.
 ///
 /// Uses atomic counters for the hottest paths (cache hits/misses, translation/error counts)
-/// to avoid lock contention entirely. Ring buffers and the SQLite connection share a single
+/// to avoid lock contention entirely. Ring buffers and the `SQLite` connection share a single
 /// mutex so that `record_engine_latency` and `record_failure` only need one lock acquisition
 /// instead of two.
 pub struct MetricsCollector {
-    /// Combined state: ring buffers + SQLite connection in a single lock.
-    /// This eliminates the double-lock pattern in record_engine_latency/record_failure.
+    /// Combined state: ring buffers + `SQLite` connection in a single lock.
+    /// This eliminates the double-lock pattern in `record_engine_latency/record_failure`.
     state: Mutex<MetricsState>,
     /// Lock-free atomic counters for the hottest paths.
-    /// cache_hit/miss are called on every translation and only increment,
+    /// `cache_hit/miss` are called on every translation and only increment,
     /// so atomics eliminate all contention there.
     cache_hits: AtomicU64,
     cache_misses: AtomicU64,
@@ -33,7 +33,7 @@ pub struct MetricsCollector {
 }
 
 struct MetricsState {
-    /// Engine translation latency ring buffers (engine_name -> circular buffer)
+    /// Engine translation latency ring buffers (`engine_name` -> circular buffer)
     engine_latencies: HashMap<String, Vec<u64>>,
     /// Ring buffer write index per engine
     engine_write_idx: HashMap<String, usize>,
@@ -45,7 +45,7 @@ struct MetricsState {
     /// Document chunk sizes ring buffer
     chunk_sizes: Vec<usize>,
     chunk_write_idx: usize,
-    /// SQLite connection (merged here to avoid a second lock)
+    /// `SQLite` connection (merged here to avoid a second lock)
     db: Connection,
 }
 
@@ -55,7 +55,7 @@ pub struct FailureRecord {
     pub timestamp: i64,
 }
 
-/// A single metrics event persisted to SQLite
+/// A single metrics event persisted to `SQLite`
 #[derive(Debug, Clone, Serialize)]
 pub struct MetricsEvent {
     pub id: i64,
@@ -84,6 +84,12 @@ fn metrics_db_path() -> PathBuf {
     }
     path.push("metrics.db");
     path
+}
+
+impl Default for MetricsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MetricsCollector {
@@ -176,7 +182,7 @@ impl MetricsCollector {
     }
 
     /// Record engine translation latency.
-    /// Uses a single lock for both the ring buffer update and the SQLite INSERT,
+    /// Uses a single lock for both the ring buffer update and the `SQLite` INSERT,
     /// plus one atomic increment for the global counter.
     pub async fn record_engine_latency(&self, engine: &str, ms: u64) {
         let mut state = self.state.lock().await;
@@ -238,7 +244,7 @@ impl MetricsCollector {
     }
 
     /// Record translation failure.
-    /// Uses a single lock for both the in-memory failure record and the SQLite INSERT.
+    /// Uses a single lock for both the in-memory failure record and the `SQLite` INSERT.
     pub async fn record_failure(&self, engine: &str, error: &str) {
         let timestamp = Utc::now().timestamp_millis();
         let mut state = self.state.lock().await;
@@ -298,7 +304,7 @@ impl MetricsCollector {
             .map(|(name, latencies)| {
                 let count = latencies.len() as u64;
                 let total: u64 = latencies.iter().sum();
-                let avg = if count > 0 { total / count } else { 0 };
+                let avg = total.checked_div(count).unwrap_or(0);
                 let min = latencies.iter().min().copied().unwrap_or(0);
                 let max = latencies.iter().max().copied().unwrap_or(0);
                 let p50 = percentile(latencies, 50);
@@ -307,8 +313,7 @@ impl MetricsCollector {
                 let failures = state
                     .failures
                     .get(name)
-                    .map(|f| f.len() as u64)
-                    .unwrap_or(0);
+                    .map_or(0, |f| f.len() as u64);
 
                 (
                     name.clone(),
@@ -333,7 +338,7 @@ impl MetricsCollector {
             let total: u64 = state.ocr_latencies.iter().sum();
             Some(OcrStats {
                 count,
-                avg_ms: if count > 0 { total / count } else { 0 },
+                avg_ms: total.checked_div(count).unwrap_or(0),
             })
         };
 
@@ -376,7 +381,7 @@ impl MetricsCollector {
         }
     }
 
-    /// Get timeline data from SQLite for chart rendering
+    /// Get timeline data from `SQLite` for chart rendering
     pub async fn get_timeline(&self, limit: usize) -> Vec<MetricsTimeline> {
         let state = self.state.lock().await;
         let mut stmt = match state.db.prepare(
@@ -401,7 +406,7 @@ impl MetricsCollector {
         });
 
         match rows {
-            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
             Err(e) => {
                 tracing::error!("Failed to query timeline: {}", e);
                 Vec::new()
@@ -444,7 +449,7 @@ impl MetricsCollector {
         });
 
         match rows {
-            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
             Err(e) => {
                 tracing::error!("Failed to query hourly stats: {}", e);
                 Vec::new()
@@ -524,7 +529,7 @@ impl MetricsCollector {
         });
 
         match rows {
-            Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+            Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
             Err(e) => {
                 tracing::error!("Failed to export JSON: {}", e);
                 Vec::new()

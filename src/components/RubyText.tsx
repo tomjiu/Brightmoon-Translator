@@ -65,20 +65,6 @@ export function RubyText({ text, enabled = true, className }: RubyTextProps) {
   );
 }
 
-/**
- * Inline ruby text for displaying a single word with reading.
- */
-export function InlineRuby({ base, reading }: { base: string; reading: string }) {
-  return (
-    <ruby>
-      {base}
-      <rp>(</rp>
-      <rt>{reading}</rt>
-      <rp>)</rp>
-    </ruby>
-  );
-}
-
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')

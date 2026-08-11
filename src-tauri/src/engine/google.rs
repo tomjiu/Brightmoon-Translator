@@ -11,6 +11,12 @@ pub struct GoogleEngine {
     via_proxy: Option<Client>,
 }
 
+impl Default for GoogleEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GoogleEngine {
     pub fn new() -> Self {
         Self {
@@ -88,9 +94,7 @@ impl TranslationEngine for GoogleEngine {
                         .await
                         .map_err(|proxy_err| {
                             anyhow::anyhow!(
-                                "Google unreachable (direct: {}; proxy: {})",
-                                direct_err,
-                                proxy_err
+                                "Google unreachable (direct: {direct_err}; proxy: {proxy_err})"
                             )
                         })
                 } else {
@@ -100,7 +104,7 @@ impl TranslationEngine for GoogleEngine {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Google"
     }
 

@@ -1,0 +1,12 @@
+models:
+  - model.enja.intgemm.alphas.bin
+vocabs:
+  - srcvocab.enja.spm
+  - trgvocab.enja.spm
+shortlist:
+  - lex.50.50.enja.s2t.bin
+ssplit-mode: paragraph
+max-length-break: 128
+mini-batch-words: 1024
+alignment: soft
+max-length-factor: 2.0

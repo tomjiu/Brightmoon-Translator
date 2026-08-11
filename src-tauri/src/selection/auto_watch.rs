@@ -1,5 +1,5 @@
 //! Selection UX watcher — Easydict-style:
-//! WH_MOUSE_LL gestures → delay 150ms → get selection → pop button / translate
+//! `WH_MOUSE_LL` gestures → delay 150ms → get selection → pop button / translate
 //! Hover dictionary (Alt+dwell) remains polled lightly.
 
 use super::hover_pick::{
@@ -25,8 +25,7 @@ pub fn note_selection_gesture() {
     use std::time::{SystemTime, UNIX_EPOCH};
     let ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_millis() as u64);
     LAST_SELECTION_MS.store(ms, Ordering::SeqCst);
 }
 
@@ -40,16 +39,15 @@ pub fn selection_gesture_within_ms(ms: u64) -> bool {
     }
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_millis() as u64);
     now.saturating_sub(last) < ms
 }
 
 pub struct SelectionAutoWatch {
     config: Arc<Mutex<SelectionUxConfig>>,
     stop: Arc<AtomicBool>,
-    /// S2-2: stored so `stop_and_wait` can await the run_loop task instead of
-    /// fire-and-forget. Previously the JoinHandle was discarded, making it
+    /// S2-2: stored so `stop_and_wait` can await the `run_loop` task instead of
+    /// fire-and-forget. Previously the `JoinHandle` was discarded, making it
     /// impossible to know when the watcher actually stopped.
     ///
     /// Note: we use `tauri::async_runtime::JoinHandle` (not `tokio::task::JoinHandle`)
@@ -130,9 +128,9 @@ impl SelectionAutoWatch {
 
     /// S2-2: request stop and await the watcher task with a 500ms timeout.
     /// If the task doesn't finish in time, abort it so the tokio runtime
-    /// can reclaim the resource. The moon-hook-bridge std::thread exits on
+    /// can reclaim the resource. The moon-hook-bridge `std::thread` exits on
     /// its own when the mouse hook channel closes (uninstall is called at
-    /// the end of run_loop), so it does not need explicit joining.
+    /// the end of `run_loop`), so it does not need explicit joining.
     pub async fn stop_and_wait(&self) {
         self.stop.store(true, Ordering::SeqCst);
         let handle = { self.task_handle.lock().await.take() };
@@ -253,8 +251,7 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                         overlay_leave_since = Some(Instant::now());
                     }
                     if overlay_leave_since
-                        .map(|t| t.elapsed() >= Duration::from_millis(500))
-                        .unwrap_or(false)
+                        .is_some_and(|t| t.elapsed() >= Duration::from_millis(500))
                     {
                         crate::overlay::window_manager::hide_overlay_window(&app);
                         overlay_leave_since = None;
@@ -295,8 +292,7 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                     card_leave_since = Some(Instant::now());
                 }
                 if card_leave_since
-                    .map(|t| t.elapsed() >= Duration::from_millis(500))
-                    .unwrap_or(false)
+                    .is_some_and(|t| t.elapsed() >= Duration::from_millis(500))
                 {
                     crate::overlay::translate_card::hide_translate_card(&app);
                     card_leave_since = None;
@@ -346,7 +342,7 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
             let fg = super::process_class::foreground_process();
             let hover_skip = fg
                 .as_ref()
-                .map(|p| {
+                .is_some_and(|p| {
                     // Allow hover on terminals: WindowsTerminal exposes UIA
                     // TextPattern->RangeFromPoint, so a real word under the
                     // cursor can be read. Only self and excluded processes skip.
@@ -355,8 +351,7 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                             p.strategy(&ux.exclude_processes),
                             super::process_class::SelectionStrategy::Skip
                         )
-                })
-                .unwrap_or(false);
+                });
             let cell = ((cx / 20.0) as i32, (cy / 20.0) as i32);
             if hover_skip {
                 hover_still_since = None;
@@ -364,7 +359,7 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                 hover_anchor = cell;
                 hover_still_since = Some(Instant::now());
             } else if let Some(since) = hover_still_since {
-                let dwell = Duration::from_millis(ux.hover_dwell_ms.max(350) as u64);
+                let dwell = Duration::from_millis(u64::from(ux.hover_dwell_ms.max(350)));
                 // P0: removed global 900ms cooldown — HoverDedupe already prevents
                 // same-word/cell repeat (3s). The global cooldown blocked legitimate
                 // quick word-to-word hover transitions.
@@ -379,8 +374,7 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                     let ocr_fb = super::ocr_force_allowed(&ux)
                         && fg
                             .as_ref()
-                            .map(|p| !p.is_terminal && !p.is_browser)
-                            .unwrap_or(true);
+                            .is_none_or(|p| !p.is_terminal && !p.is_browser);
                     let unit = ux.hover_unit.to_ascii_lowercase();
                     let alt_sentence = super::modifier_key_satisfied("alt");
                     let want_sentence = unit == "sentence" || unit == "sent" || alt_sentence;
@@ -396,59 +390,56 @@ async fn run_loop(app: AppHandle, config: Arc<Mutex<SelectionUxConfig>>, stop: A
                     .await
                     .ok()
                     .flatten();
-                    match pick {
-                        Some(pick) => {
-                            let w = pick.word.trim().to_string();
-                            // CJK hover is opt-in (hover_cjk). Default off: hovering
-                            // Chinese text misfires on chrome and triggers the slow
-                            // LLM fallback, so skip unless the user enabled it.
-                            let cjk_ok = ux.hover_cjk || !dictionary::is_cjk(&w);
-                            let ok = if want_sentence {
-                                w.chars().count() >= 2
-                                    && w.chars().count() <= 120
-                                    && !is_junk_hover_word(&w)
-                                    && w.chars().any(|c| c.is_alphanumeric())
-                                    && cjk_ok
+                    if let Some(pick) = pick {
+                        let w = pick.word.trim().to_string();
+                        // CJK hover is opt-in (hover_cjk). Default off: hovering
+                        // Chinese text misfires on chrome and triggers the slow
+                        // LLM fallback, so skip unless the user enabled it.
+                        let cjk_ok = ux.hover_cjk || !dictionary::is_cjk(&w);
+                        let ok = if want_sentence {
+                            w.chars().count() >= 2
+                                && w.chars().count() <= 120
+                                && !is_junk_hover_word(&w)
+                                && w.chars().any(char::is_alphanumeric)
+                                && cjk_ok
+                        } else {
+                            dictionary::is_single_word(&w)
+                                && w.chars().count() >= 2
+                                && w.chars().count() <= 28
+                                && !w.contains('\n')
+                                && w.chars().any(char::is_alphanumeric)
+                                && !is_junk_hover_word(&w)
+                                && cjk_ok
+                        };
+                        if ok
+                            && !hover_dedupe.should_skip(
+                                &w,
+                                pick.x,
+                                pick.y,
+                                Duration::from_secs(3),
+                            )
+                        {
+                            tracing::info!(
+                                "[selection_ux] hover hit: {:?} via {} (sentence={})",
+                                w,
+                                pick.source,
+                                want_sentence
+                            );
+                            hover_still_since = None;
+                            if want_sentence && !dictionary::is_single_word(&w) {
+                                present::present_selection(&app, &w, pick.bounds.as_ref(), false)
+                                    .await;
                             } else {
-                                dictionary::is_single_word(&w)
-                                    && w.chars().count() >= 2
-                                    && w.chars().count() <= 28
-                                    && !w.contains('\n')
-                                    && w.chars().any(|c| c.is_alphanumeric())
-                                    && !is_junk_hover_word(&w)
-                                    && cjk_ok
-                            };
-                            if ok
-                                && !hover_dedupe.should_skip(
+                                present::present_hover_dictionary(
+                                    &app,
                                     &w,
                                     pick.x,
                                     pick.y,
-                                    Duration::from_secs(3),
+                                    pick.bounds.as_ref(),
                                 )
-                            {
-                                tracing::info!(
-                                    "[selection_ux] hover hit: {:?} via {} (sentence={})",
-                                    w,
-                                    pick.source,
-                                    want_sentence
-                                );
-                                hover_still_since = None;
-                                if want_sentence && !dictionary::is_single_word(&w) {
-                                    present::present_selection(&app, &w, pick.bounds.as_ref(), false)
-                                        .await;
-                                } else {
-                                    present::present_hover_dictionary(
-                                        &app,
-                                        &w,
-                                        pick.x,
-                                        pick.y,
-                                        pick.bounds.as_ref(),
-                                    )
-                                    .await;
-                                }
+                                .await;
                             }
-                        },
-                        None => {},
+                        }
                     }
                 }
             }
@@ -530,10 +521,9 @@ async fn handle_hook_event(
             // Same gate as free-hover: never OCR-force on terminal/browser chrome.
             let ocr_force_ok = ocr_force
                 && super::process_class::foreground_process()
-                    .map(|p| !p.is_terminal && !p.is_browser)
-                    .unwrap_or(true);
-            let release_x = pt.x as f64;
-            let release_y = pt.y as f64;
+                    .is_none_or(|p| !p.is_terminal && !p.is_browser);
+            let release_x = f64::from(pt.x);
+            let release_y = f64::from(pt.y);
 
             // Easydict SelectionDelayMs = 150
             tauri::async_runtime::spawn(async move {
@@ -572,7 +562,7 @@ async fn handle_hook_event(
                         match mode {
                             SelectionTriggerMode::PopButton => {
                                 if let Err(e) =
-                                    super::pop_button::show(&app_c, trimmed, release_x, release_y)
+                                    super::pop_button::show(&app_c, &trimmed, release_x, release_y)
                                 {
                                     tracing::warn!("[selection_ux] pop show: {e}");
                                 }
@@ -610,7 +600,7 @@ async fn handle_hook_event(
                                 SelectionTriggerMode::PopButton => {
                                     let _ = super::pop_button::show(
                                         &app_c,
-                                        pick.word.clone(),
+                                        &pick.word.clone(),
                                         pick.x,
                                         pick.y,
                                     );
@@ -672,7 +662,7 @@ fn left_button_down() -> bool {
         use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
         // SAFETY: GetAsyncKeyState is a pure Win32 query (i32 vk → i16) with
         // no preconditions; the high bit of the return indicates current state.
-        unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000 != 0 }
+        unsafe { GetAsyncKeyState(i32::from(VK_LBUTTON.0)) as u16 & 0x8000 != 0 }
     }
     #[cfg(not(windows))]
     {

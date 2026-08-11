@@ -1,4 +1,4 @@
-//! Keep floating UI from stealing foreground (Easydict PopButton: WS_EX_NOACTIVATE).
+//! Keep floating UI from stealing foreground (Easydict `PopButton`: `WS_EX_NOACTIVATE`).
 //! Critical for Windows Terminal multi-window: activating our chip would reshuffle tabs.
 
 #![cfg(windows)]
@@ -9,7 +9,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
-/// Apply WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW and re-assert TOPMOST without activating.
+/// Apply `WS_EX_NOACTIVATE` | `WS_EX_TOOLWINDOW` and re-assert TOPMOST without activating.
 pub fn apply_no_activate(hwnd: isize) {
     if hwnd == 0 {
         return;

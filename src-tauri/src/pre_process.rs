@@ -76,7 +76,7 @@ impl PreProcessor {
     }
 
     pub fn save(&self) {
-        let config = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let config = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let path = config_path();
         match serde_json::to_string_pretty(&*config) {
             Ok(data) => {
@@ -93,33 +93,33 @@ impl PreProcessor {
     pub fn get_config(&self) -> PreProcessConfig {
         self.config
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
     }
 
     pub fn update_config(&self, config: PreProcessConfig) {
-        let mut current = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let mut current = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         *current = config;
         drop(current);
         self.save();
     }
 
     pub fn add_rule(&self, rule: PreProcessRule) {
-        let mut config = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let mut config = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         config.rules.push(rule);
         drop(config);
         self.save();
     }
 
     pub fn remove_rule(&self, id: &str) {
-        let mut config = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let mut config = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         config.rules.retain(|r| r.id != id);
         drop(config);
         self.save();
     }
 
     pub fn update_rule(&self, id: &str, rule: PreProcessRule) {
-        let mut config = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let mut config = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(existing) = config.rules.iter_mut().find(|r| r.id == id) {
             *existing = rule;
         }
@@ -129,7 +129,7 @@ impl PreProcessor {
 
     /// Process text before translation
     pub fn process(&self, text: &str, lang_pair: Option<&str>) -> String {
-        let config = self.config.lock().unwrap_or_else(|e| e.into_inner());
+        let config = self.config.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut result = text.to_string();
 
         // Remove control characters
@@ -185,7 +185,7 @@ fn normalize_unicode(text: &str) -> String {
     for c in text.chars() {
         let code = c as u32;
         // Fullwidth ASCII (！..～) → halfwidth
-        if code >= 0xFF01 && code <= 0xFF5E {
+        if (0xFF01..=0xFF5E).contains(&code) {
             result.push(char::from_u32(code - 0xFF01 + 0x21).unwrap_or(c));
         }
         // Fullwidth space → halfwidth space

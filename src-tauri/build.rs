@@ -1,3 +1,6 @@
+// Build scripts fail hard on errors by design; `expect` here is idiomatic.
+#![allow(clippy::expect_used)]
+
 fn main() {
     // Disable tauri-build's default manifest (it injects only into the bin via
     // cargo:rustc-link-arg-bins, so the lib unit-test exe gets none →
@@ -13,4 +16,48 @@ fn main() {
     println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
     println!("cargo:rustc-link-arg=/MANIFESTINPUT:tests.manifest");
     println!("cargo:rerun-if-changed=tests.manifest");
+
+    link_native_bergamot();
 }
+
+/// Link the native bergamot stack when it has been built.
+///
+/// `scripts/build-bergamot-native.ps1` produces these static libs under
+/// `src-tauri/native/lib/` (gitignored). When they are absent we emit nothing
+/// and set no cfg, so `cargo check`/tests still compile (the offline engine
+/// degrades gracefully). The link order matters: each lib may reference
+/// symbols defined by the libs that follow it.
+#[cfg(target_os = "windows")]
+fn link_native_bergamot() {
+    let native = std::path::Path::new("native/lib");
+    // Declare the cfg unconditionally so `#[cfg(bergamot_native)]` is valid
+    // even on machines that have not built the native stack (CI / clean clone).
+    println!("cargo:rustc-check-cfg=cfg(bergamot_native)");
+    let libs = [
+        "bergamot_bridge",
+        "bergamot-translator",
+        "marian",
+        "sentencepiece_train",
+        "sentencepiece",
+        "libyaml-cpp",
+        "intgemm",
+        "ssplit",
+        "pcre2-8-static",
+        "onnx-sgemm",
+    ];
+
+    if native.join("bergamot_bridge.lib").exists() {
+        for lib in &libs {
+            println!("cargo:rustc-link-lib=static={lib}");
+        }
+        println!("cargo:rustc-link-search=native={}", native.display());
+        // marian uses SHGetFolderPathW (shell32) and PathMatchSpecW (shlwapi).
+        println!("cargo:rustc-link-lib=dylib=shell32");
+        println!("cargo:rustc-link-lib=dylib=shlwapi");
+        println!("cargo:rustc-cfg=bergamot_native");
+        println!("cargo:rerun-if-changed=native/lib");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn link_native_bergamot() {}

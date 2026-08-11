@@ -8,6 +8,12 @@ pub struct PapagoEngine {
     client: Client,
 }
 
+impl Default for PapagoEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PapagoEngine {
     pub fn new() -> Self {
         Self {
@@ -56,12 +62,12 @@ impl TranslationEngine for PapagoEngine {
         let v: serde_json::Value = resp.json().await?;
         v.get("translatedText")
             .and_then(|t| t.as_str())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .filter(|s| !s.is_empty())
             .ok_or_else(|| anyhow::anyhow!("Papago: missing translatedText: {v}"))
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Papago"
     }
 

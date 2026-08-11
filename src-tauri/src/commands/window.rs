@@ -7,9 +7,9 @@ static ALWAYS_ON_TOP: AtomicBool = AtomicBool::new(false);
 
 /// Force HWND so the *client* covers the virtual-screen rect.
 /// Evidence: Tauri set outer to 1938x1090 when asked for 1920x1080 — DWM/chrome
-/// padding. Use Tauri inner vs outer delta (no extra Win32 GetWindowRect — clashes).
+/// padding. Use Tauri inner vs outer delta (no extra Win32 `GetWindowRect` — clashes).
 ///
-/// `show`: when false, do **not** pass SWP_SHOWWINDOW. Selector is built
+/// `show`: when false, do **not** pass `SWP_SHOWWINDOW`. Selector is built
 /// `visible(false)` and FE shows only after snapshot img loads; forcing SHOW
 /// here painted near-black full-screen before the freeze image (OCR black screen).
 #[cfg(target_os = "windows")]
@@ -217,12 +217,11 @@ fn monitor_scale_for_physical_rect(
         .primary_monitor()
         .ok()
         .flatten()
-        .map(|monitor| monitor.scale_factor())
-        .unwrap_or(1.0);
+        .map_or(1.0, |monitor| monitor.scale_factor());
 
     app.available_monitors()
         .ok()
-        .map(|monitors| {
+        .map_or(fallback_scale, |monitors| {
             let bounds = monitors
                 .into_iter()
                 .map(|monitor| {
@@ -240,7 +239,6 @@ fn monitor_scale_for_physical_rect(
 
             monitor_scale_for_rect_center(&bounds, x, y, width, height, fallback_scale)
         })
-        .unwrap_or(fallback_scale)
 }
 
 #[command]
@@ -287,7 +285,7 @@ fn set_window_exclude_from_capture_inner(window: &tauri::WebviewWindow, exclude:
         };
 
         let hwnd = match window.hwnd() {
-            Ok(h) => HWND(h.0 as *mut _),
+            Ok(h) => HWND(h.0.cast()),
             Err(_) => return false,
         };
         let affinity = if exclude {
@@ -304,7 +302,7 @@ fn set_window_exclude_from_capture_inner(window: &tauri::WebviewWindow, exclude:
             );
             return false;
         }
-        return true;
+        true
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -363,8 +361,8 @@ pub async fn close_overlay(
 }
 
 /// Unified selection-translate entry point.
-/// Delegates to the SelectionTranslation capability which composes
-/// SelectionProviderManager -> TranslationService -> overlay.
+/// Delegates to the `SelectionTranslation` capability which composes
+/// `SelectionProviderManager` -> `TranslationService` -> overlay.
 #[command]
 pub async fn trigger_selection_translate(
     state: tauri::State<'_, crate::AppState>,
@@ -388,7 +386,7 @@ pub async fn trigger_selection_translate(
     Ok(())
 }
 
-/// Dictionary-first lookup for current selection (QTranslate D).
+/// Dictionary-first lookup for current selection (`QTranslate` D).
 /// Single word → dict card when hit; otherwise machine translate overlay.
 #[command]
 pub async fn trigger_dictionary_lookup(
@@ -489,15 +487,15 @@ pub async fn move_window_to_cursor(app: tauri::AppHandle) -> Result<(), String> 
 
             // SAFETY: GetSystemMetrics is a standard Win32 API.
             unsafe {
-                let screen_w = GetSystemMetrics(SM_CXSCREEN) as f64;
-                let screen_h = GetSystemMetrics(SM_CYSCREEN) as f64;
+                let screen_w = f64::from(GetSystemMetrics(SM_CXSCREEN));
+                let screen_h = f64::from(GetSystemMetrics(SM_CYSCREEN));
 
                 // Get window size
                 let size = window
                     .inner_size()
                     .unwrap_or(tauri::PhysicalSize::new(800, 600));
-                let win_w = size.width as f64;
-                let win_h = size.height as f64;
+                let win_w = f64::from(size.width);
+                let win_h = f64::from(size.height);
 
                 // Keep in bounds
                 let final_x = window_x.min(screen_w - win_w - 20.0).max(20.0);
@@ -533,7 +531,7 @@ pub async fn detect_foreground_app(
 }
 
 /// Set the overlay follow mode.
-/// Modes: "cursor", "target_bounds", "none"
+/// Modes: "cursor", "`target_bounds`", "none"
 #[command]
 pub async fn set_overlay_follow_mode(
     state: tauri::State<'_, crate::AppState>,
@@ -568,7 +566,7 @@ pub async fn stop_overlay_follow(state: tauri::State<'_, crate::AppState>) -> Re
 /// Update overlay content in-place without rebuilding.
 /// Preserves pin/click-through/follow state.
 /// If overlay doesn't exist, creates it with the given position and text.
-/// overlay_level: 1=Minimal, 2=Standard(copy+close), 3=Full(all controls). None=auto from show_controls.
+/// `overlay_level`: 1=Minimal, 2=Standard(copy+close), 3=Full(all controls). None=auto from `show_controls`.
 #[command]
 pub async fn update_overlay(
     app: tauri::AppHandle,
@@ -638,7 +636,7 @@ pub async fn update_overlay_position(
 ///
 /// M3/M4: `id` selects the per-region window. `None`/"default" keeps the legacy
 /// single-frame label (`ocr-region-frame`, URL without regionId); non-default ids
-/// use `region_label(id)` and stamp `regionId` in the URL so OcrRegionFrame reads
+/// use `region_label(id)` and stamp `regionId` in the URL so `OcrRegionFrame` reads
 /// its own id from the query string.
 #[command]
 pub async fn create_ocr_region_frame(
@@ -670,8 +668,8 @@ pub async fn create_ocr_region_frame(
     let window_y = (y - toolbar_h_physical).round() as i32;
     let window_w = window_w.round() as u32;
     let window_h = (height + toolbar_h_physical).max(min_h_physical).round() as u32;
-    let initial_logical_w = (window_w as f64 / scale_factor).max(OCR_MIN_FRAME_CSS_W);
-    let initial_logical_h = (window_h as f64 / scale_factor).max(80.0);
+    let initial_logical_w = (f64::from(window_w) / scale_factor).max(OCR_MIN_FRAME_CSS_W);
+    let initial_logical_h = (f64::from(window_h) / scale_factor).max(80.0);
 
     tracing::info!(
         "Creating OCR region frame for capture ({}, {}) {}x{} (window physical: ({}, {}) {}x{}, scale: {}, expand_x: {}, id: {})",
@@ -832,29 +830,28 @@ pub async fn create_ocr_region_frame(
             },
             Err(e) => {
                 let err_str = e.to_string();
-                last_error = err_str.clone();
+                last_error.clone_from(&err_str);
                 tracing::warn!(
                     "OCR region frame creation attempt {} failed: {}",
                     attempt,
                     err_str
                 );
                 if !err_str.contains("already exists") {
-                    return Err(format!("Failed to create OCR region frame: {}", err_str));
+                    return Err(format!("Failed to create OCR region frame: {err_str}"));
                 }
             },
         }
     }
 
     Err(format!(
-        "Failed to create OCR region frame after {} attempts: {}",
-        max_attempts, last_error
+        "Failed to create OCR region frame after {max_attempts} attempts: {last_error}"
     ))
 }
 
 /// O5: Preload the OCR region frame webview at app startup.
 ///
 /// Creates the `ocr-region-frame` window hidden and off-screen so the first
-/// real OCR session skips the WebView2 create cost (~300–600 ms on cold cache).
+/// real OCR session skips the `WebView2` create cost (~300–600 ms on cold cache).
 /// `create_ocr_region_frame` will find the existing window via the reuse path
 /// and just reposition + show it.
 ///
@@ -883,7 +880,7 @@ pub fn preload_ocr_region_frame(app: &tauri::AppHandle) -> Result<(), String> {
     .background_color(tauri::window::Color(12, 12, 14, 255))
     .visible(false)
     .build()
-    .map_err(|e| format!("Failed to preload OCR region frame: {}", e))?;
+    .map_err(|e| format!("Failed to preload OCR region frame: {e}"))?;
 
     // C3+C4: apply WS_EX_NOACTIVATE so even an accidental show never steals focus.
     #[cfg(target_os = "windows")]
@@ -937,10 +934,10 @@ pub async fn create_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(),
         const SM_CYVIRTUALSCREEN: i32 = 79;
         // SAFETY: GetSystemMetrics is a pure Win32 query (i32 index → i32)
         // with no preconditions; applies to the four consecutive calls below.
-        let physical_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) } as f64;
-        let physical_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) } as f64;
-        let physical_w = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) } as f64;
-        let physical_h = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) } as f64;
+        let physical_x = f64::from(unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) });
+        let physical_y = f64::from(unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) });
+        let physical_w = f64::from(unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) });
+        let physical_h = f64::from(unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) });
 
         (physical_x, physical_y, physical_w, physical_h)
     };
@@ -958,8 +955,8 @@ pub async fn create_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(),
     let physical_y = screen_y.round() as i32;
     let physical_w = screen_w.max(100.0).round() as u32;
     let physical_h = screen_h.max(100.0).round() as u32;
-    let initial_logical_w = (physical_w as f64 / scale_factor).max(100.0);
-    let initial_logical_h = (physical_h as f64 / scale_factor).max(100.0);
+    let initial_logical_w = (f64::from(physical_w) / scale_factor).max(100.0);
+    let initial_logical_h = (f64::from(physical_h) / scale_factor).max(100.0);
 
     tracing::info!(
         "OCR selector bounds (physical): ({}, {}) {}x{} (scale: {}, logical: {}x{})",
@@ -993,18 +990,18 @@ pub async fn create_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(),
     // Dark gray — pure black was indistinguishable from freeze-load failure.
     .background_color(tauri::window::Color(17, 17, 17, 255))
     .build()
-    .map_err(|e| format!("Failed to create OCR screenshot selector: {}", e))?;
+    .map_err(|e| format!("Failed to create OCR screenshot selector: {e}"))?;
 
     window
         .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
             physical_x, physical_y,
         )))
-        .map_err(|e| format!("Failed to position OCR screenshot selector: {}", e))?;
+        .map_err(|e| format!("Failed to position OCR screenshot selector: {e}"))?;
     window
         .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
             physical_w, physical_h,
         )))
-        .map_err(|e| format!("Failed to size OCR screenshot selector: {}", e))?;
+        .map_err(|e| format!("Failed to size OCR screenshot selector: {e}"))?;
 
     // Win32 pin: eliminate left-edge "real desktop strip" when Tauri leaves the
     // window slightly to the right of the virtual-screen origin.
@@ -1103,16 +1100,16 @@ pub async fn close_ocr_screenshot_selector(app: tauri::AppHandle) -> Result<(), 
 /// OCR session begin: prepare main so it does not block the selector but the
 /// desktop is never blank while the snapshot runs.
 ///
-/// Old behavior (hide()) caused a ~150–400ms void between main hide and the
+/// Old behavior (`hide()`) caused a ~150–400ms void between main hide and the
 /// selector `img.onLoad` show — visible as a brief black flash.
 ///
 /// New behavior: keep main visible (covers the desktop) but
-///   1. drop always_on_top so the fullscreen selector can sit above it,
-///   2. set WDA_EXCLUDEFROMCAPTURE so GDI/DXGI snapshot does not capture main
+///   1. drop `always_on_top` so the fullscreen selector can sit above it,
+///   2. set `WDA_EXCLUDEFROMCAPTURE` so GDI/DXGI snapshot does not capture main
 ///      (clean desktop freeze), and
-///   3. set skip_taskbar so the taskbar entry does not flash during snip.
+///   3. set `skip_taskbar` so the taskbar entry does not flash during snip.
 ///
-/// On non-Windows or when affinity fails, fall back to hide() so a stale
+/// On non-Windows or when affinity fails, fall back to `hide()` so a stale
 /// main is never captured into the snapshot.
 #[command]
 pub async fn ocr_begin_session_hide_main(app: tauri::AppHandle) -> Result<(), String> {
@@ -1225,16 +1222,13 @@ pub async fn set_ocr_region_frame_sampling(
             SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
         };
 
-        let hwnd = match window.hwnd() {
-            Ok(h) => HWND(h.0 as *mut _),
-            Err(_) => {
-                if sampling {
-                    let _ = window.hide();
-                } else if was_visible {
-                    let _ = window.show();
-                }
-                return Ok(false);
-            },
+        let hwnd = if let Ok(h) = window.hwnd() { HWND(h.0.cast()) } else {
+            if sampling {
+                let _ = window.hide();
+            } else if was_visible {
+                let _ = window.show();
+            }
+            return Ok(false);
         };
 
         let affinity = if sampling {
@@ -1260,7 +1254,7 @@ pub async fn set_ocr_region_frame_sampling(
         if !sampling && was_visible {
             let _ = window.show();
         }
-        return Ok(true);
+        Ok(true)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -1274,8 +1268,8 @@ pub async fn set_ocr_region_frame_sampling(
     }
 }
 
-/// Click-through the OCR region frame so hwnd_from_point hits content underneath (I6 follow bind).
-/// Does not hide the window — less flash than set_visible(false).
+/// Click-through the OCR region frame so `hwnd_from_point` hits content underneath (I6 follow bind).
+/// Does not hide the window — less flash than `set_visible(false)`.
 /// M3: `id` selects which region frame (default → bare legacy label).
 #[command]
 pub async fn set_ocr_region_frame_click_through(
@@ -1335,12 +1329,12 @@ pub async fn move_ocr_region_frame(
                 .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
                     window_x, window_y,
                 )))
-                .map_err(|e| format!("Failed to move OCR region frame: {}", e))?;
+                .map_err(|e| format!("Failed to move OCR region frame: {e}"))?;
             window
                 .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
                     window_w, window_h,
                 )))
-                .map_err(|e| format!("Failed to resize OCR region frame: {}", e))?;
+                .map_err(|e| format!("Failed to resize OCR region frame: {e}"))?;
         }
     }
     #[cfg(not(target_os = "windows"))]
@@ -1434,7 +1428,7 @@ pub async fn update_pinned_card_size(
 /// (case-insensitive, also kebab/snake variants and short forms "tl"/"tr"/
 /// "bl"/"br"). Unrecognized values default to `topLeft`.
 ///
-/// `ratio` is `width / height`. Pass a non-positive value or NaN to disable
+/// `ratio` is `width / height`. Pass a non-positive value or `NaN` to disable
 /// the constraint (text cards reflow freely).
 #[command]
 pub async fn compute_aspect_resize(

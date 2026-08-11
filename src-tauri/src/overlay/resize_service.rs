@@ -1,4 +1,4 @@
-//! Tier 4 P2: ResizeWindowService — aspect-ratio-constrained resize for pin
+//! Tier 4 P2: `ResizeWindowService` — aspect-ratio-constrained resize for pin
 //! windows.
 //!
 //! Reference: snow-shot `resize_window_service.rs` (30fps mouse sampling,
@@ -55,7 +55,7 @@ impl ResizeAnchor {
     /// unrecognized input so callers can fall back to a default rather than
     /// crashing the resize flow.
     pub fn parse(s: &str) -> Option<Self> {
-        let norm: String = s.to_ascii_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+        let norm: String = s.to_ascii_lowercase().chars().filter(char::is_ascii_alphanumeric).collect();
         match norm.as_str() {
             "topleft" | "tl" => Some(Self::TopLeft),
             "topright" | "tr" => Some(Self::TopRight),
@@ -121,7 +121,7 @@ fn constrain_size(req_w: f64, req_h: f64, ratio: f64) -> (f64, f64) {
 /// * `cur_w`, `cur_h` — current window size (physical px).
 /// * `req_w`, `req_h` — requested new size (from the drag delta).
 /// * `anchor` — the corner that stays fixed (opposite the dragged handle).
-/// * `ratio` — target `width / height`. Non-positive / NaN disables the
+/// * `ratio` — target `width / height`. Non-positive / `NaN` disables the
 ///   constraint (returns the clamped requested size at the fixed corner).
 ///
 /// # Returns
@@ -208,7 +208,7 @@ mod tests {
         assert!((actual - ratio).abs() < 1e-9);
     }
 
-    /// TopLeft anchor: origin unchanged, size grows from top-left.
+    /// `TopLeft` anchor: origin unchanged, size grows from top-left.
     #[test]
     fn top_left_anchor_keeps_origin() {
         let r = compute_aspect_resize(100.0, 200.0, 300.0, 150.0, 400.0, 200.0, ResizeAnchor::TopLeft, 2.0);
@@ -218,7 +218,7 @@ mod tests {
         assert_eq!(r.height, 200.0); // 400/2
     }
 
-    /// TopRight anchor: top-right corner fixed → x shifts left as width grows.
+    /// `TopRight` anchor: top-right corner fixed → x shifts left as width grows.
     #[test]
     fn top_right_anchor_fixes_top_right_corner() {
         // origin (100,200), cur 300×150 → top-right corner at (400, 200).
@@ -230,7 +230,7 @@ mod tests {
         assert_eq!(r.height, 200.0);
     }
 
-    /// BottomLeft anchor: bottom-left corner fixed → y shifts up as height grows.
+    /// `BottomLeft` anchor: bottom-left corner fixed → y shifts up as height grows.
     #[test]
     fn bottom_left_anchor_fixes_bottom_left_corner() {
         // origin (100,200), cur 300×150 → bottom-left at (100, 350).
@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(r.height, 200.0);
     }
 
-    /// BottomRight anchor: bottom-right corner fixed → both x,y shift.
+    /// `BottomRight` anchor: bottom-right corner fixed → both x,y shift.
     #[test]
     fn bottom_right_anchor_fixes_bottom_right_corner() {
         // origin (100,200), cur 300×150 → bottom-right at (400, 350).
@@ -254,7 +254,7 @@ mod tests {
         assert_eq!(r.height, 200.0);
     }
 
-    /// Degenerate ratio (≤0 / NaN) disables the constraint → clamped request.
+    /// Degenerate ratio (≤0 / `NaN`) disables the constraint → clamped request.
     #[test]
     fn degenerate_ratio_disables_constraint() {
         let r = compute_aspect_resize(0.0, 0.0, 300.0, 150.0, 999.0, 1.0, ResizeAnchor::TopLeft, 0.0);

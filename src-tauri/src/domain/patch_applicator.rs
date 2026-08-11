@@ -63,7 +63,7 @@ impl PatchApplicator {
             },
             PatchOperation::Update { index } => {
                 if *index >= content.mnemonics.len() {
-                    bail!("索引越界: {}", index);
+                    bail!("索引越界: {index}");
                 }
                 content.mnemonics[*index] = mnemonic;
             },
@@ -122,7 +122,7 @@ impl PatchApplicator {
             },
             PatchOperation::Update { index } => {
                 if *index >= content.examples.len() {
-                    bail!("索引越界: {}", index);
+                    bail!("索引越界: {index}");
                 }
                 content.examples[*index] = example;
             },
@@ -169,7 +169,7 @@ impl PatchApplicator {
             },
             PatchOperation::Update { index } => {
                 if *index >= content.scenes.len() {
-                    bail!("索引越界: {}", index);
+                    bail!("索引越界: {index}");
                 }
                 content.scenes[*index] = scene;
             },
@@ -331,7 +331,7 @@ mod tests {
                 synonyms: vec![],
                 antonyms: vec![],
             }),
-            fsrs_state: Default::default(),
+            fsrs_state: crate::domain::CardState::default(),
             error_records: vec![],
             annotations: vec![],
             created_at: 0,

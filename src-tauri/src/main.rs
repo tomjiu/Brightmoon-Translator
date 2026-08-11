@@ -1,8 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stdout, clippy::print_stderr)]
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::EnvFilter;
 
@@ -24,13 +25,13 @@ fn set_panic_hook() {
             .map(|l| format!(" at {}:{}", l.file(), l.line()))
             .unwrap_or_default();
 
-        let line = format!("Panic{}: {}", location, message);
+        let line = format!("Panic{location}: {message}");
 
         // Try to log via tracing (which may also fail if stderr is closed)
         tracing::error!("{}", line);
 
         // Also try eprintln, but ignore errors (pipe may be closed)
-        let _ = eprintln!("{}", line);
+        let () = eprintln!("{line}");
 
         // Last-resort: persist the panic to a crash file so we have a
         // forensic trail even if the tracing subscriber is in a bad state.
@@ -38,7 +39,7 @@ fn set_panic_hook() {
             let crash_path = dir.join("crashes.log");
             if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&crash_path) {
                 let ts = chrono::Local::now().to_rfc3339();
-                let _ = writeln!(f, "[{}] {}", ts, line);
+                let _ = writeln!(f, "[{ts}] {line}");
                 let _ = f.flush();
             }
         }
@@ -61,9 +62,9 @@ fn resolve_log_dir() -> Option<PathBuf> {
 }
 
 /// Build the per-day log file path: `app-YYYY-MM-DD.log`.
-fn today_log_path(log_dir: &PathBuf) -> PathBuf {
+fn today_log_path(log_dir: &Path) -> PathBuf {
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
-    log_dir.join(format!("app-{}.log", date))
+    log_dir.join(format!("app-{date}.log"))
 }
 
 const LOG_ROTATE_BYTES: u64 = 10 * 1024 * 1024;
@@ -105,7 +106,7 @@ impl SanitizingWriter {
     }
 }
 
-impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for SanitizingWriter {
+impl tracing_subscriber::fmt::MakeWriter<'_> for SanitizingWriter {
     type Writer = SanitizedWriter;
 
     fn make_writer(&self) -> Self::Writer {
@@ -135,8 +136,7 @@ impl Write for SanitizedWriter {
             if let Ok(mut f) = arc.lock() {
                 let need_rotate = f
                     .metadata()
-                    .map(|m| m.len() > LOG_ROTATE_BYTES)
-                    .unwrap_or(false);
+                    .is_ok_and(|m| m.len() > LOG_ROTATE_BYTES);
                 if need_rotate {
                     if let Some(ref path) = self.path {
                         let _ = f.flush();
@@ -197,8 +197,7 @@ fn newest_mtime(dir: &std::path::Path) -> Option<std::time::SystemTime> {
             } else if let Ok(metadata) = entry.metadata() {
                 if let Ok(mtime) = metadata.modified() {
                     let newer = best
-                        .map(|b: std::time::SystemTime| mtime > b)
-                        .unwrap_or(true);
+                        .is_none_or(|b: std::time::SystemTime| mtime > b);
                     if newer {
                         *best = Some(mtime);
                     }
@@ -230,14 +229,8 @@ fn check_binary_freshness() {
             .to_string()
     }
 
-    let exe = match std::env::current_exe() {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    let exe_mtime = match std::fs::metadata(&exe).and_then(|m| m.modified()) {
-        Ok(t) => t,
-        Err(_) => return,
-    };
+    let Ok(exe) = std::env::current_exe() else { return };
+    let Ok(exe_mtime) = std::fs::metadata(&exe).and_then(|m| m.modified()) else { return };
 
     // Find the project root by walking up from the exe until we see
     // `src-tauri/Cargo.toml`. Works for target/debug and target/release layouts;
@@ -305,7 +298,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() >= 2 && args[1] == "--ocr-worker" {
         let lang = args.iter().position(|a| a == "--lang").and_then(|i| {
-            args.get(i + 1).map(|s| s.clone())
+            args.get(i + 1).cloned()
         });
         let exit_code = moontranslator_lib::ocr_worker::run_worker(lang);
         std::process::exit(exit_code);
@@ -353,5 +346,5 @@ fn main() {
     // Fail loudly at startup if we're running a build that predates the source.
     check_binary_freshness();
 
-    moontranslator_lib::run()
+    moontranslator_lib::run();
 }

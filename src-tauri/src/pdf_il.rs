@@ -1,6 +1,6 @@
 //! P1: PDF Intermediate Language (IL) data structures.
 //!
-//! Based on BabelDOC `il_version_1.py` + PDFMathTranslate `converter.py`.
+//! Based on `BabelDOC` `il_version_1.py` + `PDFMathTranslate` `converter.py`.
 //! These structures represent a PDF document in a translation-friendly
 //! intermediate format that preserves layout information for round-trip
 //! "PDF → IL → PDF" with zero loss.
@@ -21,7 +21,7 @@ pub struct IlDocument {
     pub metadata: IlMetadata,
     /// Pages in document order (1-indexed in PDF, 0-indexed here).
     pub pages: Vec<IlPage>,
-    /// Font table — shared across pages (font_id → IlFont).
+    /// Font table — shared across pages (`font_id` → `IlFont`).
     pub fonts: Vec<IlFont>,
     /// Original PDF version (1.4, 1.7, 2.0, etc.)
     pub pdf_version: String,
@@ -52,7 +52,7 @@ pub struct IlPage {
     /// Page dimensions in PDF points (1/72 inch).
     pub width: f32,
     pub height: f32,
-    /// MediaBox [llx, lly, urx, ury] in PDF coordinate space.
+    /// `MediaBox` [llx, lly, urx, ury] in PDF coordinate space.
     pub media_box: [f32; 4],
     /// Rotation angle in degrees (0, 90, 180, 270).
     pub rotation: u16,
@@ -60,7 +60,7 @@ pub struct IlPage {
     pub paragraphs: Vec<IlParagraph>,
     /// Vector drawings (lines, rects, curves) — preserved as-is.
     pub vector_ops: Vec<IlVectorOp>,
-    /// Images on the page (XObjects) — referenced by name.
+    /// Images on the page (`XObjects`) — referenced by name.
     pub images: Vec<IlImage>,
 }
 
@@ -143,9 +143,9 @@ pub struct IlCharacter {
 pub struct IlFont {
     /// Internal font ID (index into IlDocument.fonts).
     pub font_id: u32,
-    /// PDF font resource name (e.g., "/F1", "/CJKFont").
+    /// PDF font resource name (e.g., "/F1", "/`CJKFont`").
     pub resource_name: String,
-    /// Font PostScript name (e.g., "ArialMT", "STSong-Light").
+    /// Font `PostScript` name (e.g., "`ArialMT`", "STSong-Light").
     pub base_font: String,
     /// Encoding type — determines how glyph IDs map to Unicode.
     pub encoding: IlFontEncoding,
@@ -157,7 +157,7 @@ pub struct IlFont {
     /// P7: Unicode → Glyph ID mapping (for translated text → glyph encoding).
     #[serde(default)]
     pub unicode_to_glyph: std::collections::HashMap<char, u16>,
-    /// Font flags from FontDescriptor (Flags bit field).
+    /// Font flags from `FontDescriptor` (Flags bit field).
     #[serde(default)]
     pub flags: u32,
     /// Ascent / Descent (in 1000-unit em space).
@@ -173,15 +173,15 @@ pub struct IlFont {
 pub enum IlFontEncoding {
     /// Standard 14 core fonts (Times, Helvetica, Courier) — ASCII only.
     Standard,
-    /// WinAnsiEncoding (Latin-1 + extensions).
+    /// `WinAnsiEncoding` (Latin-1 + extensions).
     WinAnsi,
-    /// MacRomanEncoding.
+    /// `MacRomanEncoding`.
     MacRoman,
     /// Custom Type1 encoding with Differences array.
     CustomType1,
-    /// Type0 (CID) font with CMap — CJK fonts.
+    /// Type0 (CID) font with `CMap` — CJK fonts.
     Type0CMap,
-    /// TrueType with Unicode cmap.
+    /// `TrueType` with Unicode cmap.
     TrueTypeUnicode,
     /// Unknown — preserve raw glyph IDs, no Unicode mapping.
     Unknown,
@@ -206,18 +206,18 @@ pub struct IlVectorOp {
     pub line_width: Option<f32>,
 }
 
-/// Image reference (XObject) on a page.
+/// Image reference (`XObject`) on a page.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IlImage {
-    /// XObject resource name (e.g., "/Im1").
+    /// `XObject` resource name (e.g., "/Im1").
     pub resource_name: String,
     /// Bounding box in page coordinate space.
     pub bbox: [f32; 4],
     /// Image dimensions in pixels.
     pub width: u32,
     pub height: u32,
-    /// Color space (DeviceRGB, DeviceGray, DeviceCMYK, etc.)
+    /// Color space (`DeviceRGB`, `DeviceGray`, `DeviceCMYK`, etc.)
     pub color_space: String,
     /// Bits per component.
     pub bits_per_component: u8,
@@ -230,7 +230,7 @@ pub struct IlImage {
 /// then restored after translation. Detection uses three signals:
 /// 1. Font name regex (Cambria Math, STIX, etc.)
 /// 2. Unicode math class (U+2200-U+22FF, U+27C0-U+27EF, etc.)
-/// 3. has_glyph check (font lacks glyph for translated text)
+/// 3. `has_glyph` check (font lacks glyph for translated text)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FormulaPlaceholder {
@@ -256,7 +256,7 @@ pub enum FormulaSignal {
 
 // ==================== P8: Coordinate Isolation ====================
 
-/// P8: obj_patch + coordinate isolation.
+/// P8: `obj_patch` + coordinate isolation.
 /// Wraps translated content in `q ops_base Q cm ops_new` to isolate
 /// coordinate transformations from the original page content.
 ///
@@ -270,9 +270,9 @@ pub enum FormulaSignal {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CoordinateIsolationPatch {
-    /// Original content stream bytes (ops_base).
+    /// Original content stream bytes (`ops_base`).
     pub original_stream: Vec<u8>,
-    /// Translated content stream bytes (ops_new).
+    /// Translated content stream bytes (`ops_new`).
     pub translated_stream: Vec<u8>,
     /// Transformation matrix [a, b, c, d, e, f] for `cm` operator.
     /// Identity = [1, 0, 0, 1, 0, 0].
@@ -331,13 +331,13 @@ pub struct ReflowResult {
     pub bbox: [f32; 4],
     /// Number of lines after reflow.
     pub line_count: u32,
-    /// Whether text was truncated (couldn't fit even at min_scale).
+    /// Whether text was truncated (couldn't fit even at `min_scale`).
     pub truncated: bool,
 }
 
 // ==================== P10: Translation Cache Key ====================
 
-/// P10: SQLite translation cache key (engine + params + text triple key).
+/// P10: `SQLite` translation cache key (engine + params + text triple key).
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TranslationCacheKey {
@@ -426,7 +426,7 @@ fn wrap_text_to_width(text: &str, max_width: f32, font_size: f32) -> Vec<String>
 
 /// P3: Find optimal scale and layout for translated text within a bounding box.
 ///
-/// Algorithm (adapted from BabelDOC `typesetting.py:941`):
+/// Algorithm (adapted from `BabelDOC` `typesetting.py:941`):
 /// 1. Start at scale = 1.0
 /// 2. Render text at current scale; if it fits in bbox, done
 /// 3. If not, scale down by `scale_step` (0.05 = 5% reduction)
@@ -521,7 +521,7 @@ pub fn find_optimal_scale_and_layout(
 /// positioned absolutely via `Tm` (text matrix). This preserves the
 /// original layout while replacing the text.
 ///
-/// Reference: PDFMathTranslate `converter.py:385-386,409-511`
+/// Reference: `PDFMathTranslate` `converter.py:385-386,409-511`
 pub fn write_paragraph_to_content_stream(
     paragraph: &IlParagraph,
     reflow: &ReflowResult,
@@ -535,8 +535,7 @@ pub fn write_paragraph_to_content_stream(
     let scaled_font = paragraph
         .characters
         .first()
-        .map(|c| c.font_size * reflow.scale)
-        .unwrap_or(10.0);
+        .map_or(10.0, |c| c.font_size * reflow.scale);
 
     let box_width = reflow.bbox[2] - reflow.bbox[0];
     let lines = wrap_text_to_width(translated, box_width, scaled_font);
@@ -560,7 +559,7 @@ pub fn write_paragraph_to_content_stream(
 
         // Set font for this line
         // Tf: /F1 12 Tf
-        stream.extend_from_slice(format!("/{font_resource_name} {:.1} Tf\n", scaled_font).as_bytes());
+        stream.extend_from_slice(format!("/{font_resource_name} {scaled_font:.1} Tf\n").as_bytes());
 
         for c in line.chars() {
             if c == ' ' {
@@ -596,7 +595,7 @@ fn encode_pdf_string(c: char) -> String {
             '\\' => "(\\\\)".to_string(),
             '(' => "(\\()".to_string(),
             ')' => "(\\))".to_string(),
-            _ => format!("({})", c),
+            _ => format!("({c})"),
         }
     } else {
         // UTF-16BE hex string with BOM
@@ -604,7 +603,7 @@ fn encode_pdf_string(c: char) -> String {
         let units = c.encode_utf16(&mut buf);
         let mut hex = String::from("<FEFF");
         for &u in units.iter() {
-            hex.push_str(&format!("{:04X}", u));
+            hex.push_str(&format!("{u:04X}"));
         }
         hex.push('>');
         hex
@@ -627,7 +626,7 @@ fn encode_pdf_string(c: char) -> String {
 /// This ensures the translated content's coordinate transformations don't
 /// leak into the original page content, preventing layout corruption.
 ///
-/// Reference: PDFMathTranslate `pdfinterp.py:254-278`
+/// Reference: `PDFMathTranslate` `pdfinterp.py:254-278`
 pub fn apply_coordinate_isolation(patch: &CoordinateIsolationPatch) -> Vec<u8> {
     let [a, b, c, d, e, f] = patch.transform_matrix;
     let mut stream = Vec::with_capacity(
@@ -643,7 +642,7 @@ pub fn apply_coordinate_isolation(patch: &CoordinateIsolationPatch) -> Vec<u8> {
     stream.extend_from_slice(b"Q\n");
 
     // Coordinate transformation matrix
-    stream.extend_from_slice(format!("{:.4} {:.4} {:.4} {:.4} {:.2} {:.2} cm\n", a, b, c, d, e, f).as_bytes());
+    stream.extend_from_slice(format!("{a:.4} {b:.4} {c:.4} {d:.4} {e:.2} {f:.2} cm\n").as_bytes());
 
     // Translated content (ops_new)
     stream.extend_from_slice(&patch.translated_stream);
@@ -702,7 +701,7 @@ pub fn is_math_font(font_name: &str) -> bool {
 /// 2. `FormulaSignal::UnicodeMathClass` — char is in Unicode math block
 /// 3. `FormulaSignal::HasGlyphCheck` — font lacks glyph for target translation
 ///
-/// Returns a list of (char_index, signals) for flagged characters.
+/// Returns a list of (`char_index`, signals) for flagged characters.
 pub fn detect_formula_characters(
     paragraph: &IlParagraph,
     fonts: &[IlFont],
@@ -806,7 +805,7 @@ pub fn mask_formulas(
         let formula_text: String = chars[start..=end].iter().collect();
 
         // Generate placeholder
-        let placeholder_id = format!("{{v{}}}", span_idx);
+        let placeholder_id = format!("{{v{span_idx}}}");
         masked.push_str(&placeholder_id);
 
         placeholders.push(FormulaPlaceholder {
@@ -858,10 +857,10 @@ pub fn restore_formulas(
 
 // ==================== P10: SQLite Translation Cache ====================
 
-/// P10: Persistent translation cache backed by SQLite + WAL.
+/// P10: Persistent translation cache backed by `SQLite` + WAL.
 ///
-/// Keyed by (engine, source_lang, target_lang, text_hash) — matches
-/// PDFMathTranslate `cache.py` triple-key scheme. WAL mode enables
+/// Keyed by (engine, `source_lang`, `target_lang`, `text_hash`) — matches
+/// `PDFMathTranslate` `cache.py` triple-key scheme. WAL mode enables
 /// concurrent reads during writes for batch translation.
 pub struct PdfTranslationCache {
     conn: rusqlite::Connection,
@@ -885,13 +884,13 @@ impl PdfTranslationCache {
     /// creates the `pdf_translations` table if it doesn't exist.
     pub fn open(path: &str) -> Result<Self, String> {
         let conn = rusqlite::Connection::open(path)
-            .map_err(|e| format!("Failed to open cache DB: {}", e))?;
+            .map_err(|e| format!("Failed to open cache DB: {e}"))?;
 
         // Enable WAL for concurrent read access during writes
         conn.pragma_update(None, "journal_mode", "WAL")
-            .map_err(|e| format!("Failed to set WAL mode: {}", e))?;
+            .map_err(|e| format!("Failed to set WAL mode: {e}"))?;
         conn.pragma_update(None, "synchronous", "NORMAL")
-            .map_err(|e| format!("Failed to set synchronous mode: {}", e))?;
+            .map_err(|e| format!("Failed to set synchronous mode: {e}"))?;
 
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS pdf_translations (
@@ -907,7 +906,7 @@ impl PdfTranslationCache {
             CREATE INDEX IF NOT EXISTS idx_pdf_translations_text_hash
                 ON pdf_translations(text_hash);",
         )
-        .map_err(|e| format!("Failed to create cache table: {}", e))?;
+        .map_err(|e| format!("Failed to create cache table: {e}"))?;
 
         Ok(Self { conn })
     }
@@ -915,7 +914,7 @@ impl PdfTranslationCache {
     /// Open an in-memory cache (for tests).
     pub fn open_in_memory() -> Result<Self, String> {
         let conn = rusqlite::Connection::open_in_memory()
-            .map_err(|e| format!("Failed to open in-memory DB: {}", e))?;
+            .map_err(|e| format!("Failed to open in-memory DB: {e}"))?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS pdf_translations (
                 engine        TEXT NOT NULL,
@@ -928,18 +927,17 @@ impl PdfTranslationCache {
                 PRIMARY KEY (engine, source_lang, target_lang, text_hash)
             );",
         )
-        .map_err(|e| format!("Failed to create cache table: {}", e))?;
+        .map_err(|e| format!("Failed to create cache table: {e}"))?;
         Ok(Self { conn })
     }
 
     /// Compute a stable hash for a text string (SHA-1 hex, matching
-    /// PDFMathTranslate's cache key normalization).
+    /// `PDFMathTranslate`'s cache key normalization).
     pub fn hash_text(text: &str) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         // Normalize: trim + collapse whitespace + lowercase
         let normalized: String = text
-            .trim()
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ")
@@ -959,7 +957,7 @@ impl PdfTranslationCache {
                  WHERE engine = ?1 AND source_lang = ?2
                    AND target_lang = ?3 AND text_hash = ?4",
             )
-            .map_err(|e| format!("Cache get prepare failed: {}", e))?;
+            .map_err(|e| format!("Cache get prepare failed: {e}"))?;
 
         let result = stmt
             .query_row(
@@ -985,7 +983,7 @@ impl PdfTranslationCache {
         match result {
             Ok(entry) => Ok(Some(entry)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(format!("Cache get failed: {}", e)),
+            Err(e) => Err(format!("Cache get failed: {e}")),
         }
     }
 
@@ -1007,7 +1005,7 @@ impl PdfTranslationCache {
                     entry.created_at,
                 ],
             )
-            .map_err(|e| format!("Cache put failed: {}", e))?;
+            .map_err(|e| format!("Cache put failed: {e}"))?;
         Ok(())
     }
 
@@ -1058,7 +1056,7 @@ impl PdfTranslationCache {
                 "DELETE FROM pdf_translations WHERE created_at < ?1",
                 rusqlite::params![cutoff],
             )
-            .map_err(|e| format!("Cache evict failed: {}", e))?;
+            .map_err(|e| format!("Cache evict failed: {e}"))?;
         Ok(count)
     }
 
@@ -1069,7 +1067,7 @@ impl PdfTranslationCache {
                 row.get::<_, i64>(0)
             })
             .map(|n| n as usize)
-            .map_err(|e| format!("Cache count failed: {}", e))
+            .map_err(|e| format!("Cache count failed: {e}"))
     }
 
     /// Clear all cached entries. Returns count deleted.
@@ -1077,7 +1075,7 @@ impl PdfTranslationCache {
         let count = self
             .conn
             .execute("DELETE FROM pdf_translations", [])
-            .map_err(|e| format!("Cache clear failed: {}", e))?;
+            .map_err(|e| format!("Cache clear failed: {e}"))?;
         Ok(count)
     }
 }
@@ -1091,7 +1089,6 @@ pub fn open_pdf_translation_cache(app: &AppHandle) -> Result<PdfTranslationCache
     let mut path = app
         .path()
         .app_data_dir()
-        .map(|p| p.to_path_buf())
         .unwrap_or_else(|_| {
             let mut p = dirs::data_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
             p.push("moontranslator");
@@ -1404,7 +1401,7 @@ mod tests {
         let stream = write_paragraph_to_content_stream(&para, &reflow, "CJK");
         let s = String::from_utf8(stream).unwrap();
         // CJK chars should use hex string <FEFFxxxx>
-        assert!(s.contains("<FEFF"), "expected hex string for CJK, got: {}", s);
+        assert!(s.contains("<FEFF"), "expected hex string for CJK, got: {s}");
         assert!(!s.contains("(你)"), "should not use literal string for CJK");
     }
 
@@ -1456,7 +1453,7 @@ mod tests {
         let stream = write_paragraph_to_content_stream(&para, &reflow, "F1");
         let s = String::from_utf8(stream).unwrap();
         // Parentheses must be escaped
-        assert!(s.contains(r"\(\)") || s.contains(r"\("), "expected escaped parens in: {}", s);
+        assert!(s.contains(r"\(\)") || s.contains(r"\("), "expected escaped parens in: {s}");
     }
 
     // ==================== P8 Coordinate Isolation Tests ====================
@@ -1548,7 +1545,7 @@ mod tests {
     fn encode_pdf_string_cjk_hex() {
         let result = encode_pdf_string('你');
         assert!(result.starts_with("<FEFF"));
-        assert!(result.ends_with(">"));
+        assert!(result.ends_with('>'));
         // 你 = U+4F60 → <FEFF4F60>
         assert!(result.contains("4F60"));
     }

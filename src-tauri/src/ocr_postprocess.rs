@@ -22,7 +22,7 @@
 //! Raw OCR text joins lines with `\n`, losing paragraph structure. This
 //! degrades both display (wall of text) and translation quality (translator
 //! can't distinguish paragraphs). The post-processed text uses `\n\n` for
-//! paragraph breaks and Markdown `- ` for list items, which ReactMarkdown
+//! paragraph breaks and Markdown `- ` for list items, which `ReactMarkdown`
 //! and LLM translators both understand structurally.
 
 use crate::commands::capture::OcrLineResult;
@@ -55,7 +55,7 @@ const OPENING_BRACKETS: &[char] = &['(', '[', '{', '（', '【'];
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-/// Geometric info for one OCR line (decoupled from OcrLineResult for testing).
+/// Geometric info for one OCR line (decoupled from `OcrLineResult` for testing).
 #[derive(Debug, Clone, PartialEq)]
 pub struct OcrLineGeo {
     pub text: String,
@@ -113,8 +113,7 @@ fn ends_with_sentence_break(text: &str) -> bool {
     text.trim_end()
         .chars()
         .next_back()
-        .map(|c| SENTENCE_BREAK_CHARS.contains(&c))
-        .unwrap_or(false)
+        .is_some_and(|c| SENTENCE_BREAK_CHARS.contains(&c))
 }
 
 // ── List item detection & normalization ───────────────────────────────────
@@ -135,7 +134,7 @@ pub fn is_list_item(text: &str) -> bool {
     while i < chars.len() && i < 3 && chars[i].is_ascii_digit() {
         i += 1;
     }
-    if i >= 1 && i <= 3 && i + 1 < chars.len() && chars[i] == '.' && chars[i + 1] == ' ' {
+    if (1..=3).contains(&i) && i + 1 < chars.len() && chars[i] == '.' && chars[i + 1] == ' ' {
         return true;
     }
     false
@@ -158,7 +157,7 @@ fn normalize_line_text(text: &str) -> String {
     // Unordered bullet glyphs → "- "
     if BULLET_GLYPHS.contains(&first) {
         let rest = rest.trim_start();
-        return format!("- {}", rest);
+        return format!("- {rest}");
     }
 
     // OCR misread: 'O', 'o', '0' as bullet (only if followed by uppercase or CJK)
@@ -166,16 +165,16 @@ fn normalize_line_text(text: &str) -> String {
         let rest_trimmed = rest.trim_start();
         if let Some(next_char) = rest_trimmed.chars().next() {
             if next_char.is_ascii_uppercase() || is_cjk(next_char) {
-                return format!("- {}", rest_trimmed);
+                return format!("- {rest_trimmed}");
             }
         }
     }
 
     // Ordered list: 1-3 digits + (. | ) | ） | 、)
     if first.is_ascii_digit() {
-        let digits: String = trimmed.chars().take_while(|c| c.is_ascii_digit()).collect();
+        let digits: String = trimmed.chars().take_while(char::is_ascii_digit).collect();
         let digit_count = digits.len();
-        if digit_count >= 1 && digit_count <= 3 {
+        if (1..=3).contains(&digit_count) {
             let after_digits: Vec<char> = trimmed.chars().skip(digit_count).collect();
             if !after_digits.is_empty() {
                 let marker = after_digits[0];
@@ -189,11 +188,11 @@ fn normalize_line_text(text: &str) -> String {
                         if next_after_marker == ' ' || is_cjk(next_after_marker) {
                             let rest_str: String = after_digits.iter().skip(1).collect();
                             let rest_str = rest_str.trim_start();
-                            return format!("{}. {}", digits, rest_str);
+                            return format!("{digits}. {rest_str}");
                         }
                     } else {
                         // "1." at end of string — bare marker, treat as list
-                        return format!("{}. ", digits);
+                        return format!("{digits}. ");
                     }
                 }
             }
@@ -302,7 +301,7 @@ fn median(sorted: &[f64]) -> f64 {
     }
     let mid = sorted.len() / 2;
     if sorted.len() % 2 == 0 {
-        (sorted[mid - 1] + sorted[mid]) / 2.0
+        f64::midpoint(sorted[mid - 1], sorted[mid])
     } else {
         sorted[mid]
     }

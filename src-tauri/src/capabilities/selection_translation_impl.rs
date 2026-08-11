@@ -13,11 +13,11 @@ use crate::overlay;
 use crate::selection::SelectionProviderManager;
 use crate::services::TranslationService;
 
-/// Default desktop implementation of SelectionTranslation.
-/// Composes: TargetAppDetector -> SelectionProviderManager -> TranslationService -> OverlayPresenter.
+/// Default desktop implementation of `SelectionTranslation`.
+/// Composes: `TargetAppDetector` -> `SelectionProviderManager` -> `TranslationService` -> `OverlayPresenter`.
 ///
 /// Uses the full provider chain (UIA → clipboard) for all apps, including embedded apps.
-/// Modern Electron/Chromium apps often support UIA TextPattern, so we try UIA first
+/// Modern Electron/Chromium apps often support UIA `TextPattern`, so we try UIA first
 /// and let the provider chain naturally fall back to clipboard if needed.
 pub struct DefaultSelectionTranslation {
     selection_manager: Arc<SelectionProviderManager>,
@@ -179,13 +179,12 @@ impl SelectionTranslation for DefaultSelectionTranslation {
             .await?;
 
         // Step 3: Show the translate card (user-initiated → takes focus).
-        if options.show_overlay {
-            if !response.display_text().is_empty() {
+        if options.show_overlay
+            && !response.display_text().is_empty() {
                 let _ = self
                     .show_card(&selection.text, &response, selection.bounds.as_ref())
                     .await;
             }
-        }
 
         let level: overlay::OverlayLevel = match options.overlay_level {
             Some(l) => l.into(),
@@ -194,9 +193,7 @@ impl SelectionTranslation for DefaultSelectionTranslation {
 
         Ok(SelectionTranslationResult {
             source_text: selection.text,
-            source_app: app_ctx
-                .map(|ctx| ctx.app_name)
-                .unwrap_or_else(|| selection.source_app),
+            source_app: app_ctx.map_or_else(|| selection.source_app, |ctx| ctx.app_name),
             response,
             overlay_level: level,
             selection_provider: selection.provider.to_string(),
@@ -234,11 +231,10 @@ impl SelectionTranslation for DefaultSelectionTranslation {
             .await?;
 
         // Show the translate card if requested (no bounds)
-        if options.show_overlay {
-            if !response.display_text().is_empty() {
+        if options.show_overlay
+            && !response.display_text().is_empty() {
                 let _ = self.show_card(text, &response, None).await;
             }
-        }
 
         let level: overlay::OverlayLevel = match options.overlay_level {
             Some(l) => l.into(),

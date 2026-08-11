@@ -3,8 +3,8 @@
 //! Parses H-Code strings (e.g. `/HW-4@12345:game.exe`) into a structured
 //! form that the host can use to:
 //! 1. Resolve the target module in the remote process
-//! 2. Compute the absolute hook address (module_base + RVA)
-//! 3. Call `HookInstallAtAddress` via CreateRemoteThread
+//! 2. Compute the absolute hook address (`module_base` + RVA)
+//! 3. Call `HookInstallAtAddress` via `CreateRemoteThread`
 //!
 //! ## Supported format (simplified subset of Luna Hook spec)
 //!
@@ -14,7 +14,7 @@
 //!
 //! ### Hook type letters (case-insensitive)
 //! - `A` / `S`: ANSI string (single-byte, code page from config)
-//! - `W`: Wide string (UTF-16, code_page=0 in our protocol)
+//! - `W`: Wide string (UTF-16, `code_page=0` in our protocol)
 //! - `N`: Null-terminated (default; same as A for our purposes)
 //! - `R`: Reversed text (we don't reverse; just flag it)
 //! - Other letters: accepted but treated as ANSI
@@ -23,7 +23,7 @@
 //! - `/HA-4@12345:game.exe` — ANSI, data_offset=-4, RVA 0x12345 in game.exe
 //! - `/HW-4@12345:game.exe` — UTF-16, data_offset=-4, RVA 0x12345
 //! - `/HS-20@12345:game.exe` — ANSI, data_offset=-0x20, RVA 0x12345
-//! - `/HA10:4@12345:game.exe` — ANSI, data_offset=0x10, deref_offset=4
+//! - `/HA10:4@12345:game.exe` — ANSI, `data_offset=0x10`, `deref_offset=4`
 //!
 //! ## Non-goals (deferred)
 //! - T-Code (text replacement templates)
@@ -36,9 +36,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum HookTextType {
-    /// Single-byte ANSI string; code_page from config (932 for ja, 936 for zh-CN, etc.)
+    /// Single-byte ANSI string; `code_page` from config (932 for ja, 936 for zh-CN, etc.)
     Ansi,
-    /// UTF-16 wide string; code_page=0 in our DLL protocol.
+    /// UTF-16 wide string; `code_page=0` in our DLL protocol.
     Wide,
     /// Null-terminated (same encoding as Ansi but explicit); treated as Ansi.
     NullTerminated,
@@ -49,7 +49,7 @@ pub enum HookTextType {
 }
 
 impl HookTextType {
-    /// Map hook type to the code_page value expected by `HookInstallAtAddress`.
+    /// Map hook type to the `code_page` value expected by `HookInstallAtAddress`.
     /// 0 = UTF-16 (wide), any other = ANSI code page.
     pub fn code_page(&self, default_ansi_cp: u32) -> u32 {
         match self {
@@ -119,7 +119,7 @@ impl std::fmt::Display for HookCodeError {
             HookCodeError::MissingType => write!(f, "H-Code missing type letter after /H"),
             HookCodeError::InvalidAddress => write!(f, "H-Code address is not valid hex"),
             HookCodeError::EmptyModule => write!(f, "H-Code module name is empty"),
-            HookCodeError::InvalidOffset(s) => write!(f, "H-Code offset '{}' is not valid hex", s),
+            HookCodeError::InvalidOffset(s) => write!(f, "H-Code offset '{s}' is not valid hex"),
         }
     }
 }
@@ -196,7 +196,7 @@ pub fn parse_h_code(input: &str) -> Result<HookCode, HookCodeError> {
 
     let split_offset = split_str
         .filter(|s| !s.is_empty())
-        .and_then(|s| parse_hex_offset(s));
+        .and_then(parse_hex_offset);
 
     let split_index = split_idx_str
         .filter(|s| !s.is_empty())
@@ -259,7 +259,7 @@ fn parse_hex_offset(s: &str) -> Option<i32> {
 /// rather than an absolute virtual address.
 ///
 /// Luna Hook convention: addresses < 0x10000 are RVAs. Larger addresses
-/// are absolute. The host uses this to decide whether to add module_base.
+/// are absolute. The host uses this to decide whether to add `module_base`.
 pub fn is_rva(addr: u64) -> bool {
     addr < 0x10000
 }
@@ -291,7 +291,7 @@ mod tests {
     fn parse_null_terminated() {
         let hc = parse_h_code("/HN-4@DEADBEEF:game.exe").unwrap();
         assert_eq!(hc.text_type, HookTextType::NullTerminated);
-        assert_eq!(hc.addr, 0xDEADBEEF);
+        assert_eq!(hc.addr, 0xDEAD_BEEF);
         assert!(!is_rva(hc.addr)); // absolute address
     }
 
@@ -393,7 +393,7 @@ mod tests {
     fn is_rva_threshold() {
         assert!(is_rva(0xFFFF));
         assert!(!is_rva(0x10000));
-        assert!(!is_rva(0xDEADBEEF));
+        assert!(!is_rva(0xDEAD_BEEF));
     }
 
     #[test]

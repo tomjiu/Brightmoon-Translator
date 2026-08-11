@@ -154,13 +154,12 @@ impl StateMachine {
             },
 
             CardEvent::UserRated {
-                score, field: _, ..
-            } => {
+                score, ..
+            }
                 // 低分触发优化
-                if *score < 3.0 {
+                if *score < 3.0 => {
                     new_state.add_trigger(OptimizeTrigger::LowRating { score: *score });
-                }
-            },
+                },
 
             CardEvent::OptimizationRequested { .. } => {
                 // 优化请求已触发，保持需要优化状态
@@ -240,16 +239,14 @@ impl StateMachine {
         // 检查触发器严重程度
         for trigger in &state.optimization_triggers {
             match trigger {
-                OptimizeTrigger::FrequentLapses { lapses } => {
-                    if *lapses >= 3 {
+                OptimizeTrigger::FrequentLapses { lapses }
+                    if *lapses >= 3 => {
                         return true;
-                    }
-                },
-                OptimizeTrigger::LowRating { score } => {
-                    if *score <= 2.0 {
+                    },
+                OptimizeTrigger::LowRating { score }
+                    if *score <= 2.0 => {
                         return true;
-                    }
-                },
+                    },
                 _ => {},
             }
         }

@@ -28,7 +28,7 @@ impl DataInitializer {
         self.import_morphology().await?;
 
         // 4. 创建索引
-        self.create_indexes().await?;
+        Self::create_indexes();
 
         println!("\n✅ 数据初始化完成！");
         Ok(())
@@ -54,13 +54,13 @@ impl DataInitializer {
 
         // 查询高频词（按词频排序，取前15000）
         let rows = sqlx::query(
-            r#"
+            r"
             SELECT word, frq, bnc, collins, oxford, tag
             FROM stardict
             WHERE frq IS NOT NULL
             ORDER BY frq DESC
             LIMIT 15000
-            "#,
+            ",
         )
         .fetch_all(&ecdict_pool)
         .await?;
@@ -79,11 +79,11 @@ impl DataInitializer {
             let tag: Option<String> = row.try_get("tag").ok();
 
             sqlx::query(
-                r#"
+                r"
                 INSERT OR REPLACE INTO core_vocabulary
                 (word, frequency_rank, frq, bnc, collins, oxford, tag)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-                "#,
+                ",
             )
             .bind(&word)
             .bind((rank + 1) as i64)
@@ -100,11 +100,11 @@ impl DataInitializer {
 
         // 更新统计
         sqlx::query(
-            r#"
+            r"
             UPDATE system_config
             SET value = ?, updated_at = strftime('%s', 'now')
             WHERE key = 'core_vocab_count'
-            "#,
+            ",
         )
         .bind(rows.len() as i64)
         .execute(&self.pool)
@@ -114,7 +114,7 @@ impl DataInitializer {
         Ok(())
     }
 
-    /// 导入词根数据（从 MorphoLex CSV）
+    /// 导入词根数据（从 `MorphoLex` CSV）
     async fn import_morphology(&self) -> Result<()> {
         println!("3️⃣ 导入词根数据");
 
@@ -146,11 +146,11 @@ impl DataInitializer {
                 let parts_json = self.parse_segmentation(segmentation);
 
                 sqlx::query(
-                    r#"
+                    r"
                     INSERT OR REPLACE INTO morphology
                     (word, segmentation, pos, parts)
                     VALUES (?, ?, ?, ?)
-                    "#,
+                    ",
                 )
                 .bind(&word)
                 .bind(segmentation)
@@ -163,7 +163,7 @@ impl DataInitializer {
 
                 if count % 5000 == 0 {
                     tx.commit().await?;
-                    println!("   📝 已导入 {} 个词根", count);
+                    println!("   📝 已导入 {count} 个词根");
                     tx = self.pool.begin().await?;
                 }
             }
@@ -173,21 +173,22 @@ impl DataInitializer {
 
         // 更新统计
         sqlx::query(
-            r#"
+            r"
             UPDATE system_config
             SET value = ?, updated_at = strftime('%s', 'now')
             WHERE key = 'morphology_count'
-            "#,
+            ",
         )
-        .bind(count as i64)
+        .bind(i64::from(count))
         .execute(&self.pool)
         .await?;
 
-        println!("   ✅ 词根数据导入完成：{} 个词\n", count);
+        println!("   ✅ 词根数据导入完成：{count} 个词\n");
         Ok(())
     }
 
     /// 解析 segmentation 为 JSON
+#[allow(clippy::unused_self)]
     fn parse_segmentation(&self, segmentation: &str) -> String {
         let parts: Vec<_> = segmentation
             .split('.')
@@ -217,21 +218,20 @@ impl DataInitializer {
     }
 
     /// 创建索引
-    async fn create_indexes(&self) -> Result<()> {
+    fn create_indexes() {
         println!("4️⃣ 创建索引");
 
         // 所有索引已在 Schema 中定义
         println!("   ✅ 索引已创建\n");
-        Ok(())
     }
 
     /// 获取统计信息
     pub async fn get_stats(&self) -> Result<InitStats> {
         let rows = sqlx::query(
-            r#"
+            r"
             SELECT key, value FROM system_config
             WHERE key IN ('core_vocab_count', 'morphology_count', 'etymology_count')
-            "#,
+            ",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -267,7 +267,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    #[ignore] // 需要真实数据库
+    #[ignore = "需要真实数据库"]
     async fn test_parse_segmentation() {
         let initializer =
             DataInitializer::new(SqlitePool::connect("sqlite::memory:").await.unwrap());

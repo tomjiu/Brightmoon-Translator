@@ -89,7 +89,7 @@ impl JapaneseDictionary {
         let data: JishoResponse = response.json().await?;
 
         if data.data.is_empty() {
-            anyhow::bail!("No results found for '{}'", word);
+            anyhow::bail!("No results found for '{word}'");
         }
 
         let entries: Vec<JapaneseEntry> = data
@@ -107,7 +107,7 @@ impl JapaneseDictionary {
                     .jlpt
                     .iter()
                     .filter_map(|s| s.strip_prefix("jlpt-n"))
-                    .map(|s| format!("N{}", s))
+                    .map(|s| format!("N{s}"))
                     .next();
 
                 JapaneseEntry {

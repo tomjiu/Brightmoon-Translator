@@ -31,11 +31,11 @@ pub fn build_html(
     }
 }
 
-/// Theme from FE (localStorage) via set_overlay_theme; default dark to match app.
+/// Theme from FE (localStorage) via `set_overlay_theme`; default dark to match app.
 fn theme_css() -> String {
     let light = crate::overlay::window_manager::overlay_theme_is_light();
     if light {
-        r#"
+        r"
 :root {
   --bg: #fafbfc;
   --bg-elev: #ffffff;
@@ -45,10 +45,10 @@ fn theme_css() -> String {
   --shadow: 0 10px 30px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.06);
   --accent: #2563eb;
 }
-"#
+"
         .to_string()
     } else {
-        r#"
+        r"
 :root {
   --bg: #14151a;
   --bg-elev: #1c1e26;
@@ -58,14 +58,14 @@ fn theme_css() -> String {
   --shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
   --accent: #60a5fa;
 }
-"#
+"
         .to_string()
     }
 }
 
 pub fn build_shell_html() -> String {
     format!(
-        r##"<!DOCTYPE html>
+        r#"<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
@@ -112,7 +112,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar {{ display:none; }}
 }})();
 </script>
 </body>
-</html>"##,
+</html>"#,
         theme = theme_css()
     )
 }
@@ -153,8 +153,7 @@ pub fn build_update_script(
 fn dismiss_script(dismiss_ms: u64) -> String {
     if dismiss_ms > 0 {
         format!(
-            "if(window.__moonDismissTimer)clearTimeout(window.__moonDismissTimer);window.__moonDismissTimer=setTimeout(function(){{if(window.__moonInvoke)window.__moonInvoke('close_overlay');}},{});",
-            dismiss_ms
+            "if(window.__moonDismissTimer)clearTimeout(window.__moonDismissTimer);window.__moonDismissTimer=setTimeout(function(){{if(window.__moonInvoke)window.__moonInvoke('close_overlay');}},{dismiss_ms});"
         )
     } else {
         String::new()
@@ -189,9 +188,9 @@ const INVOKE: &str = "window.__moonInvoke = (window.__TAURI__&&window.__TAURI__.
 
 fn fit_script() -> String {
     format!(
-        r#"(function(){{
+        r"(function(){{
   if(window.__moonFitDone)return; window.__moonFitDone=true;
-  {invoke}
+  {INVOKE}
   function probe(){{
     var el=document.body;
     var w=el.scrollWidth, h=el.scrollHeight;
@@ -217,8 +216,7 @@ fn fit_script() -> String {
   if(document.readyState==='loading'){{document.addEventListener('DOMContentLoaded',function(){{probe();fit();}});}}
   else{{fit();}}
   window.addEventListener('load',function(){{setTimeout(function(){{probe();fit();}},10);}});
-}})();"#,
-        invoke = INVOKE
+}})();"
     )
 }
 
@@ -274,8 +272,7 @@ pub fn build_dict_card_structured(
         .map(|u| {
             let js = u.replace('\\', "\\\\").replace('\'', "\\'");
             format!(
-                r#"<button class="audio-btn" title="播放发音" onclick="var a=new Audio('{}');a.play();">🔊</button>"#,
-                js
+                r#"<button class="audio-btn" title="播放发音" onclick="var a=new Audio('{js}');a.play();">🔊</button>"#
             )
         })
         .unwrap_or_default();
@@ -338,8 +335,12 @@ pub fn build_dict_card_structured(
             .sources
             .iter()
             .take(6)
-            .map(|s| format!(r#"<span class="src">{}</span>"#, html_escape::encode_text(s)))
-            .collect();
+            .fold(String::new(), |mut out, s| {
+                out.push_str(r#"<span class="src">"#);
+                out.push_str(&html_escape::encode_text(s));
+                out.push_str("</span>");
+                out
+            });
         format!(r#"<div class="srcs">{badges}</div>"#)
     };
 
@@ -498,7 +499,7 @@ fn build_card_html(
     // to avoid flooding the backend during drag.
     let resize_script = if let Some(label) = pin_label {
         format!(
-            r#"(function(){{
+            r"(function(){{
   var t=null;
   function sendSize(){{
     t=null;
@@ -512,7 +513,7 @@ fn build_card_html(
     if(t)clearTimeout(t);
     t=setTimeout(sendSize,200);
   }});
-}})();"#,
+}})();",
             lbl = serde_json::json!(label)
         )
     } else {

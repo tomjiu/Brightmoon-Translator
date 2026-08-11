@@ -12,6 +12,12 @@ pub struct CaiyunWebEngine {
     client: Client,
 }
 
+impl Default for CaiyunWebEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CaiyunWebEngine {
     pub fn new() -> Self {
         Self {
@@ -134,7 +140,7 @@ impl TranslationEngine for CaiyunWebEngine {
         decrypt_target(target)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Caiyun (free web)"
     }
 

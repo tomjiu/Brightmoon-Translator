@@ -85,6 +85,12 @@ pub struct Dictionary {
     client: Client,
 }
 
+impl Default for Dictionary {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Dictionary {
     pub fn new() -> Self {
         Self {
@@ -94,7 +100,7 @@ impl Dictionary {
 
     /// Lookup English word using Youdao Dictionary API
     pub async fn lookup(&self, word: &str) -> anyhow::Result<Vec<DictionaryResult>> {
-        let q = format!("bk:{}", word);
+        let q = format!("bk:{word}");
         let dicts = r#"{"count":2,"dicts":[["ec","ce"],["web_trans"]]}"#;
         let url = format!(
             "https://dict.youdao.com/jsonapi_s?q={}&le=en&dicts={}",
@@ -123,12 +129,12 @@ impl Dictionary {
             if let Some(word_data) = ec.word {
                 let phonetic = if let Some(uk) = &word_data.ukphone {
                     if let Some(us) = &word_data.usphone {
-                        Some(format!("UK: {} / US: {}", uk, us))
+                        Some(format!("UK: {uk} / US: {us}"))
                     } else {
-                        Some(format!("UK: {}", uk))
+                        Some(format!("UK: {uk}"))
                     }
                 } else {
-                    word_data.phone.map(|p| format!("/{}", p))
+                    word_data.phone.map(|p| format!("/{p}"))
                 };
 
                 let meanings: Vec<Meaning> = word_data
@@ -180,7 +186,7 @@ impl Dictionary {
 
     /// Lookup Chinese word using Youdao Dictionary API
     pub async fn lookup_chinese(&self, word: &str) -> anyhow::Result<Vec<DictionaryResult>> {
-        let q = format!("bk:{}", word);
+        let q = format!("bk:{word}");
         let dicts = r#"{"count":2,"dicts":[["ce","ec"],["web_trans"]]}"#;
         let url = format!(
             "https://dict.youdao.com/jsonapi_s?q={}&le=zh&dicts={}",
@@ -207,7 +213,7 @@ impl Dictionary {
         // Try to parse CE (Chinese-English) dictionary
         if let Some(ce) = body.ce {
             if let Some(word_data) = ce.word {
-                let phonetic = word_data.phone.map(|p| format!("[{}]", p));
+                let phonetic = word_data.phone.map(|p| format!("[{p}]"));
 
                 let meanings: Vec<Meaning> = word_data
                     .trs
@@ -301,7 +307,7 @@ pub fn is_single_word(text: &str) -> bool {
                 )
             })
             .count();
-        return cjk_count >= 1 && cjk_count <= 10;
+        return (1..=10).contains(&cjk_count);
     }
 
     // For English: no spaces

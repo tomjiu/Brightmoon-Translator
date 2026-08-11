@@ -113,7 +113,7 @@ impl OverlayPosition {
         Self {
             x: bounds_x,
             y: bounds_y + bounds_h + 8.0,
-            width: bounds_w.max(300.0).min(500.0),
+            width: bounds_w.clamp(300.0, 500.0),
             height: 200.0,
         }
     }

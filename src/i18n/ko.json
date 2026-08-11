@@ -682,6 +682,12 @@
       "offlineOcrNote": "Screenshot OCR (WinRT/Tesseract/Rapid/Paddle) is under OCR; this section is text MT only.",
       "downloadedModels": "Downloaded models: {count}",
       "autoOffline": "Auto-switch when offline is available",
+      "download": "다운로드",
+      "delete": "삭제",
+      "pivotHint": "직접 언어쌍이 없으면 영어 경유",
+      "downloaded": "다운로드됨",
+      "notDownloaded": "미다운로드",
+      "noPairs": "사용 가능한 모델이 없습니다",
       "moveUp": "Move up (higher priority)",
       "moveDown": "Move down"
     },

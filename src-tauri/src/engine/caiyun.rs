@@ -11,7 +11,7 @@ use crate::engine::TranslationEngine;
 /// - Free quota: 1M chars/month
 /// - Supports: zh<->en, zh<->ja
 ///
-/// API Documentation: https://docs.caiyunapp.com/blog/2018/09/03/lingocloud-api/
+/// API Documentation: <https://docs.caiyunapp.com/blog/2018/09/03/lingocloud-api>/
 pub struct CaiyunEngine {
     api_token: String,
     client: Client,
@@ -69,7 +69,7 @@ impl CaiyunEngine {
             _ => "zh",
         };
 
-        format!("{}2{}", from_code, to_code)
+        format!("{from_code}2{to_code}")
     }
 }
 
@@ -107,9 +107,7 @@ impl TranslationEngine for CaiyunEngine {
             tracing::error!("[Caiyun] API error: {} - {}", status, error_text);
 
             return Err(anyhow::anyhow!(
-                "Caiyun API error: {} - {}",
-                status,
-                error_text
+                "Caiyun API error: {status} - {error_text}"
             ));
         }
 
@@ -128,7 +126,7 @@ impl TranslationEngine for CaiyunEngine {
         Ok(translated)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Caiyun"
     }
 

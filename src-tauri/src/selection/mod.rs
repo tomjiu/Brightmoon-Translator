@@ -38,11 +38,11 @@ pub fn modifier_key_satisfied(key: &str) -> bool {
         // no preconditions. Captured by the closure for each call below.
         let down = |vk: i32| unsafe { GetAsyncKeyState(vk) as u16 & 0x8000 != 0 };
         match k.as_str() {
-            "shift" | "lshift" | "rshift" => down(VK_LSHIFT.0 as i32) || down(VK_RSHIFT.0 as i32),
+            "shift" | "lshift" | "rshift" => down(i32::from(VK_LSHIFT.0)) || down(i32::from(VK_RSHIFT.0)),
             "ctrl" | "control" | "lctrl" | "rctrl" => {
-                down(VK_LCONTROL.0 as i32) || down(VK_RCONTROL.0 as i32)
+                down(i32::from(VK_LCONTROL.0)) || down(i32::from(VK_RCONTROL.0))
             },
-            "alt" | "menu" | "lalt" | "ralt" => down(VK_LMENU.0 as i32) || down(VK_RMENU.0 as i32),
+            "alt" | "menu" | "lalt" | "ralt" => down(i32::from(VK_LMENU.0)) || down(i32::from(VK_RMENU.0)),
             _ => true, // unknown → don't hard-block
         }
     }

@@ -5,7 +5,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 /// Parse a hotkey string like "Ctrl+Shift+T" into a Shortcut.
 pub fn parse_hotkey(hotkey: &str) -> Option<Shortcut> {
-    let parts: Vec<&str> = hotkey.split('+').map(|s| s.trim()).collect();
+    let parts: Vec<&str> = hotkey.split('+').map(str::trim).collect();
     let mut modifiers = Modifiers::empty();
     let mut code = None;
 
@@ -98,7 +98,7 @@ pub fn register_all(app: &tauri::App, config: &HotkeyConfig) {
     register_with_handle(app.handle(), config);
 }
 
-/// Unregister all then re-register (call on save_config so hotkeys apply live).
+/// Unregister all then re-register (call on `save_config` so hotkeys apply live).
 pub fn reregister(app: &AppHandle, config: &HotkeyConfig) {
     if let Err(e) = app.global_shortcut().unregister_all() {
         tracing::warn!("[hotkey] unregister_all: {e}");

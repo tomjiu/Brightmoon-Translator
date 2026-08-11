@@ -81,7 +81,7 @@ pub async fn lookup_word_multi_source(
     state: State<'_, crate::AppState>,
 ) -> Result<ComprehensiveEntry, String> {
     let pool = state.ecdict_pool.as_ref();
-    let vocab_db = state.event_store.as_ref().map(|s| s.pool());
+    let vocab_db = state.event_store.as_ref().map(super::super::infrastructure::event_store::EventStore::pool);
 
     // 并行查询 ECDICT + DictionaryAPI.dev + 有道
     // v2 S2-8: share a single MultiSourceDictionary instance across both online
@@ -155,8 +155,8 @@ pub async fn lookup_word_multi_source(
         if let Ok(Some(lemma)) = resolve_lemma(&word, p).await {
             if lemma != word {
                 if let Ok((chinese, english, phonetic, _)) = lookup_ecdict(&lemma, p).await {
-                    entry.chinese_translation = chinese.clone();
-                    entry.english_definitions = english.clone();
+                    entry.chinese_translation.clone_from(&chinese);
+                    entry.english_definitions.clone_from(&english);
                     if let Some(p) = phonetic {
                         let clean = p.trim().trim_start_matches('/').trim_end_matches('/');
                         if !clean.is_empty() {
@@ -190,7 +190,7 @@ pub async fn lookup_word_multi_source(
             if entry
                 .chinese_translation
                 .as_ref()
-                .map_or(true, |existing| youdao_zh.len() > existing.len())
+                .is_none_or(|existing| youdao_zh.len() > existing.len())
             {
                 entry.chinese_translation = Some(youdao_zh);
             }
@@ -236,7 +236,7 @@ pub async fn lookup_word_multi_source(
     if let Some(online) = online_result {
         for p in &online.phonetics {
             if p.audio.is_some() && entry.audio_url.is_none() {
-                entry.audio_url = p.audio.clone();
+                entry.audio_url.clone_from(&p.audio);
             }
             if p.text.is_some() {
                 entry.phonetics.push(PhoneticInfo {
@@ -266,7 +266,7 @@ pub async fn lookup_word_multi_source(
 
     if entry.sources.is_empty() {
         return Err(if pool.is_some() {
-            format!("单词 '{}' 未找到", word)
+            format!("单词 '{word}' 未找到")
         } else {
             "本地词典未加载".into()
         });
@@ -280,13 +280,13 @@ pub async fn lookup_word_multi_source(
             // v2 S2-7: log failures instead of silently swallowing, so that
             // missing history rows can be diagnosed.
             if let Err(e) = sqlx::query(
-                r#"
+                r"
                 INSERT INTO dictionary_history (word, lookup_count, first_looked_up, last_looked_up)
                 VALUES (?, 1, strftime('%s', 'now'), strftime('%s', 'now'))
                 ON CONFLICT(word) DO UPDATE SET
                     lookup_count = lookup_count + 1,
                     last_looked_up = strftime('%s', 'now')
-                "#,
+                ",
             )
             .bind(&w)
             .execute(&pool)
@@ -322,20 +322,20 @@ pub async fn get_dictionary_history(
         .ok_or("数据库未初始化")?
         .pool();
 
-    let limit = limit.unwrap_or(50).clamp(1, 200) as i64;
+    let limit = i64::from(limit.unwrap_or(50).clamp(1, 200));
 
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT word, lookup_count, first_looked_up, last_looked_up
         FROM dictionary_history
         ORDER BY last_looked_up DESC
         LIMIT ?
-        "#,
+        ",
     )
     .bind(limit)
     .fetch_all(pool)
     .await
-    .map_err(|e| format!("查询历史失败: {}", e))?;
+    .map_err(|e| format!("查询历史失败: {e}"))?;
 
     let items = rows
         .into_iter()
@@ -364,7 +364,7 @@ pub async fn clear_dictionary_history(
     sqlx::query("DELETE FROM dictionary_history")
         .execute(pool)
         .await
-        .map_err(|e| format!("清空历史失败: {}", e))?;
+        .map_err(|e| format!("清空历史失败: {e}"))?;
 
     Ok(())
 }
@@ -409,13 +409,11 @@ async fn parse_youdao(dict: &MultiSourceDictionary, word: &str) -> Option<Youdao
             // 有道音频字段是 usspeech/ukspeech（无连字符），值是相对路径
             if let Some(speech) = word_list.get("usspeech").and_then(|v| v.as_str()) {
                 result.audio_url = Some(format!(
-                    "https://dict.youdao.com/dictvoice?audio={}",
-                    speech
+                    "https://dict.youdao.com/dictvoice?audio={speech}"
                 ));
             } else if let Some(speech) = word_list.get("ukspeech").and_then(|v| v.as_str()) {
                 result.audio_url = Some(format!(
-                    "https://dict.youdao.com/dictvoice?audio={}",
-                    speech
+                    "https://dict.youdao.com/dictvoice?audio={speech}"
                 ));
             }
         }
@@ -677,7 +675,7 @@ pub async fn resolve_lemma(
          WHERE exchange LIKE ?1
          LIMIT 10",
     )
-    .bind(format!("%:{}%", &word_lower))  // 匹配 ":ran" → 命中 "p:ran" / "d:ran" / "i:ran"
+    .bind(format!("%:{word_lower}%"))  // 匹配 ":ran" → 命中 "p:ran" / "d:ran" / "i:ran"
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -760,14 +758,14 @@ pub async fn search_word_suggestions(
 ) -> Result<Vec<SuggestionItem>, String> {
     let pool = state.ecdict_pool.as_ref().ok_or("本地词典数据库未加载")?;
 
-    let pattern = format!("{}%", query);
+    let pattern = format!("{query}%");
 
     let rows = sqlx::query("SELECT word, translation FROM stardict WHERE word LIKE ?1 ORDER BY frq DESC, word ASC LIMIT ?2")
         .bind(&pattern)
         .bind(limit)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("查询建议失败: {}", e))?;
+        .map_err(|e| format!("查询建议失败: {e}"))?;
 
     Ok(rows
         .into_iter()
@@ -840,7 +838,8 @@ pub struct DictionaryImportStatus {
 pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result<String, String> {
     let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
     let pool = store.pool();
-    let ecdict_pool = state.ecdict_pool.as_ref().ok_or("ECDICT 未连接")?;
+    // ECDICT 仅核心词库需要；缺失时只跳过核心词库，Oxford/GPT 照常导入
+    let ecdict_pool = state.ecdict_pool.as_ref();
 
     // S1-2: tables (oxford_dict / gpt_dict / core_vocabulary) are now created
     // by EventStore::init_schema at startup (and documented in migrations
@@ -876,17 +875,18 @@ pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result
                     if let Some((word, meaning)) = parse_oxford_line(line) {
                         let w = word.trim().trim_start_matches('\n').to_lowercase();
                         let m = meaning.trim();
-                        if !w.is_empty() && !m.is_empty() {
-                            sqlx::query(
+                        if !w.is_empty() && !m.is_empty()
+                            && sqlx::query(
                                 "INSERT OR IGNORE INTO oxford_dict (word, meaning) VALUES (?, ?)",
                             )
                             .bind(&w)
                             .bind(m)
                             .execute(&mut *tx)
                             .await
-                            .ok();
-                            oxford_count += 1;
-                        }
+                            .is_ok()
+                            {
+                                oxford_count += 1;
+                            }
                     }
                     if oxford_count % 5000 == 0 && oxford_count > 0 {
                         tx.commit().await.map_err(|e| e.to_string())?;
@@ -917,13 +917,15 @@ pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result
                         continue;
                     }
                     if let Ok(entry) = serde_json::from_str::<GptEntry>(line) {
-                        sqlx::query("INSERT OR IGNORE INTO gpt_dict (word, content) VALUES (?, ?)")
+                        if sqlx::query("INSERT OR IGNORE INTO gpt_dict (word, content) VALUES (?, ?)")
                             .bind(entry.word.to_lowercase())
                             .bind(&entry.content)
                             .execute(&mut *tx)
                             .await
-                            .ok();
-                        gpt_count += 1;
+                            .is_ok()
+                        {
+                            gpt_count += 1;
+                        }
                     }
                     if gpt_count % 1000 == 0 && gpt_count > 0 {
                         tx.commit().await.map_err(|e| e.to_string())?;
@@ -935,37 +937,42 @@ pub async fn import_dictionary_data(state: State<'_, crate::AppState>) -> Result
         }
     }
 
-    // 导入核心词库
+    // 导入核心词库（依赖 ECDICT；未连接时跳过）
     if existing_vocab == 0 {
-        let rows = sqlx::query(
-            "SELECT word, frq, bnc, collins, oxford, tag FROM stardict WHERE frq IS NOT NULL ORDER BY frq DESC LIMIT 15000",
-        ).fetch_all(ecdict_pool).await.map_err(|e| e.to_string())?;
+        if let Some(ecdict_pool) = ecdict_pool {
+            let rows = sqlx::query(
+                "SELECT word, frq, bnc, collins, oxford, tag FROM stardict WHERE frq IS NOT NULL ORDER BY frq DESC LIMIT 15000",
+            ).fetch_all(ecdict_pool).await.map_err(|e| e.to_string())?;
 
-        let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-        for (rank, row) in rows.iter().enumerate() {
-            let word: String = row.get("word");
-            let frq: Option<i64> = row.get("frq");
-            let bnc: Option<i64> = row.get("bnc");
-            let collins: Option<i64> = row.get("collins");
-            let oxford: Option<i64> = row.get("oxford");
-            let tag: Option<String> = row.get("tag");
+            let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+            for (rank, row) in rows.iter().enumerate() {
+                let word: String = row.get("word");
+                let frq: Option<i64> = row.get("frq");
+                let bnc: Option<i64> = row.get("bnc");
+                let collins: Option<i64> = row.get("collins");
+                let oxford: Option<i64> = row.get("oxford");
+                let tag: Option<String> = row.get("tag");
 
-            sqlx::query("INSERT OR IGNORE INTO core_vocabulary (word, frequency_rank, frq, bnc, collins, oxford, tag) VALUES (?, ?, ?, ?, ?, ?, ?)")
-                .bind(&word).bind((rank + 1) as i64).bind(frq).bind(bnc).bind(collins).bind(oxford).bind(&tag)
-                .execute(&mut *tx).await.ok();
-            vocab_count += 1;
+                let inserted = sqlx::query("INSERT OR IGNORE INTO core_vocabulary (word, frequency_rank, frq, bnc, collins, oxford, tag) VALUES (?, ?, ?, ?, ?, ?, ?)")
+                    .bind(&word).bind((rank + 1) as i64).bind(frq).bind(bnc).bind(collins).bind(oxford).bind(&tag)
+                    .execute(&mut *tx).await;
+                if inserted.is_ok() {
+                    vocab_count += 1;
+                }
 
-            if vocab_count % 5000 == 0 {
-                tx.commit().await.map_err(|e| e.to_string())?;
-                tx = pool.begin().await.map_err(|e| e.to_string())?;
+                if vocab_count % 5000 == 0 {
+                    tx.commit().await.map_err(|e| e.to_string())?;
+                    tx = pool.begin().await.map_err(|e| e.to_string())?;
+                }
             }
+            tx.commit().await.map_err(|e| e.to_string())?;
+        } else {
+            tracing::warn!("import_dictionary_data: ECDICT 未连接，跳过核心词库导入");
         }
-        tx.commit().await.map_err(|e| e.to_string())?;
     }
 
     Ok(format!(
-        "导入完成: Oxford {}, GPT4 {}, 核心词库 {}",
-        oxford_count, gpt_count, vocab_count
+        "导入完成: Oxford {oxford_count}, GPT4 {gpt_count}, 核心词库 {vocab_count}"
     ))
 }
 
@@ -978,15 +985,18 @@ struct GptEntry {
 /// 解析 Oxford SQL INSERT 行
 /// 格式: (id, 'letter', 'word', 'meaning')
 fn parse_oxford_line(line: &str) -> Option<(String, String)> {
+    // 实际格式: (word_id, 'letter', 'word', 'meaning')
+    // 例如: (1, 'a', 'A-', ' prefix (also an-...)')
     // 去掉开头的 ( 和结尾的 ),
     let inner = line.trim().trim_start_matches('(').trim_end_matches(',');
     let inner = inner.trim_end_matches(')');
 
-    // 找到第3个和第4个 ' 分隔的字段
-    let parts: Vec<&str> = inner.splitn(4, "', '").collect();
-    if parts.len() >= 4 {
-        let word = parts[2].trim_start_matches('\'').trim_end_matches('\'');
-        let meaning = parts[3].trim_start_matches('\'').trim_end_matches('\'');
+    // 找 word 字段：word 是第 3 个字段（第 2 个引号字符串）
+    // 用 splitn(3, "', '") 拿到前 3 段，第 2 段即 word
+    let parts: Vec<&str> = inner.splitn(3, "', '").collect();
+    if parts.len() >= 3 {
+        let word = parts[1].trim_start_matches('\'').trim_end_matches('\'');
+        let meaning = parts[2].trim_start_matches('\'').trim_end_matches('\'');
         Some((word.to_string(), meaning.to_string()))
     } else {
         // 备用解析：按逗号分割（前两个是数字和单字母）
@@ -1086,7 +1096,7 @@ pub async fn lookup_word_detail(
             source_urls: vec![],
         })
     } else {
-        Err(format!("Word '{}' not found", word))
+        Err(format!("Word '{word}' not found"))
     }
 }
 
@@ -1099,11 +1109,11 @@ pub async fn fuzzy_search_words(
 ) -> Result<Vec<String>, String> {
     let pool = state.ecdict_pool.as_ref().ok_or("本地词典数据库未加载")?;
 
-    let pattern = format!("%{}%", query);
-    let prefix_pattern = format!("{}%", query);
+    let pattern = format!("%{query}%");
+    let prefix_pattern = format!("{query}%");
 
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT word
         FROM stardict
         WHERE word LIKE ?1
@@ -1116,7 +1126,7 @@ pub async fn fuzzy_search_words(
             END,
             word ASC
         LIMIT ?4
-        "#,
+        ",
     )
     .bind(&pattern)
     .bind(&query)
@@ -1129,7 +1139,7 @@ pub async fn fuzzy_search_words(
     Ok(rows.into_iter().map(|r| r.get("word")).collect())
 }
 
-/// Look up a Japanese word using Jisho.org (JMdict) API.
+/// Look up a Japanese word using Jisho.org (`JMdict`) API.
 #[tauri::command]
 pub async fn lookup_japanese(
     word: String,
@@ -1137,7 +1147,7 @@ pub async fn lookup_japanese(
     let dict = crate::services::JapaneseDictionary::new();
     dict.lookup(&word)
         .await
-        .map_err(|e| format!("Japanese lookup failed: {}", e))
+        .map_err(|e| format!("Japanese lookup failed: {e}"))
 }
 
 #[cfg(test)]
@@ -1211,5 +1221,41 @@ mod tests {
         let pool = test_pool().await;
         let lemma = resolve_lemma("zzqxwv", &pool).await.unwrap();
         assert_eq!(lemma, None);
+    }
+
+    #[test]
+    fn parse_oxford_line_real_oedict_format() {
+        // 与 dictionaries/oxford-41k/oedict.sql 实际数据格式一致
+        let line = "(1, 'a', 'A-', ' prefix (also an- before a vowel sound) not, without (amoral). [greek]'),";
+        let (word, meaning) = parse_oxford_line(line).unwrap();
+        assert_eq!(word, "A-");
+        assert_eq!(meaning, " prefix (also an- before a vowel sound) not, without (amoral). [greek]");
+
+        // 含换行转义 \n 的 word（如 '\nAa'）
+        let line2 = "(2, 'a', '\nAa', ' abbr. 1 automobile association.'),";
+        let (word2, _) = parse_oxford_line(line2).unwrap();
+        assert_eq!(word2, "\nAa");
+    }
+
+    #[test]
+    fn parse_oxford_line_ignores_non_insert_lines() {
+        // 非 ( 开头行应返回 None（调用方已用 starts_with('(') 过滤）
+        assert_eq!(parse_oxford_line("INSERT INTO `oedict` ..."), None);
+        assert_eq!(parse_oxford_line(""), None);
+    }
+
+    #[test]
+    fn parse_gpt_entry_real_format() {
+        // 与 dictionaries/gpt4-dict/gptwords.json 实际格式一致（每行一个 JSON）
+        let line = "{\"word\":\"A.M.\",\"content\":\"### 基本释义\\nA.M. 是拉丁语 Ante Meridiem 的缩写。\"}";
+        let entry: GptEntry = serde_json::from_str(line).unwrap();
+        assert_eq!(entry.word, "A.M.");
+        assert!(entry.content.contains("Ante Meridiem"));
+
+        // 含中文 + 转义 \n 的内容
+        let line2 = "{\"word\":\"serendipity\",\"content\":\"意外发现好东西的能力\"}";
+        let entry2: GptEntry = serde_json::from_str(line2).unwrap();
+        assert_eq!(entry2.word, "serendipity");
+        assert_eq!(entry2.content, "意外发现好东西的能力");
     }
 }

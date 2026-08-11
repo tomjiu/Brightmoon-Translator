@@ -6,8 +6,8 @@ use serde::Deserialize;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::sleep;
 
-/// DeepLX - Built-in DeepL free API implementation
-/// Based on DeepLX algorithm, no external service needed
+/// `DeepLX` - Built-in `DeepL` free API implementation
+/// Based on `DeepLX` algorithm, no external service needed
 pub struct DeepLXEngine {
     client: Client,
     use_pro: bool,
@@ -53,6 +53,12 @@ struct RpcError {
     code: Option<i64>,
     #[serde(default)]
     message: Option<String>,
+}
+
+impl Default for DeepLXEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DeepLXEngine {
@@ -110,19 +116,19 @@ impl DeepLXEngine {
         }
     }
 
-    /// Get count of 'i' characters in text (DeepLX uses this for timestamp)
+    /// Get count of 'i' characters in text (`DeepLX` uses this for timestamp)
     fn get_i_count(text: &str) -> i64 {
         text.chars().filter(|&c| c == 'i').count() as i64
     }
 
-    /// Generate random ID matching DeepLX format: (100000..199998) * 1000
+    /// Generate random ID matching `DeepLX` format: (100000..199998) * 1000
     fn generate_id() -> i64 {
         let mut rng = rand::thread_rng();
-        let base = rng.gen_range(100000..199999);
+        let base = rng.gen_range(100_000..199_999);
         base * 1000
     }
 
-    /// Generate timestamp based on iCount (DeepLX algorithm)
+    /// Generate timestamp based on iCount (`DeepLX` algorithm)
     fn get_timestamp(i_count: i64) -> i64 {
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -137,8 +143,8 @@ impl DeepLXEngine {
         }
     }
 
-    /// Manipulate request body like DeepLX does
-    fn handler_body_method(random_id: i64, body: String) -> String {
+    /// Manipulate request body like `DeepLX` does
+    fn handler_body_method(random_id: i64, body: &str) -> String {
         let calc = (random_id + 5) % 29 == 0 || (random_id + 3) % 13 == 0;
         if calc {
             body.replacen("\"method\":\"", "\"method\" : \"", 1)
@@ -190,7 +196,7 @@ impl DeepLXEngine {
 
             // Format body and apply manipulation like DeepLX
             let post_str = post_data.to_string();
-            let post_str = Self::handler_body_method(id, post_str);
+            let post_str = Self::handler_body_method(id, &post_str);
 
             let resp = match self
                 .client
@@ -212,7 +218,7 @@ impl DeepLXEngine {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    last_error = Some(format!("Request failed: {}", e));
+                    last_error = Some(format!("Request failed: {e}"));
                     continue;
                 }
             };
@@ -228,9 +234,7 @@ impl DeepLXEngine {
             if !status.is_success() {
                 let error_text = resp.text().await.unwrap_or_default();
                 return Err(anyhow::anyhow!(
-                    "DeepL API error {}: {}",
-                    status,
-                    error_text
+                    "DeepL API error {status}: {error_text}"
                 ));
             }
 
@@ -238,12 +242,12 @@ impl DeepLXEngine {
 
             if let Some(error) = body.error {
                 // Rate limit error code
-                if error.code == Some(1042911) {
+                if error.code == Some(1_042_911) {
                     last_error = Some("Rate limited, retrying...".to_string());
                     continue;
                 }
                 let msg = error.message.unwrap_or_else(|| "Unknown error".to_string());
-                return Err(anyhow::anyhow!("DeepL RPC error: {}", msg));
+                return Err(anyhow::anyhow!("DeepL RPC error: {msg}"));
             }
 
             if let Some(result) = body.result {
@@ -300,7 +304,7 @@ impl DeepLXEngine {
         let resp = self
             .client
             .post(base_url)
-            .header("Authorization", format!("DeepL-Auth-Key {}", api_key))
+            .header("Authorization", format!("DeepL-Auth-Key {api_key}"))
             .header("Content-Type", "application/json")
             .json(&params)
             .send()
@@ -310,9 +314,7 @@ impl DeepLXEngine {
         if !status.is_success() {
             let error_text = resp.text().await.unwrap_or_default();
             return Err(anyhow::anyhow!(
-                "DeepL Pro API error {}: {}",
-                status,
-                error_text
+                "DeepL Pro API error {status}: {error_text}"
             ));
         }
 
@@ -341,7 +343,7 @@ impl TranslationEngine for DeepLXEngine {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "DeepLX"
     }
 

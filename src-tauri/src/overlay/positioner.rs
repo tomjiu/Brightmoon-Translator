@@ -3,7 +3,7 @@ use crate::selection::SelectionBounds;
 
 /// Calculate overlay position based on available context.
 /// Prefers target bounds (selection area), falls back to cursor position.
-/// Result is clamped into the monitor work area under the cursor (QTranslate multi-monitor).
+/// Result is clamped into the monitor work area under the cursor (`QTranslate` multi-monitor).
 pub fn calculate_position(
     target_bounds: Option<&SelectionBounds>,
     cursor_x: f64,
@@ -93,13 +93,13 @@ fn monitor_work_area(cx: f64, cy: f64) -> (f64, f64, f64, f64) {
                 rcWork: RECT::default(),
                 dwFlags: 0,
             };
-            if GetMonitorInfoW(mon, &mut mi).as_bool() {
+            if GetMonitorInfoW(mon, &raw mut mi).as_bool() {
                 let r = mi.rcWork;
                 return (
-                    r.left as f64,
-                    r.top as f64,
-                    (r.right - r.left).max(1) as f64,
-                    (r.bottom - r.top).max(1) as f64,
+                    f64::from(r.left),
+                    f64::from(r.top),
+                    f64::from((r.right - r.left).max(1)),
+                    f64::from((r.bottom - r.top).max(1)),
                 );
             }
         }
@@ -134,7 +134,7 @@ mod tests {
         assert!(y >= 100.0 + 20.0 + 8.0, "should be below the word, got y={y}");
         assert!(y + 200.0 <= 1080.0);
         // Card is wider than the word → centered position clamps to the work area.
-        assert!(x >= 4.0 && x <= 1616.0, "x inside work area, got x={x}");
+        assert!((4.0..=1616.0).contains(&x), "x inside work area, got x={x}");
     }
 
     #[test]

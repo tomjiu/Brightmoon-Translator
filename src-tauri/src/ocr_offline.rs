@@ -1,5 +1,5 @@
-//! Offline OCR via external RapidOCR / PaddleOCR-json sidecars (pot-style).
-//! Models/exe are NOT bundled; user sets plugin_dir.
+//! Offline OCR via external `RapidOCR` / PaddleOCR-json sidecars (pot-style).
+//! Models/exe are NOT bundled; user sets `plugin_dir`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

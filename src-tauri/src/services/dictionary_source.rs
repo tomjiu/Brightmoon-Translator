@@ -3,6 +3,7 @@
 // 定义统一的 DictionarySource trait,让 ECDICT / 有道 / 在线API / AI Prompt
 // 都作为可插拔的词典源,聚合到统一的词典查询流程。
 
+use crate::skills::llm_provider::extract_json;
 use crate::skills::{LlmMessage, LlmProvider, LlmRequest, OpenAiCompatibleProvider};
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
@@ -69,11 +70,11 @@ impl EcdictSource {
 
 #[async_trait]
 impl DictionarySource for EcdictSource {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "ecdict"
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "ECDICT"
     }
 
@@ -89,7 +90,7 @@ impl DictionarySource for EcdictSource {
         .context("ECDICT 查询失败")?;
 
         let Some(row) = row else {
-            bail!("ECDICT: 未找到 '{}'", word);
+            bail!("ECDICT: 未找到 '{word}'");
         };
 
         let definition: Option<String> = row.try_get("definition").unwrap_or_default();
@@ -185,16 +186,16 @@ struct OnlineApiDefinition {
 
 #[async_trait]
 impl DictionarySource for OnlineApiSource {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "online_api"
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "DictionaryAPI.dev"
     }
 
     async fn lookup(&self, word: &str) -> Result<DictEntryResult> {
-        let url = format!("https://api.dictionaryapi.dev/api/v2/entries/en/{}", word);
+        let url = format!("https://api.dictionaryapi.dev/api/v2/entries/en/{word}");
         let response = self.client.get(&url).send().await?;
         if !response.status().is_success() {
             bail!("在线词典请求失败: {}", response.status());
@@ -286,11 +287,11 @@ const DEFAULT_TEMPLATE: &str = r#"
 
 #[async_trait]
 impl DictionarySource for AiPromptSource {
-    fn id(&self) -> &str {
+    fn id(&self) -> &'static str {
         "ai_prompt"
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "AI Prompt"
     }
 
@@ -331,7 +332,7 @@ impl DictionarySource for AiPromptSource {
         let mut payload: Option<AiDictPayload> = None;
         let mut last_err: Option<anyhow::Error> = None;
 
-        for (attempt, temperature) in [(0, 0.5f32), (1, 0.2f32)].iter() {
+        for (attempt, temperature) in &[(0, 0.5f32), (1, 0.2f32)] {
             let request = LlmRequest::new(vec![
                 LlmMessage::system("你是严格的词典工具，只返回合法 JSON。"),
                 LlmMessage::user(user_prompt.clone()),
@@ -355,8 +356,7 @@ impl DictionarySource for AiPromptSource {
                                 e
                             );
                             last_err = Some(anyhow::anyhow!(
-                                "AI 词典返回格式错误: {}",
-                                e
+                                "AI 词典返回格式错误: {e}"
                             ));
                         },
                     }
@@ -381,20 +381,6 @@ impl DictionarySource for AiPromptSource {
             raw: None,
         })
     }
-}
-
-/// 从 LLM 响应中提取 JSON
-fn extract_json(content: &str) -> &str {
-    let trimmed = content.trim();
-    if trimmed.starts_with('{') {
-        return trimmed;
-    }
-    if let Some(start) = trimmed.find('{') {
-        if let Some(end) = trimmed[start..].rfind('}') {
-            return &trimmed[start..start + end + 1];
-        }
-    }
-    trimmed
 }
 
 // ============================================

@@ -34,7 +34,7 @@ impl EventStore {
     pub async fn init_schema(&self) -> Result<()> {
         // 事件流表（唯一真相）
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS card_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 card_id TEXT NOT NULL,
@@ -43,34 +43,34 @@ impl EventStore {
                 timestamp INTEGER NOT NULL,
                 created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         // 索引
         sqlx::query(
-            r#"
+            r"
             CREATE INDEX IF NOT EXISTS idx_card_events_card_id
             ON card_events(card_id)
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         // T13 性能:按事件类型 + 时间过滤的复合索引（统计/通知/指标等高频查询）
         sqlx::query(
-            r#"
+            r"
             CREATE INDEX IF NOT EXISTS idx_card_events_type_timestamp
             ON card_events(event_type, timestamp)
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         // T7: 词典源配置表（可插拔词典源）
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS dictionary_sources (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -79,36 +79,36 @@ impl EventStore {
                 prompt_template TEXT,
                 updated_at INTEGER NOT NULL
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         // 默认源配置（幂等插入）
         sqlx::query(
-            r#"
+            r"
             INSERT OR IGNORE INTO dictionary_sources (id, name, enabled, priority, updated_at) VALUES
                 ('ecdict', 'ECDICT', 1, 100, 0),
                 ('youdao', '有道', 1, 90, 0),
                 ('online_api', 'DictionaryAPI.dev', 1, 80, 0),
                 ('ai_prompt', 'AI Prompt', 0, 10, 0)
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         sqlx::query(
-            r#"
+            r"
             CREATE INDEX IF NOT EXISTS idx_card_events_timestamp
             ON card_events(timestamp)
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         // 卡牌快照表（可选，性能优化）
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS cards (
                 id TEXT PRIMARY KEY,
                 word TEXT NOT NULL,
@@ -119,23 +119,23 @@ impl EventStore {
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         sqlx::query(
-            r#"
+            r"
             CREATE INDEX IF NOT EXISTS idx_cards_word
             ON cards(word)
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         // Patch 历史表
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS card_patches (
                 id TEXT PRIMARY KEY,
                 card_id TEXT NOT NULL,
@@ -150,23 +150,23 @@ impl EventStore {
                 applied_at INTEGER,
                 FOREIGN KEY (card_id) REFERENCES cards(id)
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         sqlx::query(
-            r#"
+            r"
             CREATE INDEX IF NOT EXISTS idx_patches_card_version
             ON card_patches(card_id, version)
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         // T9: 语义向量表（选择题干扰项语义近邻）
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS embeddings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 word TEXT NOT NULL,
@@ -176,23 +176,23 @@ impl EventStore {
                 created_at INTEGER NOT NULL,
                 UNIQUE(word, source)
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         sqlx::query(
-            r#"
+            r"
             CREATE INDEX IF NOT EXISTS idx_embeddings_word
             ON embeddings(word)
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         // T8: 用户画像表（学习偏好/水平）
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS user_profile (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 card_id TEXT NOT NULL,
@@ -202,23 +202,33 @@ impl EventStore {
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         sqlx::query(
-            r#"
+            r"
             CREATE INDEX IF NOT EXISTS idx_profile_card
             ON user_profile(card_id)
-            "#,
+            ",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // T12: user_profile 唯一约束（upsert 依赖）
+        sqlx::query(
+            r"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_profile_card_field
+            ON user_profile(card_id, field)
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         // T8: 弱点记录表（频繁出错的词/字段）
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS weak_points (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 card_id TEXT NOT NULL,
@@ -228,16 +238,16 @@ impl EventStore {
                 last_occurred_at INTEGER NOT NULL,
                 resolved INTEGER NOT NULL DEFAULT 0
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         sqlx::query(
-            r#"
+            r"
             CREATE INDEX IF NOT EXISTS idx_weak_card
             ON weak_points(card_id)
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
@@ -246,28 +256,42 @@ impl EventStore {
         // ON CONFLICT DO UPDATE 永不触发，count 永远 = 1。
         // 先合并历史重复行（保留 count 总和），再建唯一索引。
         sqlx::query(
-            r#"
+            r"
             DELETE FROM weak_points
             WHERE id NOT IN (
                 SELECT MIN(id) FROM weak_points GROUP BY card_id, field, error_type
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         sqlx::query(
-            r#"
+            r"
             CREATE UNIQUE INDEX IF NOT EXISTS idx_weak_unique
             ON weak_points(card_id, field, error_type)
-            "#,
+            ",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // 查词历史表（DictionarySearch 历史记录 + 清空）
+        sqlx::query(
+            r"
+            CREATE TABLE IF NOT EXISTS dictionary_history (
+                word TEXT PRIMARY KEY,
+                lookup_count INTEGER NOT NULL DEFAULT 1,
+                first_looked_up INTEGER NOT NULL,
+                last_looked_up INTEGER NOT NULL
+            )
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         // T8: AI 批注持久化（annotations 表）
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS annotations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 card_id TEXT NOT NULL,
@@ -276,23 +300,23 @@ impl EventStore {
                 trigger_type TEXT NOT NULL,
                 created_at INTEGER NOT NULL
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         sqlx::query(
-            r#"
+            r"
             CREATE INDEX IF NOT EXISTS idx_annotations_card
             ON annotations(card_id)
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
-        // T8: 测验错误日志表
+        // T8: 测验作答日志表（含答对/答错；观察偏好据此统计真实正确率）
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS quiz_errors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 card_id TEXT NOT NULL,
@@ -302,26 +326,75 @@ impl EventStore {
                 context TEXT,
                 created_at INTEGER NOT NULL
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         sqlx::query(
-            r#"
+            r"
             CREATE INDEX IF NOT EXISTS idx_quiz_errors_card
             ON quiz_errors(card_id)
-            "#,
+            ",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // 多源词典表（Oxford / GPT4-Dict 导入与查询依赖）
+        sqlx::query(
+            r"
+            CREATE TABLE IF NOT EXISTS oxford_dict (
+                word TEXT PRIMARY KEY,
+                meaning TEXT NOT NULL
+            )
+            ",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r"
+            CREATE TABLE IF NOT EXISTS gpt_dict (
+                word TEXT PRIMARY KEY,
+                content TEXT NOT NULL
+            )
+            ",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // 核心词库表（CoreVocabularyList 与 get_dict_stats 依赖）
+        sqlx::query(
+            r"
+            CREATE TABLE IF NOT EXISTS core_vocabulary (
+                word TEXT PRIMARY KEY,
+                frequency_rank INTEGER NOT NULL,
+                frq INTEGER,
+                bnc INTEGER,
+                collins INTEGER,
+                oxford INTEGER,
+                tag TEXT
+            )
+            ",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r"
+            CREATE INDEX IF NOT EXISTS idx_core_vocab_rank
+            ON core_vocabulary(frequency_rank)
+            ",
         )
         .execute(&self.pool)
         .await?;
 
         // FTS5 全文搜索索引（word + ai_content 可搜索）
         let fts_result = sqlx::query(
-            r#"
+            r"
             CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts
             USING fts5(word, ai_content, content='cards', content_rowid='rowid')
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await;
@@ -330,23 +403,23 @@ impl EventStore {
             // 触发cards 表写入同步更新 FTS 索引
             for trigger in [
                 // 插入同步
-                r#"
+                r"
                 CREATE TRIGGER IF NOT EXISTS trg_cards_fts_insert
                 AFTER INSERT ON cards BEGIN
                     INSERT INTO cards_fts(rowid, word, ai_content)
                     VALUES (new.rowid, new.word, new.ai_content);
                 END
-                "#,
+                ",
                 // 删除同步
-                r#"
+                r"
                 CREATE TRIGGER IF NOT EXISTS trg_cards_fts_delete
                 AFTER DELETE ON cards BEGIN
                     INSERT INTO cards_fts(cards_fts, rowid, word, ai_content)
                     VALUES ('delete', old.rowid, old.word, old.ai_content);
                 END
-                "#,
+                ",
                 // 更新同步
-                r#"
+                r"
                 CREATE TRIGGER IF NOT EXISTS trg_cards_fts_update
                 AFTER UPDATE ON cards BEGIN
                     INSERT INTO cards_fts(cards_fts, rowid, word, ai_content)
@@ -354,7 +427,7 @@ impl EventStore {
                     INSERT INTO cards_fts(rowid, word, ai_content)
                     VALUES (new.rowid, new.word, new.ai_content);
                 END
-                "#,
+                ",
             ] {
                 sqlx::query(trigger).execute(&self.pool).await?;
             }
@@ -375,7 +448,7 @@ impl EventStore {
 
         // 尝试 FTS5 精确匹配
         let fts_rows = sqlx::query(
-            r#"
+            r"
             SELECT c.id, c.word, c.current_version, c.ai_content, c.fsrs_state,
                    c.created_at, c.updated_at,
                    bm25(cards_fts) as rank
@@ -384,9 +457,9 @@ impl EventStore {
             WHERE cards_fts MATCH ?1
             ORDER BY rank ASC
             LIMIT ?2
-            "#,
+            ",
         )
-        .bind(&query)
+        .bind(query)
         .bind(limit)
         .fetch_all(&self.pool)
         .await;
@@ -395,18 +468,18 @@ impl EventStore {
             Ok(rows) if !rows.is_empty() => rows,
             _ => {
                 // FTS5 语法错误或不可用时退化为 LIKE 搜索
-                let like = format!("%{}%", query);
+                let like = format!("%{query}%");
                 sqlx::query(
-                    r#"
+                    r"
                     SELECT id, word, current_version, ai_content, fsrs_state, created_at, updated_at
                     FROM cards
                     WHERE word LIKE ?1 OR ai_content LIKE ?1
                     ORDER BY CASE WHEN word = ?1 THEN 0 WHEN word LIKE ?2 THEN 1 ELSE 2 END, updated_at DESC
                     LIMIT ?3
-                    "#,
+                    ",
                 )
                 .bind(&like)
-                .bind(&query)
+                .bind(query)
                 .bind(limit)
                 .fetch_all(&self.pool)
                 .await?
@@ -446,10 +519,10 @@ impl EventStore {
         let timestamp = event.timestamp();
 
         let result = sqlx::query(
-            r#"
+            r"
             INSERT INTO card_events (card_id, event_type, event_data, timestamp)
             VALUES (?, ?, ?, ?)
-            "#,
+            ",
         )
         .bind(card_id)
         .bind(event_type)
@@ -464,11 +537,11 @@ impl EventStore {
     /// 加载卡牌的所有事件
     pub async fn load_events(&self, card_id: &str) -> Result<Vec<CardEvent>> {
         let rows = sqlx::query(
-            r#"
+            r"
             SELECT event_data FROM card_events
             WHERE card_id = ?
             ORDER BY timestamp ASC, id ASC
-            "#,
+            ",
         )
         .bind(card_id)
         .fetch_all(&self.pool)
@@ -492,11 +565,11 @@ impl EventStore {
         before_timestamp: i64,
     ) -> Result<Vec<CardEvent>> {
         let rows = sqlx::query(
-            r#"
+            r"
             SELECT event_data FROM card_events
             WHERE card_id = ? AND timestamp <= ?
             ORDER BY timestamp ASC, id ASC
-            "#,
+            ",
         )
         .bind(card_id)
         .bind(before_timestamp)
@@ -513,14 +586,14 @@ impl EventStore {
         Ok(events)
     }
 
-    /// 返回该卡最近一次 AI 优化事件(patch_proposed / patch_applied)的 Unix 时间戳
+    /// 返回该卡最近一次 AI `优化事件(patch_proposed` / `patch_applied)的` Unix 时间戳
     pub async fn last_ai_optimize_at(&self, card_id: &str) -> Result<Option<i64>> {
         let row: Option<(i64,)> = sqlx::query_as(
-            r#"
+            r"
             SELECT MAX(timestamp) FROM card_events
             WHERE card_id = ?
               AND event_type IN ('patch_proposed', 'patch_applied')
-            "#,
+            ",
         )
         .bind(card_id)
         .fetch_optional(&self.pool)
@@ -528,7 +601,7 @@ impl EventStore {
         Ok(row.map(|(t,)| t))
     }
 
-    /// 重建卡牌（从事件流）— P0 修复:覆盖 from_events 生成的新 UUID 为真实 card_id
+    /// 重建卡牌（从事件流）— P0 修复:覆盖 `from_events` 生成的新 UUID 为真实 `card_id`
     pub async fn rebuild_card(&self, card_id: &str) -> Result<WordCard> {
         let events = self.load_events(card_id).await?;
         let mut card = WordCard::from_events(&events)?;
@@ -552,7 +625,7 @@ impl EventStore {
         let fsrs_state_json = serde_json::to_string(&card.fsrs_state)?;
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO cards (id, word, current_version, ai_content, fsrs_state, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
@@ -561,11 +634,11 @@ impl EventStore {
                 ai_content = excluded.ai_content,
                 fsrs_state = excluded.fsrs_state,
                 updated_at = excluded.updated_at
-            "#,
+            ",
         )
         .bind(&card.id)
         .bind(&card.word)
-        .bind(card.current_version as i64)
+        .bind(i64::from(card.current_version))
         .bind(&ai_content_json)
         .bind(&fsrs_state_json)
         .bind(card.created_at)
@@ -579,11 +652,11 @@ impl EventStore {
     /// 从快照加载卡牌（快速查询）
     pub async fn load_snapshot(&self, card_id: &str) -> Result<Option<WordCard>> {
         let row = sqlx::query(
-            r#"
+            r"
             SELECT id, word, current_version, ai_content, fsrs_state, created_at, updated_at
             FROM cards
             WHERE id = ?
-            "#,
+            ",
         )
         .bind(card_id)
         .fetch_optional(&self.pool)
@@ -620,9 +693,9 @@ impl EventStore {
     /// 获取所有卡牌 ID
     pub async fn get_all_card_ids(&self) -> Result<Vec<String>> {
         let rows = sqlx::query(
-            r#"
+            r"
             SELECT DISTINCT card_id FROM card_events
-            "#,
+            ",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -638,9 +711,9 @@ impl EventStore {
     /// 统计事件数量
     pub async fn count_events(&self, card_id: &str) -> Result<i64> {
         let row = sqlx::query(
-            r#"
+            r"
             SELECT COUNT(*) as count FROM card_events WHERE card_id = ?
-            "#,
+            ",
         )
         .bind(card_id)
         .fetch_one(&self.pool)
@@ -734,5 +807,77 @@ mod tests {
         let results = store.search_cards("app", 10).await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].word, "apple");
+    }
+
+    #[tokio::test]
+    async fn test_dictionary_history_table_exists() {
+        let store = EventStore::new("sqlite::memory:").await.unwrap();
+        store.init_schema().await.unwrap();
+
+        // 建表后可插入 + upsert + 查询（查词历史写入依赖此表）
+        sqlx::query(
+            "INSERT INTO dictionary_history (word, lookup_count, first_looked_up, last_looked_up)
+             VALUES ('hello', 1, 1000, 1000)
+             ON CONFLICT(word) DO UPDATE SET lookup_count = lookup_count + 1, last_looked_up = 2000",
+        )
+        .execute(&store.pool)
+        .await
+        .unwrap();
+
+        let (word, count): (String, i64) = sqlx::query_as(
+            "SELECT word, lookup_count FROM dictionary_history WHERE word = 'hello'",
+        )
+        .fetch_one(&store.pool)
+        .await
+        .unwrap();
+        assert_eq!(word, "hello");
+        assert_eq!(count, 1);
+
+        // 二次 upsert 递增
+        sqlx::query(
+            "INSERT INTO dictionary_history (word, lookup_count, first_looked_up, last_looked_up)
+             VALUES ('hello', 1, 1000, 3000)
+             ON CONFLICT(word) DO UPDATE SET lookup_count = lookup_count + 1, last_looked_up = 3000",
+        )
+        .execute(&store.pool)
+        .await
+        .unwrap();
+        let count: i64 = sqlx::query_scalar(
+            "SELECT lookup_count FROM dictionary_history WHERE word = 'hello'",
+        )
+        .fetch_one(&store.pool)
+        .await
+        .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_multi_source_dict_tables_exist() {
+        let store = EventStore::new("sqlite::memory:").await.unwrap();
+        store.init_schema().await.unwrap();
+
+        // oxford_dict：插入 + 精确查询
+        sqlx::query("INSERT INTO oxford_dict (word, meaning) VALUES ('hello', 'int. 你好')")
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        let meaning: String =
+            sqlx::query_scalar("SELECT meaning FROM oxford_dict WHERE word = 'hello'")
+                .fetch_one(&store.pool)
+                .await
+                .unwrap();
+        assert_eq!(meaning, "int. 你好");
+
+        // gpt_dict：插入 + 查询
+        sqlx::query("INSERT INTO gpt_dict (word, content) VALUES ('serendipity', '意外发现')")
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        let content: String =
+            sqlx::query_scalar("SELECT content FROM gpt_dict WHERE word = 'serendipity'")
+                .fetch_one(&store.pool)
+                .await
+                .unwrap();
+        assert_eq!(content, "意外发现");
     }
 }

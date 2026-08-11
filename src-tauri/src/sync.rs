@@ -1,7 +1,7 @@
-//! Cloud sync via WebDAV.
+//! Cloud sync via `WebDAV`.
 //!
 //! Syncs config, glossary, translation memory (history DB), and wordbook
-//! to a WebDAV server (e.g., Nutstore, NextCloud, etc.).
+//! to a `WebDAV` server (e.g., Nutstore, `NextCloud`, etc.).
 
 use crate::config::AppConfig;
 use crate::error::AppError;
@@ -71,8 +71,8 @@ fn checksum(data: &[u8]) -> String {
 /// Magic header for encrypted sync blobs (AES-256-GCM wire format).
 const SYNC_ENC_MAGIC: &[u8] = b"MTS1";
 
-/// Derive 32-byte key: SHA256(device_id ‖ password ‖ "moontranslator-sync-v1").
-/// Password from WebDAV enables multi-device; empty password = device-local only.
+/// Derive 32-byte key: `SHA256(device_id` ‖ password ‖ "moontranslator-sync-v1").
+/// Password from `WebDAV` enables multi-device; empty password = device-local only.
 fn derive_sync_key(password: &str) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
@@ -136,14 +136,14 @@ fn build_client(config: &AppConfig) -> Result<reqwest::Client, AppError> {
         .map_err(|e| AppError::Network(e.to_string()))
 }
 
-/// Base URL for the WebDAV remote directory, ensuring trailing slash.
+/// Base URL for the `WebDAV` remote directory, ensuring trailing slash.
 fn remote_base_url(config: &AppConfig) -> String {
     let base = config.sync.server_url.trim_end_matches('/');
     let dir = config.sync.remote_dir.trim_matches('/');
-    format!("{}/{}", base, dir)
+    format!("{base}/{dir}")
 }
 
-/// PUT upload a file to WebDAV.
+/// PUT upload a file to `WebDAV`.
 async fn upload_file(
     client: &reqwest::Client,
     config: &AppConfig,
@@ -171,7 +171,7 @@ async fn upload_file(
     Ok(())
 }
 
-/// GET download a file from WebDAV.
+/// GET download a file from `WebDAV`.
 async fn download_file(
     client: &reqwest::Client,
     config: &AppConfig,
@@ -196,7 +196,7 @@ async fn download_file(
     Ok(resp.bytes().await?.to_vec())
 }
 
-/// MKCOL — create directory on WebDAV (ignore if already exists).
+/// MKCOL — create directory on `WebDAV` (ignore if already exists).
 async fn ensure_remote_dir(client: &reqwest::Client, config: &AppConfig) -> Result<(), AppError> {
     let url = format!("{}/", remote_base_url(config));
     let resp = client
@@ -215,7 +215,7 @@ async fn ensure_remote_dir(client: &reqwest::Client, config: &AppConfig) -> Resu
     }
 }
 
-/// Test WebDAV connection. Returns Ok(()) on success.
+/// Test `WebDAV` connection. Returns Ok(()) on success.
 pub async fn test_connection(config: &AppConfig) -> Result<(), AppError> {
     if config.sync.server_url.is_empty() {
         return Err(AppError::Config("WebDAV server URL is empty".into()));
@@ -374,7 +374,7 @@ pub async fn sync_all(
                 serde_json::from_slice(&data).map_err(|e| AppError::Internal(e.to_string()))?;
             let h = history.lock().await;
             let (imported, _skipped) = h.import_tm(&export, true);
-            downloaded.push(format!("tm_export.json ({} entries)", imported));
+            downloaded.push(format!("tm_export.json ({imported} entries)"));
         }
     }
 
@@ -454,34 +454,6 @@ pub async fn sync_all(
     })
 }
 
-#[cfg(test)]
-mod crypto_tests {
-    use super::*;
-
-    #[test]
-    fn sync_payload_roundtrip() {
-        let plain = br#"{"en-zh":[{"source":"hello","target":"nihao"}]}"#;
-        let enc = encrypt_sync_payload(plain, "test-password").unwrap();
-        assert!(enc.starts_with(SYNC_ENC_MAGIC));
-        assert_ne!(enc, plain);
-        let dec = decrypt_sync_payload(&enc, "test-password").unwrap();
-        assert_eq!(dec, plain);
-    }
-
-    #[test]
-    fn legacy_plaintext_still_loads() {
-        let plain = b"{\"ok\":true}";
-        let dec = decrypt_sync_payload(plain, "any").unwrap();
-        assert_eq!(dec, plain);
-    }
-
-    #[test]
-    fn wrong_password_fails() {
-        let enc = encrypt_sync_payload(b"secret-data-here", "pw-a").unwrap();
-        assert!(decrypt_sync_payload(&enc, "pw-b").is_err());
-    }
-}
-
 /// Build a local manifest from current data state.
 async fn build_local_manifest(
     config: &AppConfig,
@@ -555,4 +527,32 @@ async fn build_local_manifest(
 fn serialize_config_for_sync(config: &AppConfig) -> Result<String, AppError> {
     let masked = config.masked_copy();
     serde_json::to_string_pretty(&masked).map_err(|e| AppError::Internal(e.to_string()))
+}
+
+#[cfg(test)]
+mod crypto_tests {
+    use super::*;
+
+    #[test]
+    fn sync_payload_roundtrip() {
+        let plain = br#"{"en-zh":[{"source":"hello","target":"nihao"}]}"#;
+        let enc = encrypt_sync_payload(plain, "test-password").unwrap();
+        assert!(enc.starts_with(SYNC_ENC_MAGIC));
+        assert_ne!(enc, plain);
+        let dec = decrypt_sync_payload(&enc, "test-password").unwrap();
+        assert_eq!(dec, plain);
+    }
+
+    #[test]
+    fn legacy_plaintext_still_loads() {
+        let plain = b"{\"ok\":true}";
+        let dec = decrypt_sync_payload(plain, "any").unwrap();
+        assert_eq!(dec, plain);
+    }
+
+    #[test]
+    fn wrong_password_fails() {
+        let enc = encrypt_sync_payload(b"secret-data-here", "pw-a").unwrap();
+        assert!(decrypt_sync_payload(&enc, "pw-b").is_err());
+    }
 }

@@ -109,7 +109,7 @@ fn show_existing(app: &AppHandle, x: i32, y: i32) {
     }
 }
 
-pub fn show(app: &AppHandle, text: String, screen_x: f64, screen_y: f64) -> Result<(), String> {
+pub fn show(app: &AppHandle, text: &str, screen_x: f64, screen_y: f64) -> Result<(), String> {
     let text = text.trim().to_string();
     if text.is_empty() {
         return Ok(());
@@ -264,7 +264,7 @@ pub fn take_pending() -> Option<String> {
 }
 
 pub fn has_pending() -> bool {
-    PENDING.lock().ok().map(|g| g.is_some()).unwrap_or(false)
+    PENDING.lock().ok().is_some_and(|g| g.is_some())
 }
 
 pub fn is_pop_hwnd(app: &AppHandle, hwnd: isize) -> bool {
@@ -273,8 +273,7 @@ pub fn is_pop_hwnd(app: &AppHandle, hwnd: isize) -> bool {
     }
     app.get_webview_window(LABEL)
         .and_then(|w| w.hwnd().ok())
-        .map(|h| h.0 as isize == hwnd)
-        .unwrap_or(false)
+        .is_some_and(|h| h.0 as isize == hwnd)
 }
 
 pub fn hit_test(app: &AppHandle, screen_x: f64, screen_y: f64) -> bool {
@@ -290,9 +289,9 @@ pub fn hit_test(app: &AppHandle, screen_x: f64, screen_y: f64) -> bool {
     let Ok(size) = w.outer_size() else {
         return false;
     };
-    let x = pos.x as f64;
-    let y = pos.y as f64;
-    let bw = size.width as f64;
-    let bh = size.height as f64;
+    let x = f64::from(pos.x);
+    let y = f64::from(pos.y);
+    let bw = f64::from(size.width);
+    let bh = f64::from(size.height);
     screen_x >= x && screen_x <= x + bw && screen_y >= y && screen_y <= y + bh
 }

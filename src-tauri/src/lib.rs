@@ -1,3 +1,7 @@
+// unwrap/expect are used pervasively for infallible paths and
+// test/CLI scaffolding; print_* is used by tools and examples.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stdout, clippy::print_stderr)]
+
 pub mod domain;
 pub mod infrastructure;
 pub mod skills;
@@ -127,7 +131,7 @@ fn saved_window_bounds_are_visible(
 
 /// Top-level application state.
 /// Composed of sub-contexts for separation of concerns.
-/// Commands can access either the full AppState or specific sub-contexts.
+/// Commands can access either the full `AppState` or specific sub-contexts.
 pub struct AppState {
     // Sub-contexts
     pub translation: app_context::TranslationContext,
@@ -164,7 +168,7 @@ pub struct AppState {
 pub(crate) fn resolve_ecdict_db_path() -> Option<std::path::PathBuf> {
     let exe_dir = std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
     if let Some(ref dir) = exe_dir {
@@ -464,7 +468,7 @@ pub fn run() {
                 // Start the overlay HTTP server for optimized content delivery
                 let http_server_handle = app_state.overlay.http_server.clone();
                 tauri::async_runtime::spawn(async move {
-                    match overlay::OverlayHttpServer::start().await {
+                    match overlay::OverlayHttpServer::start() {
                         Ok(server) => {
                             tracing::info!(
                                 "Overlay HTTP server started on port {}",
@@ -743,7 +747,7 @@ pub fn run() {
                             Ok(result) => {
                                 let mut c = state.system.config.lock().await;
                                 c.sync.last_sync_at = result.synced_at;
-                                c.sync.last_sync_status = result.message.clone();
+                                c.sync.last_sync_status.clone_from(&result.message);
                                 c.save();
                                 if result.downloaded_config.is_some() {
                                     tracing::info!(
@@ -836,10 +840,6 @@ pub fn run() {
             commands::config_cmd::import_config_json,
             commands::config_cmd::get_translation_blacklist,
             commands::config_cmd::update_translation_blacklist,
-            commands::history_cmd::get_history,
-            commands::history_cmd::clear_history,
-            commands::history_cmd::delete_history_item,
-            commands::history_cmd::batch_delete_history,
             commands::cache_cmd::clear_cache,
             commands::cache_cmd::cache_size,
             commands::capture::capture_screen,
@@ -962,7 +962,6 @@ pub fn run() {
             commands::offline_cmd::delete_offline_model,
             commands::offline_cmd::toggle_offline_engine,
             commands::offline_cmd::update_offline_settings,
-            commands::offline_cmd::generate_sample_offline_models,
             commands::offline_cmd::get_offline_status,
             commands::sync_cmd::test_webdav_connection,
             commands::sync_cmd::sync_now,
@@ -984,6 +983,9 @@ pub fn run() {
             commands::optimization_cmd::get_card_patch_history,
             commands::optimization_cmd::get_weak_point_words,
             commands::optimization_cmd::resolve_weak_point,
+            commands::preference_cmd::rate_card_field,
+            commands::preference_cmd::get_user_preferences,
+            commands::preference_cmd::get_inferred_weak_fields,
             commands::statistics_cmd::get_learning_statistics,
             commands::statistics_cmd::get_daily_activity,
             commands::statistics_cmd::get_heatmap_data,
@@ -1009,6 +1011,8 @@ pub fn run() {
             commands::dictionary_cmd::import_dictionary_data,
             commands::dictionary_cmd::check_dictionary_imported,
             commands::dictionary_cmd::ecdict_status,
+            commands::dictionary_cmd::get_dictionary_history,
+            commands::dictionary_cmd::clear_dictionary_history,
             commands::learning_plan_cmd::get_exam_wordlists,
             commands::learning_plan_cmd::create_learning_plan,
             commands::learning_plan_cmd::get_learning_plans,

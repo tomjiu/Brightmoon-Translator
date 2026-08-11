@@ -2,7 +2,7 @@
 //!
 //! Workflow:
 //! 1. Read source image
-//! 2. Run OCR with bounding boxes (WinRT or Youdao)
+//! 2. Run OCR with bounding boxes (`WinRT` or Youdao)
 //! 3. Translate each detected text line
 //! 4. Draw translated text over original text positions
 //! 5. Output the translated image
@@ -156,18 +156,18 @@ fn sample_background_color(img: &RgbaImage, x: u32, y: u32, w: u32, h: u32) -> R
             let py = y + dy;
             if px < img_w && py < img_h {
                 let p = img.get_pixel(px, py);
-                r_sum += p[0] as u64;
-                g_sum += p[1] as u64;
-                b_sum += p[2] as u64;
+                r_sum += u64::from(p[0]);
+                g_sum += u64::from(p[1]);
+                b_sum += u64::from(p[2]);
                 count += 1;
             }
             // Bottom edge
             let py2 = y + h - 1 - dy;
             if px < img_w && py2 < img_h {
                 let p = img.get_pixel(px, py2);
-                r_sum += p[0] as u64;
-                g_sum += p[1] as u64;
-                b_sum += p[2] as u64;
+                r_sum += u64::from(p[0]);
+                g_sum += u64::from(p[1]);
+                b_sum += u64::from(p[2]);
                 count += 1;
             }
         }
@@ -182,18 +182,18 @@ fn sample_background_color(img: &RgbaImage, x: u32, y: u32, w: u32, h: u32) -> R
             let py = y + dy;
             if px < img_w && py < img_h {
                 let p = img.get_pixel(px, py);
-                r_sum += p[0] as u64;
-                g_sum += p[1] as u64;
-                b_sum += p[2] as u64;
+                r_sum += u64::from(p[0]);
+                g_sum += u64::from(p[1]);
+                b_sum += u64::from(p[2]);
                 count += 1;
             }
             // Right edge
             let px2 = x + w - 1 - dx;
             if px2 < img_w && py < img_h {
                 let p = img.get_pixel(px2, py);
-                r_sum += p[0] as u64;
-                g_sum += p[1] as u64;
-                b_sum += p[2] as u64;
+                r_sum += u64::from(p[0]);
+                g_sum += u64::from(p[1]);
+                b_sum += u64::from(p[2]);
                 count += 1;
             }
         }
@@ -212,7 +212,7 @@ fn sample_background_color(img: &RgbaImage, x: u32, y: u32, w: u32, h: u32) -> R
 }
 
 /// Calculate the optimal font size to fit translated text within a bounding box.
-/// Returns (font_size, wrapped_lines).
+/// Returns (`font_size`, `wrapped_lines`).
 fn calculate_font_size_and_wrap(
     text: &str,
     max_width: u32,
@@ -262,7 +262,7 @@ fn wrap_text(text: &str, max_width: u32, font_size: f32, font: &FontRef<'_>) -> 
             let test_line = if current_line.is_empty() {
                 ch.to_string()
             } else {
-                format!("{}{}", current_line, ch)
+                format!("{current_line}{ch}")
             };
 
             let width = measure_text_width(&test_line, font, scale);
@@ -306,7 +306,7 @@ fn measure_text_width(text: &str, font: &FontRef<'_>, scale: PxScale) -> f32 {
 /// Draw a filled rectangle with alpha blending.
 fn draw_filled_rect(img: &mut RgbaImage, x: u32, y: u32, w: u32, h: u32, color: Rgba<u8>) {
     let (img_w, img_h) = img.dimensions();
-    let alpha = color[3] as f32 / 255.0;
+    let alpha = f32::from(color[3]) / 255.0;
 
     for dy in 0..h {
         for dx in 0..w {
@@ -315,9 +315,9 @@ fn draw_filled_rect(img: &mut RgbaImage, x: u32, y: u32, w: u32, h: u32, color: 
             if px < img_w && py < img_h {
                 let existing = img.get_pixel(px, py);
                 let blended = Rgba([
-                    (color[0] as f32 * alpha + existing[0] as f32 * (1.0 - alpha)) as u8,
-                    (color[1] as f32 * alpha + existing[1] as f32 * (1.0 - alpha)) as u8,
-                    (color[2] as f32 * alpha + existing[2] as f32 * (1.0 - alpha)) as u8,
+                    (f32::from(color[0]) * alpha + f32::from(existing[0]) * (1.0 - alpha)) as u8,
+                    (f32::from(color[1]) * alpha + f32::from(existing[1]) * (1.0 - alpha)) as u8,
+                    (f32::from(color[2]) * alpha + f32::from(existing[2]) * (1.0 - alpha)) as u8,
                     255,
                 ]);
                 img.put_pixel(px, py, blended);
@@ -390,7 +390,7 @@ pub async fn translate_image_file(
     );
 
     // 1. Load image
-    let img = image::open(input_path).map_err(|e| format!("Failed to open image: {}", e))?;
+    let img = image::open(input_path).map_err(|e| format!("Failed to open image: {e}"))?;
     let (img_width, img_height) = img.dimensions();
     let mut result_img = img.to_rgba8();
 
@@ -411,7 +411,7 @@ pub async fn translate_image_file(
     let font_data = find_system_font(to_lang)
         .ok_or_else(|| "No suitable font found for the target language".to_string())?;
     let font =
-        FontRef::try_from_slice(&font_data).map_err(|e| format!("Failed to load font: {}", e))?;
+        FontRef::try_from_slice(&font_data).map_err(|e| format!("Failed to load font: {e}"))?;
 
     let config = RenderConfig::default();
 
@@ -515,7 +515,7 @@ pub async fn translate_image_file(
     let output_img = DynamicImage::ImageRgba8(result_img);
     output_img
         .save(output_path)
-        .map_err(|e| format!("Failed to save output image: {}", e))?;
+        .map_err(|e| format!("Failed to save output image: {e}"))?;
 
     tracing::info!(
         "[ImageTranslate] Done: {}/{} lines translated",
@@ -542,11 +542,11 @@ async fn run_image_ocr(
 ) -> Result<OcrResultDetailed, String> {
     // Load image and encode to PNG bytes for OCR
     let img =
-        image::open(image_path).map_err(|e| format!("Failed to open image for OCR: {}", e))?;
+        image::open(image_path).map_err(|e| format!("Failed to open image for OCR: {e}"))?;
 
     let mut png_buf = std::io::Cursor::new(Vec::new());
     img.write_to(&mut png_buf, image::ImageFormat::Png)
-        .map_err(|e| format!("Failed to encode image to PNG: {}", e))?;
+        .map_err(|e| format!("Failed to encode image to PNG: {e}"))?;
     let png_bytes = png_buf.into_inner();
 
     // Convert to owned String for use in spawn_blocking
@@ -586,8 +586,8 @@ async fn run_image_ocr(
             };
             let png = png_bytes.clone();
             let lang_for_ocr = lang_owned.clone();
-            let img_w = img.width() as f64;
-            let img_h = img.height() as f64;
+            let img_w = f64::from(img.width());
+            let img_h = f64::from(img.height());
             let text = tokio::task::spawn_blocking(move || {
                 crate::ocr_offline::run_offline_ocr(
                     &png,
@@ -622,7 +622,7 @@ pub async fn preview_image_ocr(
     app_key: Option<String>,
     app_secret: Option<String>,
 ) -> Result<ImagePreview, String> {
-    let img = image::open(image_path).map_err(|e| format!("Failed to open image: {}", e))?;
+    let img = image::open(image_path).map_err(|e| format!("Failed to open image: {e}"))?;
     let (width, height) = img.dimensions();
 
     let ocr_result = run_image_ocr(image_path, ocr_engine_type, lang, app_key, app_secret).await?;

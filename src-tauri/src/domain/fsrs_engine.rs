@@ -8,7 +8,7 @@ use fsrs::{FSRS, ItemState, MemoryState};
 /// FSRS 引擎
 pub struct FsrsEngine {
     inner: FSRS,
-    /// Cached weights for get_params (first 17 of default / custom)
+    /// Cached weights for `get_params` (first 17 of default / custom)
     w: [f64; 17],
     desired_retention: f32,
 }
@@ -24,7 +24,7 @@ impl FsrsEngine {
         }
     }
 
-    /// 使用自定义参数创建（不足则用默认补齐；多余截断到 17 供 get_params）
+    /// 使用自定义参数创建（不足则用默认补齐；多余截断到 17 供 `get_params`）
     pub fn with_params(params: [f64; 17]) -> Self {
         let f32_params: Vec<f32> = params.iter().map(|&x| x as f32).collect();
         let inner = FSRS::new(&f32_params).unwrap_or_default();
@@ -65,7 +65,7 @@ impl FsrsEngine {
 
         let item = pick_rating(&next, rating);
         let scheduled_days = item.interval.round().max(1.0) as u32;
-        let next_review_time = review_time + Duration::days(scheduled_days as i64);
+        let next_review_time = review_time + Duration::days(i64::from(scheduled_days));
 
         let (new_reps, new_lapses) = match rating {
             Rating::Again => (current_state.reps + 1, current_state.lapses + 1),
@@ -73,8 +73,8 @@ impl FsrsEngine {
         };
 
         Ok(CardState {
-            stability: item.memory.stability as f64,
-            difficulty: item.memory.difficulty as f64,
+            stability: f64::from(item.memory.stability),
+            difficulty: f64::from(item.memory.difficulty),
             elapsed_days,
             scheduled_days,
             reps: new_reps,
@@ -123,7 +123,7 @@ impl FsrsEngine {
             return 0.0;
         }
         let factor = (0.9f64).powf(1.0 / -0.5) - 1.0;
-        (1.0 + factor * (elapsed_days as f64) / stability).powf(-0.5)
+        (1.0 + factor * f64::from(elapsed_days) / stability).powf(-0.5)
     }
 
     /// 是否应该复习
@@ -314,7 +314,7 @@ mod tests {
         let initial = engine.initial_state();
         let t0 = Utc::now();
         let learned = engine.schedule_review(&initial, Rating::Good, t0).unwrap();
-        let t1 = t0 + Duration::days(learned.scheduled_days.max(1) as i64);
+        let t1 = t0 + Duration::days(i64::from(learned.scheduled_days.max(1)));
         let hard = engine.schedule_review(&learned, Rating::Hard, t1).unwrap();
         let good = engine.schedule_review(&learned, Rating::Good, t1).unwrap();
         assert!(
@@ -333,7 +333,7 @@ mod tests {
         let t0 = Utc::now();
         let learned = engine.schedule_review(&initial, Rating::Good, t0).unwrap();
         let d0 = learned.difficulty;
-        let t1 = t0 + Duration::days(learned.scheduled_days.max(1) as i64);
+        let t1 = t0 + Duration::days(i64::from(learned.scheduled_days.max(1)));
         let after_again = engine.schedule_review(&learned, Rating::Again, t1).unwrap();
         assert!(
             after_again.difficulty > d0,
@@ -350,7 +350,7 @@ mod tests {
         let initial = engine.initial_state();
         let t0 = Utc::now();
         let learned = engine.schedule_review(&initial, Rating::Good, t0).unwrap();
-        let t1 = t0 + Duration::days(learned.scheduled_days.max(1) as i64);
+        let t1 = t0 + Duration::days(i64::from(learned.scheduled_days.max(1)));
         let preview = engine.preview_ratings(&learned, t1).unwrap();
         let i = preview.intervals();
         assert!(i.again <= i.hard);

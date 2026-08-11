@@ -64,14 +64,13 @@ pub async fn create_learning_plan(
     .await
     .unwrap_or(None);
     if existing.is_some() {
-        return Err(format!("已有进行中的计划，请先删除旧计划"));
+        return Err("已有进行中的计划，请先删除旧计划".to_string());
     }
 
     let (exam_zh, max_rank) = EXAM_CONFIGS
         .iter()
         .find(|(tag, ..)| *tag == exam)
-        .map(|(_, zh, .., rank)| (zh.to_string(), *rank))
-        .unwrap_or(("自定义".to_string(), 5000));
+        .map_or(("自定义".to_string(), 5000), |(_, zh, .., rank)| (zh.to_string(), *rank));
 
     // 从 ECDICT 提取单词
     let rows =
@@ -93,7 +92,7 @@ pub async fn create_learning_plan(
     sqlx::query(
         "INSERT INTO learning_plans (id, name, description, plan_type, target_exam, total_words, daily_target, start_date, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
     )
-    .bind(&plan_id).bind(format!("{}词汇", exam_zh)).bind(format!("{}词 · 每日{}词", words.len(), daily_target))
+    .bind(&plan_id).bind(format!("{exam_zh}词汇")).bind(format!("{}词 · 每日{}词", words.len(), daily_target))
     .bind("preset").bind(&exam).bind(words.len() as i32).bind(daily_target)
     .bind(now).bind("active").bind(now).bind(now)
     .execute(pool).await.map_err(|e| e.to_string())?;
@@ -236,7 +235,7 @@ pub async fn get_learning_plans(
                 mastered_words: 0,
                 remaining_words: total - learned as i32,
                 completion_rate: if total > 0 {
-                    learned as f64 / total as f64 * 100.0
+                    learned as f64 / f64::from(total) * 100.0
                 } else {
                     0.0
                 },
@@ -342,6 +341,7 @@ async fn insert_plan_words(
 }
 
 /// 读取文件内容（支持 txt, md, docx, pdf）
+#[allow(clippy::case_sensitive_file_extension_comparisons)] // 已 to_lowercase 规范化
 fn read_file_content(path: &str) -> Result<String, String> {
     let path_lower = path.to_lowercase();
 
@@ -350,14 +350,14 @@ fn read_file_content(path: &str) -> Result<String, String> {
         || path_lower.ends_with(".csv")
         || path_lower.ends_with(".tsv")
     {
-        std::fs::read_to_string(path).map_err(|e| format!("读取文件失败: {}", e))
+        std::fs::read_to_string(path).map_err(|e| format!("读取文件失败: {e}"))
     } else if path_lower.ends_with(".docx") {
         read_docx(path)
     } else if path_lower.ends_with(".pdf") {
         read_pdf(path)
     } else {
         // 尝试作为纯文本读取
-        std::fs::read_to_string(path).map_err(|e| format!("读取文件失败: {}", e))
+        std::fs::read_to_string(path).map_err(|e| format!("读取文件失败: {e}"))
     }
 }
 
@@ -449,12 +449,9 @@ async fn start_batch_generation(
         return;
     }
 
-    let event_store = match state.event_store.as_ref() {
-        Some(store) => Arc::new(store.clone()),
-        None => {
-            tracing::warn!("数据库未初始化，跳过AI内容批量生成");
-            return;
-        },
+    let event_store = if let Some(store) = state.event_store.as_ref() { Arc::new(store.clone()) } else {
+        tracing::warn!("数据库未初始化，跳过AI内容批量生成");
+        return;
     };
 
     // 只生成前100个单词（避免API费用过高）

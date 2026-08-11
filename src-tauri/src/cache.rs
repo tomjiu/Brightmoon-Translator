@@ -80,7 +80,7 @@ impl TranslationCache {
     }
 
     fn make_key(text: &str, from: &str, to: &str) -> String {
-        format!("{}|{}|{}", from, to, text)
+        format!("{from}|{to}|{text}")
     }
 
     pub async fn get(&self, text: &str, from: &str, to: &str) -> Option<CachedTranslation> {
@@ -253,7 +253,7 @@ impl TranslationCache {
                     hits: row.get(2)?,
                 })
             }) {
-                Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+                Ok(rows) => rows.filter_map(std::result::Result::ok).collect(),
                 Err(e) => {
                     tracing::error!("Failed to query engine stats: {}", e);
                     Vec::new()

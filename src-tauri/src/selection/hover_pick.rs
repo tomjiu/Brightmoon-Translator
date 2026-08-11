@@ -1,4 +1,4 @@
-//! Word under cursor via UIA ElementFromPoint, plus optional OCR near-cursor fallback.
+//! Word under cursor via UIA `ElementFromPoint`, plus optional OCR near-cursor fallback.
 //! Used by hover dictionary and OCR force pickup.
 
 use super::SelectionBounds;
@@ -112,6 +112,7 @@ fn extract_word_at_ratio(t: &str, ratio: f64) -> Option<String> {
 }
 
 /// UI chrome / process names that UIA Name often returns instead of real text.
+#[allow(clippy::case_sensitive_file_extension_comparisons)] // 文件名可能混合大小写
 pub fn is_ui_chrome_word(w: &str) -> bool {
     let t = w.trim();
     if t.is_empty() {
@@ -127,7 +128,7 @@ pub fn is_ui_chrome_word(w: &str) -> bool {
     if t.contains(':') && !t.contains(' ') && t.chars().count() > 12 && t.chars().count() < 40 {
         return true;
     }
-    if n.ends_with(".exe") || n.contains(".exe ") {
+    if n.to_ascii_lowercase().ends_with(".exe") || n.to_ascii_lowercase().contains(".exe ") {
         return true;
     }
     matches!(
@@ -189,6 +190,7 @@ pub fn is_ui_chrome_word(w: &str) -> bool {
 }
 
 /// True if candidate looks like a process/app product name (reject for hover).
+#[allow(clippy::case_sensitive_file_extension_comparisons)] // 已 lower 归一
 pub fn looks_like_app_or_process_name(w: &str) -> bool {
     if is_ui_chrome_word(w) {
         return true;
@@ -212,7 +214,7 @@ pub fn looks_like_app_or_process_name(w: &str) -> bool {
         && t.chars().all(|c| c.is_ascii_alphanumeric())
         && t.chars().any(|c| c.is_ascii_uppercase())
         && t.chars().any(|c| c.is_ascii_lowercase())
-        && t.chars().filter(|c| c.is_ascii_uppercase()).count() >= 2
+        && t.chars().filter(char::is_ascii_uppercase).count() >= 2
         && t.chars().next().is_some_and(|c| c.is_ascii_uppercase())
     {
         return true;
@@ -418,14 +420,14 @@ pub fn extract_sentence_candidate_with_hint(
     let s: String = chars[start..end.min(chars.len())].iter().collect();
     let s = s.trim();
     let n = s.chars().count();
-    if n < 2 || n > 160 {
+    if !(2..=160).contains(&n) {
         return None;
     }
     if is_ui_chrome_word(s) {
         return None;
     }
     // Prefer not returning a lone title-case chrome token as "sentence"
-    if n <= 4 && !s.chars().any(|c| c.is_whitespace()) && dictionary::is_single_word(s) {
+    if n <= 4 && !s.chars().any(char::is_whitespace) && dictionary::is_single_word(s) {
         // still ok for short CJK / short English clause without space
     }
     Some(s.to_string())
@@ -462,10 +464,7 @@ fn is_editable_control_focused_win() -> bool {
             Ok(a) => a,
             Err(_) => return false,
         };
-        let focused = match automation.GetFocusedElement() {
-            Ok(e) => e,
-            Err(_) => return false,
-        };
+        let Ok(focused) = automation.GetFocusedElement() else { return false };
         if let Ok(ct) = focused.CurrentControlType() {
             let id = ct.0;
             // P1 fix: Document controls (PDF viewer, Word, browser doc) should
@@ -500,7 +499,7 @@ fn is_editable_control_focused_win() -> bool {
     }
 }
 
-/// UIA ElementFromPoint → Name / Value → word or sentence candidate.
+/// UIA `ElementFromPoint` → Name / Value → word or sentence candidate.
 /// `sentence`: true → sentence unit (MTT container-ish); false → word.
 pub fn pick_word_at_cursor_uia() -> Option<HoverPick> {
     pick_at_cursor_uia(false)
@@ -529,8 +528,8 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
     // S1-6: use shared cursor reader instead of a local GetCursorPos FFI block.
     let (px, py) = crate::win::cursor_pos_raw()?;
     let pt = POINT { x: px, y: py };
-    let cx = pt.x as f64;
-    let cy = pt.y as f64;
+    let cx = f64::from(pt.x);
+    let cy = f64::from(pt.y);
 
     // SAFETY: COM init + UIA calls on this thread. All COM objects are
     // reference-counted; pt is a valid screen POINT from cursor_pos_raw.
@@ -574,11 +573,11 @@ fn pick_at_cursor_uia_win(sentence: bool) -> Option<HoverPick> {
         }
 
         let bounds = element.CurrentBoundingRectangle().ok().map(|r| {
-            let w = (r.right - r.left).max(0) as f64;
-            let h = (r.bottom - r.top).max(0) as f64;
+            let w = f64::from((r.right - r.left).max(0));
+            let h = f64::from((r.bottom - r.top).max(0));
             SelectionBounds {
-                x: r.left as f64,
-                y: r.top as f64,
+                x: f64::from(r.left),
+                y: f64::from(r.top),
                 width: w,
                 height: h,
             }
@@ -665,15 +664,13 @@ fn value_pattern_text_if_editable(
         let is_edit = element
             .CurrentControlType()
             .ok()
-            .map(|ct| ct.0 == UIA_EditControlTypeId.0 || ct.0 == UIA_DocumentControlTypeId.0)
-            .unwrap_or(false);
+            .is_some_and(|ct| ct.0 == UIA_EditControlTypeId.0 || ct.0 == UIA_DocumentControlTypeId.0);
         let pat = element.GetCurrentPattern(UIA_ValuePatternId).ok()?;
         let vp: IUIAutomationValuePattern = pat.cast().ok()?;
         let ro = vp
             .CurrentIsReadOnly()
             .ok()
-            .map(|b| b.as_bool())
-            .unwrap_or(true);
+            .is_none_or(windows::Win32::Foundation::BOOL::as_bool);
         // Only trust Value when editable edit/document, or non-readonly with substantial text
         let v = vp.CurrentValue().ok()?.to_string();
         let v = v.trim().to_string();
@@ -738,8 +735,8 @@ fn try_text_pattern_at_point(
         }
         // Estimate cursor ratio from element bounds when available.
         let cursor_ratio = element.CurrentBoundingRectangle().ok().map(|r| {
-            let w = (r.right - r.left).max(1) as f64;
-            ((cx - r.left as f64) / w).clamp(0.0, 1.0)
+            let w = f64::from((r.right - r.left).max(1));
+            ((cx - f64::from(r.left)) / w).clamp(0.0, 1.0)
         });
         let word = if sentence {
             extract_sentence_candidate_with_hint(raw, cursor_ratio.or(Some(0.45)))
@@ -779,10 +776,10 @@ fn try_text_pattern_at_point(
                 .CurrentBoundingRectangle()
                 .ok()
                 .map(|r| SelectionBounds {
-                    x: r.left as f64,
-                    y: r.top as f64,
-                    width: (r.right - r.left).max(0) as f64,
-                    height: (r.bottom - r.top).max(0) as f64,
+                    x: f64::from(r.left),
+                    y: f64::from(r.top),
+                    width: f64::from((r.right - r.left).max(0)),
+                    height: f64::from((r.bottom - r.top).max(0)),
                 })
         });
         Some(HoverPick {
@@ -820,8 +817,8 @@ pub fn pick_word_line_strip_ocr() -> Option<HoverPick> {
     pick_word_near_cursor_ocr(90, 14)
 }
 
-/// UIA under cursor looks like image content (Image, or Pane/Group without TextPattern).
-/// Editable TextPattern already preferred on the UIA path; this only sizes OCR strip.
+/// UIA under cursor looks like image content (Image, or Pane/Group without `TextPattern`).
+/// Editable `TextPattern` already preferred on the UIA path; this only sizes OCR strip.
 #[cfg(windows)]
 fn element_is_image_like(
     element: &windows::Win32::UI::Accessibility::IUIAutomationElement,
@@ -971,19 +968,20 @@ fn pick_word_near_cursor_ocr_win(half_w: i32, half_h: i32) -> Option<HoverPick> 
     }
     Some(HoverPick {
         word,
-        x: pt.x as f64,
-        y: pt.y as f64,
+        x: f64::from(pt.x),
+        y: f64::from(pt.y),
         bounds: Some(SelectionBounds {
-            x: left as f64,
-            y: top as f64,
-            width: width as f64,
-            height: height as f64,
+            x: f64::from(left),
+            y: f64::from(top),
+            width: f64::from(width),
+            height: f64::from(height),
         }),
         source: "ocr_strip",
     })
 }
 
 /// Simple rate limiter helper for hover (same word / same cell).
+#[allow(clippy::struct_field_names)]
 pub struct HoverDedupe {
     last_word: String,
     last_at: Instant,
@@ -994,7 +992,7 @@ impl HoverDedupe {
     pub fn new() -> Self {
         Self {
             last_word: String::new(),
-            last_at: Instant::now() - Duration::from_secs(60),
+            last_at: Instant::now().checked_sub(Duration::from_secs(60)).unwrap(),
             last_cell: (i32::MIN, i32::MIN),
         }
     }

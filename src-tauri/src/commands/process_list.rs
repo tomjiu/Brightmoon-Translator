@@ -46,7 +46,7 @@ fn get_windows_process_list() -> Result<Vec<ProcessInfo>, String> {
         let enum_result = EnumProcesses(
             pids.as_mut_ptr(),
             (pids.len() * std::mem::size_of::<u32>()) as u32,
-            &mut bytes_returned,
+            &raw mut bytes_returned,
         );
 
         if enum_result.is_err() {
@@ -77,7 +77,7 @@ fn get_windows_process_list() -> Result<Vec<ProcessInfo>, String> {
                 let name = if name_len > 0 {
                     String::from_utf16_lossy(&name_buffer[..name_len as usize])
                 } else {
-                    format!("Process {}", pid)
+                    format!("Process {pid}")
                 };
 
                 // Get exe path
@@ -102,7 +102,7 @@ fn get_windows_process_list() -> Result<Vec<ProcessInfo>, String> {
     }
 
     // Sort by name for better UX
-    processes.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    processes.sort_by_key(|a| a.name.to_lowercase());
 
     Ok(processes)
 }

@@ -39,12 +39,12 @@ pub async fn get_core_vocabulary(
     let pool = store.pool();
 
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT word, frequency_rank, frq, collins, oxford, tag
         FROM core_vocabulary
         ORDER BY frequency_rank
         LIMIT ? OFFSET ?
-        "#,
+        ",
     )
     .bind(limit)
     .bind(offset)
@@ -76,16 +76,16 @@ pub async fn search_core_vocabulary(
 ) -> Result<Vec<CoreVocabEntry>, String> {
     let store = state.event_store.as_ref().ok_or("词汇数据库未初始化")?;
     let pool = store.pool();
-    let pattern = format!("%{}%", query);
+    let pattern = format!("%{query}%");
 
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT word, frequency_rank, frq, collins, oxford, tag
         FROM core_vocabulary
         WHERE word LIKE ?
         ORDER BY frequency_rank
         LIMIT ?
-        "#,
+        ",
     )
     .bind(&pattern)
     .bind(limit)
@@ -148,7 +148,7 @@ pub async fn get_card(
         .map_err(|e| e.to_string())
 }
 
-/// 全文搜索卡牌(FTS5 + LIKE 兜底)— T5 接线:暴露 EventStore::search_cards 为命令
+/// 全文搜索卡牌(FTS5 + LIKE 兜底)— T5 接线:暴露 `EventStore::search_cards` 为命令
 #[tauri::command]
 pub async fn search_cards(
     state: State<'_, crate::AppState>,
@@ -173,13 +173,13 @@ pub async fn get_due_cards(state: State<'_, crate::AppState>) -> Result<Vec<Card
     let pool = store.pool();
 
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT id, word, fsrs_state, learning_state
         FROM cards
         WHERE json_extract(fsrs_state, '$.next_review') <= ?
         ORDER BY json_extract(fsrs_state, '$.next_review')
         LIMIT 100
-        "#,
+        ",
     )
     .bind(now)
     .fetch_all(pool)
@@ -226,21 +226,15 @@ pub async fn generate_card_content(
 
     // 从配置获取 LLM 设置
     let config = state.system.config.lock().await;
-    let llm_config = &config.llm;
-    let api_key = if !llm_config.api_key.is_empty() {
-        llm_config.api_key.clone()
-    } else if let Some(key) = llm_config.api_keys.first() {
-        key.clone()
-    } else {
-        return Err("未配置 LLM API Key，请在设置中配置".to_string());
-    };
-    let base_url = llm_config.base_url.clone();
-    let model = llm_config.model.clone();
+    let provider =
+        crate::skills::llm_provider::provider_from_config(&config.llm);
     drop(config);
 
-    use crate::skills::{GenerateCardSkill, OpenAiCompatibleProvider, SkillInput, SkillRegistry};
+    let provider = provider.ok_or("未配置 LLM API Key，请在设置中配置")?;
 
-    let provider = std::sync::Arc::new(OpenAiCompatibleProvider::new(api_key, base_url, model));
+    use crate::skills::{GenerateCardSkill, SkillInput, SkillRegistry};
+
+    let provider = std::sync::Arc::new(provider);
 
     let mut registry = SkillRegistry::new();
     registry
@@ -249,7 +243,7 @@ pub async fn generate_card_content(
 
     let context = serde_json::json!({
         "word": card.word,
-        "definition": card.base_data.definitions.first().map(|d| d.as_str()),
+        "definition": card.base_data.definitions.first().map(std::string::String::as_str),
         "translation": card.base_data.translation,
     });
 
@@ -354,10 +348,10 @@ pub async fn get_learning_stats(
         .map_err(|e| e.to_string())?;
 
     let due_cards: i64 = sqlx::query_scalar(
-        r#"
+        r"
         SELECT COUNT(*) FROM cards
         WHERE json_extract(fsrs_state, '$.next_review') <= ?
-        "#,
+        ",
     )
     .bind(now)
     .fetch_one(pool)
@@ -590,38 +584,25 @@ pub async fn study_word(
 
                     // 5. AI 生成内容
                     let config = state.system.config.lock().await;
-                    let llm = &config.llm;
-                    let api_key = if !llm.api_key.is_empty() {
-                        Some(llm.api_key.clone())
-                    } else {
-                        llm.api_keys.first().cloned()
-                    };
-                    let base_url = llm.base_url.clone();
-                    let model = llm.model.clone();
+                    let provider =
+                        crate::skills::llm_provider::provider_from_config(&config.llm);
                     drop(config);
 
                     tracing::info!(
-                        "AI gen check: key_set={}, base_url='{}', model='{}'",
-                        api_key.is_some(),
-                        base_url,
-                        model
+                        "AI gen check: key_set={}",
+                        provider.is_some()
                     );
 
-                    if let Some(key) = api_key {
-                        if !key.is_empty() && !base_url.is_empty() {
-                            let model_for_event = model.clone();
-                            use crate::skills::{
-                                GenerateCardSkill, OpenAiCompatibleProvider, SkillInput, SkillRegistry,
-                            };
+                    if let Some(provider) = provider {
+                        let model_for_event = provider.model_name();
+                        use crate::skills::{GenerateCardSkill, SkillInput, SkillRegistry};
 
-                            let provider = std::sync::Arc::new(OpenAiCompatibleProvider::new(
-                                key, base_url, model,
-                            ));
-                            let mut registry = SkillRegistry::new();
-                            if registry
-                                .register(Box::new(GenerateCardSkill::new(provider)), 100)
-                                .is_ok()
-                            {
+                        let provider = std::sync::Arc::new(provider);
+                        let mut registry = SkillRegistry::new();
+                        if registry
+                            .register(Box::new(GenerateCardSkill::new(provider)), 100)
+                            .is_ok()
+                        {
                                 let context = serde_json::json!({
                                     "word": data.word,
                                     "translation": data.chinese_translation,
@@ -644,7 +625,7 @@ pub async fn study_word(
                                                     .append_event(&card_id, &event)
                                                     .await
                                                     .map_err(|e| {
-                                                        tracing::warn!("保存AI内容事件失败: {}", e)
+                                                        tracing::warn!("保存AI内容事件失败: {}", e);
                                                     })
                                                     .ok();
                                                 data.ai_content = Some(ai_content);
@@ -654,12 +635,11 @@ pub async fn study_word(
                                         }
                                     },
                                     Err(e) => {
-                                        tracing::warn!("AI generation failed for '{}': {}", word, e)
+                                        tracing::warn!("AI generation failed for '{}': {}", word, e);
                                     },
                                 }
                             }
                         }
-                    }
 
                     // 6. 更新卡牌快照
                     if let Ok(card) = store.rebuild_card(&card_id).await {
@@ -953,7 +933,7 @@ async fn fetch_word_image(word: &str) -> Option<String> {
     }
 
     // 4. 最终 fallback: Picsum（随机高质量图片）
-    Some(format!("https://picsum.photos/seed/{}/800/500", word))
+    Some(format!("https://picsum.photos/seed/{word}/800/500"))
 }
 
 /// 将单词映射到 Unsplash photo ID（确定性，同一单词总是同一张图）
@@ -1038,7 +1018,7 @@ pub struct ExtractStudyResult {
 /// 1. 正则提取文本中的英文单词（去停用词、去标点、小写化）
 /// 2. 过滤掉已在词库中的卡（cards.word）
 /// 3. 用 ECDICT 词典校验词条存在，过滤太长的复合串
-/// 4. 并行 study_word 建卡 + 生成 AI 内容
+/// 4. 并行 `study_word` 建卡 + 生成 AI 内容
 #[tauri::command]
 pub async fn extract_words_and_study(
     state: State<'_, crate::AppState>,
@@ -1118,7 +1098,7 @@ pub async fn extract_words_and_study(
     }
     if !words.is_empty() {
         let placeholders = vec!["?"; words.len()].join(",");
-        let sql = format!("SELECT word FROM stardict WHERE word IN ({})", placeholders);
+        let sql = format!("SELECT word FROM stardict WHERE word IN ({placeholders})");
         let mut q = sqlx::query(&sql);
         for w in &words {
             q = q.bind(w);

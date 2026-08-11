@@ -77,17 +77,15 @@ mod tests {
 
         assert_eq!(
             OCR_TOOLBAR_CSS_PX, ts_toolbar,
-            "OCR_TOOLBAR_CSS_PX (Rust={}) != OCR_TOOLBAR_HEIGHT_CSS (TS={}). \
+            "OCR_TOOLBAR_CSS_PX (Rust={OCR_TOOLBAR_CSS_PX}) != OCR_TOOLBAR_HEIGHT_CSS (TS={ts_toolbar}). \
              Update both src-tauri/src/ocr_region_consts.rs and \
-             src/components/ocrRegionGeometry.ts to the same value.",
-            OCR_TOOLBAR_CSS_PX, ts_toolbar
+             src/components/ocrRegionGeometry.ts to the same value."
         );
         assert_eq!(
             OCR_MIN_FRAME_CSS_W, ts_min_w,
-            "OCR_MIN_FRAME_CSS_W (Rust={}) != OCR_MIN_FRAME_WIDTH_CSS (TS={}). \
+            "OCR_MIN_FRAME_CSS_W (Rust={OCR_MIN_FRAME_CSS_W}) != OCR_MIN_FRAME_WIDTH_CSS (TS={ts_min_w}). \
              Update both src-tauri/src/ocr_region_consts.rs and \
-             src/components/ocrRegionGeometry.ts to the same value.",
-            OCR_MIN_FRAME_CSS_W, ts_min_w
+             src/components/ocrRegionGeometry.ts to the same value."
         );
     }
 

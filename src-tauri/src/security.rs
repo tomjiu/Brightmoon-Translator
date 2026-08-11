@@ -23,7 +23,7 @@ pub const MAX_PLUGIN_NAME_LENGTH: usize = 64;
 ///
 /// Checks:
 /// - Path does not contain `..` components
-/// - Path does not exceed MAX_PATH_LENGTH
+/// - Path does not exceed `MAX_PATH_LENGTH`
 /// - Path components are valid
 ///
 /// Returns `Ok(())` if valid, `Err(message)` if invalid.
@@ -34,8 +34,7 @@ pub fn validate_file_path(path: &str) -> Result<(), String> {
 
     if path.len() > MAX_PATH_LENGTH {
         return Err(format!(
-            "File path exceeds maximum length of {} characters",
-            MAX_PATH_LENGTH
+            "File path exceeds maximum length of {MAX_PATH_LENGTH} characters"
         ));
     }
 
@@ -88,9 +87,8 @@ pub fn validate_output_path(path: &str) -> Result<(), String> {
 ///
 /// Example:
 /// ```
-/// use crate::security::sanitize_like_pattern;
-/// let safe = sanitize_like_pattern("user%input_with_wildcards");
-/// // safe == "user\\%input\\_with\\_wildcards"
+/// let safe = moontranslator_lib::security::sanitize_like_pattern("user%input_with_wildcards");
+/// assert_eq!(safe, "user\\%input\\_with\\_wildcards");
 /// ```
 pub fn sanitize_like_pattern(pattern: &str) -> String {
     pattern
@@ -126,7 +124,7 @@ pub fn validate_language_code(code: &str) -> Result<(), String> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err(format!("Invalid language code: {}", code));
+        return Err(format!("Invalid language code: {code}"));
     }
 
     Ok(())
@@ -143,8 +141,7 @@ pub fn sanitize_plugin_name(name: &str) -> Result<String, String> {
 
     if name.len() > MAX_PLUGIN_NAME_LENGTH {
         return Err(format!(
-            "Plugin name exceeds maximum length of {} characters",
-            MAX_PLUGIN_NAME_LENGTH
+            "Plugin name exceeds maximum length of {MAX_PLUGIN_NAME_LENGTH} characters"
         ));
     }
 
@@ -322,9 +319,9 @@ pub fn dpapi_encrypt(plaintext: &[u8]) -> Result<Vec<u8>, String> {
     use windows::Win32::Foundation::{LocalFree, HLOCAL};
     use windows::Win32::Security::Cryptography::{CryptProtectData, CRYPT_INTEGER_BLOB};
 
-    let mut input_blob = CRYPT_INTEGER_BLOB {
+    let input_blob = CRYPT_INTEGER_BLOB {
         cbData: plaintext.len() as u32,
-        pbData: plaintext.as_ptr() as *mut u8,
+        pbData: plaintext.as_ptr().cast_mut(),
     };
 
     let mut output_blob = CRYPT_INTEGER_BLOB {
@@ -337,13 +334,13 @@ pub fn dpapi_encrypt(plaintext: &[u8]) -> Result<Vec<u8>, String> {
     // fills output_blob.pbData with an allocated buffer the caller must free.
     let success = unsafe {
         CryptProtectData(
-            &mut input_blob,
+            &raw const input_blob,
             windows::core::PCWSTR::null(),
             None,
             None,
             None,
             0,
-            &mut output_blob,
+            &raw mut output_blob,
         )
     };
 
@@ -356,7 +353,7 @@ pub fn dpapi_encrypt(plaintext: &[u8]) -> Result<Vec<u8>, String> {
         // SAFETY: LocalFree releases the DPAPI-allocated output buffer exactly
         // once after it has been copied into `encrypted`.
         unsafe {
-            let _ = LocalFree(HLOCAL(output_blob.pbData as *mut core::ffi::c_void));
+            let _ = LocalFree(HLOCAL(output_blob.pbData.cast::<core::ffi::c_void>()));
         }
         Ok(encrypted)
     } else {
@@ -370,9 +367,9 @@ pub fn dpapi_decrypt(ciphertext: &[u8]) -> Result<Vec<u8>, String> {
     use windows::Win32::Foundation::{LocalFree, HLOCAL};
     use windows::Win32::Security::Cryptography::{CryptUnprotectData, CRYPT_INTEGER_BLOB};
 
-    let mut input_blob = CRYPT_INTEGER_BLOB {
+    let input_blob = CRYPT_INTEGER_BLOB {
         cbData: ciphertext.len() as u32,
-        pbData: ciphertext.as_ptr() as *mut u8,
+        pbData: ciphertext.as_ptr().cast_mut(),
     };
 
     let mut output_blob = CRYPT_INTEGER_BLOB {
@@ -387,13 +384,13 @@ pub fn dpapi_decrypt(ciphertext: &[u8]) -> Result<Vec<u8>, String> {
     // output_blob.pbData and (optionally) desc_ptr with caller-freed buffers.
     let success = unsafe {
         CryptUnprotectData(
-            &mut input_blob,
-            Some(&mut desc_ptr),
+            &raw const input_blob,
+            Some(&raw mut desc_ptr),
             None,
             None,
             None,
             0,
-            &mut output_blob,
+            &raw mut output_blob,
         )
     };
 
@@ -406,9 +403,9 @@ pub fn dpapi_decrypt(ciphertext: &[u8]) -> Result<Vec<u8>, String> {
         // SAFETY: LocalFree releases the DPAPI-allocated buffers exactly once
         // after they have been copied into `decrypted`. desc_ptr is null-checked.
         unsafe {
-            let _ = LocalFree(HLOCAL(output_blob.pbData as *mut core::ffi::c_void));
+            let _ = LocalFree(HLOCAL(output_blob.pbData.cast::<core::ffi::c_void>()));
             if !desc_ptr.is_null() {
-                let _ = LocalFree(HLOCAL(desc_ptr.as_ptr() as *mut core::ffi::c_void));
+                let _ = LocalFree(HLOCAL(desc_ptr.as_ptr().cast::<core::ffi::c_void>()));
             }
         }
         Ok(decrypted)
@@ -482,7 +479,7 @@ pub fn aes_encrypt(plaintext: &[u8]) -> Result<Vec<u8>, String> {
 
     let ciphertext = cipher
         .encrypt(nonce, plaintext)
-        .map_err(|e| format!("AES-GCM encrypt error: {}", e))?;
+        .map_err(|e| format!("AES-GCM encrypt error: {e}"))?;
 
     let mut result = Vec::with_capacity(12 + ciphertext.len());
     result.extend_from_slice(&nonce_bytes);
@@ -506,7 +503,7 @@ pub fn decrypt_aes(data: &[u8]) -> Result<Vec<u8>, String> {
 
     cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|e| format!("AES-GCM decrypt error: {}", e))
+        .map_err(|e| format!("AES-GCM decrypt error: {e}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -535,7 +532,7 @@ pub fn encrypt_secret(plaintext: &str) -> String {
             // Zeroize the raw ciphertext bytes
             let mut enc = encrypted;
             zeroize::Zeroize::zeroize(&mut enc);
-            return format!("{}{}", DPAPI_MAGIC, encoded);
+            return format!("{DPAPI_MAGIC}{encoded}");
         }
         tracing::warn!("DPAPI encryption failed, falling back to AES-GCM");
     }
@@ -544,7 +541,7 @@ pub fn encrypt_secret(plaintext: &str) -> String {
     if let Ok(encrypted) = aes_encrypt(plaintext.as_bytes()) {
         use base64::Engine;
         let encoded = base64::engine::general_purpose::STANDARD.encode(&encrypted);
-        format!("{}{}", AES_MAGIC, encoded)
+        format!("{AES_MAGIC}{encoded}")
     } else {
         tracing::error!("All encryption methods failed, storing plaintext (INSECURE)");
         plaintext.to_string()
@@ -560,10 +557,7 @@ pub fn decrypt_secret(stored: &str) -> String {
 
     if let Some(encoded) = stored.strip_prefix(DPAPI_MAGIC) {
         use base64::Engine;
-        let ciphertext = match base64::engine::general_purpose::STANDARD.decode(encoded) {
-            Ok(c) => c,
-            Err(_) => return stored.to_string(),
-        };
+        let Ok(ciphertext) = base64::engine::general_purpose::STANDARD.decode(encoded) else { return stored.to_string() };
         match dpapi_decrypt(&ciphertext) {
             Ok(decrypted) => {
                 let result = String::from_utf8_lossy(&decrypted).to_string();
@@ -576,10 +570,7 @@ pub fn decrypt_secret(stored: &str) -> String {
         }
     } else if let Some(encoded) = stored.strip_prefix(AES_MAGIC) {
         use base64::Engine;
-        let ciphertext = match base64::engine::general_purpose::STANDARD.decode(encoded) {
-            Ok(c) => c,
-            Err(_) => return stored.to_string(),
-        };
+        let Ok(ciphertext) = base64::engine::general_purpose::STANDARD.decode(encoded) else { return stored.to_string() };
         match decrypt_aes(&ciphertext) {
             Ok(decrypted) => String::from_utf8_lossy(&decrypted).to_string(),
             Err(_) => stored.to_string(),
@@ -602,7 +593,7 @@ pub fn mask_api_key(key: &str) -> String {
     } else {
         let prefix: String = chars[..4].iter().collect();
         let suffix: String = chars[len - 4..].iter().collect();
-        format!("{}***{}", prefix, suffix)
+        format!("{prefix}***{suffix}")
     }
 }
 

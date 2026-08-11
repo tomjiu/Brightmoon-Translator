@@ -8,6 +8,12 @@ pub struct TatoebaEngine {
     client: Client,
 }
 
+impl Default for TatoebaEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TatoebaEngine {
     pub fn new() -> Self {
         Self {
@@ -130,7 +136,7 @@ impl TranslationEngine for TatoebaEngine {
         Ok(formatted)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Tatoeba"
     }
 
