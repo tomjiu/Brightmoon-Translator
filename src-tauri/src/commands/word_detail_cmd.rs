@@ -236,7 +236,7 @@ pub struct RootGraph {
     pub source: String,
 }
 
-/// 从 parts JSON 提取所有词根（part_type == "root"）
+/// 从 parts JSON 提取所有词根（`part_type` == "root"）
 fn extract_roots(parts_json: &str) -> Vec<String> {
     let parts: Vec<serde_json::Value> = serde_json::from_str(parts_json).unwrap_or_default();
     parts
@@ -324,8 +324,8 @@ pub async fn get_root_graph(
              LIMIT 20",
         )
         .bind(&word_lower)
-        .bind(format!("%{}%", root))
-        .bind(format!("{}%", root))
+        .bind(format!("%{root}%"))
+        .bind(format!("{root}%"))
         .fetch_all(store.pool())
         .await
         .unwrap_or_default();

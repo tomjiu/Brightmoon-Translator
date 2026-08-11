@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use tauri::State;
 
-/// T11: 构建 FSRS 引擎，优先使用持久化的优化参数（app_settings.fsrs_params）
+/// T11: 构建 FSRS 引擎，优先使用持久化的优化参数（`app_settings.fsrs_params`）
 pub async fn build_fsrs_engine(
     store: &crate::infrastructure::EventStore,
 ) -> crate::domain::FsrsEngine {

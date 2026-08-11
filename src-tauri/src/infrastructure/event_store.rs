@@ -291,13 +291,13 @@ impl EventStore {
 
         // T11: 应用设置表（FSRS 优化参数等 KV）
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS app_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at INTEGER NOT NULL
             )
-            "#,
+            ",
         )
         .execute(&self.pool)
         .await?;
@@ -627,13 +627,13 @@ impl EventStore {
     /// T11: 写入应用设置（KV，upsert）
     pub async fn set_setting(&self, key: &str, value: &str) -> Result<()> {
         sqlx::query(
-            r#"
+            r"
             INSERT INTO app_settings (key, value, updated_at)
             VALUES (?, ?, ?)
             ON CONFLICT(key) DO UPDATE SET
                 value = excluded.value,
                 updated_at = excluded.updated_at
-            "#,
+            ",
         )
         .bind(key)
         .bind(value)
