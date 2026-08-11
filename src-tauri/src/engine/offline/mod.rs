@@ -41,10 +41,23 @@ pub struct DownloadProgress {
 
 /// Offline translation engine using local Bergamot models.
 pub struct OfflineEngine {
-    service: Option<Arc<NativeService>>,
     model_dir: PathBuf,
-    /// pair id ("en-zh") -> loaded model handle (bridge is synchronous/blocking).
-    models: Arc<AsyncMutex<HashMap<String, Arc<bridge::NativeModel>>>>,
+}
+
+/// Shared native service (one AsyncService worker pool per process).
+fn shared_service() -> Option<Arc<NativeService>> {
+    static SERVICE: std::sync::OnceLock<Option<Arc<NativeService>>> = std::sync::OnceLock::new();
+    SERVICE
+        .get_or_init(|| NativeService::new(1).ok().map(Arc::new))
+        .clone()
+}
+
+/// Shared model cache (pair id -> loaded handle), so every OfflineEngine
+/// instance (Router + commands) reuses loaded models and evictions are global.
+fn shared_models() -> &'static AsyncMutex<HashMap<String, Arc<bridge::NativeModel>>> {
+    static MODELS: std::sync::OnceLock<AsyncMutex<HashMap<String, Arc<bridge::NativeModel>>>> =
+        std::sync::OnceLock::new();
+    MODELS.get_or_init(|| AsyncMutex::new(HashMap::new()))
 }
 
 impl OfflineEngine {
@@ -58,18 +71,13 @@ impl OfflineEngine {
             path
         };
 
-        let service = NativeService::new(1).ok().map(Arc::new);
-        if service.is_none() {
+        if shared_service().is_none() {
             tracing::warn!(
                 "[OfflineEngine] native bergamot libs unavailable; engine will report errors on use"
             );
         }
 
-        Self {
-            service,
-            model_dir: dir,
-            models: Arc::new(AsyncMutex::new(HashMap::new())),
-        }
+        Self { model_dir: dir }
     }
 
     /// Get the model directory path.
@@ -81,13 +89,16 @@ impl OfflineEngine {
     /// present under `<model_dir>/<from>-<to>/`).
     pub fn is_model_downloaded(&self, source: &str, target: &str) -> bool {
         let pair = format!("{source}-{target}");
-        self.model_dir.join(&pair).join("config.yml").exists()
+        let Ok(dir) = self.safe_pair_dir(&pair) else {
+            return false;
+        };
+        dir.join("config.yml").exists()
     }
 
     /// Total size of a downloaded pair's directory.
     pub fn model_size(&self, source: &str, target: &str) -> Option<u64> {
         let pair = format!("{source}-{target}");
-        let dir = self.model_dir.join(&pair);
+        let dir = self.safe_pair_dir(&pair).ok()?;
         if !dir.is_dir() {
             return None;
         }
@@ -133,7 +144,7 @@ impl OfflineEngine {
     ) -> anyhow::Result<()> {
         let spec = model_catalog::model_spec_by_id(pair_id)
             .ok_or_else(|| anyhow::anyhow!("unknown model pair: {pair_id}"))?;
-        let dir = self.model_dir.join(pair_id);
+        let dir = self.safe_pair_dir(pair_id)?;
         tokio::fs::create_dir_all(&dir).await?;
 
         let client = reqwest::Client::new();
@@ -201,11 +212,8 @@ impl OfflineEngine {
     /// Delete a downloaded pair's directory and evict it from the cache.
     pub async fn delete_model(&self, source: &str, target: &str) -> anyhow::Result<()> {
         let pair = format!("{source}-{target}");
-        self.models
-            .lock()
-            .await
-            .remove(&pair);
-        let dir = self.model_dir.join(&pair);
+        let dir = self.safe_pair_dir(&pair)?;
+        shared_models().lock().await.remove(&pair);
         if dir.exists() {
             tokio::fs::remove_dir_all(&dir).await?;
         }
@@ -221,6 +229,30 @@ impl OfflineEngine {
     /// All catalog entries (frontend listing).
     pub fn catalog_entries() -> Vec<ModelSpec> {
         model_catalog::registry_entries()
+    }
+
+    /// Resolve `<model_dir>/<pair_id>` only when `pair_id` cannot escape the
+    /// model directory (guards command inputs like `source`/`target` against
+    /// path traversal such as `../..` or `..\..`).
+    fn safe_pair_dir(&self, pair_id: &str) -> anyhow::Result<PathBuf> {
+        if pair_id.is_empty()
+            || pair_id.contains("..")
+            || pair_id.contains('/')
+            || pair_id.contains('\\')
+            || !pair_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
+            anyhow::bail!("invalid model pair id: {pair_id:?}");
+        }
+        let dir = self.model_dir.join(pair_id);
+        let base = self
+            .model_dir
+            .canonicalize()
+            .unwrap_or_else(|_| self.model_dir.clone());
+        let resolved = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+        if !resolved.starts_with(&base) {
+            anyhow::bail!("model pair escapes model dir: {pair_id:?}");
+        }
+        Ok(dir)
     }
 }
 
@@ -246,11 +278,8 @@ impl TranslationEngine for OfflineEngine {
         let chain = model_catalog::translation_chain(from, to)
             .ok_or_else(|| anyhow::anyhow!("no offline model for {from} -> {to}"))?;
 
-        let service = self
-            .service
-            .clone()
+        let service = shared_service()
             .ok_or_else(|| anyhow::anyhow!("native bergamot libs are not built"))?;
-        let models = Arc::clone(&self.models);
         let model_dir = self.model_dir.clone();
         let text = text.to_string();
         let from = from.to_string();
@@ -259,12 +288,12 @@ impl TranslationEngine for OfflineEngine {
         tokio::task::spawn_blocking(move || {
             match chain.as_slice() {
                 [pair] => {
-                    let model = load_model(&model_dir, &models, &service, pair)?;
+                    let model = load_model(&model_dir, &service, pair)?;
                     service.translate(model.as_ref(), &text)
                 },
                 [first, second] => {
-                    let m1 = load_model(&model_dir, &models, &service, first)?;
-                    let m2 = load_model(&model_dir, &models, &service, second)?;
+                    let m1 = load_model(&model_dir, &service, first)?;
+                    let m2 = load_model(&model_dir, &service, second)?;
                     service.pivot(m1.as_ref(), m2.as_ref(), &text)
                 },
                 _ => anyhow::bail!("unsupported chain length for {from} -> {to}"),
@@ -286,10 +315,10 @@ impl TranslationEngine for OfflineEngine {
 /// Load (or reuse) a pair's model. Blocking: call from `spawn_blocking`.
 fn load_model(
     model_dir: &std::path::Path,
-    cache: &AsyncMutex<HashMap<String, Arc<bridge::NativeModel>>>,
     svc: &NativeService,
     pair_id: &str,
 ) -> anyhow::Result<Arc<bridge::NativeModel>> {
+    let cache = shared_models();
     {
         let cache = cache.blocking_lock();
         if let Some(model) = cache.get(pair_id) {

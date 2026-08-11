@@ -60,9 +60,12 @@ impl NativeService {
     ///
     /// Returns an error when the native service could not be created.
     pub fn new(num_workers: i32) -> anyhow::Result<Self> {
-        // SAFETY: bg_service_create allocates the service and returns an owning
-        // handle; a null handle signals failure.
-        let handle = unsafe { bg_service_create(num_workers, 0) };
+        let handle = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            // SAFETY: bg_service_create allocates the service and returns an
+            // owning handle; a null handle signals failure.
+            unsafe { bg_service_create(num_workers, 0) }
+        }))
+        .map_err(|_| anyhow::anyhow!("panic while creating native bergamot service"))?;
         if handle.is_null() {
             anyhow::bail!("failed to create native bergamot service");
         }
@@ -78,9 +81,12 @@ impl NativeService {
     pub fn load_model(&self, config_path: &str) -> anyhow::Result<NativeModel> {
         let path = CString::new(config_path)
             .map_err(|_| anyhow::anyhow!("model config path contains a NUL byte"))?;
-        // SAFETY: handle is a valid service handle created by `new`; path is a
-        // NUL-terminated copy of `config_path`.
-        let handle = unsafe { bg_model_load(self.handle, path.as_ptr()) };
+        let handle = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            // SAFETY: handle is a valid service handle created by `new`; path
+            // is a NUL-terminated copy of `config_path`.
+            unsafe { bg_model_load(self.handle, path.as_ptr()) }
+        }))
+        .map_err(|_| anyhow::anyhow!("panic while loading model from `{config_path}`"))?;
         if handle.is_null() {
             anyhow::bail!("failed to load model from `{config_path}`");
         }
@@ -96,16 +102,20 @@ impl NativeService {
     pub fn translate(&self, model: &NativeModel, text: &str) -> anyhow::Result<String> {
         let ctext = CString::new(text)
             .map_err(|_| anyhow::anyhow!("translation text contains a NUL byte"))?;
-        // SAFETY: handles are valid; ctext is NUL-terminated. The bridge
-        // returns a malloc'd buffer owned by us, freed below.
-        let out = unsafe { bg_translate(self.handle, model.handle, ctext.as_ptr()) };
-        if out.is_null() {
-            anyhow::bail!("translation failed");
-        }
-        let result = unsafe { CStr::from_ptr(out) }.to_string_lossy().into_owned();
-        // SAFETY: `out` came from bg_translate and must be released via
-        // bg_string_free exactly once.
-        unsafe { bg_string_free(out) };
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            // SAFETY: handles are valid; ctext is NUL-terminated. The bridge
+            // returns a malloc'd buffer owned by us, freed below.
+            let out = bg_translate(self.handle, model.handle, ctext.as_ptr());
+            if out.is_null() {
+                return Err(anyhow::anyhow!("translation failed"));
+            }
+            let s = CStr::from_ptr(out).to_string_lossy().into_owned();
+            // SAFETY: `out` came from bg_translate and must be released via
+            // bg_string_free exactly once.
+            bg_string_free(out);
+            Ok::<_, anyhow::Error>(s)
+        }))
+        .map_err(|_| anyhow::anyhow!("panic inside native translation bridge"))??;
         Ok(result)
     }
 
@@ -124,15 +134,19 @@ impl NativeService {
     ) -> anyhow::Result<String> {
         let ctext = CString::new(text)
             .map_err(|_| anyhow::anyhow!("translation text contains a NUL byte"))?;
-        // SAFETY: handles are valid; ctext is NUL-terminated.
-        let out = unsafe { bg_pivot(self.handle, first.handle, second.handle, ctext.as_ptr()) };
-        if out.is_null() {
-            anyhow::bail!("pivot translation failed");
-        }
-        let result = unsafe { CStr::from_ptr(out) }.to_string_lossy().into_owned();
-        // SAFETY: `out` came from bg_pivot and must be released via
-        // bg_string_free exactly once.
-        unsafe { bg_string_free(out) };
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+            // SAFETY: handles are valid; ctext is NUL-terminated.
+            let out = bg_pivot(self.handle, first.handle, second.handle, ctext.as_ptr());
+            if out.is_null() {
+                return Err(anyhow::anyhow!("pivot translation failed"));
+            }
+            let s = CStr::from_ptr(out).to_string_lossy().into_owned();
+            // SAFETY: `out` came from bg_pivot and must be released via
+            // bg_string_free exactly once.
+            bg_string_free(out);
+            Ok::<_, anyhow::Error>(s)
+        }))
+        .map_err(|_| anyhow::anyhow!("panic inside native pivot bridge"))??;
         Ok(result)
     }
 }
