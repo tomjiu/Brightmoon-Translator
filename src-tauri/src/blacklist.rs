@@ -14,7 +14,7 @@ impl BlacklistProcessor {
     /// Replace blacklisted words with numbered placeholders.
     /// Single-pass implementation: scans text once, replacing blacklist words as encountered.
     /// Longest match wins for overlapping terms; ties keep blacklist order.
-    /// Returns (protected_text, placeholder_map)
+    /// Returns (`protected_text`, `placeholder_map`)
     pub fn protect(&self, text: &str) -> (String, HashMap<String, String>) {
         let mut result = String::with_capacity(text.len());
         let mut placeholder_map = HashMap::new();
@@ -48,7 +48,7 @@ impl BlacklistProcessor {
                     result.push_str(&text[last_match_end..pos]);
                 }
 
-                let placeholder = format!("__BLACKLIST_{}__", i);
+                let placeholder = format!("__BLACKLIST_{i}__");
                 result.push_str(&placeholder);
                 placeholder_map.insert(placeholder, word.clone());
                 last_match_end = pos + word.len();
@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn test_protect_skips_empty_blacklist_words() {
         let processor =
-            BlacklistProcessor::new(vec!["".to_string(), "API".to_string(), "".to_string()]);
+            BlacklistProcessor::new(vec![String::new(), "API".to_string(), String::new()]);
         let (protected, map) = processor.protect("Use API");
         // Empty strings are skipped, index 1 is "API"
         assert!(protected.contains("__BLACKLIST_1__"));

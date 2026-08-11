@@ -11,8 +11,8 @@ pub async fn get_config(state: State<'_, AppState>) -> Result<AppConfig, AppErro
     Ok(config.clone())
 }
 
-/// Returns the default AppConfig. Used by the frontend to get authoritative
-/// defaults instead of maintaining a duplicated TypeScript default object.
+/// Returns the default `AppConfig`. Used by the frontend to get authoritative
+/// defaults instead of maintaining a duplicated `TypeScript` default object.
 #[tauri::command]
 pub async fn get_default_config() -> Result<AppConfig, AppError> {
     Ok(AppConfig::default())

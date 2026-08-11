@@ -1,4 +1,4 @@
-//! Batch / multi-segment response validation (AiNiee ResponseChecker style).
+//! Batch / multi-segment response validation (`AiNiee` `ResponseChecker` style).
 //! Used when LLM returns numbered or multi-line segment batches.
 
 use serde::{Deserialize, Serialize};
@@ -185,7 +185,7 @@ mod tests {
     fn test_check_empty() {
         let r = check_segments(
             &["hello".into()],
-            &["".into()],
+            &[String::new()],
             &ResponseCheckOptions {
                 reject_empty: true,
                 ..Default::default()

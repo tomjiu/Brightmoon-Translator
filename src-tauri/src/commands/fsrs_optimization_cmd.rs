@@ -104,17 +104,17 @@ pub async fn get_fsrs_analysis(state: State<'_, crate::AppState>) -> Result<Fsrs
 
     // 计算平均值
     let avg_stability = if count > 0 {
-        total_stability / count as f64
+        total_stability / f64::from(count)
     } else {
         0.0
     };
     let avg_difficulty = if count > 0 {
-        total_difficulty / count as f64
+        total_difficulty / f64::from(count)
     } else {
         0.0
     };
     let avg_interval = if count > 0 {
-        total_interval / count as f64
+        total_interval / f64::from(count)
     } else {
         0.0
     };
@@ -146,7 +146,7 @@ pub async fn get_forgetting_curve(
     for day in 0..=90 {
         let retention = engine.forgetting_curve(day, stability);
         points.push(ForgettingCurvePoint {
-            days: day as f64,
+            days: f64::from(day),
             retention,
         });
     }
@@ -184,7 +184,7 @@ pub async fn get_review_forecast(
     let mut forecasts = Vec::new();
 
     for i in 0..days {
-        let date = today + chrono::Duration::days(i as i64);
+        let date = today + chrono::Duration::days(i64::from(i));
         let date_start = date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
         let date_end = date.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp();
 
@@ -218,7 +218,7 @@ pub async fn get_best_study_time(
 
     // 按小时统计复习正确率
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT
             CAST(strftime('%H', timestamp, 'unixepoch') AS INTEGER) as hour,
             COUNT(*) as total,
@@ -227,7 +227,7 @@ pub async fn get_best_study_time(
         WHERE event_type = 'fsrs_updated'
         GROUP BY hour
         ORDER BY hour ASC
-        "#,
+        ",
     )
     .fetch_all(pool)
     .await
@@ -239,7 +239,7 @@ pub async fn get_best_study_time(
         let total: i32 = row.get("total");
         let correct: i32 = row.get("correct");
         let correct_rate = if total > 0 {
-            (correct as f64 / total as f64) * 100.0
+            (f64::from(correct) / f64::from(total)) * 100.0
         } else {
             0.0
         };
@@ -318,13 +318,13 @@ pub struct DifficultyBucket {
 
 async fn calculate_retention_rate(pool: &sqlx::SqlitePool) -> Result<f64, sqlx::Error> {
     let row: (i32, i32) = sqlx::query_as(
-        r#"
+        r"
         SELECT
             COUNT(CASE WHEN json_extract(event_data, '$.grade') IN ('good', 'easy') THEN 1 END),
             COUNT(*)
         FROM card_events
         WHERE event_type = 'fsrs_updated'
-        "#,
+        ",
     )
     .fetch_one(pool)
     .await?;
@@ -333,7 +333,7 @@ async fn calculate_retention_rate(pool: &sqlx::SqlitePool) -> Result<f64, sqlx::
     if total == 0 {
         return Ok(0.0);
     }
-    Ok((correct as f64 / total as f64) * 100.0)
+    Ok((f64::from(correct) / f64::from(total)) * 100.0)
 }
 
 /// 基于用户复习历史优化 FSRS 参数（简化版梯度调整）
@@ -343,7 +343,7 @@ async fn optimize_params_from_history(pool: &sqlx::SqlitePool) -> Result<[f64; 1
 
     // 统计各评分分布
     let row: (i32, i32, i32, i32) = sqlx::query_as(
-        r#"
+        r"
         SELECT
             COUNT(CASE WHEN json_extract(event_data, '$.grade') = 'again' THEN 1 END),
             COUNT(CASE WHEN json_extract(event_data, '$.grade') = 'hard' THEN 1 END),
@@ -351,7 +351,7 @@ async fn optimize_params_from_history(pool: &sqlx::SqlitePool) -> Result<[f64; 1
             COUNT(CASE WHEN json_extract(event_data, '$.grade') = 'easy' THEN 1 END)
         FROM card_events
         WHERE event_type = 'fsrs_updated'
-        "#,
+        ",
     )
     .fetch_one(pool)
     .await?;
@@ -364,8 +364,8 @@ async fn optimize_params_from_history(pool: &sqlx::SqlitePool) -> Result<[f64; 1
         return Ok(params);
     }
 
-    let again_rate = again as f64 / total as f64;
-    let good_easy_rate = (good + easy) as f64 / total as f64;
+    let again_rate = f64::from(again) / f64::from(total);
+    let good_easy_rate = f64::from(good + easy) / f64::from(total);
 
     // 简化优化逻辑
     if again_rate > 0.3 {
@@ -391,7 +391,7 @@ async fn calculate_actual_retention_by_interval(
 ) -> Result<Vec<(f64, f64)>, sqlx::Error> {
     // 简化实现：按天统计
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT
             MIN(10, CAST((julianday('now') - julianday(timestamp, 'unixepoch')) AS INTEGER)) as day_bucket,
             COUNT(CASE WHEN json_extract(event_data, '$.grade') IN ('good', 'easy') THEN 1 END) as correct,
@@ -400,18 +400,18 @@ async fn calculate_actual_retention_by_interval(
         WHERE event_type = 'fsrs_updated'
         GROUP BY day_bucket
         ORDER BY day_bucket ASC
-        "#,
+        ",
     )
     .fetch_all(pool)
     .await?;
 
     let mut result = Vec::new();
     for row in &rows {
-        let day: f64 = row.get::<i32, _>("day_bucket") as f64;
+        let day: f64 = f64::from(row.get::<i32, _>("day_bucket"));
         let correct: i32 = row.get("correct");
         let total: i32 = row.get("total");
         if total > 0 {
-            result.push((day, correct as f64 / total as f64));
+            result.push((day, f64::from(correct) / f64::from(total)));
         }
     }
 

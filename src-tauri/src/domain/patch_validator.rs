@@ -38,11 +38,6 @@ impl PatchValidator {
         Self { min_confidence }
     }
 
-    /// 默认验证器（置信度 >= 0.7）
-    pub fn default() -> Self {
-        Self::new(0.7)
-    }
-
     /// 验证 Patch
     pub fn validate(&self, patch: &CardPatch, card: &WordCard) -> Result<()> {
         // 1. 验证置信度
@@ -75,6 +70,7 @@ impl PatchValidator {
     }
 
     /// 验证字段存在
+#[allow(clippy::unused_self)]
     fn validate_field_exists(&self, field: &str) -> Result<()> {
         const VALID_FIELDS: &[&str] = &[
             "mnemonic",
@@ -125,35 +121,33 @@ impl PatchValidator {
     }
 
     /// 验证值类型
+#[allow(clippy::unused_self)]
     fn validate_value_type(&self, patch: &CardPatch) -> Result<()> {
         match patch.target_field.as_str() {
-            "mnemonic" => {
+            "mnemonic"
                 // 单个助记法：应该是对象
-                if !patch.proposed_value.is_object() {
+                if !patch.proposed_value.is_object() => {
                     bail!(PatchValidationError::TypeMismatch {
                         expected: "Object (Mnemonic)".to_string(),
                         actual: value_type_name(&patch.proposed_value),
                     });
-                }
-            },
-            "mnemonics" => {
+                },
+            "mnemonics"
                 // 多个助记法：应该是数组
-                if !patch.proposed_value.is_array() {
+                if !patch.proposed_value.is_array() => {
                     bail!(PatchValidationError::TypeMismatch {
                         expected: "Array[Mnemonic]".to_string(),
                         actual: value_type_name(&patch.proposed_value),
                     });
-                }
-            },
-            "etymology" => {
+                },
+            "etymology"
                 // 词源：应该是对象
-                if !patch.proposed_value.is_object() && !patch.proposed_value.is_null() {
+                if !patch.proposed_value.is_object() && !patch.proposed_value.is_null() => {
                     bail!(PatchValidationError::TypeMismatch {
                         expected: "Object (Etymology) or null".to_string(),
                         actual: value_type_name(&patch.proposed_value),
                     });
-                }
-            },
+                },
             "examples" | "example" => {
                 // 例句：数组或单个对象
                 if patch.target_field == "examples" && !patch.proposed_value.is_array() {
@@ -209,6 +203,7 @@ impl PatchValidator {
     }
 
     /// 验证助记法内容
+#[allow(clippy::unused_self)]
     fn validate_mnemonic_content(&self, value: &Value) -> Result<()> {
         let mnemonics = if value.is_array() {
             value.as_array().unwrap()
@@ -244,8 +239,7 @@ impl PatchValidator {
                 if let Some(type_str) = mnemonic_type.as_str() {
                     if !valid_types.contains(&type_str) {
                         bail!(PatchValidationError::InvalidValue(format!(
-                            "无效的助记法类型: {}",
-                            type_str
+                            "无效的助记法类型: {type_str}"
                         )));
                     }
                 }
@@ -256,6 +250,7 @@ impl PatchValidator {
     }
 
     /// 验证词源内容
+#[allow(clippy::unused_self)]
     fn validate_etymology_content(&self, value: &Value) -> Result<()> {
         if value.is_null() {
             return Ok(());
@@ -278,6 +273,7 @@ impl PatchValidator {
     }
 
     /// 验证例句内容
+#[allow(clippy::unused_self)]
     fn validate_example_content(&self, value: &Value) -> Result<()> {
         let examples = if value.is_array() {
             value.as_array().unwrap()
@@ -310,11 +306,13 @@ impl PatchValidator {
     }
 
     /// 检查是否是数组字段
+#[allow(clippy::unused_self)]
     fn is_array_field(&self, field: &str) -> bool {
         matches!(field, "mnemonics" | "examples" | "scenes")
     }
 
     /// 获取数组长度
+#[allow(clippy::unused_self)]
     fn get_array_length(&self, field: &str, card: &WordCard) -> Result<usize> {
         let ai_content = card
             .ai_content
@@ -329,6 +327,12 @@ impl PatchValidator {
         };
 
         Ok(length)
+    }
+}
+
+impl Default for PatchValidator {
+    fn default() -> Self {
+        Self::new(0.7)
     }
 }
 
@@ -422,7 +426,7 @@ mod tests {
                 synonyms: vec![],
                 antonyms: vec![],
             }),
-            fsrs_state: Default::default(),
+            fsrs_state: crate::domain::CardState::default(),
             error_records: vec![],
             annotations: vec![],
             created_at: 0,

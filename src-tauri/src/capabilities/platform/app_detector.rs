@@ -2,10 +2,16 @@ use async_trait::async_trait;
 
 use super::super::adapters::{AppContext, TargetAppDetector};
 
-/// Windows implementation of TargetAppDetector.
+/// Windows implementation of `TargetAppDetector`.
 /// Uses Win32 APIs to detect the foreground application,
 /// including process name, window title, PID, and embedded app type.
 pub struct WindowsTargetAppDetector;
+
+impl Default for WindowsTargetAppDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl WindowsTargetAppDetector {
     pub fn new() -> Self {

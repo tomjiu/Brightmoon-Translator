@@ -1,5 +1,5 @@
 /**
- * TM Import/Export Commands (originally part of batch_cmd)
+ * TM Import/Export Commands (originally part of `batch_cmd`)
  */
 use crate::memory::TmExportData;
 use crate::security;
@@ -30,7 +30,7 @@ pub async fn tm_import(
     security::validate_text_length(&json, 10_000_000)?; // 10MB limit for TM import
 
     let data: TmExportData =
-        serde_json::from_str(&json).map_err(|e| format!("Invalid TM JSON: {}", e))?;
+        serde_json::from_str(&json).map_err(|e| format!("Invalid TM JSON: {e}"))?;
     let history = state.document.history.lock().await;
     let result = history.import_tm(&data, deduplicate.unwrap_or(true));
     Ok(result)
@@ -107,7 +107,7 @@ pub async fn tm_export_tmx(
 
     let source_lang = from_lang.as_deref().unwrap_or("en");
     tmx::export_tmx(&units, source_lang, "MoonTranslator")
-        .map_err(|e| format!("TMX export error: {}", e))
+        .map_err(|e| format!("TMX export error: {e}"))
 }
 
 /// Import translation memory from TMX format
@@ -119,7 +119,7 @@ pub async fn tm_import_tmx(
 ) -> Result<(usize, usize), String> {
     security::validate_text_length(&xml, 10_000_000)?; // 10MB limit
 
-    let data = tmx::parse_tmx(&xml).map_err(|e| format!("TMX parse error: {}", e))?;
+    let data = tmx::parse_tmx(&xml).map_err(|e| format!("TMX parse error: {e}"))?;
 
     // Convert TMX units to TM export format
     let entries: Vec<crate::memory::TmExportEntry> = data

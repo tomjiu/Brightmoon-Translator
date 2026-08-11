@@ -100,9 +100,9 @@ pub async fn export_compressed_dict(
     let ecdict_pool = state.ecdict_pool.as_ref().ok_or("ECDICT 未连接")?;
 
     // 创建压缩后的 SQLite 数据库
-    let output_pool = sqlx::SqlitePool::connect(&format!("sqlite:{}?mode=rwc", output_path))
+    let output_pool = sqlx::SqlitePool::connect(&format!("sqlite:{output_path}?mode=rwc"))
         .await
-        .map_err(|e| format!("创建输出数据库失败: {}", e))?;
+        .map_err(|e| format!("创建输出数据库失败: {e}"))?;
 
     // 创建表结构
     sqlx::query(
@@ -166,7 +166,7 @@ pub async fn export_compressed_dict(
         .bind(&short_definition)
         .bind(&short_translation)
         .bind(&pos)
-        .bind(&frq)
+        .bind(frq)
         .execute(&output_pool)
         .await
         .ok();
@@ -208,7 +208,7 @@ pub async fn export_dict_shards(
     let ecdict_pool = state.ecdict_pool.as_ref().ok_or("ECDICT 未连接")?;
 
     // 创建输出目录
-    std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+    std::fs::create_dir_all(&output_dir).map_err(|e| format!("创建目录失败: {e}"))?;
 
     let mut shards = Vec::new();
     let mut total_words = 0;
@@ -217,7 +217,7 @@ pub async fn export_dict_shards(
     let letters = "abcdefghijklmnopqrstuvwxyz";
 
     for letter in letters.chars() {
-        let pattern = format!("{}%", letter);
+        let pattern = format!("{letter}%");
         let count: i32 = sqlx::query_scalar("SELECT COUNT(*) FROM stardict WHERE word LIKE ?")
             .bind(&pattern)
             .fetch_one(ecdict_pool)
@@ -229,11 +229,11 @@ pub async fn export_dict_shards(
         }
 
         // 创建分片数据库
-        let shard_name = format!("ecdict_{}.db", letter);
-        let shard_path = format!("{}/{}", output_dir, shard_name);
-        let shard_pool = sqlx::SqlitePool::connect(&format!("sqlite:{}?mode=rwc", shard_path))
+        let shard_name = format!("ecdict_{letter}.db");
+        let shard_path = format!("{output_dir}/{shard_name}");
+        let shard_pool = sqlx::SqlitePool::connect(&format!("sqlite:{shard_path}?mode=rwc"))
             .await
-            .map_err(|e| format!("创建分片数据库失败: {}", e))?;
+            .map_err(|e| format!("创建分片数据库失败: {e}"))?;
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS stardict (
@@ -302,11 +302,11 @@ pub async fn export_dict_shards(
     };
 
     let manifest_json =
-        serde_json::to_string_pretty(&manifest).map_err(|e| format!("序列化清单失败: {}", e))?;
+        serde_json::to_string_pretty(&manifest).map_err(|e| format!("序列化清单失败: {e}"))?;
 
-    let manifest_path = format!("{}/manifest.json", output_dir);
+    let manifest_path = format!("{output_dir}/manifest.json");
     std::fs::write(&manifest_path, manifest_json)
-        .map_err(|e| format!("写入清单文件失败: {}", e))?;
+        .map_err(|e| format!("写入清单文件失败: {e}"))?;
 
     Ok(manifest)
 }

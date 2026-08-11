@@ -17,6 +17,12 @@ struct MicrosoftTranslation {
     text: String,
 }
 
+impl Default for MicrosoftEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MicrosoftEngine {
     pub fn new() -> Self {
         Self {
@@ -52,8 +58,7 @@ impl TranslationEngine for MicrosoftEngine {
         };
 
         let url = format!(
-            "https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to={}",
-            to_code
+            "https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to={to_code}"
         );
 
         let body = serde_json::json!([{"Text": text}]);
@@ -79,7 +84,7 @@ impl TranslationEngine for MicrosoftEngine {
         Ok(translated)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Microsoft"
     }
 

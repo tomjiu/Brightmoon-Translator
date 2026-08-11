@@ -6,11 +6,11 @@
 //!
 //! The protocol covers three translation modes:
 //! - Selection: translate selected text in the page
-//! - FullPage: translate all text nodes on the page
+//! - `FullPage`: translate all text nodes on the page
 //! - Hover: translate text under the cursor
 //!
 //! Field semantics are aligned with:
-//! - `BrowserTranslateOptions` (capabilities/browser_translation.rs)
+//! - `BrowserTranslateOptions` (`capabilities/browser_translation.rs`)
 //! - `TranslateResponse` (models/translation.rs)
 //! - `TranslationError` (models/error.rs)
 //! - `DomSelection` / `DomBounds` (capabilities/adapters.rs)

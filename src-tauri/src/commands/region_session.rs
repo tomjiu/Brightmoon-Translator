@@ -110,8 +110,7 @@ impl RegionSession {
         let created_at = Instant::now();
         let created_at_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
+            .map_or(0, |d| d.as_millis() as u64);
         Self {
             region_id,
             rect,
@@ -363,8 +362,7 @@ pub async fn ocr_end_session(app: tauri::AppHandle, id: String) -> Result<(), St
 
     let any_live = region_manager()
         .lock()
-        .map(|mgr| mgr.has_live_regions())
-        .unwrap_or(false);
+        .is_ok_and(|mgr| mgr.has_live_regions());
     // The default region frame is NOT tracked in this manager (the frontend
     // registers non-default sessions only; the default goes through the legacy
     // close_ocr_region_frame path). If its window still exists it is live, so
@@ -464,17 +462,14 @@ pub fn set_all_regions_exclude_from_capture(
             };
 
             let was_visible = window.is_visible().unwrap_or(true);
-            let hwnd = match window.hwnd() {
-                Ok(h) => HWND(h.0 as *mut _),
-                Err(_) => {
-                    if exclude {
-                        let _ = window.hide();
-                    } else if was_visible {
-                        let _ = window.show();
-                    }
-                    all_affinity = false;
-                    continue;
-                },
+            let hwnd = if let Ok(h) = window.hwnd() { HWND(h.0.cast()) } else {
+                if exclude {
+                    let _ = window.hide();
+                } else if was_visible {
+                    let _ = window.show();
+                }
+                all_affinity = false;
+                continue;
             };
             let affinity = if exclude {
                 WDA_EXCLUDEFROMCAPTURE
@@ -522,6 +517,7 @@ pub fn ocr_region_list() -> Result<Vec<RegionSessionInfo>, String> {
 /// Mirrors the frontend `RegionState.engine` so `ocr_region_list` exposes the
 /// per-region engine choice. No-op for unknown regions (frame not yet created).
 #[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
 pub fn ocr_region_set_engine(id: String, engine: String) -> Result<(), String> {
     let mut mgr = region_manager()
         .lock()

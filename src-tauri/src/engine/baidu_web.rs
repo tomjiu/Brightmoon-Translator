@@ -10,6 +10,12 @@ pub struct BaiduWebEngine {
     client: Client,
 }
 
+impl Default for BaiduWebEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BaiduWebEngine {
     pub fn new() -> Self {
         Self {
@@ -104,7 +110,7 @@ impl TranslationEngine for BaiduWebEngine {
         anyhow::bail!("BaiduWeb: unexpected response {body}")
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Baidu (free web)"
     }
 

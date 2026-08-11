@@ -682,6 +682,12 @@
       "offlineOcrNote": "Screenshot OCR (WinRT/Tesseract/Rapid/Paddle) is under OCR; this section is text MT only.",
       "downloadedModels": "Downloaded models: {count}",
       "autoOffline": "Auto-switch when offline is available",
+      "download": "Download",
+      "delete": "Delete",
+      "pivotHint": "Pivot via English when no direct pair exists",
+      "downloaded": "Downloaded",
+      "notDownloaded": "Not downloaded",
+      "noPairs": "No model pairs available",
       "moveUp": "Move up (higher priority)",
       "moveDown": "Move down"
     },

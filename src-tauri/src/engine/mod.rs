@@ -29,7 +29,7 @@ pub use crate::models::translation::{RoutingStrategy, TranslateResponse, Transla
 pub(crate) fn check_response(resp: &reqwest::Response, engine_name: &str) -> anyhow::Result<()> {
     let status = resp.status();
     if !status.is_success() {
-        return Err(anyhow::anyhow!("{} API error: {}", engine_name, status));
+        return Err(anyhow::anyhow!("{engine_name} API error: {status}"));
     }
     Ok(())
 }
@@ -475,7 +475,6 @@ impl Router {
                 Err(e) => {
                     tracing::warn!("[Router] Engine {} failed: {}, trying next...", name, e);
                     errors.push(format!("{name}: {e}"));
-                    continue;
                 },
             }
         }
@@ -548,7 +547,7 @@ impl Router {
         }
     }
 
-    /// Strategy: Cost Aware - prefer free engines (Google, Youdao, DeepLX, Offline)
+    /// Strategy: Cost Aware - prefer free engines (Google, Youdao, `DeepLX`, Offline)
     async fn translate_cost_aware(&self, text: &str, from: &str, to: &str) -> TranslateResponse {
         const FREE_ENGINES: &[&str] = &["Google", "Youdao", "DeepLX", "Offline"];
         let mut errors = Vec::new();
@@ -572,7 +571,6 @@ impl Router {
                     Err(e) => {
                         tracing::warn!("Free engine {} failed: {}", name, e);
                         errors.push(format!("{name}: {e}"));
-                        continue;
                     },
                 }
             }
@@ -597,7 +595,6 @@ impl Router {
                     Err(e) => {
                         tracing::warn!("Paid engine {} failed: {}", name, e);
                         errors.push(format!("{name}: {e}"));
-                        continue;
                     },
                 }
             }
@@ -746,8 +743,7 @@ impl Router {
     pub fn primary_is_llm(&self) -> bool {
         self.engines
             .first()
-            .map(|e| e.as_any().downcast_ref::<llm::LlmEngine>().is_some())
-            .unwrap_or(false)
+            .is_some_and(|e| e.as_any().downcast_ref::<llm::LlmEngine>().is_some())
     }
 
     /// Multi-segment primary translate: LLM uses numbered pack/parse; others translate one-by-one.
@@ -896,5 +892,23 @@ mod tests {
         assert_eq!(ordered.len(), 2);
         assert_eq!(ordered[0].name(), "Youdao");
         assert_eq!(ordered[1].name(), "Google");
+    }
+
+    #[test]
+    fn offline_engine_uses_configured_model_dir() {
+        let mut config = AppConfig::default();
+        config.engines.offline.enabled = true;
+        config.engines.offline.model_dir = "C:/models".to_string();
+        let router = Router::new(&config);
+        let entry = router
+            .engines
+            .iter()
+            .find(|e| e.name() == "Offline")
+            .expect("offline engine registered");
+        let eng = entry
+            .as_any()
+            .downcast_ref::<crate::engine::offline::OfflineEngine>()
+            .unwrap();
+        assert!(eng.model_dir().to_string_lossy().contains("models"));
     }
 }

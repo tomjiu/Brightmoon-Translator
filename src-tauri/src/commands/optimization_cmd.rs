@@ -7,6 +7,7 @@
 // - get_weak_words:         弱点词表（错误次数排序）
 
 use crate::domain::{CardPatch, PatchOperation, PatchValidator};
+use crate::skills::llm_provider::extract_json;
 use crate::skills::{LlmMessage, LlmProvider, LlmRequest, OpenAiCompatibleProvider};
 use anyhow::Result;
 use chrono::Utc;
@@ -14,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
 /// 弱点计数 upsert(答错时调用)。
-/// T8 修复:依赖 UNIQUE(card_id, field, error_type) + 显式 ON CONFLICT 目标，
+/// T8 修复:依赖 `UNIQUE(card_id`, field, `error_type`) + 显式 ON CONFLICT 目标，
 /// 否则 count 永远 = 1(无唯一约束时 ON CONFLICT DO UPDATE 永不触发)。
 async fn upsert_weak_point(
     pool: &sqlx::SqlitePool,
@@ -23,13 +24,13 @@ async fn upsert_weak_point(
     now: i64,
 ) -> Result<(), String> {
     sqlx::query(
-        r#"
+        r"
         INSERT INTO weak_points (card_id, field, error_type, count, last_occurred_at)
         VALUES (?, ?, ?, 1, ?)
         ON CONFLICT (card_id, field, error_type) DO UPDATE SET
             count = count + 1,
             last_occurred_at = excluded.last_occurred_at
-        "#,
+        ",
     )
     .bind(card_id)
     .bind("ai_content")
@@ -41,7 +42,7 @@ async fn upsert_weak_point(
     Ok(())
 }
 
-/// 从 quiz_type 映射弱点类型
+/// 从 `quiz_type` 映射弱点类型
 fn weak_error_type(quiz_type: &str) -> &'static str {
     match quiz_type {
         "spelling" => "spelling",
@@ -50,7 +51,17 @@ fn weak_error_type(quiz_type: &str) -> &'static str {
     }
 }
 
-/// 记录测验结果（答错时写入错误日志 + 弱点统计）
+/// 解析 word / `card_id` 双输入（学习模式题目只带 word）
+async fn resolve_quiz_card_id(pool: &sqlx::SqlitePool, word_or_id: &str) -> Option<String> {
+    sqlx::query_scalar("SELECT id FROM cards WHERE id = ?1 OR word = ?1")
+        .bind(word_or_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+}
+
+/// 记录测验结果（写入作答日志供观察偏好统计正确率；答错时另增弱点统计）
 #[tauri::command]
 pub async fn record_quiz_result(
     state: tauri::State<'_, crate::AppState>,
@@ -64,23 +75,28 @@ pub async fn record_quiz_result(
     let pool = store.pool();
     let now = Utc::now().timestamp();
 
-    if !correct {
-        // 1. 写 quiz_errors 表
-        sqlx::query(
-            r#"
-            INSERT INTO quiz_errors (card_id, quiz_type, user_answer, correct_answer, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            "#,
-        )
-        .bind(&card_id)
-        .bind(&quiz_type)
-        .bind(&user_answer)
-        .bind(&correct_answer)
-        .bind(now)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    // 兼容 word / card_id 双输入（学习模式题目只有 word）
+    let resolved: Option<String> = resolve_quiz_card_id(pool, &card_id).await;
+    let card_id = resolved.unwrap_or(card_id.clone());
 
+    // 1. 写 quiz_errors 表（记录所有作答，供观察偏好统计真实正确率；
+    //    答对时 user_answer 与 correct_answer 相同）
+    sqlx::query(
+        r"
+        INSERT INTO quiz_errors (card_id, quiz_type, user_answer, correct_answer, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        ",
+    )
+    .bind(&card_id)
+    .bind(&quiz_type)
+    .bind(&user_answer)
+    .bind(&correct_answer)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if !correct {
         // 2. 弱点计数 upsert
         let error_type = weak_error_type(&quiz_type);
         upsert_weak_point(pool, &card_id, error_type, now).await?;
@@ -113,10 +129,10 @@ pub async fn record_quiz_result(
 /// 答错触发 AI 增强：生成 Patch → 验证 → 应用
 ///
 /// 流程：
-/// 1. 写 OptimizationRequested 事件（记录触发原因）
+/// 1. 写 `OptimizationRequested` 事件（记录触发原因）
 /// 2. 用 LLM 生成针对弱点的改进内容（降低温度，JSON 强制）
-/// 3. 构造 CardPatch → PatchValidator 验证（置信度/字段/值类型/内容）
-/// 4. 写 PatchProposed → PatchApplied 事件
+/// 3. 构造 `CardPatch` → `PatchValidator` 验证（置信度/字段/值类型/内容）
+/// 4. 写 `PatchProposed` → `PatchApplied` 事件
 /// 5. 应用 Patch 到卡牌，更新快照
 #[tauri::command]
 pub async fn optimize_card_on_error(
@@ -132,7 +148,7 @@ pub async fn optimize_card_on_error(
     // 1. 写 OptimizationRequested 事件
     let opt_event = crate::domain::CardEvent::OptimizationRequested {
         field: "ai_content".to_string(),
-        reason: format!("after_error:{}", error_type),
+        reason: format!("after_error:{error_type}"),
         timestamp: now,
     };
     store
@@ -167,10 +183,10 @@ pub async fn optimize_card_on_error(
     // 3. 配置 LLM
     let config = state.system.config.lock().await;
     let llm = &config.llm;
-    let api_key = if !llm.api_key.is_empty() {
-        Some(llm.api_key.clone())
-    } else {
+    let api_key = if llm.api_key.is_empty() {
         llm.api_keys.first().cloned()
+    } else {
+        Some(llm.api_key.clone())
     };
     let base_url = llm.base_url.clone();
     let model = llm.model.clone();
@@ -269,7 +285,7 @@ pub async fn optimize_card_on_error(
     // 若 LLM 明确给出低置信度，验证器仍会放行(默认 min 0.7)，这里仅在 LLM 评分极低时主动拒绝。
     let confidence = parsed
         .get("confidence")
-        .and_then(|v| v.as_f64())
+        .and_then(serde_json::Value::as_f64)
         .unwrap_or(0.7)
         .clamp(0.1, 0.99) as f32;
 
@@ -458,26 +474,6 @@ fn patch_json_schema(field: &str) -> serde_json::Value {
     }
 }
 
-/// 从 LLM 响应中提取 JSON（处理 markdown 代码块包裹）
-fn extract_json(content: &str) -> &str {
-    let trimmed = content.trim();
-    if trimmed.starts_with('{') || trimmed.starts_with('[') {
-        return trimmed;
-    }
-    if let Some(start) = trimmed.find("```json") {
-        let json_start = start + 7;
-        if let Some(end) = trimmed[json_start..].find("```") {
-            return trimmed[json_start..json_start + end].trim();
-        }
-    }
-    if let Some(start) = trimmed.find('{') {
-        if let Some(end) = trimmed[start..].rfind('}') {
-            return &trimmed[start..start + end + 1];
-        }
-    }
-    trimmed
-}
-
 /// 优化结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -504,7 +500,7 @@ pub struct PatchHistoryEntry {
 }
 
 /// 读取卡牌 Patch 历史（版本追踪）。
-/// 接受 word 或 card_id：传 word 时先反查卡片，兼容前端用单词查看详情。
+/// 接受 word 或 `card_id：传` word 时先反查卡片，兼容前端用单词查看详情。
 #[tauri::command]
 pub async fn get_card_patch_history(
     state: tauri::State<'_, crate::AppState>,
@@ -530,22 +526,19 @@ pub async fn get_card_patch_history(
 
     let mut history = Vec::new();
     for e in events {
-        match e {
-            crate::domain::CardEvent::PatchApplied {
+        if let crate::domain::CardEvent::PatchApplied {
                 version,
                 patch,
                 timestamp,
-            } => {
-                history.push(PatchHistoryEntry {
-                    version,
-                    field: patch.target_field,
-                    operation: format!("{:?}", patch.operation),
-                    reasoning: patch.reasoning,
-                    generated_by: patch.generated_by,
-                    timestamp,
-                });
-            },
-            _ => {},
+            } = e {
+            history.push(PatchHistoryEntry {
+                version,
+                field: patch.target_field,
+                operation: format!("{:?}", patch.operation),
+                reasoning: patch.reasoning,
+                generated_by: patch.generated_by,
+                timestamp,
+            });
         }
     }
 
@@ -573,14 +566,14 @@ pub async fn get_weak_point_words(
     let pool = store.pool();
 
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT w.card_id, c.word, w.error_type, w.count, w.last_occurred_at
         FROM weak_points w
         LEFT JOIN cards c ON c.id = w.card_id
         WHERE w.resolved = 0
         ORDER BY w.count DESC, w.last_occurred_at DESC
         LIMIT ?
-        "#,
+        ",
     )
     .bind(limit)
     .fetch_all(pool)
@@ -609,9 +602,9 @@ pub async fn resolve_weak_point(
 ) -> Result<(), String> {
     let store = state.event_store.as_ref().ok_or("词汇数据库未初始化")?;
     sqlx::query(
-        r#"
+        r"
         UPDATE weak_points SET resolved = 1 WHERE card_id = ?
-        "#,
+        ",
     )
     .bind(&card_id)
     .execute(store.pool())
@@ -624,7 +617,7 @@ pub async fn resolve_weak_point(
 mod tests {
     use super::*;
 
-    /// 建带 UNIQUE 约束的 weak_points 表（与 init_schema 保持一致）
+    /// 建带 UNIQUE 约束的 `weak_points` 表（与 `init_schema` 保持一致）
     async fn weak_pool() -> sqlx::SqlitePool {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         sqlx::query(
@@ -702,5 +695,31 @@ mod tests {
         assert_eq!(weak_error_type("fill_blank"), "usage");
         assert_eq!(weak_error_type("choice"), "meaning");
         assert_eq!(weak_error_type("anything_else"), "meaning");
+    }
+
+    #[tokio::test]
+    async fn resolve_quiz_card_id_accepts_word_input() {
+        // T15: 学习模式题目只带 word，需解析 word → card_id
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query("CREATE TABLE cards (id TEXT PRIMARY KEY, word TEXT, fsrs_state TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO cards (id, word, fsrs_state) VALUES ('c1', 'hello', '{}')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // word 输入 → 解析出 card_id
+        let resolved = resolve_quiz_card_id(&pool, "hello").await;
+        assert_eq!(resolved.as_deref(), Some("c1"));
+
+        // card_id 输入 → 原样解析
+        let resolved = resolve_quiz_card_id(&pool, "c1").await;
+        assert_eq!(resolved.as_deref(), Some("c1"));
+
+        // 不存在的 word → None（调用方回退用原始输入）
+        let resolved = resolve_quiz_card_id(&pool, "nonexistent").await;
+        assert_eq!(resolved, None);
     }
 }

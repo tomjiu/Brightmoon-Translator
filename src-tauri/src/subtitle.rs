@@ -237,7 +237,7 @@ fn parse_lrc(content: &str) -> Vec<SubtitleEntry> {
                 }
 
                 // Convert LRC time to display format
-                let start_time = format!("[{}]", time_str);
+                let start_time = format!("[{time_str}]");
                 let end_time = String::new(); // LRC doesn't have end time
 
                 entries.push(SubtitleEntry {
@@ -256,6 +256,7 @@ fn parse_lrc(content: &str) -> Vec<SubtitleEntry> {
 }
 
 /// Detect subtitle format from file extension and content
+#[allow(clippy::case_sensitive_file_extension_comparisons)] // 已 to_lowercase 规范化
 pub fn detect_format(file_path: &str) -> String {
     let path_lower = file_path.to_lowercase();
 
@@ -276,7 +277,7 @@ pub fn detect_format(file_path: &str) -> String {
 /// Extract text from subtitle file
 pub fn extract_text_from_subtitle(file_path: &str) -> Result<SubtitleDocument, String> {
     let content = std::fs::read_to_string(file_path)
-        .map_err(|e| format!("Failed to read subtitle file: {}", e))?;
+        .map_err(|e| format!("Failed to read subtitle file: {e}"))?;
 
     let format = detect_format(file_path);
 
@@ -302,7 +303,7 @@ fn export_cue_text(entry: &SubtitleEntry, bilingual: bool) -> String {
     let translated = entry.translated_text.trim();
     let original = entry.original_text.trim();
     if bilingual && !original.is_empty() && !translated.is_empty() {
-        format!("{}\n{}", original, translated)
+        format!("{original}\n{translated}")
     } else if !translated.is_empty() {
         translated.to_string()
     } else {
@@ -330,6 +331,7 @@ pub fn generate_srt(entries: &[SubtitleEntry], bilingual: bool) -> String {
 ///   - `\r\n` line endings (the `\r` survived and corrupted the line)
 ///   - `{` / `}` in text (ASS interprets these as override-tag delimiters)
 ///   - empty translations (produced a trailing `\N` with nothing after it)
+///
 /// We now route through `escape_ass_text` which handles all three cases.
 pub fn generate_ass_bilingual(original_content: &str, entries: &[SubtitleEntry]) -> String {
     let mut output = String::new();
@@ -372,7 +374,7 @@ pub fn generate_ass_bilingual(original_content: &str, entries: &[SubtitleEntry])
                         &entry.original_text,
                         &entry.translated_text,
                     );
-                    output.push_str(&format!("{},{}", prefix, bilingual_text));
+                    output.push_str(&format!("{prefix},{bilingual_text}"));
                 } else {
                     output.push_str(line);
                 }
@@ -402,7 +404,7 @@ fn build_ass_bilingual_text(original: &str, translated: &str) -> String {
         (true, true) => String::new(),
         (true, false) => trans,
         (false, true) => orig,
-        (false, false) => format!("{}\\N{}", orig, trans),
+        (false, false) => format!("{orig}\\N{trans}"),
     }
 }
 

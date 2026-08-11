@@ -1,0 +1,12 @@
+[package]
+name = "llama-spike"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+llama_cpp = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+anyhow = "1"
+
+[profile.release]
+opt-level = 3

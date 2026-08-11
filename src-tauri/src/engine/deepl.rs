@@ -93,9 +93,7 @@ impl TranslationEngine for DeepLEngine {
         if !status.is_success() {
             let error_text = resp.text().await.unwrap_or_default();
             return Err(anyhow::anyhow!(
-                "DeepL API error {}: {}",
-                status,
-                error_text
+                "DeepL API error {status}: {error_text}"
             ));
         }
 
@@ -110,7 +108,7 @@ impl TranslationEngine for DeepLEngine {
         Ok(translated)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "DeepL"
     }
 

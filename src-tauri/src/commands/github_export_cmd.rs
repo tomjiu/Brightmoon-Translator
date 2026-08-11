@@ -13,7 +13,7 @@ pub struct GitHubExportResult {
     pub output_dir: String,
 }
 
-/// GitHub 分片信息
+/// `GitHub` 分片信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitHubShardInfo {
@@ -34,7 +34,7 @@ pub struct GitHubManifest {
     pub download_base_url: String,
 }
 
-/// 导出词典到 GitHub 格式（JSON + GZ 压缩）
+/// 导出词典到 `GitHub` 格式（JSON + GZ 压缩）
 #[tauri::command]
 pub async fn export_for_github(
     state: State<'_, crate::AppState>,
@@ -45,8 +45,8 @@ pub async fn export_for_github(
     let max_rank = max_rank.unwrap_or(50000);
 
     // 创建输出目录
-    let ecdict_dir = format!("{}/ecdict", output_dir);
-    std::fs::create_dir_all(&ecdict_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+    let ecdict_dir = format!("{output_dir}/ecdict");
+    std::fs::create_dir_all(&ecdict_dir).map_err(|e| format!("创建目录失败: {e}"))?;
 
     let mut shards = Vec::new();
     let mut total_words = 0;
@@ -55,7 +55,7 @@ pub async fn export_for_github(
     let letters = "abcdefghijklmnopqrstuvwxyz";
 
     for letter in letters.chars() {
-        let pattern = format!("{}%", letter);
+        let pattern = format!("{letter}%");
 
         let rows = sqlx::query(
             "SELECT word, phonetic, definition, translation, pos, frq
@@ -92,15 +92,15 @@ pub async fn export_for_github(
         total_words += count;
 
         // 写入 JSON 文件
-        let json_file = format!("ecdict_{}.json", letter);
-        let json_path = format!("{}/{}", ecdict_dir, json_file);
+        let json_file = format!("ecdict_{letter}.json");
+        let json_path = format!("{ecdict_dir}/{json_file}");
         let json_content =
-            serde_json::to_string(&entries).map_err(|e| format!("序列化失败: {}", e))?;
-        std::fs::write(&json_path, &json_content).map_err(|e| format!("写入文件失败: {}", e))?;
+            serde_json::to_string(&entries).map_err(|e| format!("序列化失败: {e}"))?;
+        std::fs::write(&json_path, &json_content).map_err(|e| format!("写入文件失败: {e}"))?;
 
         // 压缩为 GZ
-        let gz_file = format!("ecdict_{}.json.gz", letter);
-        let gz_path = format!("{}/{}", ecdict_dir, gz_file);
+        let gz_file = format!("ecdict_{letter}.json.gz");
+        let gz_path = format!("{ecdict_dir}/{gz_file}");
         compress_gz(&json_content, &gz_path)?;
 
         shards.push(GitHubShardInfo {
@@ -117,15 +117,13 @@ pub async fn export_for_github(
         created_at: chrono::Utc::now().to_rfc3339(),
         total_words,
         shards,
-        download_base_url: format!(
-            "https://raw.githubusercontent.com/YOUR_USERNAME/moontranslator-data/main/ecdict"
-        ),
+        download_base_url: "https://raw.githubusercontent.com/YOUR_USERNAME/moontranslator-data/main/ecdict".to_string(),
     };
 
-    let manifest_path = format!("{}/manifest.json", ecdict_dir);
+    let manifest_path = format!("{ecdict_dir}/manifest.json");
     let manifest_json =
-        serde_json::to_string_pretty(&manifest).map_err(|e| format!("序列化清单失败: {}", e))?;
-    std::fs::write(&manifest_path, manifest_json).map_err(|e| format!("写入清单失败: {}", e))?;
+        serde_json::to_string_pretty(&manifest).map_err(|e| format!("序列化清单失败: {e}"))?;
+    std::fs::write(&manifest_path, manifest_json).map_err(|e| format!("写入清单失败: {e}"))?;
 
     Ok(GitHubExportResult {
         total_words,
@@ -134,7 +132,7 @@ pub async fn export_for_github(
     })
 }
 
-/// 导出 AI 内容缓存到 GitHub 格式
+/// 导出 AI 内容缓存到 `GitHub` 格式
 #[tauri::command]
 pub async fn export_ai_cache_for_github(
     state: State<'_, crate::AppState>,
@@ -145,8 +143,8 @@ pub async fn export_ai_cache_for_github(
     let pool = store.pool();
     let limit = limit.unwrap_or(1000);
 
-    let ai_cache_dir = format!("{}/ai-cache", output_dir);
-    std::fs::create_dir_all(&ai_cache_dir).map_err(|e| format!("创建目录失败: {}", e))?;
+    let ai_cache_dir = format!("{output_dir}/ai-cache");
+    std::fs::create_dir_all(&ai_cache_dir).map_err(|e| format!("创建目录失败: {e}"))?;
 
     // 获取有 AI 内容的卡牌
     let rows = sqlx::query(
@@ -178,10 +176,10 @@ pub async fn export_ai_cache_for_github(
     }
 
     // 写入缓存文件
-    let cache_path = format!("{}/common_{}.json", ai_cache_dir, limit);
+    let cache_path = format!("{ai_cache_dir}/common_{limit}.json");
     let cache_json =
-        serde_json::to_string_pretty(&cache_entries).map_err(|e| format!("序列化失败: {}", e))?;
-    std::fs::write(&cache_path, cache_json).map_err(|e| format!("写入文件失败: {}", e))?;
+        serde_json::to_string_pretty(&cache_entries).map_err(|e| format!("序列化失败: {e}"))?;
+    std::fs::write(&cache_path, cache_json).map_err(|e| format!("写入文件失败: {e}"))?;
 
     Ok(count)
 }
@@ -189,13 +187,13 @@ pub async fn export_ai_cache_for_github(
 /// GZ 压缩
 fn compress_gz(data: &str, output_path: &str) -> Result<(), String> {
     use std::io::Write;
-    let file = std::fs::File::create(output_path).map_err(|e| format!("创建文件失败: {}", e))?;
+    let file = std::fs::File::create(output_path).map_err(|e| format!("创建文件失败: {e}"))?;
     let mut encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
     encoder
         .write_all(data.as_bytes())
-        .map_err(|e| format!("压缩失败: {}", e))?;
+        .map_err(|e| format!("压缩失败: {e}"))?;
     encoder
         .finish()
-        .map_err(|e| format!("完成压缩失败: {}", e))?;
+        .map_err(|e| format!("完成压缩失败: {e}"))?;
     Ok(())
 }

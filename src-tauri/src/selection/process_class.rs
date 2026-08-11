@@ -8,7 +8,7 @@ use std::path::Path;
 pub enum SelectionStrategy {
     /// UIA first, then Ctrl+C clipboard (default desktop apps)
     UiaThenClipboard,
-    /// Clipboard first (Electron/Chromium — TextPattern flaky)
+    /// Clipboard first (Electron/Chromium — `TextPattern` flaky)
     ClipboardThenUia,
     /// UIA only — Ctrl+C would SIGINT or kill the session
     UiaOnly,
@@ -64,7 +64,7 @@ pub fn normalize_process_name(raw: &str) -> String {
     lower.replace(' ', "")
 }
 
-/// Apps where UIA TextPattern is flaky → prefer Ctrl+C clipboard first.
+/// Apps where UIA `TextPattern` is flaky → prefer Ctrl+C clipboard first.
 const CLIPBOARD_FIRST_NAMES: &[&str] = &[
     // Electron / Chromium shells
     "code",
@@ -197,7 +197,7 @@ fn foreground_process_win() -> Option<ForegroundProcess> {
             return None;
         }
         let mut pid: u32 = 0;
-        let _ = GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        let _ = GetWindowThreadProcessId(hwnd, Some(&raw mut pid));
         if pid == 0 {
             return None;
         }
@@ -213,7 +213,7 @@ fn foreground_process_win() -> Option<ForegroundProcess> {
                 handle,
                 PROCESS_NAME_WIN32,
                 windows::core::PWSTR(buf.as_mut_ptr()),
-                &mut size,
+                &raw mut size,
             )
             .is_ok();
             if ok && size > 0 {

@@ -1,4 +1,4 @@
-//! Eudic / 欧陆词典 open API (api.frdic.com) — aligned with pot + STranslate.
+//! Eudic / 欧陆词典 open API (api.frdic.com) — aligned with pot + `STranslate`.
 
 use super::{CollectionItem, CollectionTargetResult};
 use crate::models::config::EudicCollectionConfig;
@@ -59,7 +59,10 @@ async fn push_inner(
     let category_id = resolve_category(client, token, book_name).await?;
     let word = item.word.trim();
 
-    if !item.note.trim().is_empty() {
+    if item.note.trim().is_empty() {
+        add_words_bulk(client, token, &category_id, word).await?;
+        Ok(format!("Added to Eudic book (id={category_id})"))
+    } else {
         // STranslate path: single word + note
         add_word_with_categories(client, token, word, &category_id).await?;
         match add_note(client, token, word, item.note.trim()).await {
@@ -68,9 +71,6 @@ async fn push_inner(
                 "Added to Eudic book (id={category_id}); note failed: {e}"
             )),
         }
-    } else {
-        add_words_bulk(client, token, &category_id, word).await?;
-        Ok(format!("Added to Eudic book (id={category_id})"))
     }
 }
 

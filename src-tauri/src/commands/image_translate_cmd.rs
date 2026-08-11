@@ -124,16 +124,16 @@ pub async fn translate_image_base64(
         .unwrap_or(&base64_data);
 
     let image_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
-        .map_err(|e| format!("Base64 decode failed: {}", e))?;
+        .map_err(|e| format!("Base64 decode failed: {e}"))?;
 
     // Save to temp file for processing
     let temp_id = uuid::Uuid::new_v4().to_string();
     let temp_dir = std::env::temp_dir();
-    let input_path = temp_dir.join(format!("moontranslator_img_input_{}.png", temp_id));
-    let output_path = temp_dir.join(format!("moontranslator_img_output_{}.png", temp_id));
+    let input_path = temp_dir.join(format!("moontranslator_img_input_{temp_id}.png"));
+    let output_path = temp_dir.join(format!("moontranslator_img_output_{temp_id}.png"));
 
     std::fs::write(&input_path, &image_bytes)
-        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+        .map_err(|e| format!("Failed to write temp file: {e}"))?;
 
     let engine_type = ocr_engine.unwrap_or_else(|| "winrt".to_string());
     let translation_service = state.translation.service.clone();
@@ -167,7 +167,7 @@ pub async fn translate_image_base64(
         Ok(info) => {
             // Read output image and encode to base64
             let output_bytes = std::fs::read(&output_path)
-                .map_err(|e| format!("Failed to read output image: {}", e))?;
+                .map_err(|e| format!("Failed to read output image: {e}"))?;
             let _ = std::fs::remove_file(&output_path);
 
             let base64_output = format!(

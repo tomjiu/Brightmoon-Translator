@@ -28,7 +28,7 @@ describe('data pages browser runtime', () => {
     vi.mocked(invokeOrThrow).mockClear();
     vi.mocked(safeInvoke).mockClear();
     vi.mocked(isEnabled).mockClear();
-    useConfigStore.setState({ loaded: false, cacheSize: 0, cacheStats: null });
+    useConfigStore.setState({ loaded: false, cacheSize: 0 });
   });
 
   test.each([

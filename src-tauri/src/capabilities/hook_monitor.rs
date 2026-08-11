@@ -32,17 +32,23 @@ pub struct MonitoredText {
 }
 
 /// Hook monitor with four capture sources:
-/// 1. UI Automation (TextPattern) — polling, best for supported apps
+/// 1. UI Automation (`TextPattern`) — polling, best for supported apps
 /// 2. Clipboard — passive watch for copy events
-/// 3. OCR — screenshot + WinRT OCR fallback
-/// 4. Win32 Event Hook — SetWinEventHook for EVENT_OBJECT_TEXTCHANGED
+/// 3. OCR — screenshot + `WinRT` OCR fallback
+/// 4. Win32 Event Hook — `SetWinEventHook` for `EVENT_OBJECT_TEXTCHANGED`
 pub struct HookMonitor {
     running: Arc<Mutex<bool>>,
     sender: Option<mpsc::UnboundedSender<MonitoredText>>,
-    /// Thread IDs for message-loop threads that need WM_QUIT to exit
+    /// Thread IDs for message-loop threads that need `WM_QUIT` to exit
     message_loop_tids: Arc<std::sync::Mutex<Vec<u32>>>,
-    /// JoinHandles for message-loop OS threads (clipboard / win-event hook)
+    /// `JoinHandles` for message-loop OS threads (clipboard / win-event hook)
     message_loop_handles: Arc<std::sync::Mutex<Vec<std::thread::JoinHandle<()>>>>,
+}
+
+impl Default for HookMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl HookMonitor {
@@ -179,13 +185,13 @@ impl HookMonitor {
         // Clear thread IDs; join any leftover handles (clear would detach/orphan)
         self.message_loop_tids
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clear();
         {
             let leftover: Vec<std::thread::JoinHandle<()>> = self
                 .message_loop_handles
                 .lock()
-                .unwrap_or_else(|e| e.into_inner())
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .drain(..)
                 .collect();
             if !leftover.is_empty() {
@@ -263,7 +269,7 @@ impl HookMonitor {
             let tids = self
                 .message_loop_tids
                 .lock()
-                .unwrap_or_else(|e| e.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             for tid in tids.iter() {
                 // SAFETY: PostThreadMessageW with valid thread IDs. WM_QUIT causes GetMessageW to return FALSE.
                 unsafe {
@@ -276,7 +282,7 @@ impl HookMonitor {
         let handles: Vec<std::thread::JoinHandle<()>> = self
             .message_loop_handles
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .drain(..)
             .collect();
         if !handles.is_empty() {
@@ -307,7 +313,7 @@ impl Drop for HookMonitor {
         let handles: Vec<std::thread::JoinHandle<()>> = self
             .message_loop_handles
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .drain(..)
             .collect();
         join_message_loop_handles(handles, std::time::Duration::from_secs(2));
@@ -315,7 +321,7 @@ impl Drop for HookMonitor {
 }
 
 /// Join OS message-loop threads with a timeout so stop/drop never hangs forever.
-/// On timeout, remaining JoinHandles are dropped (detached) as a last resort.
+/// On timeout, remaining `JoinHandles` are dropped (detached) as a last resort.
 fn join_message_loop_handles(
     handles: Vec<std::thread::JoinHandle<()>>,
     timeout: std::time::Duration,
@@ -374,7 +380,7 @@ async fn uia_monitor_task(
                 process_name
             );
             if text != last_text || hwnd_raw != last_hwnd {
-                last_text = text.clone();
+                last_text.clone_from(&text);
                 last_hwnd = hwnd_raw;
                 let _ = tx.send(MonitoredText {
                     window_title,
@@ -436,10 +442,7 @@ async fn clipboard_monitor_task(
             None,
         );
 
-        let hwnd = match hwnd {
-            Ok(h) => h,
-            Err(_) => return,
-        };
+        let Ok(hwnd) = hwnd else { return };
 
         // Register for clipboard notifications
         let _ = AddClipboardFormatListener(hwnd);
@@ -447,7 +450,7 @@ async fn clipboard_monitor_task(
         // Message loop
         let mut msg = MSG::default();
         loop {
-            let result = GetMessageW(&mut msg, None, 0, 0);
+            let result = GetMessageW(&raw mut msg, None, 0, 0);
             if result.as_bool() {
                 if msg.message == WM_CLIPBOARDUPDATE {
                     // Read clipboard text and forward via channel
@@ -462,8 +465,8 @@ async fn clipboard_monitor_task(
                         }
                     }
                 }
-                let _ = TranslateMessage(&msg);
-                DispatchMessageW(&msg);
+                let _ = TranslateMessage(&raw const msg);
+                DispatchMessageW(&raw const msg);
             } else {
                 break;
             }
@@ -526,16 +529,16 @@ async fn clipboard_monitor_task(
 
 thread_local! {
     static CLIP_SENDER: std::cell::RefCell<Option<mpsc::UnboundedSender<String>>> =
-        std::cell::RefCell::new(None);
+        const { std::cell::RefCell::new(None) };
 }
 
-/// Read text from clipboard in CF_UNICODETEXT format.
+/// Read text from clipboard in `CF_UNICODETEXT` format.
 /// SAFETY: Win32 clipboard API calls. OpenClipboard/CloseClipboard bracket the operation.
 fn read_clipboard_text() -> Option<String> {
     // M4-03: don't read while a writer (replace paste) holds the clipboard open.
     let _clip_lock = crate::clipboard_dedupe::clipboard_lock()
         .lock()
-        .unwrap_or_else(|e| e.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     unsafe {
         use windows::Win32::Foundation::HGLOBAL;
         use windows::Win32::System::DataExchange::{
@@ -609,7 +612,7 @@ async fn ocr_monitor_task(
 
                 // Use GetClientRect for client area only (better for browsers)
                 let mut client_rect = windows::Win32::Foundation::RECT::default();
-                if GetClientRect(hwnd, &mut client_rect).is_err() {
+                if GetClientRect(hwnd, &raw mut client_rect).is_err() {
                     tracing::debug!("[OCR Monitor] GetClientRect failed for {}", window_title);
                     return None;
                 }
@@ -623,8 +626,8 @@ async fn ocr_monitor_task(
                     x: client_rect.right,
                     y: client_rect.bottom,
                 };
-                let _ = ClientToScreen(hwnd, &mut top_left);
-                let _ = ClientToScreen(hwnd, &mut bottom_right);
+                let _ = ClientToScreen(hwnd, &raw mut top_left);
+                let _ = ClientToScreen(hwnd, &raw mut bottom_right);
 
                 let width = (bottom_right.x - top_left.x) as u32;
                 let height = (bottom_right.y - top_left.y) as u32;
@@ -674,7 +677,7 @@ async fn ocr_monitor_task(
         if let Some((text, window_title, process_name)) = result {
             let trimmed = text.trim().to_string();
             if !trimmed.is_empty() && trimmed != last_text {
-                last_text = trimmed.clone();
+                last_text.clone_from(&trimmed);
                 tracing::info!(
                     "[OCR Monitor] Sending text ({} chars) from {}",
                     trimmed.len(),
@@ -697,8 +700,8 @@ async fn ocr_monitor_task(
 
 // ─── Source 4: Win32 Event Hook ─────────────────────────────────────────────
 
-/// Run SetWinEventHook in a dedicated thread with a message loop.
-/// Listens for EVENT_OBJECT_TEXTCHANGED and EVENT_OBJECT_VALUECHANGED
+/// Run `SetWinEventHook` in a dedicated thread with a message loop.
+/// Listens for `EVENT_OBJECT_TEXTCHANGED` and `EVENT_OBJECT_VALUECHANGED`
 /// to detect text changes in any foreground window.
 async fn win_event_hook_task(
     running: Arc<Mutex<bool>>,
@@ -746,12 +749,12 @@ async fn win_event_hook_task(
         let mut msg = MSG::default();
         loop {
             // Check if we should stop (non-blocking peek)
-            if PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+            if PeekMessageW(&raw mut msg, None, 0, 0, PM_REMOVE).as_bool() {
                 if msg.message == WM_QUIT {
                     break;
                 }
-                let _ = TranslateMessage(&msg);
-                DispatchMessageW(&msg);
+                let _ = TranslateMessage(&raw const msg);
+                DispatchMessageW(&raw const msg);
             } else {
                 // No messages, sleep briefly to avoid busy-wait
                 std::thread::sleep(std::time::Duration::from_millis(50));
@@ -814,7 +817,7 @@ async fn win_event_hook_task(
 
 thread_local! {
     static HOOK_SENDER: std::cell::RefCell<Option<mpsc::UnboundedSender<(isize, String, String)>>> =
-        std::cell::RefCell::new(None);
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Win32 event callback — runs on the hook thread.
@@ -852,7 +855,7 @@ unsafe extern "system" fn win_event_proc(
     });
 }
 
-/// Read text from a window/control via WM_GETTEXT message.
+/// Read text from a window/control via `WM_GETTEXT` message.
 unsafe fn get_wm_text(hwnd: HWND) -> String {
     let mut buffer = [0u16; 4096];
     let len = SendMessageW(
@@ -872,6 +875,7 @@ unsafe fn get_wm_text(hwnd: HWND) -> String {
 
 /// Capture foreground window text via UI Automation.
 /// SAFETY: Win32 API calls to get foreground window and read its text.
+#[allow(clippy::type_complexity)]
 fn capture_foreground_text() -> Option<(String, usize, String, String, Option<(i32, i32, i32, i32)>)>
 {
     unsafe {
@@ -884,8 +888,8 @@ fn capture_foreground_text() -> Option<(String, usize, String, String, Option<(i
     }
 }
 
-/// Read text from window using UI Automation TextPattern.
-/// Uses GetVisibleRanges (only on-screen text) instead of DocumentRange
+/// Read text from window using UI Automation `TextPattern`.
+/// Uses `GetVisibleRanges` (only on-screen text) instead of `DocumentRange`
 /// (entire document) to avoid thrashing large documents on every poll.
 /// SAFETY: COM and UI Automation API calls. All COM objects are reference-counted.
 unsafe fn get_window_text_pattern_with_rect(
@@ -904,35 +908,32 @@ unsafe fn get_window_text_pattern_with_rect(
         .and_then(|p| p.cast::<IUIAutomationTextPattern>().ok())?;
 
     // Try GetVisibleRanges first — only reads on-screen text, not the whole document.
-    let text_str = match pattern.GetVisibleRanges() {
-        Ok(ranges) => {
-            let count = ranges.Length().unwrap_or(0);
-            if count == 0 {
-                return None;
-            }
-            let mut all_text = String::new();
-            for i in 0..count {
-                if let Ok(range) = ranges.GetElement(i) {
-                    if let Ok(t) = range.GetText(-1) {
-                        all_text.push_str(&t.to_string());
-                    }
+    let text_str = if let Ok(ranges) = pattern.GetVisibleRanges() {
+        let count = ranges.Length().unwrap_or(0);
+        if count == 0 {
+            return None;
+        }
+        let mut all_text = String::new();
+        for i in 0..count {
+            if let Ok(range) = ranges.GetElement(i) {
+                if let Ok(t) = range.GetText(-1) {
+                    all_text.push_str(&t.to_string());
                 }
             }
-            if all_text.is_empty() {
-                return None;
-            }
-            all_text
-        },
-        Err(_) => {
-            // Fallback: DocumentRange (entire document) — only when GetVisibleRanges fails.
-            let range = pattern.DocumentRange().ok()?;
-            let text = range.GetText(-1).ok()?;
-            let s = text.to_string();
-            if s.is_empty() {
-                return None;
-            }
-            s
-        },
+        }
+        if all_text.is_empty() {
+            return None;
+        }
+        all_text
+    } else {
+        // Fallback: DocumentRange (entire document) — only when GetVisibleRanges fails.
+        let range = pattern.DocumentRange().ok()?;
+        let text = range.GetText(-1).ok()?;
+        let s = text.to_string();
+        if s.is_empty() {
+            return None;
+        }
+        s
     };
 
     // Get bounding rectangle of the UIA element (screen coordinates)
@@ -945,7 +946,7 @@ unsafe fn get_window_text_pattern_with_rect(
 }
 
 /// Get window title from HWND.
-/// SAFETY: GetWindowTextW is a standard Win32 API.
+/// SAFETY: `GetWindowTextW` is a standard Win32 API.
 unsafe fn get_window_title(hwnd: HWND) -> String {
     let mut buffer = [0u16; 512];
     let len = GetWindowTextW(hwnd, &mut buffer);
@@ -960,7 +961,7 @@ unsafe fn get_window_title(hwnd: HWND) -> String {
 /// SAFETY: Win32 API calls to get process information. Handle is properly closed.
 unsafe fn get_process_name(hwnd: HWND) -> String {
     let mut process_id = 0u32;
-    GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+    GetWindowThreadProcessId(hwnd, Some(&raw mut process_id));
     if process_id == 0 {
         return String::new();
     }
@@ -986,7 +987,7 @@ unsafe fn get_process_name(hwnd: HWND) -> String {
     if len > 0 {
         String::from_utf16_lossy(&class_name[..len as usize])
     } else {
-        format!("PID: {}", process_id)
+        format!("PID: {process_id}")
     }
 }
 
@@ -1017,7 +1018,7 @@ pub fn is_translatable(text: &str, recent: &VecDeque<String>, source: &str) -> b
     // Skip file paths
     if trimmed.starts_with("C:\\")
         || trimmed.starts_with("D:\\")
-        || trimmed.starts_with("/")
+        || trimmed.starts_with('/')
         || trimmed.starts_with("\\\\")
     {
         return false;

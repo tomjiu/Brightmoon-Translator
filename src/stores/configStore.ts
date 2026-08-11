@@ -136,29 +136,11 @@ const INITIAL_CONFIG: AppConfig = {
   layoutDetectionEnabled: false,
 };
 
-interface EngineCacheStats {
-  engine: string;
-  entries: number;
-  hits: number;
-}
-
-interface CacheStats {
-  // S3-1: aligned with Rust `cache::CacheStats` (camelCase via rename_all).
-  // Previously this interface declared 5 phantom fields (memory_entries,
-  // memory_capacity, disk_entries, hit_rate, total_misses) that the Rust
-  // `cache_stats` command never returned — they were always undefined at
-  // runtime. Removed to match the actual backend payload.
-  totalEntries: number;
-  totalHits: number;
-  engineStats: EngineCacheStats[];
-}
-
 interface ConfigState {
   config: AppConfig;
   loaded: boolean;
   saved: boolean;
   cacheSize: number;
-  cacheStats: CacheStats | null;
 
   loadDefaults: () => Promise<void>;
   loadConfig: () => Promise<void>;
@@ -167,7 +149,6 @@ interface ConfigState {
   updateLlm: (field: keyof AppConfig['llm'], value: string) => void;
   loadCacheSize: () => Promise<void>;
   clearCache: () => Promise<void>;
-  loadCacheStats: () => Promise<void>;
 }
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
@@ -175,7 +156,6 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   loaded: false,
   saved: false,
   cacheSize: 0,
-  cacheStats: null,
 
   /**
    * Fetch authoritative defaults from Rust backend.
@@ -350,14 +330,5 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       return;
     }
     set({ cacheSize: 0 });
-  },
-
-  loadCacheStats: async () => {
-    const [stats, error] = await safeInvoke<CacheStats>('cache_stats');
-    if (error || !stats) {
-      console.error('Failed to load cache stats:', error);
-      return;
-    }
-    set({ cacheStats: stats });
   },
 }));

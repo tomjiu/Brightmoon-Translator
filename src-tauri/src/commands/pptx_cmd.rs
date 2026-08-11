@@ -170,12 +170,10 @@ pub async fn translate_pptx_preview(
         let mut text_blocks: Vec<TranslatedTextBlock> = Vec::new();
 
         for block in &slide.text_blocks {
-            let translated_text = if !block.text.trim().is_empty() {
-                if let Some(result) = result_iter.next() {
-                    result.translated
-                } else {
-                    String::new()
-                }
+            let translated_text = if block.text.trim().is_empty() {
+                String::new()
+            } else if let Some(result) = result_iter.next() {
+                result.translated
             } else {
                 String::new()
             };

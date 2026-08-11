@@ -105,6 +105,12 @@ pub struct BatchManager {
     app_handle: Arc<RwLock<Option<tauri::AppHandle>>>,
 }
 
+impl Default for BatchManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BatchManager {
     pub fn new() -> Self {
         Self {
@@ -122,7 +128,7 @@ impl BatchManager {
         }
     }
 
-    /// Initialize with Tauri AppHandle for event emission
+    /// Initialize with Tauri `AppHandle` for event emission
     pub fn init(&self, handle: tauri::AppHandle) {
         let app_handle = self.app_handle.clone();
         tokio::spawn(async move {

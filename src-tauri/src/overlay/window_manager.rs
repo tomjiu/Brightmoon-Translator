@@ -19,7 +19,7 @@ pub fn overlay_theme_is_light() -> bool {
 /// Shared sizing for machine-translate overlay cards.
 /// Both `present::present_mt_card` and `DefaultSelectionTranslation::show_overlay`
 /// use this so card dimensions stay consistent regardless of trigger path.
-/// CJK-aware: characters >= U+3000 are ~15px wide, others ~8px (matches dict_card_size).
+/// CJK-aware: characters >= U+3000 are ~15px wide, others ~8px (matches `dict_card_size`).
 pub fn estimate_mt_card_size(display_text: &str) -> (f64, f64) {
     // Match build_card_html metrics: padding 22px + optional source ~24px +
     // each rendered line ~24px (13px*1.5lh + 4px mt). The display text is the
@@ -44,7 +44,7 @@ pub fn estimate_mt_card_size(display_text: &str) -> (f64, f64) {
 /// x, y are in physical pixels (from Win32 APIs).
 ///
 /// This function tries to reuse an existing overlay window first.
-/// If the overlay window already exists, it updates content via eval()
+/// If the overlay window already exists, it updates content via `eval()`
 /// instead of destroying and recreating.
 pub fn create_overlay_window(
     app: &AppHandle,
@@ -81,9 +81,9 @@ pub fn create_overlay_window_ex(
     let py = cy.max(0.0) as i32;
 
     let encoded = urlencoding::encode(html);
-    let overlay_url_str = format!("data:text/html,{}", encoded);
+    let overlay_url_str = format!("data:text/html,{encoded}");
     let overlay_url = tauri::Url::parse(&overlay_url_str)
-        .map_err(|e| format!("Failed to parse overlay URL: {}", e))?;
+        .map_err(|e| format!("Failed to parse overlay URL: {e}"))?;
 
     // Reuse: hide → move/size → navigate to fresh data URL → show.
     // P0 (Fix C): navigation (not `document.documentElement.innerHTML = <full
@@ -103,7 +103,7 @@ pub fn create_overlay_window_ex(
         )));
         let _ = window.set_always_on_top(always_on_top);
         match window.navigate(overlay_url.clone()) {
-            Ok(_) => {
+            Ok(()) => {
                 tracing::info!(
                     "[overlay] reused window -> navigated {}x{} @ ({},{})",
                     w,
@@ -200,7 +200,7 @@ pub fn overlay_shown_within_ms(ms: u64) -> bool {
     OVERLAY_SHOWN_AT
         .lock()
         .ok()
-        .and_then(|g| g.map(|t| t.elapsed().as_millis() < ms as u128))
+        .and_then(|g| g.map(|t| t.elapsed().as_millis() < u128::from(ms)))
         .unwrap_or(false)
 }
 
@@ -213,10 +213,10 @@ pub fn overlay_screen_bounds(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     let pos = w.outer_position().ok()?;
     let size = w.outer_size().ok()?;
     Some((
-        pos.x as f64,
-        pos.y as f64,
-        size.width as f64,
-        size.height as f64,
+        f64::from(pos.x),
+        f64::from(pos.y),
+        f64::from(size.width),
+        f64::from(size.height),
     ))
 }
 
@@ -239,7 +239,7 @@ pub fn hide_overlay_window(app: &AppHandle) {
     // memory. The next create_overlay_window_ex call will recreate it.
     let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(5 * 60)).await;
         // Only destroy if still hidden (no new show happened).
         if let Some(window) = app2.get_webview_window("overlay") {
             if !window.is_visible().unwrap_or(false) {
@@ -276,10 +276,7 @@ pub fn update_overlay_content(
     source: &str,
     translated: &str,
 ) -> Result<bool, String> {
-    let window = match app.get_webview_window("overlay") {
-        Some(w) => w,
-        None => return Ok(false),
-    };
+    let Some(window) = app.get_webview_window("overlay") else { return Ok(false) };
 
     // Escape for JS string literals
     let src_escaped = source
@@ -309,10 +306,7 @@ pub fn update_overlay_content(
 
 /// Update overlay position without rebuilding
 pub fn update_overlay_position(app: &AppHandle, x: f64, y: f64) -> Result<bool, String> {
-    let window = match app.get_webview_window("overlay") {
-        Some(w) => w,
-        None => return Ok(false),
-    };
+    let Some(window) = app.get_webview_window("overlay") else { return Ok(false) };
 
     window
         .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(

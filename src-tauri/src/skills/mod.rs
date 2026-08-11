@@ -3,6 +3,7 @@
 
 pub mod generate_card;
 pub mod llm_provider;
+pub mod preference_service;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -127,7 +128,7 @@ impl SkillRegistry {
         let name = skill.name().to_string();
 
         if self.skills.contains_key(&name) {
-            anyhow::bail!("Skill '{}' already registered", name);
+            anyhow::bail!("Skill '{name}' already registered");
         }
 
         self.skills
@@ -137,22 +138,22 @@ impl SkillRegistry {
     }
 
     /// 获取技能
-    pub fn get(&self, name: &str) -> Option<&Box<dyn Skill>> {
-        self.skills.get(name).map(|w| &w.skill)
+    pub fn get(&self, name: &str) -> Option<&dyn Skill> {
+        self.skills.get(name).map(|w| w.skill.as_ref())
     }
 
     /// 执行技能
     pub async fn execute(&self, name: &str, input: SkillInput) -> Result<SkillOutput> {
         let skill = self
             .get(name)
-            .ok_or_else(|| anyhow::anyhow!("Skill '{}' not found", name))?;
+            .ok_or_else(|| anyhow::anyhow!("Skill '{name}' not found"))?;
 
         // 验证输入
         skill.validate_input(&input)?;
 
         // 检查可用性
         if !skill.is_available() {
-            anyhow::bail!("Skill '{}' is not available", name);
+            anyhow::bail!("Skill '{name}' is not available");
         }
 
         // 执行
@@ -173,7 +174,7 @@ impl SkillRegistry {
             .collect();
 
         // 按优先级排序
-        skills.sort_by(|a, b| b.priority.cmp(&a.priority));
+        skills.sort_by_key(|b| std::cmp::Reverse(b.priority));
         skills
     }
 
@@ -219,7 +220,7 @@ mod tests {
             &self.name
         }
 
-        fn description(&self) -> &str {
+        fn description(&self) -> &'static str {
             "Mock skill for testing"
         }
 

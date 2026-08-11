@@ -89,29 +89,28 @@ fn data_to_string(data: &Data) -> String {
             if f.fract() == 0.0 {
                 format!("{}", *f as i64)
             } else {
-                format!("{}", f)
+                format!("{f}")
             }
         },
-        Data::Int(i) => format!("{}", i),
-        Data::Bool(b) => format!("{}", b),
-        Data::Error(e) => format!("#ERROR: {:?}", e),
+        Data::Int(i) => format!("{i}"),
+        Data::Bool(b) => format!("{b}"),
+        Data::Error(e) => format!("#ERROR: {e:?}"),
         Data::DateTime(dt) => {
             // Convert Excel datetime to string
             let days = dt.as_f64() as i64;
             let time_fraction = dt.as_f64() - days as f64;
             let hours = (time_fraction * 24.0) as u32;
-            let minutes = ((time_fraction * 24.0 - hours as f64) * 60.0) as u32;
-            let seconds = ((time_fraction * 1440.0 - (hours * 60 + minutes) as f64) * 60.0) as u32;
+            let minutes = ((time_fraction * 24.0 - f64::from(hours)) * 60.0) as u32;
+            let seconds = ((time_fraction * 1440.0 - f64::from(hours * 60 + minutes)) * 60.0) as u32;
             // Simple date formatting without chrono
             let year = 1899;
             let month = 12;
             let day = 30 + days;
             if hours == 0 && minutes == 0 && seconds == 0 {
-                format!("{:04}-{:02}-{:02}", year, month, day)
+                format!("{year:04}-{month:02}-{day:02}")
             } else {
                 format!(
-                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-                    year, month, day, hours, minutes, seconds
+                    "{year:04}-{month:02}-{day:02} {hours:02}:{minutes:02}:{seconds:02}"
                 )
             }
         },
@@ -163,18 +162,18 @@ fn is_cjk(ch: char) -> bool {
 /// Extract text from Excel file (xlsx/xls/csv)
 pub fn extract_text_from_excel(file_path: &str) -> Result<ExcelDocument, String> {
     let mut workbook: Sheets<BufReader<File>> =
-        open_workbook_auto(file_path).map_err(|e| format!("Failed to open Excel file: {}", e))?;
+        open_workbook_auto(file_path).map_err(|e| format!("Failed to open Excel file: {e}"))?;
 
     let mut sheets: Vec<ExcelSheet> = Vec::new();
     let mut total_cells = 0;
     let mut total_words = 0;
 
-    let sheet_names = workbook.sheet_names().to_vec();
+    let sheet_names = workbook.sheet_names().clone();
 
     for sheet_name in &sheet_names {
         let range = workbook
             .worksheet_range(sheet_name)
-            .map_err(|e| format!("Failed to read sheet '{}': {}", sheet_name, e))?;
+            .map_err(|e| format!("Failed to read sheet '{sheet_name}': {e}"))?;
 
         let mut cells: Vec<ExcelCell> = Vec::new();
         let mut sheet_words = 0;
@@ -226,6 +225,7 @@ pub fn extract_text_from_excel(file_path: &str) -> Result<ExcelDocument, String>
 }
 
 /// Write translated content back to Excel file
+#[allow(clippy::implicit_hasher)]
 pub fn write_translated_excel(
     input_path: &str,
     output_path: &str,
@@ -236,12 +236,12 @@ pub fn write_translated_excel(
     // verbatim and only patch the matching <c> cells in xl/worksheets/sheetN.xml.
     // This preserves merged cells, column widths, rich styles and charts.
     let input_file =
-        File::open(input_path).map_err(|e| format!("Failed to open Excel file: {}", e))?;
+        File::open(input_path).map_err(|e| format!("Failed to open Excel file: {e}"))?;
     let mut archive =
-        ZipArchive::new(input_file).map_err(|e| format!("Failed to read Excel archive: {}", e))?;
+        ZipArchive::new(input_file).map_err(|e| format!("Failed to read Excel archive: {e}"))?;
 
     let output_file =
-        File::create(output_path).map_err(|e| format!("Failed to create output file: {}", e))?;
+        File::create(output_path).map_err(|e| format!("Failed to create output file: {e}"))?;
     let mut zip_writer = ZipWriter::new(output_file);
 
     // sheet name → worksheet file path (xl/worksheets/sheetN.xml)
@@ -253,17 +253,17 @@ pub fn write_translated_excel(
     for i in 0..archive.len() {
         let mut entry = archive
             .by_index(i)
-            .map_err(|e| format!("Failed to read archive entry: {}", e))?;
+            .map_err(|e| format!("Failed to read archive entry: {e}"))?;
         let name = entry.name().to_string();
         let mut content = Vec::new();
         entry
             .read_to_end(&mut content)
-            .map_err(|e| format!("Failed to read entry content: {}", e))?;
+            .map_err(|e| format!("Failed to read entry content: {e}"))?;
 
         // Patch worksheet XML files that contain translated cells.
         if let Some(sheet_name) = sheet_map.iter().find(|(_, file)| *file == &name).map(|(n, _)| n) {
             let xml = String::from_utf8(content.clone())
-                .map_err(|e| format!("Invalid UTF-8 in worksheet: {}", e))?;
+                .map_err(|e| format!("Invalid UTF-8 in worksheet: {e}"))?;
             let (patched, count, words) =
                 patch_worksheet_cells(&xml, sheet_name, translations)?;
             if count > 0 {
@@ -273,24 +273,24 @@ pub fn write_translated_excel(
             let out_bytes = patched.into_bytes();
             zip_writer
                 .start_file(&name, SimpleFileOptions::default())
-                .map_err(|e| format!("Failed to write to archive: {}", e))?;
+                .map_err(|e| format!("Failed to write to archive: {e}"))?;
             zip_writer
                 .write_all(&out_bytes)
-                .map_err(|e| format!("Failed to write worksheet content: {}", e))?;
+                .map_err(|e| format!("Failed to write worksheet content: {e}"))?;
         } else {
             // Copy all other entries verbatim (styles, charts, merges, etc).
             zip_writer
                 .start_file(&name, SimpleFileOptions::default())
-                .map_err(|e| format!("Failed to write to archive: {}", e))?;
+                .map_err(|e| format!("Failed to write to archive: {e}"))?;
             zip_writer
                 .write_all(&content)
-                .map_err(|e| format!("Failed to write entry content: {}", e))?;
+                .map_err(|e| format!("Failed to write entry content: {e}"))?;
         }
     }
 
     zip_writer
         .finish()
-        .map_err(|e| format!("Failed to finalize Excel file: {}", e))?;
+        .map_err(|e| format!("Failed to finalize Excel file: {e}"))?;
 
     Ok(ExcelTranslationResult {
         input_path: input_path.to_string(),
@@ -363,7 +363,7 @@ fn cell_ref_to_rc(ref_: &str) -> Option<(u32, u32)> {
     let mut row_start = 0;
     for (i, b) in bytes.iter().enumerate() {
         if b.is_ascii_alphabetic() {
-            col = col * 26 + (*b as u32) - if b.is_ascii_uppercase() { 'A' as u32 } else { 'a' as u32 } + 1;
+            col = col * 26 + u32::from(*b) - if b.is_ascii_uppercase() { 'A' as u32 } else { 'a' as u32 } + 1;
         } else {
             row_start = i;
             break;
@@ -398,7 +398,7 @@ fn xml_escape(s: &str) -> String {
 }
 
 /// Rewrite a worksheet XML, replacing matching cell values with translated
-/// text as inline strings. Returns (patched_xml, cells_patched, words_patched).
+/// text as inline strings. Returns (`patched_xml`, `cells_patched`, `words_patched`).
 fn patch_worksheet_cells(
     xml: &str,
     sheet_name: &str,
@@ -540,8 +540,7 @@ pub async fn translate_excel_file(
                 .find(|s| s.cells.iter().any(|c| c.row == *row && c.col == *col));
             let text = sheet
                 .and_then(|s| s.cells.iter().find(|c| c.row == *row && c.col == *col))
-                .map(|c| c.text.as_str())
-                .unwrap_or("");
+                .map_or("", |c| c.text.as_str());
             (*idx, text)
         })
         .collect();
@@ -591,6 +590,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)] // 3.14 here is a formatting fixture, not an approximation of PI
     fn test_data_to_string() {
         assert_eq!(data_to_string(&Data::Empty), "");
         assert_eq!(data_to_string(&Data::String("hello".to_string())), "hello");

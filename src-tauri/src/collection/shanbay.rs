@@ -88,7 +88,7 @@ async fn push_inner(
 
     if let Some(task_id) = v.get("task_id").and_then(|t| {
         t.as_str()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .or_else(|| t.as_i64().map(|n| n.to_string()))
     }) {
         // Poll task status once (pot does a single GET check)
@@ -109,7 +109,7 @@ async fn push_inner(
             ));
         }
         if let Ok(cv) = serde_json::from_str::<serde_json::Value>(&check_body) {
-            let failed = cv.get("failed_count").and_then(|f| f.as_i64()).unwrap_or(0);
+            let failed = cv.get("failed_count").and_then(serde_json::Value::as_i64).unwrap_or(0);
             if failed > 0 {
                 return Err("Shanbay: failed to add words (failed_count > 0)".into());
             }

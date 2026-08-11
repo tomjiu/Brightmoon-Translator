@@ -26,7 +26,7 @@ pub async fn text_to_speech(
         .as_ref()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
+        .map(std::string::ToString::to_string);
     let preferred_trim = preferred.trim().to_string();
 
     let resolved_voice = voice_arg

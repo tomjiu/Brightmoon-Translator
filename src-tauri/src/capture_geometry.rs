@@ -1,9 +1,9 @@
 //! C2: Centralized capture geometry.
 //!
 //! Unifies monitor enumeration, logical↔physical conversion, and rect
-//! clamping that was previously scattered across `window.rs` (MonitorBounds),
-//! `capture.rs` (ScreenshotSnapshotInfo), and `positioner.rs`
-//! (monitor_work_area).
+//! clamping that was previously scattered across `window.rs` (`MonitorBounds`),
+//! `capture.rs` (`ScreenshotSnapshotInfo`), and `positioner.rs`
+//! (`monitor_work_area`).
 //!
 //! All coordinates in this module are **physical pixels** unless the name
 //! contains `logical`. Scale factors are `f32` (matching Tauri's convention).
@@ -48,12 +48,12 @@ impl MonitorRegion {
 
     /// Convert a logical (CSS) length to physical pixels on this monitor.
     pub fn logical_to_physical(&self, logical: f64) -> f64 {
-        logical * self.scale_factor as f64
+        logical * f64::from(self.scale_factor)
     }
 
     /// Convert a physical length to logical (CSS) pixels on this monitor.
     pub fn physical_to_logical(&self, physical: f64) -> f64 {
-        physical / self.scale_factor as f64
+        physical / f64::from(self.scale_factor)
     }
 }
 
@@ -190,10 +190,9 @@ pub fn logical_rect_to_physical(
             height: logical_h,
         },
     )
-    .map(|m| m.scale_factor)
-    .unwrap_or(fallback_scale);
+    .map_or(fallback_scale, |m| m.scale_factor);
 
-    let s = scale as f64;
+    let s = f64::from(scale);
     (
         PhysicalRect {
             x: logical_x * s,
@@ -213,10 +212,9 @@ pub fn physical_rect_to_logical(
     fallback_scale: f32,
 ) -> (f64, f64, f64, f64, f32) {
     let scale = monitor_for_rect_center(monitors, physical)
-        .map(|m| m.scale_factor)
-        .unwrap_or(fallback_scale);
+        .map_or(fallback_scale, |m| m.scale_factor);
 
-    let s = scale as f64;
+    let s = f64::from(scale);
     (physical.x / s, physical.y / s, physical.width / s, physical.height / s, scale)
 }
 
@@ -248,8 +246,7 @@ pub fn primary_scale_factor(app: &tauri::AppHandle) -> f32 {
     app.primary_monitor()
         .ok()
         .flatten()
-        .map(|m| m.scale_factor() as f32)
-        .unwrap_or(1.0)
+        .map_or(1.0, |m| m.scale_factor() as f32)
 }
 
 #[cfg(test)]

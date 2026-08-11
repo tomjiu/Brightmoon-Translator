@@ -109,7 +109,7 @@ pub trait LlmProvider: Send + Sync {
     }
 }
 
-/// OpenAI 兼容的 Provider（适用于 GPT-4, DeepSeek 等）
+/// OpenAI 兼容的 Provider（适用于 GPT-4, `DeepSeek` 等）
 pub struct OpenAiCompatibleProvider {
     api_key: String,
     base_url: String,
@@ -120,7 +120,7 @@ pub struct OpenAiCompatibleProvider {
 impl OpenAiCompatibleProvider {
     pub fn new(api_key: String, base_url: String, model: String) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_secs(2 * 60))
             .connect_timeout(std::time::Duration::from_secs(10))
             .build()
             .unwrap_or_default();
@@ -138,7 +138,12 @@ impl OpenAiCompatibleProvider {
         Self::new(api_key, "https://api.openai.com/v1".to_string(), model)
     }
 
-    /// DeepSeek
+    /// 当前使用的模型名
+    pub fn model_name(&self) -> String {
+        self.model.clone()
+    }
+
+    /// `DeepSeek`
     pub fn deepseek(api_key: String) -> Self {
         Self::new(
             api_key,
@@ -150,7 +155,7 @@ impl OpenAiCompatibleProvider {
 
 #[async_trait]
 impl LlmProvider for OpenAiCompatibleProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "openai_compatible"
     }
 
@@ -178,6 +183,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
         }
 
         #[derive(Deserialize)]
+        #[allow(clippy::struct_field_names)]
         struct ApiUsage {
             prompt_tokens: u32,
             completion_tokens: u32,
@@ -189,8 +195,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
         if let Some(schema) = &request.json_schema {
             let schema_str = serde_json::to_string_pretty(schema).unwrap_or_default();
             let instruction = format!(
-                "\n\n请严格按照以下 JSON Schema 返回结果，不要包含任何其他文字，只返回合法的 JSON：\n```json\n{}\n```",
-                schema_str
+                "\n\n请严格按照以下 JSON Schema 返回结果，不要包含任何其他文字，只返回合法的 JSON：\n```json\n{schema_str}\n```"
             );
             if let Some(last) = messages.last_mut() {
                 if last.role == "user" {
@@ -223,7 +228,7 @@ impl LlmProvider for OpenAiCompatibleProvider {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await?;
-            anyhow::bail!("LLM API error {}: {}", status, body);
+            anyhow::bail!("LLM API error {status}: {body}");
         }
 
         let api_response: ApiResponse = response.json().await?;
@@ -250,9 +255,77 @@ impl LlmProvider for OpenAiCompatibleProvider {
     }
 }
 
+/// 从 LLM 配置构建可用的 OpenAI 兼容 Provider。
+/// 优先使用 `api_key，其次` `api_keys` `列表第一个；api_key` 为空或 `base_url` 为空时返回 None。
+pub fn provider_from_config(
+    llm: &crate::models::config::LlmConfig,
+) -> Option<OpenAiCompatibleProvider> {
+    if llm.base_url.is_empty() {
+        return None;
+    }
+    let api_key = if llm.api_key.is_empty() {
+        llm.api_keys.first().cloned()
+    } else {
+        Some(llm.api_key.clone())
+    };
+    let key = api_key?;
+    Some(OpenAiCompatibleProvider::new(
+        key,
+        llm.base_url.clone(),
+        llm.model.clone(),
+    ))
+}
+
+/// 从 LLM 响应中提取 JSON 字符串。
+/// 处理场景：直接以 `{`/`[` 开头、markdown 代码块包裹（```json ... ```）、
+/// 以及前后夹杂文本（提取首尾 `{...}` 或 `[...]`）。
+pub fn extract_json(content: &str) -> &str {
+    let trimmed = content.trim();
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return trimmed;
+    }
+    if let Some(start) = trimmed.find("```json") {
+        let json_start = start + 7;
+        if let Some(end) = trimmed[json_start..].find("```") {
+            return trimmed[json_start..json_start + end].trim();
+        }
+    }
+    // 提取第一个 `{...}` 或 `[...]` 完整块
+    for (open, close) in [('{', '}'), ('[', ']')] {
+        if let Some(start) = trimmed.find(open) {
+            if let Some(end) = trimmed[start..].rfind(close) {
+                return &trimmed[start..=(start + end)];
+            }
+        }
+    }
+    trimmed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_extract_json_plain() {
+        assert_eq!(extract_json("{a:1}"), "{a:1}");
+        assert_eq!(extract_json("[1,2]"), "[1,2]");
+    }
+
+    #[test]
+    fn test_extract_json_markdown_block() {
+        assert_eq!(extract_json("```json\n{\"b\":2}\n```"), "{\"b\":2}");
+    }
+
+    #[test]
+    fn test_extract_json_embedded_text() {
+        assert_eq!(extract_json("前缀 {\"c\":3} 后缀"), "{\"c\":3}");
+        assert_eq!(extract_json("答案: [1, 2, 3] 完"), "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_extract_json_no_json_returns_trimmed() {
+        assert_eq!(extract_json("  无 JSON 内容  "), "无 JSON 内容");
+    }
 
     #[test]
     fn test_llm_message() {
@@ -272,7 +345,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // 需要真实 API key
+    #[ignore = "需要真实 API key"]
     async fn test_openai_provider() {
         let provider = OpenAiCompatibleProvider::openai(
             std::env::var("OPENAI_API_KEY").unwrap(),

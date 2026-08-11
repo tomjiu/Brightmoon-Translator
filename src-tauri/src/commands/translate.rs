@@ -12,7 +12,7 @@ use tauri::{Emitter, State};
 
 // Shared clipboard monitoring state (event-driven; not a poll stub)
 static CLIPBOARD_MONITORING: AtomicBool = AtomicBool::new(false);
-/// Message-loop thread id for clean WM_QUIT shutdown (0 = none)
+/// Message-loop thread id for clean `WM_QUIT` shutdown (0 = none)
 static CLIPBOARD_LISTENER_TID: AtomicU32 = AtomicU32::new(0);
 /// Last emitted clipboard text for dedupe across restarts of the listener
 static LAST_CLIPBOARD_TEXT: Mutex<String> = Mutex::new(String::new());
@@ -29,7 +29,7 @@ pub struct TranslateRequest {
 
 fn parse_channel(raw: Option<&str>) -> crate::models::translation::TranslateChannel {
     use crate::models::translation::TranslateChannel;
-    match raw.map(|s| s.to_ascii_lowercase()).as_deref() {
+    match raw.map(str::to_ascii_lowercase).as_deref() {
         Some("ocr") => TranslateChannel::Ocr,
         Some("selection") => TranslateChannel::Selection,
         Some("replace") => TranslateChannel::Replace,
@@ -132,7 +132,7 @@ pub async fn translate_stream(
 }
 
 /// Start main-window clipboard monitor (event-driven on Windows).
-/// Emits `clipboard-changed` with the new text; FE hydrates MainTranslator + translates.
+/// Emits `clipboard-changed` with the new text; FE hydrates `MainTranslator` + translates.
 #[tauri::command]
 pub async fn start_clipboard_monitor(
     app: tauri::AppHandle,
@@ -185,6 +185,7 @@ pub async fn stop_clipboard_monitor() -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
+#[allow(clippy::needless_pass_by_value)]
 fn main_clipboard_listener_thread(app: tauri::AppHandle) {
     use std::time::Duration;
     use windows::Win32::System::DataExchange::{
@@ -237,7 +238,7 @@ fn main_clipboard_listener_thread(app: tauri::AppHandle) {
                 break;
             }
 
-            let result = GetMessageW(&mut msg, None, 0, 0);
+            let result = GetMessageW(&raw mut msg, None, 0, 0);
             if !result.as_bool() {
                 break;
             }
@@ -251,16 +252,16 @@ fn main_clipboard_listener_thread(app: tauri::AppHandle) {
                     {
                         let mut last = LAST_CLIPBOARD_TEXT
                             .lock()
-                            .unwrap_or_else(|e| e.into_inner());
-                        *last = trimmed.clone();
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        (*last).clone_from(&trimmed);
                         drop(last);
                         let _ = app.emit("clipboard-changed", &trimmed);
                     }
                 }
             }
 
-            let _ = TranslateMessage(&msg);
-            DispatchMessageW(&msg);
+            let _ = TranslateMessage(&raw const msg);
+            DispatchMessageW(&raw const msg);
         }
 
         let _ = RemoveClipboardFormatListener(hwnd);
@@ -271,7 +272,7 @@ fn main_clipboard_listener_thread(app: tauri::AppHandle) {
     }
 }
 
-/// Read CF_UNICODETEXT from the system clipboard.
+/// Read `CF_UNICODETEXT` from the system clipboard.
 #[cfg(target_os = "windows")]
 fn read_clipboard_unicode_text() -> Option<String> {
     unsafe {
@@ -355,8 +356,8 @@ pub async fn translate_selection_with_text(
     Ok(())
 }
 
-/// Get selected text via SelectionProviderManager, translate, and replace in foreground app.
-/// Uses the InputReplacement capability: selection → translate → clipboard paste or type.
+/// Get selected text via `SelectionProviderManager`, translate, and replace in foreground app.
+/// Uses the `InputReplacement` capability: selection → translate → clipboard paste or type.
 /// No frontend clipboard read needed — the capability handles everything.
 #[tauri::command]
 pub async fn replace_translate(state: State<'_, AppState>) -> Result<ReplacementResult, AppError> {
@@ -378,7 +379,7 @@ pub async fn replace_translate(state: State<'_, AppState>) -> Result<Replacement
     Ok(result)
 }
 
-/// Replace text in the foreground application via the InputReplacement capability.
+/// Replace text in the foreground application via the `InputReplacement` capability.
 #[tauri::command]
 pub async fn replace_text_in_app(state: State<'_, AppState>, text: String) -> Result<(), AppError> {
     let use_clipboard_output = {
@@ -460,7 +461,7 @@ pub async fn translate_embedded(
         .collect();
     let ch = match channel
         .as_deref()
-        .map(|s| s.to_ascii_lowercase())
+        .map(str::to_ascii_lowercase)
         .as_deref()
     {
         Some("ocr") => crate::models::translation::TranslateChannel::Ocr,
@@ -516,17 +517,17 @@ pub async fn lookup_dictionary(
         return dict
             .lookup(trimmed)
             .await
-            .map_err(|e| AppError::Internal(format!("Dictionary lookup failed: {}", e)));
+            .map_err(|e| AppError::Internal(format!("Dictionary lookup failed: {e}")));
     }
 
     // CJK: Youdao CE when available (no ECDICT path).
     let dict = dictionary::Dictionary::new();
     dict.lookup_chinese(trimmed)
         .await
-        .map_err(|e| AppError::Internal(format!("Dictionary lookup failed: {}", e)))
+        .map_err(|e| AppError::Internal(format!("Dictionary lookup failed: {e}")))
 }
 
-/// ECDICT → DictionaryResult (shared shape with hover overlay).
+/// ECDICT → `DictionaryResult` (shared shape with hover overlay).
 async fn lookup_ecdict_for_dictionary(
     word: &str,
     pool: &sqlx::SqlitePool,
@@ -635,7 +636,7 @@ async fn lookup_ecdict_for_dictionary(
             if p.starts_with('/') || p.starts_with('[') {
                 p
             } else {
-                format!("/{}/", p)
+                format!("/{p}/")
             }
         }),
         meanings,
@@ -721,7 +722,7 @@ pub async fn polish_translation(
     };
 
     let prompt = format!(
-        r#"请对以下翻译进行润色，使其更加自然流畅、符合{}的表达习惯。
+        r"请对以下翻译进行润色，使其更加自然流畅、符合{}的表达习惯。
 
 原文（{}）：
 {}
@@ -733,7 +734,7 @@ pub async fn polish_translation(
 1. 保持原文含义不变
 2. 使译文更加自然流畅
 3. 修正可能的语法或表达问题
-4. 只返回润色后的译文，不要添加任何解释"#,
+4. 只返回润色后的译文，不要添加任何解释",
         lang_name(&to_lang),
         lang_name(&from_lang),
         source_text,

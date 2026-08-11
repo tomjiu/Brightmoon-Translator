@@ -69,7 +69,7 @@ pub async fn get_word_history(
         let data: serde_json::Value = serde_json::from_str(&event_data).unwrap_or_default();
 
         let rating = match event_type.as_str() {
-            "fsrs_updated" => data["grade"].as_str().map(|s| s.to_string()),
+            "fsrs_updated" => data["grade"].as_str().map(std::string::ToString::to_string),
             _ => None,
         };
 
@@ -202,7 +202,7 @@ pub async fn get_related_words(
              WHERE word LIKE ? AND word != ? AND frq IS NOT NULL
              ORDER BY frq ASC LIMIT 10",
         )
-        .bind(format!("{}%", prefix))
+        .bind(format!("{prefix}%"))
         .bind(&word)
         .fetch_all(ecdict_pool)
         .await
@@ -456,7 +456,7 @@ pub async fn get_word_etymology(
     if let Some(store) = state.event_store.as_ref() {
         let pool = store.pool();
         let result = sqlx::query("SELECT segmentation, pos, parts FROM morphology WHERE word = ?")
-            .bind(&word.to_lowercase())
+            .bind(word.to_lowercase())
             .fetch_optional(pool)
             .await;
 
@@ -487,7 +487,7 @@ fn format_morphology_result(
 
     if let Some(p) = pos {
         if !p.is_empty() {
-            lines.push(format!("词性: {}", p));
+            lines.push(format!("词性: {p}"));
         }
     }
 
@@ -506,22 +506,22 @@ fn format_morphology_result(
             };
 
             if let Some(m) = meaning {
-                if !m.is_empty() {
-                    lines.push(format!("{}: {} ({})", type_label, part_text, m));
+                if m.is_empty() {
+                    lines.push(format!("{type_label}: {part_text}"));
                 } else {
-                    lines.push(format!("{}: {}", type_label, part_text));
+                    lines.push(format!("{type_label}: {part_text} ({m})"));
                 }
             } else {
-                lines.push(format!("{}: {}", type_label, part_text));
+                lines.push(format!("{type_label}: {part_text}"));
             }
         }
     } else if !segmentation.is_empty() {
         // parts JSON 解析失败时，直接用 segmentation
-        lines.push(format!("拆解: {}", segmentation));
+        lines.push(format!("拆解: {segmentation}"));
     }
 
     if lines.is_empty() {
-        format!("「{}」是一个单一词根", word)
+        format!("「{word}」是一个单一词根")
     } else {
         lines.join("\n")
     }
@@ -566,8 +566,8 @@ fn etymology_heuristic(word: &str) -> String {
     for (prefix, meaning) in common_prefixes {
         if word.starts_with(prefix) && word.len() > prefix.len() + 2 {
             let root = &word[prefix.len()..];
-            analysis.push(format!("前缀: {} ({})", prefix, meaning));
-            analysis.push(format!("词根: {}", root));
+            analysis.push(format!("前缀: {prefix} ({meaning})"));
+            analysis.push(format!("词根: {root}"));
             break;
         }
     }
@@ -577,15 +577,15 @@ fn etymology_heuristic(word: &str) -> String {
         if word.ends_with(suffix) && word.len() > suffix.len() + 2 {
             let root = &word[..word.len() - suffix.len()];
             if analysis.is_empty() {
-                analysis.push(format!("词根: {}", root));
+                analysis.push(format!("词根: {root}"));
             }
-            analysis.push(format!("后缀: {} ({})", suffix, meaning));
+            analysis.push(format!("后缀: {suffix} ({meaning})"));
             break;
         }
     }
 
     if analysis.is_empty() {
-        format!("「{}」是一个单一词根", word)
+        format!("「{word}」是一个单一词根")
     } else {
         analysis.join("\n")
     }

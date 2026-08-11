@@ -27,16 +27,16 @@ use windows::Win32::System::Threading::{
 
 // Shared memory constants (must match DLL; name is PID-scoped)
 const SHARED_MEMORY_SIZE: usize = 1024 * 1024; // 1MB
-const SHARED_MEMORY_MAGIC: u32 = 0x4D4F4F4E; // "MOON"
+const SHARED_MEMORY_MAGIC: u32 = 0x4D4F_4F4E; // "MOON"
 
-/// 4a-marker: reserved code_page sentinel used by the DLL's Ldr callback to
+/// 4a-marker: reserved `code_page` sentinel used by the DLL's Ldr callback to
 /// report late-loaded module basenames through shared memory without
 /// polluting the captured-text stream. Must match
-/// `LATE_LOADED_MARKER_CODE_PAGE` in hook_text.cpp.
+/// `LATE_LOADED_MARKER_CODE_PAGE` in `hook_text.cpp`.
 const LATE_LOADED_MARKER_CODE_PAGE: u32 = 0xFFFF_FFFF;
 
 fn shared_memory_name(pid: u32) -> String {
-    format!("MoonTranslatorHookSharedMem_PID{}", pid)
+    format!("MoonTranslatorHookSharedMem_PID{pid}")
 }
 
 #[repr(C, packed)]
@@ -84,38 +84,38 @@ pub struct HookStatus {
     pub messages_read: u64,
 }
 
-/// 4b: HookStats — host mirror of the DLL's HookStats struct.
+/// 4b: `HookStats` — host mirror of the DLL's `HookStats` struct.
 ///
 /// Populated by `HookManager::get_stats()`, which calls the remote
-/// `HookGetStats` export via CreateRemoteThread + ReadProcessMemory.
+/// `HookGetStats` export via `CreateRemoteThread` + `ReadProcessMemory`.
 /// The DLL returns a static JSON string; we parse it into this struct
 /// so the host/UI can consume typed fields.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookStats {
-    /// Modules walked by PatchAllModulesIAT (initial sweep + late-loaded).
+    /// Modules walked by `PatchAllModulesIAT` (initial sweep + late-loaded).
     pub modules_scanned: u64,
     /// IAT slots successfully patched.
     pub iat_hits: u64,
-    /// Modules patched via LdrRegisterDllNotification callback.
+    /// Modules patched via `LdrRegisterDllNotification` callback.
     pub late_loaded_patched: u64,
-    /// SendTextToHost invocations (before filter).
+    /// `SendTextToHost` invocations (before filter).
     pub send_text_calls: u64,
-    /// Calls rejected by IsPrintableText (noise/short).
+    /// Calls rejected by `IsPrintableText` (noise/short).
     pub send_text_filtered: u64,
-    /// Calls blocked during eject (g_ejecting was true).
+    /// Calls blocked during eject (`g_ejecting` was true).
     pub send_text_eject_blocked: u64,
     /// H-Code inline hooks installed.
     pub inline_hooks: u64,
     /// Whether IAT hooks are currently installed.
     pub hooks_installed: bool,
-    /// Whether LdrRegisterDllNotification cookie is held.
+    /// Whether `LdrRegisterDllNotification` cookie is held.
     pub ldr_cookie: bool,
 }
 
-/// 4d-2: HookInstallParams — must match `HookInstallParams` in
-/// hook_text.cpp (HookInstallAtAddressStruct export). Used to pass the
-/// 5 hook parameters through CreateRemoteThread's single lpParameter.
+/// 4d-2: `HookInstallParams` — must match `HookInstallParams` in
+/// `hook_text.cpp` (`HookInstallAtAddressStruct` export). Used to pass the
+/// 5 hook parameters through `CreateRemoteThread`'s single lpParameter.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct HookInstallParams {
@@ -141,12 +141,12 @@ const _: () = assert!(std::mem::size_of::<HookInstallParams>() == 24);
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookInstallResult {
-    /// 0 = success, 1 = invalid params, 2 = VirtualProtect fail,
+    /// 0 = success, 1 = invalid params, 2 = `VirtualProtect` fail,
     /// 3 = trampoline alloc fail, 4 = unsupported arch.
     pub exit_code: u32,
     /// Absolute address that was hooked (for UI display).
     pub resolved_addr: u64,
-    /// True if exit_code == 0.
+    /// True if `exit_code` == 0.
     pub success: bool,
     /// Human-readable message.
     pub message: String,
@@ -158,7 +158,7 @@ pub struct HookManager {
     shared_view: MEMORY_MAPPED_VIEW_ADDRESS,
     shared_data: *mut SharedMemoryHeader,
     target_pid: u32,
-    /// Remote HMODULE from LoadLibraryW exit code (for HookUninstall)
+    /// Remote HMODULE from `LoadLibraryW` exit code (for `HookUninstall`)
     remote_module: usize,
     injected: bool,
     messages_read: u64,
@@ -174,6 +174,12 @@ unsafe impl Send for HookManager {}
 // - read_messages() takes &mut self, ensuring exclusive access for writes
 // - status() takes &self and only reads immutable header fields
 unsafe impl Sync for HookManager {}
+
+impl Default for HookManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl HookManager {
     pub fn new() -> Self {
@@ -218,10 +224,10 @@ impl HookManager {
                 false,
                 pid,
             )
-            .map_err(|e| format!("OpenProcess failed: {}", e))?;
+            .map_err(|e| format!("OpenProcess failed: {e}"))?;
 
             // Allocate memory in target process for DLL path
-            let path_size = (dll_path_wide.len() * 2) as usize;
+            let path_size = dll_path_wide.len() * 2;
             let remote_mem = VirtualAllocEx(process, None, path_size, MEM_COMMIT, PAGE_READWRITE);
             if remote_mem.is_null() {
                 let _ = CloseHandle(process);
@@ -233,9 +239,9 @@ impl HookManager {
             if WriteProcessMemory(
                 process,
                 remote_mem,
-                dll_path_wide.as_ptr() as *const _,
+                dll_path_wide.as_ptr().cast(),
                 path_size,
-                Some(&mut written),
+                Some(&raw mut written),
             )
             .is_err()
             {
@@ -246,8 +252,8 @@ impl HookManager {
 
             // Get LoadLibraryW address
             let kernel32 = GetModuleHandleW(PCWSTR(to_wide("kernel32.dll").as_ptr()))
-                .map_err(|e| format!("GetModuleHandleW failed: {}", e))?;
-            let load_library = GetProcAddress(kernel32, PSTR(b"LoadLibraryW\0".as_ptr() as *mut _))
+                .map_err(|e| format!("GetModuleHandleW failed: {e}"))?;
+            let load_library = GetProcAddress(kernel32, PSTR(c"LoadLibraryW".as_ptr().cast_mut().cast::<u8>()))
                 .ok_or("GetProcAddress LoadLibraryW failed")?;
 
             // Create remote thread to load DLL
@@ -255,19 +261,19 @@ impl HookManager {
                 process,
                 None,
                 0,
-                Some(std::mem::transmute(load_library)),
+                Some(std::mem::transmute::<unsafe extern "system" fn() -> isize, unsafe extern "system" fn(*mut std::ffi::c_void) -> u32>(load_library)),
                 Some(remote_mem),
                 0,
                 None,
             )
-            .map_err(|e| format!("CreateRemoteThread failed: {}", e))?;
+            .map_err(|e| format!("CreateRemoteThread failed: {e}"))?;
 
             // Wait for DLL to load
             let _ = WaitForSingleObject(thread, 5000);
 
             // Get the thread exit code (the DLL module handle)
             let mut exit_code = 0u32;
-            let _ = GetExitCodeThread(thread, &mut exit_code);
+            let _ = GetExitCodeThread(thread, &raw mut exit_code);
 
             // Cleanup
             let _ = VirtualFreeEx(process, remote_mem, 0, MEM_RELEASE);
@@ -311,7 +317,7 @@ impl HookManager {
         }
     }
 
-    /// Eject the DLL: remote HookUninstall (IAT restore + FreeLibrary) then unmap local view
+    /// Eject the DLL: remote `HookUninstall` (IAT restore + `FreeLibrary`) then unmap local view
     pub fn eject(&mut self) -> Result<(), String> {
         if !self.injected {
             return Ok(());
@@ -348,16 +354,16 @@ impl HookManager {
                 false,
                 pid,
             )
-            .map_err(|e| format!("OpenProcess for eject failed: {}", e))?;
+            .map_err(|e| format!("OpenProcess for eject failed: {e}"))?;
 
             // Resolve HookUninstall in *local* moon_hook.dll, then rebase to remote HMODULE.
             // Same image layout → RVA is stable across load addresses.
             let local_dll = self.find_hook_dll()?;
             let local_mod =
                 LoadLibraryW(PCWSTR(to_wide(&local_dll).as_ptr()))
-                    .map_err(|e| format!("LoadLibraryW local hook dll failed: {}", e))?;
+                    .map_err(|e| format!("LoadLibraryW local hook dll failed: {e}"))?;
 
-            let local_proc = GetProcAddress(local_mod, PSTR(b"HookUninstall\0".as_ptr() as *mut _))
+            let local_proc = GetProcAddress(local_mod, PSTR(c"HookUninstall".as_ptr().cast_mut().cast::<u8>()))
                 .ok_or_else(|| {
                     let _ = FreeLibrary(local_mod);
                     "GetProcAddress HookUninstall failed".to_string()
@@ -375,24 +381,24 @@ impl HookManager {
             if let Err(e) = GetModuleInformation(
                 local_process,
                 local_mod,
-                &mut local_info,
+                &raw mut local_info,
                 std::mem::size_of::<MODULEINFO>() as u32,
             ) {
                 let _ = FreeLibrary(local_mod);
                 let _ = CloseHandle(process);
-                return Err(format!("GetModuleInformation local failed: {}", e));
+                return Err(format!("GetModuleInformation local failed: {e}"));
             }
 
             let mut remote_info = MODULEINFO::default();
             if let Err(e) = GetModuleInformation(
                 process,
                 HMODULE(remote_module as *mut core::ffi::c_void),
-                &mut remote_info,
+                &raw mut remote_info,
                 std::mem::size_of::<MODULEINFO>() as u32,
             ) {
                 let _ = FreeLibrary(local_mod);
                 let _ = CloseHandle(process);
-                return Err(format!("GetModuleInformation remote failed: {}", e));
+                return Err(format!("GetModuleInformation remote failed: {e}"));
             }
 
             // Get full file path of local and remote module via GetModuleFileNameExW.
@@ -434,14 +440,14 @@ impl HookManager {
                 process,
                 None,
                 0,
-                Some(std::mem::transmute(remote_fn)),
+                Some(std::mem::transmute::<usize, unsafe extern "system" fn(*mut std::ffi::c_void) -> u32>(remote_fn)),
                 None,
                 0,
                 None,
             )
             .map_err(|e| {
                 let _ = CloseHandle(process);
-                format!("CreateRemoteThread HookUninstall failed: {}", e)
+                format!("CreateRemoteThread HookUninstall failed: {e}")
             })?;
 
             let _ = WaitForSingleObject(thread, 5000);
@@ -455,7 +461,7 @@ impl HookManager {
             // We surface dirty rollbacks as a warning; the caller (eject) keeps
             // the Ok contract because the DLL is freed regardless.
             let mut exit_code: u32 = 0;
-            let _ = GetExitCodeThread(thread, &mut exit_code);
+            let _ = GetExitCodeThread(thread, &raw mut exit_code);
             if exit_code == 1 {
                 tracing::warn!(
                     "[HookManager] HookUninstall reported dangling IAT slots (exit_code=1) \
@@ -509,7 +515,7 @@ impl HookManager {
             let read_span = |from: usize, to: usize, out: &mut Vec<CapturedText>| {
                 let mut offset = from.max(header_size);
                 while offset + std::mem::size_of::<TextMessage>() < to {
-                    let msg = &*(buffer.add(offset) as *const TextMessage);
+                    let msg = &*buffer.add(offset).cast::<TextMessage>();
                     if msg.length == 0 || msg.length > 65536 {
                         break; // Invalid message
                     }
@@ -593,13 +599,13 @@ impl HookManager {
     /// JSON into a typed [`HookStats`].
     ///
     /// Flow:
-    /// 1. Resolve `HookGetStats` in *local* moon_hook.dll, compute RVA.
+    /// 1. Resolve `HookGetStats` in *local* `moon_hook.dll`, compute RVA.
     /// 2. Rebase to remote module handle (validated by `compare_dll_metadata`
     ///    so we don't jump into the wrong code if the DLL was rebuilt).
-    /// 3. CreateRemoteThread to call the remote function.
-    /// 4. The thread exit code is the `const char*` returned by HookGetStats
+    /// 3. `CreateRemoteThread` to call the remote function.
+    /// 4. The thread exit code is the `const char*` returned by `HookGetStats`
     ///    (a pointer to a static buffer inside the remote process).
-    /// 5. ReadProcessMemory to read the JSON string from the remote buffer.
+    /// 5. `ReadProcessMemory` to read the JSON string from the remote buffer.
     /// 6. Parse the JSON into `HookStats`.
     ///
     /// Returns `Ok(HookStats::default())` when not injected (no-op).
@@ -623,7 +629,7 @@ impl HookManager {
                 false,
                 self.target_pid,
             )
-            .map_err(|e| format!("get_stats: OpenProcess failed: {}", e))?;
+            .map_err(|e| format!("get_stats: OpenProcess failed: {e}"))?;
 
             // Resolve HookGetStats locally, compute RVA, rebase to remote.
             let stats_result = self.remote_call_returning_pointer(
@@ -652,14 +658,14 @@ impl HookManager {
                 false,
                 self.target_pid,
             )
-            .map_err(|e| format!("get_stats: OpenProcess(read) failed: {}", e))?;
+            .map_err(|e| format!("get_stats: OpenProcess(read) failed: {e}"))?;
 
             let read_ok = ReadProcessMemory(
                 proc2,
                 json_ptr as *const _,
-                buf.as_mut_ptr() as *mut _,
+                buf.as_mut_ptr().cast(),
                 buf.len(),
-                Some(&mut bytes_read),
+                Some(&raw mut bytes_read),
             )
             .is_ok();
             let _ = CloseHandle(proc2);
@@ -671,9 +677,9 @@ impl HookManager {
             // Truncate at first NUL.
             let nul = buf.iter().position(|&b| b == 0).unwrap_or(bytes_read);
             let json_str = std::str::from_utf8(&buf[..nul])
-                .map_err(|e| format!("get_stats: invalid UTF-8 in stats JSON: {}", e))?;
+                .map_err(|e| format!("get_stats: invalid UTF-8 in stats JSON: {e}"))?;
 
-            parse_stats_json(json_str)
+            Ok(parse_stats_json(json_str))
         }
     }
 
@@ -683,13 +689,13 @@ impl HookManager {
     /// 1. Resolve the target module's base address in the remote process
     ///    (case-insensitive basename match against `code.module`).
     /// 2. Compute the absolute hook address:
-    ///    - If `is_rva(code.addr)`, hook = module_base + code.addr
+    ///    - If `is_rva(code.addr)`, hook = `module_base` + code.addr
     ///    - Otherwise, hook = code.addr (treated as absolute VA)
     /// 3. Allocate a `HookInstallParams` struct in the remote process and
-    ///    write the field values via WriteProcessMemory.
+    ///    write the field values via `WriteProcessMemory`.
     /// 4. Resolve `HookInstallAtAddressStruct` locally, compute RVA, rebase
     ///    to remote module handle.
-    /// 5. CreateRemoteThread with lpParameter = remote struct pointer.
+    /// 5. `CreateRemoteThread` with lpParameter = remote struct pointer.
     /// 6. Wait for thread exit (5s timeout), read exit code.
     /// 7. Free the remote struct memory.
     ///
@@ -717,12 +723,12 @@ impl HookManager {
                 false,
                 self.target_pid,
             )
-            .map_err(|e| format!("install_h_code: OpenProcess failed: {}", e))?;
+            .map_err(|e| format!("install_h_code: OpenProcess failed: {e}"))?;
 
             // Step 1+2: resolve absolute hook address.
             let resolved_addr = if crate::hook_code::is_rva(code.addr) {
                 // RVA into module — find module base in remote process.
-                let base = find_remote_module_base(process, self.target_pid, &code.module)?
+                let base = find_remote_module_base(process, self.target_pid, &code.module)
                     .ok_or_else(|| format!(
                         "install_h_code: module '{}' not found in target PID {}",
                         code.module, self.target_pid
@@ -757,9 +763,9 @@ impl HookManager {
             let write_ok = WriteProcessMemory(
                 process,
                 params_ptr,
-                &params as *const _ as *const _,
+                (&raw const params).cast(),
                 std::mem::size_of::<HookInstallParams>(),
-                Some(&mut written),
+                Some(&raw mut written),
             )
             .is_ok();
 
@@ -772,11 +778,11 @@ impl HookManager {
             // Step 4: resolve HookInstallAtAddressStruct in local DLL + rebase.
             let local_dll = self.find_hook_dll()?;
             let local_mod = LoadLibraryW(PCWSTR(to_wide(&local_dll).as_ptr()))
-                .map_err(|e| format!("install_h_code: LoadLibraryW failed: {}", e))?;
+                .map_err(|e| format!("install_h_code: LoadLibraryW failed: {e}"))?;
 
             let local_proc = GetProcAddress(
                 local_mod,
-                PSTR(b"HookInstallAtAddressStruct\0".as_ptr() as *mut _),
+                PSTR(c"HookInstallAtAddressStruct".as_ptr().cast_mut().cast::<u8>()),
             )
             .ok_or_else(|| {
                 let _ = FreeLibrary(local_mod);
@@ -789,26 +795,26 @@ impl HookManager {
             if let Err(e) = GetModuleInformation(
                 local_process,
                 local_mod,
-                &mut local_info,
+                &raw mut local_info,
                 std::mem::size_of::<MODULEINFO>() as u32,
             ) {
                 let _ = FreeLibrary(local_mod);
                 let _ = VirtualFreeEx(process, params_ptr, 0, MEM_RELEASE);
                 let _ = CloseHandle(process);
-                return Err(format!("install_h_code: GetModuleInformation local failed: {}", e));
+                return Err(format!("install_h_code: GetModuleInformation local failed: {e}"));
             }
 
             let mut remote_info = MODULEINFO::default();
             if let Err(e) = GetModuleInformation(
                 process,
                 HMODULE(self.remote_module as *mut _),
-                &mut remote_info,
+                &raw mut remote_info,
                 std::mem::size_of::<MODULEINFO>() as u32,
             ) {
                 let _ = FreeLibrary(local_mod);
                 let _ = VirtualFreeEx(process, params_ptr, 0, MEM_RELEASE);
                 let _ = CloseHandle(process);
-                return Err(format!("install_h_code: GetModuleInformation remote failed: {}", e));
+                return Err(format!("install_h_code: GetModuleInformation remote failed: {e}"));
             }
 
             let local_path = module_file_path(local_process, local_mod);
@@ -846,7 +852,7 @@ impl HookManager {
                 process,
                 None,
                 0,
-                Some(std::mem::transmute(remote_fn)),
+                Some(std::mem::transmute::<usize, unsafe extern "system" fn(*mut std::ffi::c_void) -> u32>(remote_fn)),
                 Some(params_ptr),
                 0,
                 None,
@@ -854,13 +860,13 @@ impl HookManager {
             .map_err(|e| {
                 let _ = VirtualFreeEx(process, params_ptr, 0, MEM_RELEASE);
                 let _ = CloseHandle(process);
-                format!("install_h_code: CreateRemoteThread failed: {}", e)
+                format!("install_h_code: CreateRemoteThread failed: {e}")
             })?;
 
             // Step 6: wait + read exit code.
             let _ = WaitForSingleObject(thread, 5000);
             let mut exit_code = 0u32;
-            let _ = GetExitCodeThread(thread, &mut exit_code);
+            let _ = GetExitCodeThread(thread, &raw mut exit_code);
             let _ = CloseHandle(thread);
 
             // Step 7: free remote params memory.
@@ -874,7 +880,7 @@ impl HookManager {
                 2 => "VirtualProtect failed (target not writable)".to_string(),
                 3 => "trampoline allocation failed".to_string(),
                 4 => "unsupported architecture".to_string(),
-                other => format!("unknown error code {}", other),
+                other => format!("unknown error code {other}"),
             };
 
             Ok(HookInstallResult {
@@ -889,10 +895,10 @@ impl HookManager {
     /// 4b: Helper for `get_stats()` — call a remote DLL export that returns
     /// a `const char*` (pointer to static buffer). Returns the pointer as
     /// a `usize` (the thread exit code). Caller is responsible for
-    /// ReadProcessMemory on the returned pointer.
+    /// `ReadProcessMemory` on the returned pointer.
     ///
-    /// SAFETY: Caller must ensure `process` has PROCESS_CREATE_THREAD +
-    /// PROCESS_VM_READ permissions, and `remote_module` is a valid HMODULE
+    /// SAFETY: Caller must ensure `process` has `PROCESS_CREATE_THREAD` +
+    /// `PROCESS_VM_READ` permissions, and `remote_module` is a valid HMODULE
     /// in `process`. The function name must be a NUL-terminated ASCII string.
     unsafe fn remote_call_returning_pointer(
         &self,
@@ -904,9 +910,9 @@ impl HookManager {
         // Resolve export locally, compute RVA, rebase to remote.
         let local_dll = self.find_hook_dll()?;
         let local_mod = LoadLibraryW(PCWSTR(to_wide(&local_dll).as_ptr()))
-            .map_err(|e| format!("LoadLibraryW local hook dll failed: {}", e))?;
+            .map_err(|e| format!("LoadLibraryW local hook dll failed: {e}"))?;
 
-        let local_proc = GetProcAddress(local_mod, PSTR(export_name.as_ptr() as *mut _))
+        let local_proc = GetProcAddress(local_mod, PSTR(export_name.as_ptr().cast_mut()))
             .ok_or_else(|| {
                 let _ = FreeLibrary(local_mod);
                 format!(
@@ -921,22 +927,22 @@ impl HookManager {
         if let Err(e) = GetModuleInformation(
             local_process,
             local_mod,
-            &mut local_info,
+            &raw mut local_info,
             std::mem::size_of::<MODULEINFO>() as u32,
         ) {
             let _ = FreeLibrary(local_mod);
-            return Err(format!("GetModuleInformation local failed: {}", e));
+            return Err(format!("GetModuleInformation local failed: {e}"));
         }
 
         let mut remote_info = MODULEINFO::default();
         if let Err(e) = GetModuleInformation(
             process,
             HMODULE(remote_module as *mut _),
-            &mut remote_info,
+            &raw mut remote_info,
             std::mem::size_of::<MODULEINFO>() as u32,
         ) {
             let _ = FreeLibrary(local_mod);
-            return Err(format!("GetModuleInformation remote failed: {}", e));
+            return Err(format!("GetModuleInformation remote failed: {e}"));
         }
 
         let local_path = module_file_path(local_process, local_mod);
@@ -973,16 +979,16 @@ impl HookManager {
             process,
             None,
             0,
-            Some(std::mem::transmute(remote_fn)),
+            Some(std::mem::transmute::<usize, unsafe extern "system" fn(*mut std::ffi::c_void) -> u32>(remote_fn)),
             None,
             0,
             None,
         )
-        .map_err(|e| format!("CreateRemoteThread failed: {}", e))?;
+        .map_err(|e| format!("CreateRemoteThread failed: {e}"))?;
 
         let _ = WaitForSingleObject(thread, 5000);
         let mut exit_code = 0u32;
-        let _ = GetExitCodeThread(thread, &mut exit_code);
+        let _ = GetExitCodeThread(thread, &raw mut exit_code);
         let _ = CloseHandle(thread);
 
         Ok(exit_code as usize)
@@ -990,7 +996,7 @@ impl HookManager {
 
     // --- Internal helpers ---
 
-    /// Whether moon_hook.dll is discoverable (for UI preflight).
+    /// Whether `moon_hook.dll` is discoverable (for UI preflight).
     pub fn dll_available(&self) -> bool {
         self.find_hook_dll().is_ok()
     }
@@ -1000,11 +1006,12 @@ impl HookManager {
         self.find_hook_dll().ok()
     }
 
+#[allow(clippy::unused_self)]
     fn find_hook_dll(&self) -> Result<String, String> {
         // Look for moon_hook.dll next to the exe (release bundle), then dev build outputs.
         let exe_dir = std::env::current_exe()
             .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
             .unwrap_or_default();
 
         let mut candidates = vec![
@@ -1050,7 +1057,7 @@ impl HookManager {
                     .unwrap_or_else(|_| candidate.clone())
                     .to_str()
                     .ok_or_else(|| "Invalid path".to_string())
-                    .map(|s| s.to_string());
+                    .map(std::string::ToString::to_string);
             }
         }
 
@@ -1069,11 +1076,11 @@ impl HookManager {
             let name = shared_memory_name(pid);
             let name_wide = to_wide(&name);
             let handle = OpenFileMappingW(
-                FILE_MAP_ALL_ACCESS.0 as u32,
+                FILE_MAP_ALL_ACCESS.0,
                 false,
                 PCWSTR(name_wide.as_ptr()),
             )
-            .map_err(|e| format!("OpenFileMappingW({}) failed: {}", name, e))?;
+            .map_err(|e| format!("OpenFileMappingW({name}) failed: {e}"))?;
 
             let view = MapViewOfFile(handle, FILE_MAP_ALL_ACCESS, 0, 0, SHARED_MEMORY_SIZE);
 
@@ -1084,7 +1091,7 @@ impl HookManager {
 
             self.shared_mem = handle;
             self.shared_view = view;
-            self.shared_data = view.Value as *mut SharedMemoryHeader;
+            self.shared_data = view.Value.cast::<SharedMemoryHeader>();
 
             // Verify magic
             if (*self.shared_data).magic != SHARED_MEMORY_MAGIC {
@@ -1138,15 +1145,15 @@ unsafe fn find_remote_module_base(
     process: HANDLE,
     _pid: u32,
     target_basename: &str,
-) -> Result<Option<usize>, String> {
+) -> Option<usize> {
     use windows::Win32::System::ProcessStatus::EnumProcessModules;
 
     let mut mods: [HMODULE; 1024] = [HMODULE::default(); 1024];
     let mut needed = 0u32;
-    if EnumProcessModules(process, mods.as_mut_ptr(), std::mem::size_of_val(&mods) as u32, &mut needed)
+    if EnumProcessModules(process, mods.as_mut_ptr(), std::mem::size_of_val(&mods) as u32, &raw mut needed)
         .is_err()
     {
-        return Ok(None);
+        return None;
     }
     let count = (needed as usize / std::mem::size_of::<HMODULE>()).min(mods.len());
 
@@ -1158,13 +1165,13 @@ unsafe fn find_remote_module_base(
         let path = module_file_path(process, *m);
         if let Some(path) = path {
             // Extract basename (handle both \ and /).
-            let basename = path.rsplit(|c| c == '\\' || c == '/').next().unwrap_or("");
+            let basename = path.rsplit(['\\', '/']).next().unwrap_or("");
             if basename.to_ascii_lowercase() == target_lower {
-                return Ok(Some(m.0 as usize));
+                return Some(m.0 as usize);
             }
         }
     }
-    Ok(None)
+    None
 }
 
 // ── 4b: HookStats JSON parser ─────────────────────────────────────────
@@ -1174,7 +1181,7 @@ unsafe fn find_remote_module_base(
 /// We use a tiny hand-rolled parser instead of pulling in `serde_json` for
 /// a single fixed-shape object — the DLL's output format is stable and
 /// documented in `hook_text.cpp::HookGetStats`.
-fn parse_stats_json(json: &str) -> Result<HookStats, String> {
+fn parse_stats_json(json: &str) -> HookStats {
     let mut stats = HookStats::default();
     // Strip braces.
     let inner = json.trim().trim_start_matches('{').trim_end_matches('}');
@@ -1197,7 +1204,7 @@ fn parse_stats_json(json: &str) -> Result<HookStats, String> {
             _ => {}
         }
     }
-    Ok(stats)
+    stats
 }
 
 fn parse_u64(s: &str) -> u64 {
@@ -1211,7 +1218,7 @@ mod stats_parser_tests {
     #[test]
     fn parse_full_stats_json() {
         let json = r#"{"modulesScanned":42,"iatHits":128,"lateLoadedPatched":3,"sendTextCalls":1024,"sendTextFiltered":200,"sendTextEjectBlocked":0,"inlineHooks":2,"hooksInstalled":true,"ldrCookie":true}"#;
-        let stats = parse_stats_json(json).unwrap();
+        let stats = parse_stats_json(json);
         assert_eq!(stats.modules_scanned, 42);
         assert_eq!(stats.iat_hits, 128);
         assert_eq!(stats.late_loaded_patched, 3);
@@ -1226,7 +1233,7 @@ mod stats_parser_tests {
     #[test]
     fn parse_stats_after_eject() {
         let json = r#"{"modulesScanned":42,"iatHits":128,"lateLoadedPatched":3,"sendTextCalls":1024,"sendTextFiltered":200,"sendTextEjectBlocked":5,"inlineHooks":0,"hooksInstalled":false,"ldrCookie":false}"#;
-        let stats = parse_stats_json(json).unwrap();
+        let stats = parse_stats_json(json);
         assert_eq!(stats.send_text_eject_blocked, 5);
         assert!(!stats.hooks_installed);
         assert!(!stats.ldr_cookie);
@@ -1234,7 +1241,7 @@ mod stats_parser_tests {
 
     #[test]
     fn parse_stats_empty_object() {
-        let stats = parse_stats_json("{}").unwrap();
+        let stats = parse_stats_json("{}");
         assert_eq!(stats.modules_scanned, 0);
         assert!(!stats.hooks_installed);
     }
@@ -1242,7 +1249,7 @@ mod stats_parser_tests {
     #[test]
     fn parse_stats_with_whitespace() {
         let json = r#"{"modulesScanned":  7 , "iatHits": 11}"#;
-        let stats = parse_stats_json(json).unwrap();
+        let stats = parse_stats_json(json);
         assert_eq!(stats.modules_scanned, 7);
         assert_eq!(stats.iat_hits, 11);
     }
@@ -1250,7 +1257,7 @@ mod stats_parser_tests {
     #[test]
     fn parse_stats_unknown_field_ignored() {
         let json = r#"{"modulesScanned":1,"unknownField":"ignore me"}"#;
-        let stats = parse_stats_json(json).unwrap();
+        let stats = parse_stats_json(json);
         assert_eq!(stats.modules_scanned, 1);
     }
 
@@ -1265,7 +1272,7 @@ mod stats_parser_tests {
 // ── S5-5: remote_uninstall RVA safety helpers ──────────────────────────
 
 /// Get the full file path of a loaded module in a (possibly remote) process.
-/// Returns None if GetModuleFileNameExW fails or yields an empty/non-UTF8 path.
+/// Returns None if `GetModuleFileNameExW` fails or yields an empty/non-UTF8 path.
 /// Used to compare the local and remote hook DLL file paths before rebasing RVA.
 fn module_file_path(process: HANDLE, module: HMODULE) -> Option<String> {
     // SAFETY: GetModuleFileNameExW writes into a caller-provided buffer; we
@@ -1286,14 +1293,14 @@ fn module_file_path(process: HANDLE, module: HMODULE) -> Option<String> {
 /// 1. `SizeOfImage` (always available) — catches most rebuilds because
 ///    section layout changes ripple through the image size.
 /// 2. File path equality (when both paths are available) — catches the
-///    edge case where SizeOfImage coincidentally matches across builds.
+///    edge case where `SizeOfImage` coincidentally matches across builds.
 /// 3. File size on disk (when both paths stat successfully) — catches
 ///    same-path-different-content (e.g. local rebuild overwrote the DLL
 ///    the remote process loaded earlier).
 ///
 /// Returns `Ok(())` if all available signals match, `Err(message)` on any
 /// mismatch. Missing signals (None) are skipped — they don't fail the check
-/// but also don't contribute confidence. At minimum SizeOfImage is required.
+/// but also don't contribute confidence. At minimum `SizeOfImage` is required.
 fn compare_dll_metadata(
     local_path: Option<&str>,
     local_file_size: Option<u64>,
@@ -1305,8 +1312,7 @@ fn compare_dll_metadata(
     // 1. SizeOfImage — always present, mandatory check.
     if local_image_size != remote_image_size {
         return Err(format!(
-            "DLL image size mismatch (local={} vs remote={}) — possible version mismatch, refusing RVA rebase",
-            local_image_size, remote_image_size
+            "DLL image size mismatch (local={local_image_size} vs remote={remote_image_size}) — possible version mismatch, refusing RVA rebase"
         ));
     }
 
@@ -1315,8 +1321,7 @@ fn compare_dll_metadata(
         // Case-insensitive on Windows (NTFS is case-insensitive by default).
         if !lp.eq_ignore_ascii_case(rp) {
             return Err(format!(
-                "DLL path mismatch (local='{}' vs remote='{}') — refusing RVA rebase",
-                lp, rp
+                "DLL path mismatch (local='{lp}' vs remote='{rp}') — refusing RVA rebase"
             ));
         }
     }
@@ -1325,8 +1330,7 @@ fn compare_dll_metadata(
     if let (Some(ls), Some(rs)) = (local_file_size, remote_file_size) {
         if ls != rs {
             return Err(format!(
-                "DLL file size mismatch (local={} vs remote={}) — same path but different content, refusing RVA rebase",
-                ls, rs
+                "DLL file size mismatch (local={ls} vs remote={rs}) — same path but different content, refusing RVA rebase"
             ));
         }
     }
@@ -1400,8 +1404,8 @@ mod s5_5_tests {
     #[test]
     fn file_size_match_passes() {
         assert!(compare_dll_metadata(
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
         )
         .is_ok());
     }
@@ -1409,8 +1413,8 @@ mod s5_5_tests {
     #[test]
     fn file_size_mismatch_fails() {
         let err = compare_dll_metadata(
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
-            Some("C:\\app\\moon_hook.dll"), Some(789012), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(789_012), 0x50000,
         )
         .unwrap_err();
         assert!(err.contains("file size mismatch"), "got: {err}");
@@ -1421,7 +1425,7 @@ mod s5_5_tests {
     fn missing_file_size_skips_size_check() {
         // File stat may fail (e.g. file deleted after load); should not fail the check.
         assert!(compare_dll_metadata(
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
             Some("C:\\app\\moon_hook.dll"), None, 0x50000,
         )
         .is_ok());
@@ -1432,8 +1436,8 @@ mod s5_5_tests {
     #[test]
     fn all_three_signals_match_passes() {
         assert!(compare_dll_metadata(
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
         )
         .is_ok());
     }
@@ -1442,8 +1446,8 @@ mod s5_5_tests {
     fn image_size_mismatch_short_circuits_before_path_check() {
         // Even if paths match, SizeOfImage mismatch should fail first.
         let err = compare_dll_metadata(
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x50000,
-            Some("C:\\app\\moon_hook.dll"), Some(123456), 0x60000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x50000,
+            Some("C:\\app\\moon_hook.dll"), Some(123_456), 0x60000,
         )
         .unwrap_err();
         assert!(err.contains("image size mismatch"), "got: {err}");

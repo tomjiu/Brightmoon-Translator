@@ -1,4 +1,4 @@
-//! Global low-level mouse/keyboard hook (WH_MOUSE_LL / WH_KEYBOARD_LL).
+//! Global low-level mouse/keyboard hook (`WH_MOUSE_LL` / `WH_KEYBOARD_LL`).
 //! Ported from Easydict `MouseHookService.cs` — real edge detection, not polling.
 
 #![cfg(windows)]
@@ -23,7 +23,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// Match clipboard synthetic marker — keyboard hook ignores our Ctrl+C.
 pub const MOON_SYNTHETIC_KEY: usize = 0x4D4F_4F4E; // "MOON"
 
-/// Default matches Easydict MinDragDistance; live value from `SelectionUxConfig.min_drag_px`.
+/// Default matches Easydict `MinDragDistance`; live value from `SelectionUxConfig.min_drag_px`.
 static MIN_DRAG_PX: AtomicU32 = AtomicU32::new(10);
 const MAX_CLICK_DISTANCE: i32 = 4;
 
@@ -50,7 +50,7 @@ struct HookState {
     tx: Sender<MouseHookEvent>,
     /// S2-1: thread ID of the message-loop thread. Stored so `uninstall()`
     /// can `PostThreadMessageW(WM_QUIT)` to break the blocking `GetMessageW`
-    /// loop — previously the thread leaked because GetMessageW never returns
+    /// loop — previously the thread leaked because `GetMessageW` never returns
     /// without a posted message, even after the hooks were unhooked.
     thread_id: u32,
 }
@@ -91,9 +91,9 @@ impl DragDetector {
         if !self.left_down || self.dragging {
             return;
         }
-        let dx = (pt.x as i64) - (self.start.x as i64);
-        let dy = (pt.y as i64) - (self.start.y as i64);
-        let min = MIN_DRAG_PX.load(Ordering::SeqCst).max(1) as i64;
+        let dx = i64::from(pt.x) - i64::from(self.start.x);
+        let dy = i64::from(pt.y) - i64::from(self.start.y);
+        let min = i64::from(MIN_DRAG_PX.load(Ordering::SeqCst).max(1));
         if dx * dx + dy * dy >= min * min {
             self.dragging = true;
         }
@@ -128,9 +128,9 @@ impl MultiClickDetector {
         let elapsed_ms = self.last_at.elapsed().as_millis().min(u128::from(u32::MAX)) as u32;
         let within = if self.has_last {
             // i64 to avoid debug overflow (never use i32::MIN sentinel)
-            let dx = (pt.x as i64) - (self.last_pt.x as i64);
-            let dy = (pt.y as i64) - (self.last_pt.y as i64);
-            dx * dx + dy * dy <= (MAX_CLICK_DISTANCE as i64) * (MAX_CLICK_DISTANCE as i64)
+            let dx = i64::from(pt.x) - i64::from(self.last_pt.x);
+            let dy = i64::from(pt.y) - i64::from(self.last_pt.y);
+            dx * dx + dy * dy <= i64::from(MAX_CLICK_DISTANCE) * i64::from(MAX_CLICK_DISTANCE)
         } else {
             false
         };
@@ -169,7 +169,7 @@ fn detectors() -> std::sync::MutexGuard<'static, Detectors> {
         })
     })
     .lock()
-    .unwrap_or_else(|e| e.into_inner())
+    .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn emit(ev: MouseHookEvent) {
@@ -276,7 +276,7 @@ fn process_mouse(message: u32, pt: POINT) {
                     drop(det);
                     // P1 fix: cap at 300ms — dct+50 (700ms+ total) was too slow,
                     // users thought double-click had no response.
-                    let delay = (dct as u64).min(300);
+                    let delay = u64::from(dct).min(300);
                     let sp = ScreenPoint { x: pt.x, y: pt.y };
                     thread::spawn(move || {
                         thread::sleep(Duration::from_millis(delay));
@@ -323,8 +323,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
                 LAST_KEY_TICK.store(
                     std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis() as u32)
-                        .unwrap_or(0),
+                        .map_or(0, |d| d.as_millis() as u32),
                     Ordering::SeqCst,
                 );
                 emit(MouseHookEvent::KeyDown);
@@ -366,14 +365,13 @@ pub fn key_pressed_within_ms(ms: u64) -> bool {
     }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u32)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_millis() as u32);
     now.saturating_sub(last) < ms as u32
 }
 
-/// Update min drag distance used by WH_MOUSE_LL drag detector (settings hot-reload).
+/// Update min drag distance used by `WH_MOUSE_LL` drag detector (settings hot-reload).
 pub fn set_min_drag_px(px: u32) {
-    MIN_DRAG_PX.store(px.max(1).min(200), Ordering::SeqCst);
+    MIN_DRAG_PX.store(px.clamp(1, 200), Ordering::SeqCst);
 }
 
 pub fn min_drag_px() -> u32 {
@@ -435,9 +433,9 @@ pub fn install() -> Option<Receiver<MouseHookEvent>> {
             tracing::info!("[mouse_hook] WH_MOUSE_LL + WH_KEYBOARD_LL installed");
 
             let mut msg = MSG::default();
-            while GetMessageW(&mut msg, HWND(std::ptr::null_mut()), 0, 0).into() {
-                let _ = TranslateMessage(&msg);
-                DispatchMessageW(&msg);
+            while GetMessageW(&raw mut msg, HWND(std::ptr::null_mut()), 0, 0).into() {
+                let _ = TranslateMessage(&raw const msg);
+                DispatchMessageW(&raw const msg);
             }
 
             if let Ok(mut g) = HOOK_STATE.lock() {

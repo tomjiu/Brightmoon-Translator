@@ -12,6 +12,12 @@ struct YandexResponse {
     text: Vec<String>,
 }
 
+impl Default for YandexEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl YandexEngine {
     pub fn new() -> Self {
         Self {
@@ -32,7 +38,7 @@ impl TranslationEngine for YandexEngine {
         let lang = if from == "auto" {
             to.to_string()
         } else {
-            format!("{}-{}", from, to)
+            format!("{from}-{to}")
         };
 
         let url = "https://translate.api.translator.net/yandex.json";
@@ -53,7 +59,7 @@ impl TranslationEngine for YandexEngine {
         Ok(translated)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Yandex"
     }
 

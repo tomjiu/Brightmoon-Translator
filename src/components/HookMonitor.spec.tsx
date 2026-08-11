@@ -126,7 +126,6 @@ describe('HookMonitor overlay defaults', () => {
       loaded: true,
       saved: false,
       cacheSize: 0,
-      cacheStats: null,
     });
   });
 
@@ -176,7 +175,6 @@ describe('HookMonitor browser runtime', () => {
       loaded: true,
       saved: false,
       cacheSize: 0,
-      cacheStats: null,
     });
   });
 

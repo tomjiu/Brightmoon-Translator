@@ -1,4 +1,4 @@
-//! Tencent TranSmart free API — pot transmart service.
+//! Tencent `TranSmart` free API — pot transmart service.
 
 use super::TranslationEngine;
 use async_trait::async_trait;
@@ -6,6 +6,12 @@ use reqwest::Client;
 
 pub struct TransmartEngine {
     client: Client,
+}
+
+impl Default for TransmartEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TransmartEngine {
@@ -72,7 +78,7 @@ impl TranslationEngine for TransmartEngine {
         Ok(out.trim().to_string())
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "TranSmart"
     }
 

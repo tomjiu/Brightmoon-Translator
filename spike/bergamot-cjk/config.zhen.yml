@@ -1,0 +1,12 @@
+models:
+  - model.zhen.intgemm.alphas.bin
+vocabs:
+  - vocab.zhen.spm
+  - vocab.zhen.spm
+shortlist:
+  - lex.50.50.zhen.s2t.bin
+ssplit-mode: paragraph
+max-length-break: 128
+mini-batch-words: 1024
+alignment: soft
+max-length-factor: 2.0

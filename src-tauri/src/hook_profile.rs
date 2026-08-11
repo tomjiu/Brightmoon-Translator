@@ -75,7 +75,7 @@ impl HookProfileManager {
     }
 
     fn save(&self) {
-        let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
+        let store = self.store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let path = config_path();
         match serde_json::to_string_pretty(&*store) {
             Ok(data) => {
@@ -92,13 +92,13 @@ impl HookProfileManager {
     pub fn get_all(&self) -> Vec<HookProfile> {
         self.store
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .profiles
             .clone()
     }
 
     pub fn get_active(&self) -> Option<HookProfile> {
-        let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
+        let store = self.store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(ref id) = store.active_profile_id {
             store.profiles.iter().find(|p| &p.id == id).cloned()
         } else {
@@ -109,7 +109,7 @@ impl HookProfileManager {
     pub fn get_active_id(&self) -> Option<String> {
         self.store
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .active_profile_id
             .clone()
     }
@@ -128,7 +128,7 @@ impl HookProfileManager {
             last_used: None,
         };
 
-        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
+        let mut store = self.store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         store.profiles.push(profile.clone());
         drop(store);
         self.save();
@@ -137,7 +137,7 @@ impl HookProfileManager {
     }
 
     pub fn update(&self, id: &str, updates: HookProfileUpdate) {
-        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
+        let mut store = self.store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(profile) = store.profiles.iter_mut().find(|p| p.id == id) {
             if let Some(name) = updates.name {
                 profile.name = name;
@@ -166,7 +166,7 @@ impl HookProfileManager {
     }
 
     pub fn delete(&self, id: &str) {
-        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
+        let mut store = self.store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         store.profiles.retain(|p| p.id != id);
         if store.active_profile_id.as_deref() == Some(id) {
             store.active_profile_id = None;
@@ -176,8 +176,8 @@ impl HookProfileManager {
     }
 
     pub fn activate(&self, id: Option<&str>) {
-        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        store.active_profile_id = id.map(|s| s.to_string());
+        let mut store = self.store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        store.active_profile_id = id.map(std::string::ToString::to_string);
 
         // Update last_used timestamp
         if let Some(id) = id {
@@ -192,7 +192,7 @@ impl HookProfileManager {
 
     /// Find a profile that matches the given process name or window title
     pub fn auto_match(&self, process_name: &str, window_title: &str) -> Option<HookProfile> {
-        let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
+        let store = self.store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 
         // First try to match by process name
         for profile in &store.profiles {

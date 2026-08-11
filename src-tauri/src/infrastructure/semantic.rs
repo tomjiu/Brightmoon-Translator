@@ -13,7 +13,7 @@ use std::collections::HashMap;
 pub struct SemanticVector {
     /// 维度
     pub dim: usize,
-    /// 稀疏向量（feature_id -> 权重）
+    /// `稀疏向量（feature_id` -> 权重）
     pub weights: HashMap<u32, f32>,
 }
 
@@ -73,7 +73,7 @@ pub fn build_vector(text: &str, dim: usize) -> SemanticVector {
 fn fnv1a(bytes: &[u8]) -> u32 {
     let mut hash: u32 = 0x811c_9dc5;
     for &b in bytes {
-        hash ^= b as u32;
+        hash ^= u32::from(b);
         hash = hash.wrapping_mul(0x0100_0193);
     }
     hash
@@ -91,7 +91,7 @@ impl SemanticVector {
             (&other.weights, &self.weights)
         };
         let mut dot = 0.0f32;
-        for (k, v) in small.iter() {
+        for (k, v) in small {
             if let Some(v2) = large.get(k) {
                 dot += v * v2;
             }
@@ -120,13 +120,13 @@ pub async fn upsert_embedding(
 ) -> Result<()> {
     let json = vector.to_json()?;
     sqlx::query(
-        r#"
+        r"
         INSERT INTO embeddings (word, source, vector, dim, created_at)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(word, source) DO UPDATE SET
             vector = excluded.vector,
             dim = excluded.dim
-        "#,
+        ",
     )
     .bind(word)
     .bind(source)
@@ -172,8 +172,7 @@ pub async fn load_embeddings(
 
     let placeholders = vec!["?"; words.len()].join(",");
     let sql = format!(
-        "SELECT word, vector FROM embeddings WHERE word IN ({}) AND source = ?",
-        placeholders
+        "SELECT word, vector FROM embeddings WHERE word IN ({placeholders}) AND source = ?"
     );
     let mut q = sqlx::query(&sql);
     for w in words {

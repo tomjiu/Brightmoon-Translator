@@ -10,6 +10,8 @@ import {
   Download,
   TrendingDown,
   Minus,
+  Heart,
+  Star,
 } from 'lucide-react';
 import { WordDetailModal } from './WordDetailModal';
 import {
@@ -31,6 +33,12 @@ import {
   resolveWeakPoint,
   type WeakPointWord,
 } from '../../services/vocabulary';
+import {
+  getUserPreferences,
+  getInferredWeakFields,
+  type FieldPreference,
+  type InferredWeakField,
+} from '../../services/preference';
 import { useToastStore } from '../../stores/toastStore';
 
 export const LearningStatsDashboard: FC = () => {
@@ -42,6 +50,8 @@ export const LearningStatsDashboard: FC = () => {
   const [weakPointWords, setWeakPointWords] = useState<WeakPointWord[]>([]);
   const [retentionCurve, setRetentionCurve] = useState<RetentionPoint[]>([]);
   const [forecast, setForecast] = useState<ForecastPoint[]>([]);
+  const [preferences, setPreferences] = useState<FieldPreference[]>([]);
+  const [inferredWeak, setInferredWeak] = useState<InferredWeakField[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
@@ -56,13 +66,15 @@ export const LearningStatsDashboard: FC = () => {
       setRefreshing(true);
       const currentYear = new Date().getFullYear();
 
-      const [statsData, activityData, heatmapData, weakWordsData, weakPointWordsData] =
+      const [statsData, activityData, heatmapData, weakWordsData, weakPointWordsData, prefs, inferred] =
         await Promise.all([
           getLearningStatistics(),
           getDailyActivity(30),
           getHeatmapData(currentYear),
           getWeakWords(10),
           getWeakPointWords(20),
+          getUserPreferences(),
+          getInferredWeakFields(),
         ]);
 
       // 并行获取新图表数据（不阻塞主流程）
@@ -78,6 +90,8 @@ export const LearningStatsDashboard: FC = () => {
       setHeatmapData(heatmapData);
       setWeakWords(weakWordsData);
       setWeakPointWords(weakPointWordsData);
+      setPreferences(prefs);
+      setInferredWeak(inferred);
     } catch (error) {
       console.error('加载统计数据失败:', error);
     } finally {
@@ -219,6 +233,63 @@ export const LearningStatsDashboard: FC = () => {
         <DetailCard label="连续学习天数" value={`${stats.streakDays} 天`} icon="🔥" />
         <DetailCard label="记忆保持率" value={`${stats.retentionRate.toFixed(1)}%`} icon="📊" />
         <DetailCard label="总复习次数" value={stats.totalReviews} icon="✅" />
+      </div>
+
+      {/* T12: 偏好概览 */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Heart className="w-5 h-5 text-pink-400" />
+          偏好概览
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Star className="w-4 h-4 text-yellow-400" />
+              <h4 className="text-sm font-medium text-gray-300">表达偏好</h4>
+            </div>
+            <div className="space-y-2 text-sm">
+              {preferences.map((p) => (
+                <div key={p.field} className="flex items-center justify-between">
+                  <span className="text-gray-300">{p.field}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <Star
+                          key={i}
+                          size={12}
+                          className={
+                            i <= Math.round(p.avgRating)
+                              ? 'text-yellow-400 fill-current'
+                              : 'text-gray-600'
+                          }
+                        />
+                      ))}
+                    </div>
+                    <span className="text-gray-400">×{p.ratedCount}</span>
+                  </div>
+                </div>
+              ))}
+              {preferences.length === 0 && (
+                <p className="text-gray-500">暂无评分，打开词详情给 AI 内容打分</p>
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <AlertCircle className="w-4 h-4 text-red-400" />
+              <h4 className="text-sm font-medium text-gray-300">观察偏好</h4>
+            </div>
+            <div className="space-y-2 text-sm">
+              {inferredWeak.map((w) => (
+                <div key={w.field} className="flex items-center justify-between">
+                  <span className="text-gray-300">{w.field}</span>
+                  <span className="text-red-400">{Math.round(w.strength * 100)}% 错误率</span>
+                </div>
+              ))}
+              {inferredWeak.length === 0 && <p className="text-gray-500">暂无弱项，继续保持</p>}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Heatmap */}

@@ -85,7 +85,7 @@ impl TranslationEngine for BaiduEngine {
         Ok(translated)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Baidu"
     }
 

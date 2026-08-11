@@ -1,7 +1,7 @@
 //! Clipboard selection via synthetic Ctrl+C.
 //! Ported patterns from:
-//! - Easydict TextSelectionService (ClipWait, non-text suppress, restore matrix)
-//! - STranslate ClipboardHelper (modifier flush, multi-format text, OpenClipboard retry)
+//! - Easydict `TextSelectionService` (`ClipWait`, non-text suppress, restore matrix)
+//! - `STranslate` `ClipboardHelper` (modifier flush, multi-format text, `OpenClipboard` retry)
 
 use super::process_class::{foreground_process, normalize_process_name};
 use super::{SelectionProvider, SelectionResult};
@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// Easydict ClipWait classification.
+/// Easydict `ClipWait` classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClipWaitResult {
     Success,
@@ -25,7 +25,7 @@ pub(crate) enum ClipboardOpenError {
     OpenFailed,
 }
 
-/// Easydict ResolveClipboardRestore.
+/// Easydict `ResolveClipboardRestore`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClipboardRestoreAction {
     None,
@@ -49,7 +49,7 @@ const CLIPWAIT_ELECTRON_MS: u64 = 600; // Easydict Electron (P1: 1200ms was too 
 const CLIPWAIT_POLL_MS: u64 = 10;
 
 fn with_stats<R>(f: impl FnOnce(&mut HashMap<String, ProcessClipStats>) -> R) -> R {
-    let mut guard = PROCESS_STATS.lock().unwrap_or_else(|e| e.into_inner());
+    let mut guard = PROCESS_STATS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if guard.is_none() {
         *guard = Some(HashMap::new());
     }
@@ -62,8 +62,7 @@ pub fn is_process_clipboard_suppressed(process_name: &str) -> bool {
     with_stats(|map| {
         map.get(&key)
             .and_then(|s| s.suppressed_until)
-            .map(|until| Instant::now() < until)
-            .unwrap_or(false)
+            .is_some_and(|until| Instant::now() < until)
     })
 }
 
@@ -202,7 +201,7 @@ fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOp
     // hook monitor) for the Ctrl+C capture window.
     let _clip_lock = crate::clipboard_dedupe::clipboard_lock()
         .lock()
-        .unwrap_or_else(|e| e.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
 
     // Defense-in-depth: never deliver a synthetic Ctrl+C to a terminal window.
     // Even though manager routes terminals to UIA-only, an independent caller
@@ -249,13 +248,10 @@ fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOp
 
     let fg = foreground_process();
     let process_name = fg
-        .as_ref()
-        .map(|p| p.process_name.clone())
-        .unwrap_or_else(|| "unknown".into());
+        .as_ref().map_or_else(|| "unknown".into(), |p| p.process_name.clone());
     let is_electron_or_browser = fg
         .as_ref()
-        .map(|p| p.is_electron || p.is_browser)
-        .unwrap_or(false);
+        .is_some_and(|p| p.is_electron || p.is_browser);
 
     if is_process_clipboard_suppressed(&process_name) {
         tracing::debug!(
@@ -362,9 +358,13 @@ fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOp
             // inline read while open
             let t = if IsClipboardFormatAvailable(CF_UNICODETEXT) != 0 {
                 let h = GetClipboardData(CF_UNICODETEXT);
-                if !h.is_null() {
+                if h.is_null() {
+                    None
+                } else {
                     let p = GlobalLock(h);
-                    if !p.is_null() {
+                    if p.is_null() {
+                        None
+                    } else {
                         let size = GlobalSize(h);
                         let out = if size > 2 {
                             let slice = std::slice::from_raw_parts(p as *const u16, size / 2);
@@ -378,11 +378,7 @@ fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOp
                         };
                         GlobalUnlock(h);
                         out
-                    } else {
-                        None
                     }
-                } else {
-                    None
                 }
             } else if IsClipboardFormatAvailable(CF_TEXT) != 0 {
                 read_ansi_or_oem(CF_TEXT, false)
@@ -394,7 +390,7 @@ fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOp
             None
         };
         CloseClipboard();
-        let usable = text.as_ref().map(|t| !t.trim().is_empty()).unwrap_or(false);
+        let usable = text.as_ref().is_some_and(|t| !t.trim().is_empty());
         Ok((usable, text, formats))
     }
 
@@ -472,10 +468,7 @@ fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOp
             if GetClipboardSequenceNumber() != seq_before {
                 // S5-6: if open_clipboard fails mid-loop (another process
                 // holds the lock), bail out and let UIA handle it.
-                let (usable, text, formats) = match probe_clipboard() {
-                    Ok(v) => v,
-                    Err(e) => return Err(e),
-                };
+                let (usable, text, formats) = probe_clipboard()?;
                 if usable {
                     selected = text.map(|t| t.trim().to_string());
                     wait = ClipWaitResult::Success;
@@ -552,8 +545,8 @@ fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOp
                                 let p = GlobalLock(h_mem);
                                 if !p.is_null() {
                                     std::ptr::copy_nonoverlapping(
-                                        wide.as_ptr() as *const u8,
-                                        p as *mut u8,
+                                        wide.as_ptr().cast::<u8>(),
+                                        p.cast::<u8>(),
                                         bytes,
                                     );
                                     GlobalUnlock(h_mem);
@@ -579,7 +572,7 @@ fn get_clipboard_selection_win() -> Result<Option<(String, String)>, ClipboardOp
     }
 }
 
-/// SAFETY: GetWindowTextW writes into a stack-allocated [u16; 512] buffer.
+/// SAFETY: `GetWindowTextW` writes into a stack-allocated [u16; 512] buffer.
 /// Caller passes a valid HWND (or null, which yields an empty string).
 #[cfg(target_os = "windows")]
 unsafe fn get_window_title(hwnd: *mut std::ffi::c_void) -> String {
@@ -607,8 +600,8 @@ fn detect_app_from_title(title: &str) -> String {
 
 /// S5-9: decode a byte slice using a Windows codepage number.
 ///
-/// `codepage` is the value returned by `GetACP()` (for CF_TEXT) or
-/// `GetOEMCP()` (for CF_OEMTEXT). We map the handful of codepages that
+/// `codepage` is the value returned by `GetACP()` (for `CF_TEXT`) or
+/// `GetOEMCP()` (for `CF_OEMTEXT`). We map the handful of codepages that
 /// actually show up on user systems to the corresponding `encoding_rs`
 /// encoder. Unknown codepages fall back to UTF-8 (with lossy replacement),
 /// matching the old behavior — so this never makes things worse.
@@ -688,7 +681,7 @@ mod tests {
         );
     }
 
-    /// S5-6: ClipboardOpenError distinguishes open_clipboard_retry failure
+    /// S5-6: `ClipboardOpenError` distinguishes `open_clipboard_retry` failure
     /// (which should trigger UIA fallback) from a normal None (timeout /
     /// unchanged / non-text payload, which should NOT).
     #[test]
@@ -751,7 +744,7 @@ mod tests {
     }
 
     /// UTF-8 must win even when the codepage says otherwise: modern apps
-    /// (browsers, Electron, VS Code) put UTF-8 into CF_TEXT on every locale.
+    /// (browsers, Electron, VS Code) put UTF-8 into `CF_TEXT` on every locale.
     #[test]
     fn decode_prefers_utf8_over_codepage() {
         // "日本語" as UTF-8 bytes, but pretend the codepage is 1252.

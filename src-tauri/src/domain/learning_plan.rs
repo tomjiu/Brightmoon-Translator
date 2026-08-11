@@ -5,14 +5,17 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PlanType {
     Preset,   // 预设计划
+    #[default]
     Custom,   // 自定义计划
     Imported, // 导入计划
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum TargetExam {
     Cet4,   // 大学英语四级
     Cet6,   // 大学英语六级
@@ -20,12 +23,15 @@ pub enum TargetExam {
     Ielts,  // 雅思
     Toefl,  // 托福
     Gre,    // GRE
+    #[default]
     Custom, // 自定义
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PlanStatus {
+    #[default]
     Active,    // 进行中
     Paused,    // 已暂停
     Completed, // 已完成
@@ -106,20 +112,5 @@ pub struct CreatePlanRequest {
     pub word_list: Vec<String>, // 词汇列表
 }
 
-impl Default for TargetExam {
-    fn default() -> Self {
-        TargetExam::Custom
-    }
-}
 
-impl Default for PlanType {
-    fn default() -> Self {
-        PlanType::Custom
-    }
-}
 
-impl Default for PlanStatus {
-    fn default() -> Self {
-        PlanStatus::Active
-    }
-}

@@ -87,7 +87,7 @@ impl Glossary {
     pub async fn add_entry(&mut self, lang_pair: String, entry: GlossaryEntry) {
         self.entries
             .entry(lang_pair)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(entry);
         self.save().await;
     }
@@ -115,7 +115,7 @@ impl Glossary {
     pub fn apply_glossary(&self, text: &mut String, lang_pair: &str) {
         if let Some(entries) = self.entries.get(lang_pair) {
             let mut ordered = entries.clone();
-            ordered.sort_by(|a, b| b.source.len().cmp(&a.source.len()));
+            ordered.sort_by_key(|a| std::cmp::Reverse(a.source.len()));
             for entry in &ordered {
                 if entry.source.is_empty() {
                     continue;
@@ -388,7 +388,7 @@ mod tests {
         assert!(hint.contains("术语表"));
         assert!(hint.contains("API → 接口"));
         // Should NOT have parentheses for context
-        assert!(!hint.contains("("));
+        assert!(!hint.contains('('));
     }
 
     #[test]

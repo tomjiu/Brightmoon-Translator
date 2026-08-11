@@ -10,7 +10,7 @@ pub async fn get_foreground_window_rect() -> Result<[i32; 4], String> {
     tokio::task::spawn_blocking(|| unsafe {
         let hwnd = GetForegroundWindow();
         let mut rect = windows::Win32::Foundation::RECT::default();
-        GetWindowRect(hwnd, &mut rect).map_err(|e| e.to_string())?;
+        GetWindowRect(hwnd, &raw mut rect).map_err(|e| e.to_string())?;
         Ok([
             rect.left,
             rect.top,
@@ -63,17 +63,17 @@ pub async fn start_hook_monitor(
         // Mark as last-used when applied at start
         state.hook.profiles.activate(Some(&profile.id));
 
-        enabled_sources = profile.hook_config.enabled_sources.clone();
+        enabled_sources.clone_from(&profile.hook_config.enabled_sources);
         uia_interval = profile.hook_config.uia_interval_ms;
         ocr_interval = profile.hook_config.ocr_interval_ms;
         if let Some(ref s) = profile.source_lang {
             if !s.is_empty() {
-                source_lang = s.clone();
+                source_lang.clone_from(s);
             }
         }
         if let Some(ref t) = profile.target_lang {
             if !t.is_empty() {
-                target_lang = t.clone();
+                target_lang.clone_from(t);
             }
         }
     }

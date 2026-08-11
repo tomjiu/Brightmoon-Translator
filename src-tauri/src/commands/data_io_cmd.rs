@@ -69,7 +69,7 @@ pub async fn export_learning_data_json(
 
     // 使用聚合查询避免 N+1 问题
     let rows = sqlx::query(
-        r#"
+        r"
         SELECT
             c.id, c.word, c.fsrs_state, c.ai_content, c.created_at,
             COUNT(e.id) as event_count,
@@ -78,7 +78,7 @@ pub async fn export_learning_data_json(
         LEFT JOIN card_events e ON c.id = e.card_id
         GROUP BY c.id
         ORDER BY c.created_at DESC
-        "#,
+        ",
     )
     .fetch_all(pool)
     .await
@@ -165,12 +165,12 @@ pub async fn export_anki_tsv(state: State<'_, crate::AppState>) -> Result<Vec<An
             if let Ok(ai) = serde_json::from_str::<serde_json::Value>(ai_str) {
                 if let Some(mnemonics) = ai["mnemonics"].as_str() {
                     if !mnemonics.is_empty() {
-                        back_parts.push(format!("<b>助记：</b>{}", mnemonics));
+                        back_parts.push(format!("<b>助记：</b>{mnemonics}"));
                     }
                 }
                 if let Some(tips) = ai["tips"].as_str() {
                     if !tips.is_empty() {
-                        back_parts.push(format!("<b>技巧：</b>{}", tips));
+                        back_parts.push(format!("<b>技巧：</b>{tips}"));
                     }
                 }
                 if let Some(examples) = ai["examples"].as_array() {
@@ -193,7 +193,7 @@ pub async fn export_anki_tsv(state: State<'_, crate::AppState>) -> Result<Vec<An
 
             if let Some(d) = def {
                 let short_def: String = d.lines().take(3).collect::<Vec<&str>>().join(" | ");
-                back_parts.insert(0, format!("<b>释义：</b>{}", short_def));
+                back_parts.insert(0, format!("<b>释义：</b>{short_def}"));
             }
         }
 
@@ -231,10 +231,10 @@ pub async fn import_learning_data_json(
 ) -> Result<ImportResult, String> {
     let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
     let content =
-        std::fs::read_to_string(&file_path).map_err(|e| format!("读取文件失败: {}", e))?;
+        std::fs::read_to_string(&file_path).map_err(|e| format!("读取文件失败: {e}"))?;
 
     let data: ExportData =
-        serde_json::from_str(&content).map_err(|e| format!("解析JSON失败: {}", e))?;
+        serde_json::from_str(&content).map_err(|e| format!("解析JSON失败: {e}"))?;
 
     let mut imported = 0;
     let mut skipped = 0;
@@ -246,7 +246,7 @@ pub async fn import_learning_data_json(
             .bind(&card.word)
             .fetch_optional(store.pool())
             .await
-            .map_err(|e| format!("查询已存在卡牌失败: {}", e))?;
+            .map_err(|e| format!("查询已存在卡牌失败: {e}"))?;
 
         if exists.is_some() {
             skipped += 1;
@@ -294,6 +294,7 @@ pub async fn import_learning_data_json(
 
 /// 解析 wordlist 文本内容，返回 (待导入词列表, 无效行数)。
 /// 提取为纯函数便于单测（T12 P0: 文件内重复词去重）。
+/// 支持 CSV 引号转义：`word,"hello,world"` 中引号内逗号不拆分，且移除外层引号。
 fn parse_wordlist_content(content: &str, delimiter: char) -> (Vec<(String, String)>, i32) {
     let mut pending: Vec<(String, String)> = Vec::new();
     let mut invalid = 0;
@@ -303,17 +304,7 @@ fn parse_wordlist_content(content: &str, delimiter: char) -> (Vec<(String, Strin
             continue;
         }
 
-        let parts: Vec<&str> = line.splitn(2, delimiter).collect();
-        if parts.is_empty() {
-            continue;
-        }
-
-        let word = parts[0].trim().to_lowercase();
-        let definition = parts
-            .get(1)
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
-
+        let (word, definition) = split_word_definition(line, delimiter);
         if word.is_empty() || word.len() < 2 {
             invalid += 1;
             continue;
@@ -324,6 +315,43 @@ fn parse_wordlist_content(content: &str, delimiter: char) -> (Vec<(String, Strin
     (pending, invalid)
 }
 
+/// 按分隔符拆分一行词条，支持引号包裹的 definition（引号内分隔符不拆分）。
+/// 返回 (小写化单词, 释义)。
+fn split_word_definition(line: &str, delimiter: char) -> (String, String) {
+    let line_trimmed = line.trim();
+    // 查找第一个未被引号包裹的分隔符
+    let mut in_quotes = false;
+    let mut split_at = None;
+    for (idx, ch) in line_trimmed.char_indices() {
+        if ch == '"' {
+            in_quotes = !in_quotes;
+        } else if ch == delimiter && !in_quotes {
+            split_at = Some(idx);
+            break;
+        }
+    }
+
+    let (word_raw, def_raw) = match split_at {
+        Some(idx) => (&line_trimmed[..idx], &line_trimmed[idx + 1..]),
+        None => (line_trimmed, ""),
+    };
+
+    let word = word_raw.trim().to_lowercase();
+    let definition = unquote_definition(def_raw.trim());
+
+    (word, definition)
+}
+
+/// 去除 definition 外层成对引号（如 `"hello,world"` → `hello,world`）。
+fn unquote_definition(s: &str) -> String {
+    let trimmed = s.trim();
+    if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
+        trimmed[1..trimmed.len() - 1].to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 /// 从 CSV/TSV 导入单词列表（兼容 Quizlet/扇贝/Anki 导出）
 #[tauri::command]
 pub async fn import_wordlist_csv(
@@ -332,7 +360,7 @@ pub async fn import_wordlist_csv(
 ) -> Result<ImportResult, String> {
     let store = state.event_store.as_ref().ok_or("数据库未初始化")?;
     let content =
-        std::fs::read_to_string(&file_path).map_err(|e| format!("读取文件失败: {}", e))?;
+        std::fs::read_to_string(&file_path).map_err(|e| format!("读取文件失败: {e}"))?;
 
     let delimiter = if content.contains('\t') { '\t' } else { ',' };
     let mut imported = 0;
@@ -349,7 +377,7 @@ pub async fn import_wordlist_csv(
             continue;
         }
         let placeholders = vec!["?"; chunk.len()].join(",");
-        let sql = format!("SELECT word FROM cards WHERE word IN ({})", placeholders);
+        let sql = format!("SELECT word FROM cards WHERE word IN ({placeholders})");
         let mut q = sqlx::query(&sql);
         for (w, _) in chunk {
             q = q.bind(w);
@@ -358,7 +386,7 @@ pub async fn import_wordlist_csv(
         let rows = q
             .fetch_all(store.pool())
             .await
-            .map_err(|e| format!("查询已存在单词失败: {}", e))?;
+            .map_err(|e| format!("查询已存在单词失败: {e}"))?;
         for row in rows {
             use sqlx::Row;
             if let Ok(w) = row.try_get::<String, _>("word") {
@@ -434,18 +462,25 @@ pub async fn auto_backup(
     let export_data = export_learning_data_json(state).await?;
 
     // 创建备份目录
-    std::fs::create_dir_all(&backup_dir).map_err(|e| format!("创建备份目录失败: {}", e))?;
+    std::fs::create_dir_all(&backup_dir).map_err(|e| format!("创建备份目录失败: {e}"))?;
+
+    // 规范化路径，防符号链接/相对路径绕过，并校验确实是目录
+    let canonical = std::fs::canonicalize(&backup_dir)
+        .map_err(|e| format!("校验备份目录失败: {e}"))?;
+    if !canonical.is_dir() {
+        return Err("备份路径不是有效目录".to_string());
+    }
 
     let filename = format!(
         "moontranslator_backup_{}.json",
         chrono::Utc::now().format("%Y%m%d_%H%M%S")
     );
-    let file_path = std::path::Path::new(&backup_dir).join(&filename);
+    let file_path = canonical.join(&filename);
 
     let json =
-        serde_json::to_string_pretty(&export_data).map_err(|e| format!("序列化失败: {}", e))?;
+        serde_json::to_string_pretty(&export_data).map_err(|e| format!("序列化失败: {e}"))?;
 
-    std::fs::write(&file_path, json).map_err(|e| format!("写入文件失败: {}", e))?;
+    std::fs::write(&file_path, json).map_err(|e| format!("写入文件失败: {e}"))?;
 
     Ok(file_path.to_string_lossy().to_string())
 }
@@ -464,26 +499,25 @@ pub async fn auto_backup_with_cleanup(
         let keep = keep as usize;
         if let Ok(entries) = std::fs::read_dir(&backup_dir) {
             let mut backups: Vec<(std::path::PathBuf, u128)> = entries
-                .filter_map(|e| e.ok())
+                .filter_map(std::result::Result::ok)
                 .filter(|e| {
                     e.file_name()
                         .to_string_lossy()
                         .starts_with("moontranslator_backup_")
                 })
-                .filter_map(|e| {
+                .map(|e| {
                     let path = e.path();
                     let mtime = std::fs::metadata(&path)
                         .ok()
                         .and_then(|m| m.modified().ok())
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| d.as_millis())
-                        .unwrap_or(0);
-                    Some((path, mtime))
+                        .map_or(0, |d| d.as_millis());
+                    (path, mtime)
                 })
                 .collect();
 
             // 按修改时间倒序（最新在前）
-            backups.sort_by(|a, b| b.1.cmp(&a.1));
+            backups.sort_by_key(|b| std::cmp::Reverse(b.1));
 
             for (path, _) in backups.into_iter().skip(keep) {
                 let _ = std::fs::remove_file(path);
@@ -507,7 +541,7 @@ pub struct ImportResult {
 /// 写入文件内容（用于导出功能）
 #[tauri::command]
 pub async fn write_file_content(file_path: String, content: String) -> Result<(), String> {
-    std::fs::write(&file_path, content).map_err(|e| format!("写入文件失败: {}", e))
+    std::fs::write(&file_path, content).map_err(|e| format!("写入文件失败: {e}"))
 }
 
 /// Write raw bytes from base64 (OCR region PNG export, etc.)
@@ -520,8 +554,8 @@ pub async fn write_file_base64(file_path: String, base64_data: String) -> Result
         .unwrap_or(base64_data.as_str());
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(raw.trim())
-        .map_err(|e| format!("base64 decode: {}", e))?;
-    std::fs::write(&file_path, bytes).map_err(|e| format!("写入文件失败: {}", e))
+        .map_err(|e| format!("base64 decode: {e}"))?;
+    std::fs::write(&file_path, bytes).map_err(|e| format!("写入文件失败: {e}"))
 }
 
 #[cfg(test)]
@@ -569,5 +603,38 @@ mod tests {
         let (pending, _invalid) = parse_wordlist_content(content, ',');
         assert_eq!(pending.len(), 3);
         assert_eq!(pending[0].0, "apple");
+    }
+
+    #[test]
+    fn parse_wordlist_quoted_definition_with_delimiter() {
+        // 引号包裹的释义含逗号: 应整体作为 definition, 不拆分, 且移除外层引号
+        let content = "hello,\"hi, nice to meet you\"\nworld,\"a, b\"\n";
+        let (pending, invalid) = parse_wordlist_content(content, ',');
+        assert_eq!(invalid, 0);
+        assert_eq!(pending.len(), 2);
+        assert_eq!(pending[0].0, "hello");
+        assert_eq!(pending[0].1, "hi, nice to meet you");
+        assert_eq!(pending[1].0, "world");
+        assert_eq!(pending[1].1, "a, b");
+    }
+
+    #[test]
+    fn parse_wordlist_unquoted_delimiter_still_splits() {
+        // 未加引号时行为不变: 按第一个逗号拆分
+        let content = "cat,a cute cat\n";
+        let (pending, invalid) = parse_wordlist_content(content, ',');
+        assert_eq!(invalid, 0);
+        assert_eq!(pending[0].0, "cat");
+        assert_eq!(pending[0].1, "a cute cat");
+    }
+
+    #[test]
+    fn parse_wordlist_unmatched_quote_keeps_raw() {
+        // 只有开头引号(未闭合): 保守处理, 保留原样(含引号)
+        let content = "dog,\"unclosed\n";
+        let (pending, invalid) = parse_wordlist_content(content, ',');
+        assert_eq!(invalid, 0);
+        assert_eq!(pending[0].0, "dog");
+        assert_eq!(pending[0].1, "\"unclosed");
     }
 }

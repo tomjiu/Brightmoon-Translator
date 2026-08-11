@@ -35,8 +35,7 @@ impl SelectionProviderManager {
         let fg = foreground_process();
         let strategy = fg
             .as_ref()
-            .map(|p| p.strategy(exclude_processes))
-            .unwrap_or(SelectionStrategy::UiaThenClipboard);
+            .map_or(SelectionStrategy::UiaThenClipboard, |p| p.strategy(exclude_processes));
 
         if let Some(ref p) = fg {
             tracing::info!(
@@ -53,8 +52,7 @@ impl SelectionProviderManager {
         // Easydict: non-text clipboard spam → suppress full selection for process (5 min)
         let suppressed = fg
             .as_ref()
-            .map(|p| super::clipboard::is_process_clipboard_suppressed(&p.process_name))
-            .unwrap_or(false);
+            .is_some_and(|p| super::clipboard::is_process_clipboard_suppressed(&p.process_name));
         if suppressed {
             tracing::debug!(
                 "[selection_manager] Skip — process clipboard suppressed (non-text history)"

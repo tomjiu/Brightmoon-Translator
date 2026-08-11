@@ -1,5 +1,5 @@
 import { useEffect, useState, type FC } from 'react';
-import { X, History, Edit3, Link2, BookOpen, Lightbulb, Save, BarChart3, Volume2 } from 'lucide-react';
+import { X, History, Edit3, Link2, BookOpen, Lightbulb, Save, BarChart3, Volume2, Star } from 'lucide-react';
 import {
   getWordHistory,
   getFsrsTimeline,
@@ -14,6 +14,7 @@ import {
 } from '../../services/wordDetail';
 import { getCardPatchHistory, type PatchHistoryEntry } from '../../services/vocabulary';
 import { speakText, stopSpeaking } from '../../services/tts';
+import { rateCardField } from '../../services/preference';
 import { detectSpeakLang } from '../../utils/speech';
 import { useToastStore } from '../../stores/toastStore';
 
@@ -31,6 +32,7 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
   const [etymology, setEtymology] = useState<string>('');
   const [aiContent, setAiContent] = useState<AiContent>({});
   const [editingAi, setEditingAi] = useState(false);
+  const [fieldRating, setFieldRating] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<
     'history' | 'timeline' | 'related' | 'examples' | 'patches'
@@ -67,6 +69,15 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
       console.error('加载单词详情失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRateField = async (field: string, score: number) => {
+    setFieldRating(score);
+    try {
+      await rateCardField(word, field, score, null);
+    } catch (error) {
+      console.error('评分失败:', error);
     }
   };
 
@@ -225,6 +236,26 @@ export const WordDetailModal: FC<WordDetailModalProps> = ({ word, onClose }) => 
                   )}
                 </div>
               )}
+            </div>
+
+            {/* T12: 表达偏好 — 评分 */}
+            <div className="mt-4 border-t border-gray-700 pt-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Star className="w-4 h-4 text-yellow-400" />
+                <span className="text-sm font-medium text-gray-300">这个助记对你有帮助吗？</span>
+              </div>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((score) => (
+                  <button
+                    key={score}
+                    onClick={() => void handleRateField('ai_content', score)}
+                    className="p-1 text-yellow-400 hover:scale-125 transition-transform"
+                    aria-label={`${score} 分`}
+                  >
+                    <Star size={18} fill={score <= (fieldRating ?? 0) ? 'currentColor' : 'none'} />
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Tabs */}

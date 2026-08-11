@@ -41,36 +41,36 @@ impl fmt::Display for TranslationError {
                 write!(f, "All engines failed: {}", errors.join("; "))
             },
             Self::EngineError { engine, message } => {
-                write!(f, "{} engine error: {}", engine, message)
+                write!(f, "{engine} engine error: {message}")
             },
             Self::RateLimited {
                 engine,
                 retry_after_ms,
             } => {
-                write!(f, "{} rate limited", engine)?;
+                write!(f, "{engine} rate limited")?;
                 if let Some(ms) = retry_after_ms {
-                    write!(f, " (retry after {}ms)", ms)?;
+                    write!(f, " (retry after {ms}ms)")?;
                 }
                 Ok(())
             },
-            Self::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
-            Self::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
-            Self::NetworkError(msg) => write!(f, "Network error: {}", msg),
-            Self::CacheError(msg) => write!(f, "Cache error: {}", msg),
+            Self::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
+            Self::ConfigError(msg) => write!(f, "Configuration error: {msg}"),
+            Self::NetworkError(msg) => write!(f, "Network error: {msg}"),
+            Self::CacheError(msg) => write!(f, "Cache error: {msg}"),
             Self::PluginError { name, message } => {
-                write!(f, "Plugin '{}' error: {}", name, message)
+                write!(f, "Plugin '{name}' error: {message}")
             },
             Self::StreamingNotSupported => {
                 write!(f, "Streaming not supported by current engine")
             },
-            Self::Internal(msg) => write!(f, "Internal error: {}", msg),
+            Self::Internal(msg) => write!(f, "Internal error: {msg}"),
         }
     }
 }
 
 impl std::error::Error for TranslationError {}
 
-/// Convert from anyhow::Error for backward compatibility
+/// Convert from `anyhow::Error` for backward compatibility
 impl From<anyhow::Error> for TranslationError {
     fn from(err: anyhow::Error) -> Self {
         Self::Internal(err.to_string())

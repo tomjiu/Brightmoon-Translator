@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use image::{ImageBuffer, Rgb, RgbImage};
 use std::io::Cursor;
@@ -46,7 +48,7 @@ fn bench_image_generation(c: &mut Criterion) {
     for size in [(100, 50), (320, 240), (640, 480), (1280, 720)] {
         let (width, height) = size;
         group.bench_with_input(
-            BenchmarkId::new("size", format!("{}x{}", width, height)),
+            BenchmarkId::new("size", format!("{width}x{height}")),
             &size,
             |b, &(width, height)| {
                 b.iter(|| {
@@ -72,7 +74,7 @@ fn bench_png_encoding(c: &mut Criterion) {
         let img: RgbImage = ImageBuffer::new(width, height);
 
         group.bench_with_input(
-            BenchmarkId::new("size", format!("{}x{}", width, height)),
+            BenchmarkId::new("size", format!("{width}x{height}")),
             &img,
             |b, img| {
                 b.iter(|| {
@@ -125,7 +127,7 @@ fn bench_image_grayscale(c: &mut Criterion) {
         let img: RgbImage = ImageBuffer::new(width, height);
 
         group.bench_with_input(
-            BenchmarkId::new("size", format!("{}x{}", width, height)),
+            BenchmarkId::new("size", format!("{width}x{height}")),
             &img,
             |b, img| {
                 b.iter(|| image::imageops::grayscale(black_box(img)));
@@ -170,8 +172,8 @@ fn bench_base64_encoding(c: &mut Criterion) {
     let data_sizes = vec![
         ("1KB", 1024),
         ("10KB", 10240),
-        ("100KB", 102400),
-        ("1MB", 1048576),
+        ("100KB", 102_400),
+        ("1MB", 1_048_576),
     ];
 
     for (name, size) in data_sizes {
@@ -194,7 +196,7 @@ fn simulate_ocr_extraction(image_data: &[u8], region: Option<(u32, u32, u32, u32
 
     // Return mock OCR result
     if let Some((x, y, w, h)) = region {
-        format!("OCR result for region ({}, {}, {}, {})", x, y, w, h)
+        format!("OCR result for region ({x}, {y}, {w}, {h})")
     } else {
         "OCR result for full image".to_string()
     }

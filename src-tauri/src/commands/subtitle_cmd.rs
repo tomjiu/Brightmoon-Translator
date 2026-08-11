@@ -93,7 +93,6 @@ pub async fn export_subtitle_file(
 
     let format = match format.to_lowercase().as_str() {
         "srt" | "vtt" | "lrc" | "ass" | "ssa" => format.to_lowercase(),
-        other if other.is_empty() => "srt".into(),
         _ => "srt".into(),
     };
 
@@ -106,7 +105,7 @@ pub async fn export_subtitle_file(
     let content = subtitle::export_subtitle(&doc, bilingual);
 
     std::fs::write(&output_path, content)
-        .map_err(|e| format!("Failed to write subtitle file: {}", e))?;
+        .map_err(|e| format!("Failed to write subtitle file: {e}"))?;
 
     Ok(output_path)
 }
