@@ -675,7 +675,7 @@ pub async fn resolve_lemma(
          WHERE exchange LIKE ?1
          LIMIT 10",
     )
-    .bind(format!("%:{}%", &word_lower))  // 匹配 ":ran" → 命中 "p:ran" / "d:ran" / "i:ran"
+    .bind(format!("%:{word_lower}%"))  // 匹配 ":ran" → 命中 "p:ran" / "d:ran" / "i:ran"
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;

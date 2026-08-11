@@ -154,7 +154,7 @@ impl StateMachine {
             },
 
             CardEvent::UserRated {
-                score, field: _, ..
+                score, ..
             }
                 // 低分触发优化
                 if *score < 3.0 => {
