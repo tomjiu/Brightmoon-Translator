@@ -1,0 +1,71 @@
+/* Moon Translator - Bilingual Display Styles (B4 dualStyle modes) */
+
+/* ==================== Replace Mode ==================== */
+.moon-translated-text {
+  /* 替换模式: 译文直接显示, 无特殊样式 */
+}
+
+/* ==================== Bilingual Mode ==================== */
+
+/* 原文克隆 (隐藏在 DOM 中, 保留原文) */
+.moon-original-clone {
+  display: none !important;
+}
+
+/* 译文容器 */
+.moon-translated-wrapper {
+  margin-top: 4px;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+/* B4: underline — 译文加下划线 */
+.moon-translated-wrapper.moon-dual-style-underline {
+  text-decoration: underline;
+  text-decoration-color: rgba(102, 126, 234, 0.5);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+/* B4: highlight — 译文高亮背景 */
+.moon-translated-wrapper.moon-dual-style-highlight {
+  background: rgba(255, 235, 59, 0.3);
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+
+/* B4: weakening — 译文淡化 */
+.moon-translated-wrapper.moon-dual-style-weakening {
+  opacity: 0.6;
+  color: #666;
+}
+
+/* B4: mask — 译文遮罩 (hover 显示) */
+.moon-translated-wrapper.moon-dual-style-mask {
+  background: rgba(128, 128, 128, 0.2);
+  border-radius: 3px;
+  padding: 1px 3px;
+  color: transparent;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.moon-translated-wrapper.moon-dual-style-mask:hover {
+  color: inherit;
+  background: rgba(128, 128, 128, 0.1);
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .moon-translated-wrapper.moon-dual-style-weakening {
+    color: #aaa;
+  }
+
+  .moon-translated-wrapper.moon-dual-style-highlight {
+    background: rgba(255, 235, 59, 0.15);
+  }
+
+  .moon-translated-wrapper.moon-dual-style-mask {
+    background: rgba(200, 200, 200, 0.15);
+  }
+}

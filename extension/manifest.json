@@ -40,7 +40,7 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content/translation-cache.js", "content/worker-manager.js", "content/selector.js", "content/page-translator.js", "content/hover-translator.js"],
-      "css": ["content/selector.css", "content/hover-translator.css"],
+      "css": ["content/selector.css", "content/hover-translator.css", "content/bilingual-styles.css"],
       "run_at": "document_idle"
     }
   ],
