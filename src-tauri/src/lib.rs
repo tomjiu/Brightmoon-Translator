@@ -177,11 +177,15 @@ pub(crate) fn resolve_ecdict_db_path() -> Option<std::path::PathBuf> {
         candidates.push(dir.join("resources").join("dictionaries").join("ecdict.db"));
         candidates.push(dir.join("ecdict.db"));
     }
+    // Tier 2: user-level cloud download (app_download_ecdict), writable for packaged installs.
+    if let Some(dl) = commands::dictionary_cmd::ecdict_download_path() {
+        candidates.push(dl);
+    }
     // Tier 2: dev layout (cargo run) — repo-root dictionaries/ and src-tauri/dictionaries/.
     candidates.push(manifest.join("..").join("dictionaries").join("ecdict.db"));
     candidates.push(manifest.join("dictionaries").join("ecdict.db"));
     for c in &candidates {
-        if c.is_file() {
+        if is_sqlite_database(c) {
             // S5-fix: avoid canonicalize() on Windows — it returns a UNC path
             // with `\\?\` prefix, which corrupts the sqlite connection string
             // (`sqlite://?/E:/...` is invalid). The candidate `c` is already
@@ -196,6 +200,22 @@ pub(crate) fn resolve_ecdict_db_path() -> Option<std::path::PathBuf> {
         candidates
     );
     None
+}
+
+/// True if the file starts with the SQLite header magic. This rejects the
+/// `<1KB` stub bundled in RELEASE installs and any partial/corrupt download,
+/// so resolution falls through to a real (user-downloaded) database.
+fn is_sqlite_database(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    let mut f = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    let mut magic = [0u8; 16];
+    if f.read_exact(&mut magic).is_err() {
+        return false;
+    }
+    &magic == b"SQLite format 3\x00"
 }
 
 pub fn run() {
@@ -1056,6 +1076,8 @@ pub fn run() {
             commands::dictionary_cmd::import_dictionary_data,
             commands::dictionary_cmd::check_dictionary_imported,
             commands::dictionary_cmd::ecdict_status,
+            commands::dictionary_cmd::ecdict_download_info,
+            commands::dictionary_cmd::download_ecdict,
             commands::dictionary_cmd::get_dictionary_history,
             commands::dictionary_cmd::clear_dictionary_history,
             commands::learning_plan_cmd::get_exam_wordlists,
@@ -1133,3 +1155,40 @@ fn start_api_server(app: &tauri::App) {
         tracing::info!("API server starting on port {}", api_port);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn tmp_file(name: &str, content: &[u8]) -> std::path::PathBuf {
+        let p = std::env::temp_dir().join(format!(
+            "mt_magic_{}_{}_{}",
+            std::process::id(),
+            name,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::write(&p, content).unwrap();
+        p
+    }
+
+    #[test]
+    fn sqlite_magic_accepts_real_db_and_rejects_stub() {
+        let real = tmp_file("real", b"SQLite format 3\x00junk");
+        assert!(is_sqlite_database(&real));
+        std::fs::remove_file(&real).ok();
+
+        let stub = tmp_file("stub", b"stub");
+        assert!(!is_sqlite_database(&stub));
+        std::fs::remove_file(&stub).ok();
+    }
+
+    #[test]
+    fn sqlite_magic_rejects_missing_file() {
+        assert!(!is_sqlite_database(&std::path::PathBuf::from("nope.db")));
+    }
+}
+

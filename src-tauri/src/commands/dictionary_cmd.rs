@@ -5,6 +5,7 @@ use crate::services::multi_dictionary::MultiSourceDictionary;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use tauri::State;
+use tauri::Emitter;
 
 /// 完整词典结果（包含所有源的数据）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1154,6 +1155,151 @@ pub async fn lookup_japanese(
     dict.lookup(&word)
         .await
         .map_err(|e| format!("Japanese lookup failed: {e}"))
+}
+
+/// Default ecdict.db download URL (GitHub Release asset, see `ecdict-v1` tag).
+pub const ECDICT_DOWNLOAD_URL: &str =
+    "https://github.com/tomjiu/Brightmoon-Translator/releases/download/ecdict-v1/ecdict.db";
+
+/// Per-user download target for ecdict.db (writable; exe-dir may be Program Files).
+pub fn ecdict_download_path() -> Option<std::path::PathBuf> {
+    let mut p = dirs::config_dir()?;
+    p.push("moontranslator");
+    p.push("dictionaries");
+    p.push("ecdict.db");
+    Some(p)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EcDictDownloadProgress {
+    pub received: u64,
+    pub total: u64,
+    pub percent: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EcDictDownloadInfo {
+    pub present: bool,
+    pub length: u64,
+    pub path: Option<String>,
+}
+
+/// Report whether the user-level ecdict.db already exists (and its size).
+#[tauri::command]
+pub fn ecdict_download_info() -> EcDictDownloadInfo {
+    match ecdict_download_path() {
+        Some(p) if p.is_file() => {
+            let len = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+            EcDictDownloadInfo {
+                present: true,
+                length: len,
+                path: Some(p.display().to_string()),
+            }
+        },
+        _ => EcDictDownloadInfo {
+            present: false,
+            length: 0,
+            path: None,
+        },
+    }
+}
+
+/// Download ecdict.db from the cloud into the per-user config dir, emitting
+/// `ecdict-download-progress` events. Validates the SQLite file and builds the
+/// `frq` index so first lookup after restart is fast.
+#[tauri::command]
+pub async fn download_ecdict(
+    app: tauri::AppHandle,
+    url: Option<String>,
+) -> Result<String, String> {
+    let url = url.unwrap_or_else(|| ECDICT_DOWNLOAD_URL.to_string());
+    let target =
+        ecdict_download_path().ok_or("无法确定用户配置目录 (config_dir)")?;
+    if let Some(dir) = target.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("创建目录失败: {e}"))?;
+    }
+
+    // Download to a temp file first so a partial/corrupt download never shadows a good db.
+    let tmp = target.with_extension("db.part");
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("下载失败: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("下载失败: HTTP {}", resp.status()));
+    }
+    let total = resp.content_length().unwrap_or(0);
+    let mut stream = resp.bytes_stream();
+
+    let mut file = tokio::fs::File::create(&tmp)
+        .await
+        .map_err(|e| format!("创建文件失败: {e}"))?;
+    use futures::StreamExt;
+    use tokio::io::AsyncWriteExt;
+    let mut received: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("下载中断: {e}"))?;
+        received += chunk.len() as u64;
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("写入失败: {e}"))?;
+        let _ = app.emit(
+            "ecdict-download-progress",
+            EcDictDownloadProgress {
+                received,
+                total,
+                percent: if total > 0 {
+                    received as f64 / total as f64 * 100.0
+                } else {
+                    0.0
+                },
+            },
+        );
+    }
+    file.flush().await.map_err(|e| format!("写入失败: {e}"))?;
+    drop(file);
+
+    // Validate + index the SQLite db before it becomes the active file.
+    let conn_str = format!("sqlite:{}", tmp.display().to_string().replace('\\', "/"));
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(2)
+        .connect(&conn_str)
+        .await
+        .map_err(|e| format!("词典验证失败: {e}"))?;
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM stardict")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| format!("词典验证失败(无 stardict 表): {e}"))?;
+    if n == 0 {
+        pool.close().await;
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err("词典验证失败: stardict 表为空，文件可能已损坏".to_string());
+    }
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_stardict_frq ON stardict(frq)")
+        .execute(&pool)
+        .await
+        .ok();
+    pool.close().await;
+
+    let _ = tokio::fs::remove_file(&target).await;
+    tokio::fs::rename(&tmp, &target)
+        .await
+        .map_err(|e| format!("移动文件失败: {e}"))?;
+
+    let _ = app.emit(
+        "ecdict-download-progress",
+        EcDictDownloadProgress {
+            received: total,
+            total,
+            percent: 100.0,
+        },
+    );
+    Ok(target.display().to_string())
 }
 
 #[cfg(test)]

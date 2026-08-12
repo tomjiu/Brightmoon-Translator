@@ -9,8 +9,10 @@ import {
   AlertTriangle,
   FolderOpen,
   Github,
+  DownloadCloud,
 } from 'lucide-react';
 import { open, save } from '@tauri-apps/plugin-dialog';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   getDictStats,
   exportCompressedDict,
@@ -18,6 +20,19 @@ import {
   type DictStats,
 } from '../services/dictOptimize';
 import { exportForGithub, exportAiCacheForGithub } from '../services/githubExport';
+import {
+  downloadEcDict,
+  readEcDictInfoSilently,
+  type EcDictDownloadInfo,
+  type EcDictProgress,
+} from '../services/dictDownload';
+
+function formatSize(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
 
 export default function DictOptimization() {
   const [stats, setStats] = useState<DictStats | null>(null);
@@ -25,9 +40,13 @@ export default function DictOptimization() {
   const [exporting, setExporting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [maxRank, setMaxRank] = useState(5000);
+  const [dlInfo, setDlInfo] = useState<EcDictDownloadInfo | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [dlProgress, setDlProgress] = useState<EcDictProgress | null>(null);
 
   useEffect(() => {
     loadStats();
+    readEcDictInfoSilently().then((d) => setDlInfo(d));
   }, []);
 
   const loadStats = async () => {
@@ -39,6 +58,32 @@ export default function DictOptimization() {
       console.error('加载词典统计失败:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDownloadDict = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    setDlProgress(null);
+    let unlisten: UnlistenFn | null = null;
+    try {
+      unlisten = await listen<EcDictProgress>('ecdict-download-progress', (e) => {
+        setDlProgress(e.payload);
+      });
+      const path = await downloadEcDict();
+      unlisten();
+      unlisten = null;
+      setDlInfo({
+        present: true,
+        length: dlProgress?.total ?? 0,
+        path,
+      });
+      showSuccess('词典下载完成，重启后生效');
+    } catch (error) {
+      showError(`下载失败: ${error}`);
+    } finally {
+      if (unlisten) unlisten();
+      setDownloading(false);
     }
   };
 
@@ -184,6 +229,66 @@ export default function DictOptimization() {
             <span className="text-sm">{result.message}</span>
           </div>
         )}
+
+        {/* Dictionary Cloud Download */}
+        <div className="bg-bg-secondary rounded-xl border border-border p-6">
+          <h2 className="ui-section-title mb-2 flex items-center gap-2">
+            <DownloadCloud className="w-4 h-4" />
+            词典数据下载（云端）
+          </h2>
+          <p className="text-sm text-text-secondary mb-4">
+            ecdict.db（约 812MB，60 万+ 词条中英词典）因体积过大不随安装包分发，可从
+            GitHub Release 云下载到本机；下载完成后重启应用生效。
+          </p>
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleDownloadDict}
+              disabled={downloading || (dlInfo?.present ?? false)}
+              className="flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary-hover disabled:bg-bg-tertiary disabled:text-text-secondary rounded-lg transition-colors"
+            >
+              {downloading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <DownloadCloud className="w-4 h-4" />
+              )}
+              {dlInfo?.present ? '词典数据已就绪' : downloading ? '下载中...' : '下载词典数据'}
+            </button>
+            {dlInfo?.present && (
+              <span className="flex items-center gap-1 text-sm text-green-400">
+                <CheckCircle className="w-4 h-4" />
+                已下载 {formatSize(dlInfo.length)}
+              </span>
+            )}
+          </div>
+
+          {dlProgress && (
+            <div className="mt-4 space-y-1">
+              <div className="flex justify-between text-xs text-text-secondary">
+                <span>
+                  {formatSize(dlProgress.received)} /{' '}
+                  {dlProgress.total > 0 ? formatSize(dlProgress.total) : '...'}
+                </span>
+                <span>{Math.round(dlProgress.percent)}%</span>
+              </div>
+              <div className="h-2 bg-bg-primary rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(dlProgress.percent, 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {!downloading && dlInfo?.present && dlInfo.path && (
+            <div className="mt-3 p-3 bg-bg-primary rounded-lg border border-border">
+              <p className="text-xs text-text-secondary break-all">
+                已下载至 <code className="px-1 py-0.5 bg-bg-tertiary rounded">{dlInfo.path}</code>
+                。重启应用后本地词典生效，词典页可离线查询。
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* Current Stats */}
         <div className="bg-bg-secondary rounded-xl border border-border p-6">
