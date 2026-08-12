@@ -8,10 +8,16 @@
     "translator": "翻译",
     "hook": "Hook翻译",
     "documents": "文档翻译",
-    "vocabulary": "词汇",
-    "metrics": "指标",
-    "tm": "翻译记忆",
+    "dictionary": "词典",
+    "study": "AI 学习",
+    "history": "历史",
     "settings": "设置"
+  },
+  "history": {
+    "tabs": {
+      "tm": "翻译记忆",
+      "metrics": "指标"
+    }
   },
   "translator": {
     "placeholder": "输入要翻译的文本...",
@@ -69,6 +75,10 @@
     "noResultError": "翻译无结果：请检查已启用引擎、密钥与网络"
   },
   "history": {
+    "tabs": {
+      "tm": "翻译记忆",
+      "metrics": "指标"
+    },
     "title": "翻译历史",
     "search": "搜索...",
     "noResults": "没有匹配的结果",
@@ -804,6 +814,11 @@
   "vocabulary": {
     "wordbook": "生词本",
     "glossary": "术语表",
+    "sections": {
+      "dictionary": "词典",
+      "learning": "AI 学习",
+      "data": "数据"
+    },
     "tabs": {
       "dictionary": "词典查询",
       "learning": "AI 学习",

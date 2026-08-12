@@ -456,9 +456,9 @@ export default function VocabularyReview() {
 
       {/* 主内容区 */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-8">
+        <div className="max-w-3xl mx-auto px-5 py-4">
           {/* 卡牌信息卡片 */}
-          <div className="mb-4 p-3 bg-bg-secondary border border-border rounded-lg flex items-center justify-between text-xs">
+          <div className="mb-3 p-2 bg-bg-secondary border border-border rounded-lg flex items-center justify-between text-xs">
             <div className="flex items-center gap-4">
               <div>
                 <span className="text-text-tertiary">复习次数:</span>
@@ -482,7 +482,7 @@ export default function VocabularyReview() {
 
           {/* 背景图片（未显示答案时） */}
           {!showAnswer && wordDetail?.imageUrl && (
-            <div className="relative mb-6 rounded-xl overflow-hidden" style={{ height: '280px' }}>
+            <div className="relative mb-5 rounded-xl overflow-hidden" style={{ height: '210px' }}>
               <img
                 src={wordDetail.imageUrl}
                 alt={currentCard.word}
@@ -516,9 +516,9 @@ export default function VocabularyReview() {
 
           {/* 单词标题（无图或显示答案时） */}
           {(!wordDetail?.imageUrl || showAnswer) && (
-            <div className="text-center mb-8">
+            <div className="text-center mb-5">
               <div className="flex items-center justify-center gap-3">
-                <h1 className="text-6xl font-bold text-text-primary mb-3">
+                <h1 className="text-5xl font-bold text-text-primary mb-2">
                   {currentCard.word}
                 </h1>
                 {!wordDetail?.usAudioUrl && !wordDetail?.ukAudioUrl && (
@@ -557,7 +557,7 @@ export default function VocabularyReview() {
 
           {/* 显示答案按钮 */}
           {!showAnswer && (
-            <div className="text-center py-12">
+            <div className="text-center py-7">
               <button
                 onClick={() => setShowAnswer(true)}
                 className="px-12 py-4 bg-primary text-primary-fg rounded-xl hover:bg-primary/90 text-lg font-medium shadow-lg hover:shadow-xl transition-all hover:scale-105"
@@ -577,10 +577,10 @@ export default function VocabularyReview() {
 
           {/* 答案内容 */}
           {showAnswer && wordDetail && (
-            <div className="space-y-4 animate-fadeIn">
+            <div className="space-y-3 animate-fadeIn">
               {/* 中文释义 */}
               {wordDetail.chineseTranslation && (
-                <div className="p-5 bg-gradient-to-br from-bg-tertiary to-bg-tertiary dark:from-bg-tertiary dark:to-bg-tertiary border border-border dark:border-border rounded-xl">
+                <div className="p-4 bg-gradient-to-br from-bg-tertiary to-bg-tertiary dark:from-bg-tertiary dark:to-bg-tertiary border border-border dark:border-border rounded-xl">
                   <h3 className="text-xs font-semibold text-primary dark:text-primary mb-2 flex items-center gap-1">
                     <span>🔤</span> 中文释义
                   </h3>
@@ -592,7 +592,7 @@ export default function VocabularyReview() {
 
               {/* 柯林斯词典 */}
               {wordDetail.collinsEntries && wordDetail.collinsEntries.length > 0 && (
-                <div className="p-5 bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 border border-orange-200 dark:border-orange-800 rounded-xl">
+                <div className="p-4 bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30 border border-orange-200 dark:border-orange-800 rounded-xl">
                   <h3 className="text-xs font-semibold text-orange-700 dark:text-orange-400 mb-3 flex items-center gap-1">
                     <span>📖</span> 柯林斯词典
                   </h3>
@@ -627,7 +627,7 @@ export default function VocabularyReview() {
               {wordDetail.englishDefinitions &&
                 wordDetail.englishDefinitions.length > 0 &&
                 !wordDetail.collinsEntries.length && (
-                  <div className="p-5 ui-card">
+                  <div className="p-4 ui-card">
                     <h3 className="text-xs font-semibold text-primary mb-2">英文释义</h3>
                     <ul className="space-y-1">
                       {wordDetail.englishDefinitions.slice(0, 5).map((def, i) => (
@@ -643,7 +643,7 @@ export default function VocabularyReview() {
               {wordDetail.aiContent && (
                 <>
                   {wordDetail.aiContent.etymology && (
-                    <div className="p-5 bg-gradient-to-br from-bg-tertiary to-bg-tertiary dark:from-bg-tertiary dark:to-bg-tertiary border border-border dark:border-border rounded-xl">
+                    <div className="p-4 bg-gradient-to-br from-bg-tertiary to-bg-tertiary dark:from-bg-tertiary dark:to-bg-tertiary border border-border dark:border-border rounded-xl">
                       <h3 className="text-xs font-semibold text-primary dark:text-primary mb-2 flex items-center gap-1">
                         <span>🔤</span> 词源分析
                       </h3>
@@ -654,7 +654,7 @@ export default function VocabularyReview() {
                   )}
 
                   {wordDetail.aiContent.mnemonics && wordDetail.aiContent.mnemonics.length > 0 && (
-                    <div className="p-5 bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 border border-amber-200 dark:border-amber-800 rounded-xl">
+                    <div className="p-4 bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 border border-amber-200 dark:border-amber-800 rounded-xl">
                       <h3 className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2 flex items-center gap-1">
                         <span>💡</span> 助记法
                       </h3>
@@ -667,7 +667,7 @@ export default function VocabularyReview() {
                   )}
 
                   {wordDetail.aiContent.examples && wordDetail.aiContent.examples.length > 0 && (
-                    <div className="p-5 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border border-green-200 dark:border-green-800 rounded-xl">
+                    <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border border-green-200 dark:border-green-800 rounded-xl">
                       <h3 className="text-xs font-semibold text-green-700 dark:text-green-400 mb-2 flex items-center gap-1">
                         <span>📝</span> AI 例句
                       </h3>
@@ -684,7 +684,7 @@ export default function VocabularyReview() {
 
               {/* 例句 */}
               {wordDetail.examples && wordDetail.examples.length > 0 && (
-                <div className="p-5 bg-gradient-to-br from-bg-tertiary to-bg-tertiary dark:from-bg-tertiary dark:to-bg-tertiary border border-border dark:border-border rounded-xl">
+                <div className="p-4 bg-gradient-to-br from-bg-tertiary to-bg-tertiary dark:from-bg-tertiary dark:to-bg-tertiary border border-border dark:border-border rounded-xl">
                   <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-500 mb-2 flex items-center gap-1">
                     <span>📝</span> 双语例句
                   </h3>
@@ -713,14 +713,14 @@ export default function VocabularyReview() {
 
       {/* 底部评分按钮 */}
       {showAnswer && (
-        <div className="border-t border-border bg-bg-secondary p-6 shadow-lg">
+        <div className="border-t border-border bg-bg-secondary p-4 shadow-lg">
           <div className="max-w-3xl mx-auto">
-            <p className="text-center text-sm text-text-secondary mb-4">你记住这个单词了吗？</p>
+            <p className="text-center text-sm text-text-secondary mb-3">你记住这个单词了吗？</p>
             <div className="grid grid-cols-4 gap-3">
               <button
                 onClick={() => void handleRate('Again')}
                 disabled={submitting}
-                className="py-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                className="py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
               >
                 <div className="text-2xl mb-1">😰</div>
                 <div className="text-sm">忘记</div>
@@ -730,7 +730,7 @@ export default function VocabularyReview() {
               <button
                 onClick={() => void handleRate('Hard')}
                 disabled={submitting}
-                className="py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                className="py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
               >
                 <div className="text-2xl mb-1">😕</div>
                 <div className="text-sm">困难</div>
@@ -740,7 +740,7 @@ export default function VocabularyReview() {
               <button
                 onClick={() => void handleRate('Good')}
                 disabled={submitting}
-                className="py-4 bg-green-500 hover:bg-green-600 text-white rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                className="py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
               >
                 <div className="text-2xl mb-1">😊</div>
                 <div className="text-sm">良好</div>
@@ -750,7 +750,7 @@ export default function VocabularyReview() {
               <button
                 onClick={() => void handleRate('Easy')}
                 disabled={submitting}
-                className="py-4 bg-primary hover:bg-primary-hover text-primary-fg rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+                className="py-3 bg-primary hover:bg-primary-hover text-primary-fg rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
               >
                 <div className="text-2xl mb-1">🤩</div>
                 <div className="text-sm">简单</div>

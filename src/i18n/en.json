@@ -8,10 +8,16 @@
     "translator": "Translate",
     "hook": "Hook Translate",
     "documents": "Documents",
-    "vocabulary": "Vocabulary",
-    "metrics": "Metrics",
-    "tm": "Translation Memory",
+    "dictionary": "Dictionary",
+    "study": "AI Study",
+    "history": "History",
     "settings": "Settings"
+  },
+  "history": {
+    "tabs": {
+      "tm": "Translation Memory",
+      "metrics": "Metrics"
+    }
   },
   "translator": {
     "placeholder": "Enter text to translate...",
@@ -69,6 +75,10 @@
     "noResultError": "No translation result: please check enabled engines, API keys and network"
   },
   "history": {
+    "tabs": {
+      "tm": "Translation Memory",
+      "metrics": "Metrics"
+    },
     "title": "Translation History",
     "search": "Search...",
     "noResults": "No matching results",
@@ -804,6 +814,11 @@
   "vocabulary": {
     "wordbook": "Word Book",
     "glossary": "Glossary",
+    "sections": {
+      "dictionary": "Dictionary",
+      "learning": "AI Learning",
+      "data": "Data"
+    },
     "tabs": {
       "dictionary": "Dictionary",
       "learning": "AI Study",

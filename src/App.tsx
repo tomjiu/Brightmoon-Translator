@@ -7,8 +7,8 @@ const MainTranslator = lazy(() => import('./pages/MainTranslator'));
 const Settings = lazy(() => import('./pages/Settings'));
 const DocumentsViewer = lazy(() => import('./pages/DocumentsViewer'));
 const Vocabulary = lazy(() => import('./pages/Vocabulary'));
-const MetricsDashboard = lazy(() => import('./pages/MetricsDashboard'));
-const TmManager = lazy(() => import('./pages/TmManager'));
+const Study = lazy(() => import('./pages/Study'));
+const History = lazy(() => import('./pages/History'));
 const HookMonitor = lazy(() => import('./components/HookMonitor'));
 import ErrorBoundary from './components/ErrorBoundary';
 // S3-13: OCR components lazy-loaded to keep the main window bundle lean.
@@ -39,11 +39,18 @@ import {
   Zap,
   BookOpen,
   BarChart3,
-  Database,
+  GraduationCap,
   Loader2,
 } from 'lucide-react';
 
-type Page = 'translator' | 'hook' | 'documents' | 'vocabulary' | 'metrics' | 'tm' | 'settings';
+type Page =
+  | 'translator'
+  | 'hook'
+  | 'documents'
+  | 'dictionary'
+  | 'study'
+  | 'history'
+  | 'settings';
 
 interface NavItem {
   id: Page;
@@ -231,9 +238,9 @@ function MainApp() {
         translator: 'translator',
         hook: 'hook',
         documents: 'documents',
-        vocabulary: 'vocabulary',
-        metrics: 'metrics',
-        tm: 'tm',
+        dictionary: 'dictionary',
+        study: 'study',
+        history: 'history',
       };
       if (pageMap[event.payload]) {
         setPage(pageMap[event.payload]);
@@ -393,9 +400,9 @@ function MainApp() {
       { id: 'translator', icon: Languages, label: t('nav.translator'), group: 'core' },
       { id: 'hook', icon: Zap, label: t('nav.hook'), group: 'core' },
       { id: 'documents', icon: FileText, label: t('nav.documents'), group: 'core' },
-      { id: 'vocabulary', icon: BookOpen, label: t('nav.vocabulary'), group: 'core' },
-      { id: 'metrics', icon: BarChart3, label: t('nav.metrics'), group: 'system' },
-      { id: 'tm', icon: Database, label: t('nav.tm') || 'TM', group: 'system' },
+      { id: 'dictionary', icon: BookOpen, label: t('nav.dictionary'), group: 'core' },
+      { id: 'study', icon: GraduationCap, label: t('nav.study'), group: 'core' },
+      { id: 'history', icon: BarChart3, label: t('nav.history'), group: 'system' },
       { id: 'settings', icon: SettingsIcon, label: t('nav.settings'), group: 'system' },
     ],
     [t],
@@ -481,10 +488,10 @@ function MainApp() {
               >
                 {page === 'translator' && <MainTranslator onOcrScreenshot={startOcrScreenshot} />}
                 {page === 'documents' && <DocumentsViewer />}
-                {page === 'vocabulary' && <Vocabulary />}
+                {page === 'dictionary' && <Vocabulary />}
+                {page === 'study' && <Study />}
+                {page === 'history' && <History />}
                 {page === 'settings' && <Settings />}
-                {page === 'metrics' && <MetricsDashboard />}
-                {page === 'tm' && <TmManager />}
                 {page === 'hook' && <HookMonitor />}
               </Suspense>
             </div>

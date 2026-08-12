@@ -8,10 +8,16 @@
     "translator": "翻訳",
     "hook": "Hook翻訳",
     "documents": "文書",
-    "vocabulary": "語彙",
-    "metrics": "指標",
-    "tm": "翻訳メモリ",
+    "dictionary": "辞書",
+    "study": "AI 学習",
+    "history": "履歴",
     "settings": "設定"
+  },
+  "history": {
+    "tabs": {
+      "tm": "翻訳メモリ",
+      "metrics": "指標"
+    }
   },
   "translator": {
     "placeholder": "翻訳するテキストを入力...",
@@ -69,6 +75,10 @@
     "noResultError": "翻訳結果なし：有効なエンジン、APIキー、ネットワークを確認してください"
   },
   "history": {
+    "tabs": {
+      "tm": "翻訳メモリ",
+      "metrics": "指標"
+    },
     "title": "翻訳履歴",
     "search": "検索...",
     "noResults": "一致する結果がありません",
@@ -792,6 +802,11 @@
   "vocabulary": {
     "wordbook": "単語帳",
     "glossary": "用語集",
+    "sections": {
+      "dictionary": "辞書",
+      "learning": "AI 学習",
+      "data": "データ"
+    },
     "tabs": {
       "dictionary": "辞書検索",
       "learning": "AI 学習",

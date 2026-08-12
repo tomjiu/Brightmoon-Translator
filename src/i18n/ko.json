@@ -8,9 +8,9 @@
     "translator": "번역",
     "hook": "Hook 번역",
     "documents": "문서",
-    "vocabulary": "어휘",
-    "metrics": "지표",
-    "tm": "번역 메모리",
+    "dictionary": "사전",
+    "study": "AI 학습",
+    "history": "이력",
     "settings": "설정"
   },
   "translator": {
@@ -69,6 +69,10 @@
     "noResultError": "번역 결과 없음: 활성화된 엔진, API 키, 네트워크를 확인하세요"
   },
   "history": {
+    "tabs": {
+      "tm": "번역 메모리",
+      "metrics": "지표"
+    },
     "title": "번역 기록",
     "search": "검색...",
     "noResults": "일치하는 결과가 없습니다",

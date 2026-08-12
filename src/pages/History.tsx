@@ -1,15 +1,9 @@
 import { useState, lazy, Suspense } from 'react';
-import {
-  Search,
-  BookMarked,
-  HardDrive,
-  Loader2,
-} from 'lucide-react';
+import { Database, BarChart3, Loader2 } from 'lucide-react';
 import { useI18n } from '../i18n';
 
-const DictionarySearch = lazy(() => import('./DictionarySearch'));
-const WordBook = lazy(() => import('./WordBook'));
-const DictOptimization = lazy(() => import('./DictOptimization'));
+const TmManager = lazy(() => import('./TmManager'));
+const MetricsDashboard = lazy(() => import('./MetricsDashboard'));
 
 function LazyFallback() {
   return (
@@ -20,16 +14,15 @@ function LazyFallback() {
   );
 }
 
-type DictionaryTab = 'dictionary' | 'wordbook' | 'dictopt';
+type HistoryTab = 'tm' | 'metrics';
 
-function Vocabulary() {
-  const [activeTab, setActiveTab] = useState<DictionaryTab>('dictionary');
+function History() {
+  const [activeTab, setActiveTab] = useState<HistoryTab>('tm');
   const { t } = useI18n();
 
-  const tabs: Array<{ id: DictionaryTab; icon: typeof Search; labelKey: string }> = [
-    { id: 'dictionary', icon: Search, labelKey: 'vocabulary.tabs.dictionary' },
-    { id: 'wordbook', icon: BookMarked, labelKey: 'vocabulary.tabs.wordbook' },
-    { id: 'dictopt', icon: HardDrive, labelKey: 'vocabulary.tabs.dictopt' },
+  const tabs: Array<{ id: HistoryTab; icon: typeof Database; labelKey: string }> = [
+    { id: 'tm', icon: Database, labelKey: 'history.tabs.tm' },
+    { id: 'metrics', icon: BarChart3, labelKey: 'history.tabs.metrics' },
   ];
 
   return (
@@ -53,13 +46,12 @@ function Vocabulary() {
 
       <div className="flex-1 overflow-hidden">
         <Suspense fallback={<LazyFallback />}>
-          {activeTab === 'dictionary' && <DictionarySearch />}
-          {activeTab === 'wordbook' && <WordBook />}
-          {activeTab === 'dictopt' && <DictOptimization />}
+          {activeTab === 'tm' && <TmManager />}
+          {activeTab === 'metrics' && <MetricsDashboard />}
         </Suspense>
       </div>
     </div>
   );
 }
 
-export default Vocabulary;
+export default History;

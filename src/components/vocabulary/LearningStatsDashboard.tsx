@@ -143,7 +143,7 @@ export const LearningStatsDashboard: FC = () => {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <Activity className="w-12 h-12 mx-auto mb-4 animate-spin text-primary" />
-          <p className="text-gray-400">加载统计数据中...</p>
+          <p className="text-text-secondary">加载统计数据中...</p>
         </div>
       </div>
     );
@@ -153,8 +153,8 @@ export const LearningStatsDashboard: FC = () => {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-          <p className="text-gray-400">暂无统计数据</p>
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-text-secondary" />
+          <p className="text-text-secondary">暂无统计数据</p>
         </div>
       </div>
     );
@@ -172,7 +172,7 @@ export const LearningStatsDashboard: FC = () => {
           <button
             onClick={loadStatistics}
             disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-500 rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-bg-tertiary hover:bg-bg-tertiary disabled:bg-bg-secondary disabled:text-text-secondary rounded-lg transition-colors"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             刷新
@@ -182,16 +182,16 @@ export const LearningStatsDashboard: FC = () => {
               <Download className="w-4 h-4" />
               导出
             </button>
-            <div className="absolute right-0 mt-2 w-40 bg-gray-800 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+            <div className="absolute right-0 mt-2 w-40 bg-bg-secondary rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
               <button
                 onClick={exportCSV}
-                className="w-full px-4 py-2 text-left hover:bg-gray-700 rounded-t-lg transition-colors"
+                className="w-full px-4 py-2 text-left hover:bg-bg-tertiary rounded-t-lg transition-colors"
               >
                 导出 CSV
               </button>
               <button
                 onClick={exportStatistics}
-                className="w-full px-4 py-2 text-left hover:bg-gray-700 rounded-b-lg transition-colors"
+                className="w-full px-4 py-2 text-left hover:bg-bg-tertiary rounded-b-lg transition-colors"
               >
                 导出 JSON
               </button>
@@ -236,7 +236,7 @@ export const LearningStatsDashboard: FC = () => {
       </div>
 
       {/* T12: 偏好概览 */}
-      <div className="bg-gray-800 rounded-lg p-6">
+      <div className="bg-bg-secondary rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Heart className="w-5 h-5 text-pink-400" />
           偏好概览
@@ -245,12 +245,12 @@ export const LearningStatsDashboard: FC = () => {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Star className="w-4 h-4 text-yellow-400" />
-              <h4 className="text-sm font-medium text-gray-300">表达偏好</h4>
+              <h4 className="text-sm font-medium text-text-primary">表达偏好</h4>
             </div>
             <div className="space-y-2 text-sm">
               {preferences.map((p) => (
                 <div key={p.field} className="flex items-center justify-between">
-                  <span className="text-gray-300">{p.field}</span>
+                  <span className="text-text-primary">{p.field}</span>
                   <div className="flex items-center gap-2">
                     <div className="flex gap-0.5">
                       {[1, 2, 3, 4, 5].map((i) => (
@@ -260,40 +260,40 @@ export const LearningStatsDashboard: FC = () => {
                           className={
                             i <= Math.round(p.avgRating)
                               ? 'text-yellow-400 fill-current'
-                              : 'text-gray-600'
+                              : 'text-text-secondary'
                           }
                         />
                       ))}
                     </div>
-                    <span className="text-gray-400">×{p.ratedCount}</span>
+                    <span className="text-text-secondary">×{p.ratedCount}</span>
                   </div>
                 </div>
               ))}
               {preferences.length === 0 && (
-                <p className="text-gray-500">暂无评分，打开词详情给 AI 内容打分</p>
+                <p className="text-text-secondary">暂无评分，打开词详情给 AI 内容打分</p>
               )}
             </div>
           </div>
           <div>
             <div className="flex items-center gap-2 mb-3">
               <AlertCircle className="w-4 h-4 text-red-400" />
-              <h4 className="text-sm font-medium text-gray-300">观察偏好</h4>
+              <h4 className="text-sm font-medium text-text-primary">观察偏好</h4>
             </div>
             <div className="space-y-2 text-sm">
               {inferredWeak.map((w) => (
                 <div key={w.field} className="flex items-center justify-between">
-                  <span className="text-gray-300">{w.field}</span>
+                  <span className="text-text-primary">{w.field}</span>
                   <span className="text-red-400">{Math.round(w.strength * 100)}% 错误率</span>
                 </div>
               ))}
-              {inferredWeak.length === 0 && <p className="text-gray-500">暂无弱项，继续保持</p>}
+              {inferredWeak.length === 0 && <p className="text-text-secondary">暂无弱项，继续保持</p>}
             </div>
           </div>
         </div>
       </div>
 
       {/* Heatmap */}
-      <div className="bg-gray-800 rounded-lg p-6">
+      <div className="bg-bg-secondary rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Calendar className="w-5 h-5" />
           学习热力图
@@ -302,7 +302,7 @@ export const LearningStatsDashboard: FC = () => {
       </div>
 
       {/* Daily Activity Chart */}
-      <div className="bg-gray-800 rounded-lg p-6">
+      <div className="bg-bg-secondary rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <BarChart3 className="w-5 h-5" />
           最近30天学习趋势
@@ -311,7 +311,7 @@ export const LearningStatsDashboard: FC = () => {
       </div>
 
       {/* Retention Curve */}
-      <div className="bg-gray-800 rounded-lg p-6">
+      <div className="bg-bg-secondary rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <TrendingUp className="w-5 h-5" />
           记忆保留率曲线
@@ -320,7 +320,7 @@ export const LearningStatsDashboard: FC = () => {
       </div>
 
       {/* Review Forecast */}
-      <div className="bg-gray-800 rounded-lg p-6">
+      <div className="bg-bg-secondary rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Calendar className="w-5 h-5" />
           未来14天复习量预测
@@ -329,7 +329,7 @@ export const LearningStatsDashboard: FC = () => {
       </div>
 
       {/* Weak Words */}
-      <div className="bg-gray-800 rounded-lg p-6">
+      <div className="bg-bg-secondary rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <AlertCircle className="w-5 h-5" />
           薄弱词汇（需加强）
@@ -338,7 +338,7 @@ export const LearningStatsDashboard: FC = () => {
       </div>
 
       {/* T8: 弱点错误明细（答错追踪的精确错误点） */}
-      <div className="bg-gray-800 rounded-lg p-6">
+      <div className="bg-bg-secondary rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Target className="w-5 h-5" />
           弱点错误明细
@@ -381,21 +381,21 @@ interface StatCardProps {
 
 const StatCard: FC<StatCardProps> = ({ icon, label, value, color, trend, trendValue }) => {
   const colorClasses = {
-    blue: 'bg-white/10 text-primary',
+    blue: 'bg-primary/10 text-primary',
     yellow: 'bg-yellow-500/20 text-yellow-400',
     green: 'bg-green-500/20 text-green-400',
-    purple: 'bg-white/10 text-primary',
+    purple: 'bg-primary/10 text-primary',
   };
 
   const getTrendIcon = () => {
     if (!trend) return null;
     if (trend === 'up') return <TrendingUp className="w-4 h-4 text-green-400" />;
     if (trend === 'down') return <TrendingDown className="w-4 h-4 text-red-400" />;
-    return <Minus className="w-4 h-4 text-gray-400" />;
+    return <Minus className="w-4 h-4 text-text-secondary" />;
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 hover:bg-gray-750 transition-colors">
+    <div className="bg-bg-secondary rounded-lg p-6 hover:bg-bg-tertiary transition-colors">
       <div className={`inline-flex p-3 rounded-lg mb-4 ${colorClasses[color]}`}>{icon}</div>
       <div className="ui-stat mb-1">{value}</div>
       <div className="flex items-center justify-between">
@@ -409,7 +409,7 @@ const StatCard: FC<StatCardProps> = ({ icon, label, value, color, trend, trendVa
                   ? 'text-green-400'
                   : trend === 'down'
                     ? 'text-red-400'
-                    : 'text-gray-400'
+                    : 'text-text-secondary'
               }
             >
               {trendValue > 0 ? '+' : ''}
@@ -430,7 +430,7 @@ interface DetailCardProps {
 
 const DetailCard: FC<DetailCardProps> = ({ label, value, icon }) => {
   return (
-    <div className="bg-gray-800 rounded-lg p-4 flex items-center gap-4">
+    <div className="bg-bg-secondary rounded-lg p-4 flex items-center gap-4">
       <div className="text-4xl">{icon}</div>
       <div>
         <div className="ui-stat text-[1.25rem]">{value}</div>
@@ -474,7 +474,7 @@ const Heatmap: FC<HeatmapProps> = ({ data }) => {
   }
 
   const getColor = (count: number) => {
-    if (count === 0) return 'bg-gray-700';
+    if (count === 0) return 'bg-bg-tertiary';
     if (count <= 2) return 'bg-green-900';
     if (count <= 5) return 'bg-green-700';
     if (count <= 10) return 'bg-green-500';
@@ -514,7 +514,7 @@ const Heatmap: FC<HeatmapProps> = ({ data }) => {
   return (
     <div className="overflow-x-auto">
       {/* Month labels */}
-      <div className="flex gap-1 mb-2 text-xs text-gray-400">
+      <div className="flex gap-1 mb-2 text-xs text-text-secondary">
         {monthLabels.map((label, idx) => (
           <div key={idx} className="absolute" style={{ left: `${label.weekIndex * 16}px` }}>
             {label.month}
@@ -535,7 +535,7 @@ const Heatmap: FC<HeatmapProps> = ({ data }) => {
               return (
                 <div
                   key={dayIdx}
-                  className={`w-3 h-3 rounded-sm ${getColor(count)} hover:ring-2 hover:ring-white/50 transition-all cursor-pointer`}
+                  className={`w-3 h-3 rounded-sm ${getColor(count)} hover:ring-2 hover:ring-primary/50 transition-all cursor-pointer`}
                   title={`${dateStr}: ${count} 个词`}
                 />
               );
@@ -543,10 +543,10 @@ const Heatmap: FC<HeatmapProps> = ({ data }) => {
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-2 mt-4 text-xs text-gray-400">
+      <div className="flex items-center gap-2 mt-4 text-xs text-text-secondary">
         <span>少</span>
         <div className="flex gap-1">
-          <div className="w-3 h-3 rounded-sm bg-gray-700" />
+          <div className="w-3 h-3 rounded-sm bg-bg-tertiary" />
           <div className="w-3 h-3 rounded-sm bg-green-900" />
           <div className="w-3 h-3 rounded-sm bg-green-700" />
           <div className="w-3 h-3 rounded-sm bg-green-500" />
@@ -564,7 +564,7 @@ interface DailyActivityChartProps {
 
 const DailyActivityChart: FC<DailyActivityChartProps> = ({ data }) => {
   if (data.length === 0) {
-    return <div className="text-gray-400 text-center py-8">暂无数据</div>;
+    return <div className="text-text-secondary text-center py-8">暂无数据</div>;
   }
 
   const maxValue = Math.max(...data.map((d) => d.newCards + d.reviewedCards), 1);
@@ -594,7 +594,7 @@ const DailyActivityChart: FC<DailyActivityChartProps> = ({ data }) => {
                   title={`复习: ${day.reviewedCards}`}
                 />
               </div>
-              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full mt-2 px-2 py-1 bg-gray-900 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full mt-2 px-2 py-1 bg-bg-primary rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                 {day.date.slice(5)}
                 <br />
                 新: {day.newCards} | 复: {day.reviewedCards}
@@ -606,11 +606,11 @@ const DailyActivityChart: FC<DailyActivityChartProps> = ({ data }) => {
       <div className="flex items-center gap-4 text-sm">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded bg-green-500" />
-          <span className="text-gray-400">新学</span>
+          <span className="text-text-secondary">新学</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded bg-primary" />
-          <span className="text-gray-400">复习</span>
+          <span className="text-text-secondary">复习</span>
         </div>
       </div>
     </div>
@@ -623,7 +623,7 @@ interface RetentionCurveChartProps {
 
 const RetentionCurveChart: FC<RetentionCurveChartProps> = ({ data }) => {
   if (data.length === 0) {
-    return <div className="text-gray-400 text-center py-8">暂无足够的复习数据</div>;
+    return <div className="text-text-secondary text-center py-8">暂无足够的复习数据</div>;
   }
 
   const maxX = Math.max(...data.map((d) => d.intervalDays), 1);
@@ -665,16 +665,16 @@ const RetentionCurveChart: FC<RetentionCurveChartProps> = ({ data }) => {
           );
         })}
       </svg>
-      <div className="flex justify-between text-xs text-gray-400 mt-2">
+      <div className="flex justify-between text-xs text-text-secondary mt-2">
         <span>间隔 {data[0]?.intervalDays} 天</span>
         <span>间隔 {maxX}+ 天</span>
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
         {data.map((d, idx) => (
-          <div key={idx} className="text-xs bg-gray-700/50 rounded px-2 py-1">
-            <span className="text-gray-400">{d.intervalDays}+ 天:</span>{' '}
+          <div key={idx} className="text-xs bg-bg-tertiary rounded px-2 py-1">
+            <span className="text-text-secondary">{d.intervalDays}+ 天:</span>{' '}
             <span className="text-primary">{d.retention.toFixed(1)}%</span>
-            <span className="text-gray-500"> ({d.reviewCount}次)</span>
+            <span className="text-text-secondary"> ({d.reviewCount}次)</span>
           </div>
         ))}
       </div>
@@ -688,7 +688,7 @@ interface ForecastChartProps {
 
 const ForecastChart: FC<ForecastChartProps> = ({ data }) => {
   if (data.length === 0) {
-    return <div className="text-gray-400 text-center py-8">暂无数据</div>;
+    return <div className="text-text-secondary text-center py-8">暂无数据</div>;
   }
 
   const maxValue = Math.max(...data.map((d) => d.dueCount), 1);
@@ -705,7 +705,7 @@ const ForecastChart: FC<ForecastChartProps> = ({ data }) => {
                 style={{ height: `${heightPercent}%` }}
                 title={`${d.date}: ${d.dueCount} 个待复习`}
               />
-              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full mt-2 px-2 py-1 bg-gray-900 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full mt-2 px-2 py-1 bg-bg-primary rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                 {d.date.slice(5)}
                 <br />
                 {d.dueCount} 个待复习
@@ -714,7 +714,7 @@ const ForecastChart: FC<ForecastChartProps> = ({ data }) => {
           );
         })}
       </div>
-      <div className="text-xs text-gray-400 mt-4">
+      <div className="text-xs text-text-secondary mt-4">
         <span>未来 {data.length} 天预计复习: </span>
         <span className="text-primary">
           {data.reduce((sum, d) => sum + d.dueCount, 0)} 次
@@ -729,7 +729,7 @@ interface WeakWordsListProps {
   onWordClick?: (word: string) => void;
 }const WeakWordsList: FC<WeakWordsListProps> = ({ words, onWordClick }) => {
   if (words.length === 0) {
-    return <div className="text-gray-400 text-center py-8">太棒了！暂无薄弱词汇 🎉</div>;
+    return <div className="text-text-secondary text-center py-8">太棒了！暂无薄弱词汇 🎉</div>;
   }
 
   const handleWordClick = (word: string) => {
@@ -746,7 +746,7 @@ interface WeakWordsListProps {
           <div
             key={idx}
             onClick={() => handleWordClick(word.word)}
-            className="bg-gray-700/50 rounded-lg p-4 hover:bg-gray-700 transition-colors cursor-pointer group"
+            className="bg-bg-tertiary rounded-lg p-4 hover:bg-bg-tertiary transition-colors cursor-pointer group"
           >
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-3">
@@ -757,11 +757,11 @@ interface WeakWordsListProps {
                   错误率 {errorRate.toFixed(1)}%
                 </span>
               </div>
-              <div className="text-sm text-gray-400">
+              <div className="text-sm text-text-secondary">
                 {word.againCount} / {word.totalReviews} 次
               </div>
             </div>
-            <div className="flex items-center gap-4 text-xs text-gray-400">
+            <div className="flex items-center gap-4 text-xs text-text-secondary">
               <span>难度: {word.difficulty.toFixed(2)}</span>
               <span>稳定性: {word.stability.toFixed(2)}</span>
               <span>最后复习: {new Date(word.lastReview * 1000).toLocaleDateString()}</span>
@@ -784,7 +784,7 @@ interface WeakPointWordsListProps {
 
 const WeakPointWordsList: FC<WeakPointWordsListProps> = ({ words, onWordClick, onResolve }) => {
   if (words.length === 0) {
-    return <div className="text-gray-400 text-center py-8">暂无弱点错误记录</div>;
+    return <div className="text-text-secondary text-center py-8">暂无弱点错误记录</div>;
   }
 
   const getErrorTypeLabel = (errorType: string) => {
@@ -808,7 +808,7 @@ const WeakPointWordsList: FC<WeakPointWordsListProps> = ({ words, onWordClick, o
         <div
           key={idx}
           onClick={() => onWordClick?.(word.word)}
-          className="bg-gray-700/50 rounded-lg p-4 hover:bg-gray-700 transition-colors cursor-pointer group"
+          className="bg-bg-tertiary rounded-lg p-4 hover:bg-bg-tertiary transition-colors cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
@@ -829,7 +829,7 @@ const WeakPointWordsList: FC<WeakPointWordsListProps> = ({ words, onWordClick, o
               已解决
             </button>
           </div>
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-text-secondary">
             最近出错: {new Date(word.last_occurred_at * 1000).toLocaleString()}
           </div>
         </div>
@@ -837,3 +837,4 @@ const WeakPointWordsList: FC<WeakPointWordsListProps> = ({ words, onWordClick, o
     </div>
   );
 };
+
