@@ -140,10 +140,13 @@ lookup_word_multi_source()
 统一格式返回
 ```
 
+> **性能**：应用启动时对 ECDICT `stardict` 表幂等补建 `idx_stardict_frq (frq)` 索引，避免「词典优化」页词频统计多次区间 COUNT 全表扫描（此前每次 ~1.3s → 毫秒级）。
+
 ### API 端点
 ```rust
-// 多源查询
-lookup_word_multi_source(word)
+// 多源查询（record_history: 词典页手动查询传 true → 写入 dictionary_history；
+// 悬浮词典等被动查询传 false，不污染词典历史）
+lookup_word_multi_source(word, record_history)
 
 // 实时联想
 search_word_suggestions(query, limit)

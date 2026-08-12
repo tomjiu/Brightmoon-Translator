@@ -1,4 +1,4 @@
-# Current focus (2026-07-29)
+# Current focus (2026-08-12)
 
 **Product rule:** all capabilities are **first-party in-repo**. No plugin marketplace / external plugin host.
 
@@ -123,6 +123,12 @@
 | Compact overlay + theme hook | `overlay/html_builder.rs`, `set_overlay_theme` |
 | OCR session lifecycle | **Frozen** — do not touch |
 | Plugin marketplace removed | first-party only |
+| 词典优化启动索引 | `lib.rs` 幂等建 `idx_stardict_frq`（stardict.frq 区间 COUNT 全表扫描 → 毫秒级） |
+| 词典历史隔离 | `lookup_word_multi_source(word, record_history)`；手动查询 true，悬浮词典 false |
+| 页面导航拆分 | 词典(`Vocabulary`) / AI 学习(`Study` 六子页) / 历史(`History` 合并 tm+metrics) |
+| AI 学习专用 LLM | `learn_llm_provider_id` + `provider_from_config_for_learning`，与翻译配置隔离 |
+| 翻译提示词迁移 | `AiTranslateTools`（润色/术语/风格）由引擎页迁至大模型页 |
+| 复习页紧凑化 | `VocabularyReview.tsx` 一屏可见（图片 210px、字号/内边距收紧） |
 
 ## Architecture (unchanged)
 
