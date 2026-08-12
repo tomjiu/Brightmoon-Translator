@@ -304,6 +304,61 @@ export default function AdvancedSettings() {
           )}
         </div>
       </Card>
+
+      <Card
+        title={t('settings.advanced.perfTitle')}
+        description={t('settings.advanced.perfDesc')}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-2">
+              {t('settings.advanced.preloadLabel')}
+            </label>
+            <select
+              value={config.hotLoadPageCount ?? 1}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (!Number.isNaN(v) && v >= 0 && v <= 3) {
+                  updateConfig((prev) => ({ ...prev, hotLoadPageCount: v }));
+                  void saveConfig();
+                }
+              }}
+              className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg focus:border-primary outline-none"
+            >
+              <option value="0">{t('settings.advanced.preload0')}</option>
+              <option value="1">{t('settings.advanced.preload1')}</option>
+              <option value="2">{t('settings.advanced.preload2')}</option>
+              <option value="3">{t('settings.advanced.preload3')}</option>
+            </select>
+            <p className="text-xs text-text-secondary mt-1">
+              {t('settings.advanced.preloadHint')}
+            </p>
+          </div>
+
+          <div className="border-t border-border pt-4">
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={config.deferStartupWarmup ?? true}
+                onChange={(e) => {
+                  updateConfig((prev) => ({
+                    ...prev,
+                    deferStartupWarmup: e.target.checked,
+                  }));
+                  void saveConfig();
+                }}
+                className="rounded"
+              />
+              <div>
+                <p className="text-sm font-medium text-text-primary">
+                  {t('settings.advanced.deferWarmupLabel')}
+                </p>
+                <p className="ui-caption">{t('settings.advanced.deferWarmupHint')}</p>
+              </div>
+            </label>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }

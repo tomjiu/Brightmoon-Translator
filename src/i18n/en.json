@@ -563,7 +563,17 @@
       "cacheDesc": "Translated content is cached locally and returned directly on repeat translations",
       "cacheTtlLabel": "Cache TTL (hours)",
       "cacheTtlHint": "Entries older than this are auto-evicted on next read. Default 72 hours (3 days). Changes take effect on app restart.",
-      "cacheTtlInvalid": "Please enter an integer between 1 and 720"
+      "cacheTtlInvalid": "Please enter an integer between 1 and 720",
+      "perfTitle": "Performance",
+      "perfDesc": "Tune startup memory and preload behavior (applies on next launch)",
+      "preloadLabel": "Preloaded windows",
+      "preloadHint": "Hidden pages created at startup for instant first use. Each costs ~80-140MB of memory: 0=none, 1=translate card (recommended), 2=+OCR region frame, 3=+selection pop button",
+      "preload0": "None (most memory-efficient)",
+      "preload1": "1 (translate card only, recommended)",
+      "preload2": "2 (translate card + OCR region frame)",
+      "preload3": "3 (all, fastest)",
+      "deferWarmupLabel": "Defer screenshot/OCR warmup",
+      "deferWarmupHint": "Skip screen capture and OCR model preload at startup for a faster UI; the first OCR use is slightly slower once. Enabled by default."
     },
     "enginePage": {
       "title": "Translation engines",
@@ -580,6 +590,8 @@
       "goOcr": "OCR settings",
       "routingTitle": "Routing (selection / Hook)",
       "routingDesc": "Main window and OCR are fixed; this only affects other channels",
+      "aiTranslateTitle": "AI Translate",
+      "aiTranslateDesc": "LLM translation prompt, polishing, and glossary tools (model config lives in the LLM page)",
       "listHint": "Above: enabled engines in priority order (drag to reorder). Below: disabled engines grouped by type. LLM keys are not on this page.",
       "enabledTitle": "Enabled engines (drag to reorder)",
       "enabledDesc": "Lower number = higher priority; OCR and routing fall back in this order. Drag the handle to reorder.",

@@ -925,6 +925,16 @@ pub struct AppConfig {
     /// Default false — in-process path is faster for heavy continuous OCR.
     #[serde(default)]
     pub winrt_ocr_use_subprocess: bool,
+    /// How many hidden WebView windows to preload at startup (0-3, default 1).
+    /// Priority: 1 = translate-card, 2 = +ocr-region-frame, 3 = +selection-pop.
+    /// Each preloaded window keeps a renderer process alive (~80-140MB).
+    #[serde(default = "default_hot_load_page_count")]
+    pub hot_load_page_count: u8,
+    /// Defer screenshot-warmup + OCR hot-start until first use instead of
+    /// running them ~1s after startup. Startup gets quieter; first OCR call
+    /// pays the capture/model-load cost once.
+    #[serde(default = "default_defer_startup_warmup")]
+    pub defer_startup_warmup: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1087,6 +1097,18 @@ impl Default for MaimemoCollectionConfig {
     }
 }
 
+/// Default number of hidden WebView windows preloaded at startup for instant
+/// first-use (0-3). Priority: 1 = translate-card, 2 = +ocr-region-frame,
+/// 3 = +selection-pop. Mirrors snow-shot's `hotLoadPageCount` pool limit —
+/// each preloaded window costs a ~80-140MB renderer process.
+fn default_hot_load_page_count() -> u8 {
+    1
+}
+
+fn default_defer_startup_warmup() -> bool {
+    true
+}
+
 fn default_true() -> bool {
     true
 }
@@ -1183,6 +1205,8 @@ impl Default for AppConfig {
             collection: CollectionConfig::default(),
             layout_detection_enabled: false,
             winrt_ocr_use_subprocess: false,
+            hot_load_page_count: default_hot_load_page_count(),
+            defer_startup_warmup: default_defer_startup_warmup(),
         }
     }
 }

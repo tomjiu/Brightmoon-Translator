@@ -563,7 +563,17 @@
       "cacheDesc": "已翻译内容会缓存到本地，重复翻译时直接返回",
       "cacheTtlLabel": "缓存有效期（小时）",
       "cacheTtlHint": "超过此时间的条目会在下次读取时自动清理。默认 72 小时（3 天）。更改后重启应用生效。",
-      "cacheTtlInvalid": "请输入 1-720 之间的整数"
+      "cacheTtlInvalid": "请输入 1-720 之间的整数",
+      "perfTitle": "性能",
+      "perfDesc": "调节启动内存占用与预加载行为（改动在下次启动生效）",
+      "preloadLabel": "预加载窗口数量",
+      "preloadHint": "启动时预先创建的隐藏页面（加快首次打开速度）。每个页面占用约 80-140MB 内存：0=不预加载，1=翻译卡（推荐），2=+OCR 区域框，3=+划词气泡按钮",
+      "preload0": "不预加载（最省内存）",
+      "preload1": "1 个（仅翻译卡，推荐）",
+      "preload2": "2 个（翻译卡 + OCR 区域框）",
+      "preload3": "3 个（全部，最快）",
+      "deferWarmupLabel": "延迟截图/OCR 预热",
+      "deferWarmupHint": "开启后启动阶段不抓屏、不预载 OCR 模型，界面更快出现；首次使用 OCR 时会稍慢一次。默认开启"
     },
     "enginePage": {
       "title": "翻译引擎",
@@ -580,6 +590,8 @@
       "goOcr": "OCR 识别设置",
       "routingTitle": "路由（划词 / Hook 等）",
       "routingDesc": "主页与 OCR 已固定；此处只影响其它通道",
+      "aiTranslateTitle": "AI 翻译",
+      "aiTranslateDesc": "LLM 翻译相关的提示词、润色与术语工具（模型配置在「大模型」页）",
       "listHint": "上方为已启用引擎，拖动排序决定优先级（数字越小越优先）；下方为未启用引擎，按类型默认排列。大模型密钥不在此页填写。",
       "enabledTitle": "已启用引擎（拖拽排序）",
       "enabledDesc": "数字越小优先级越高；OCR 框与路由按此顺序回退。拖动左侧手柄调整顺序。",

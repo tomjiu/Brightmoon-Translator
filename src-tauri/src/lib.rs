@@ -666,28 +666,61 @@ pub fn run() {
             {
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
+                    // Read preload budget once — avoids locking config per window.
+                    let (hot_load_count, defer_warmup) = {
+                        let c = app_handle.state::<AppState>();
+                        let cfg = c.system.config.lock().await;
+                        (
+                            cfg.hot_load_page_count.min(3) as usize,
+                            cfg.defer_startup_warmup,
+                        )
+                    };
+
                     // Wait 1 second to avoid slowing down app startup
                     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-                    // O5: preload the OCR region frame webview hidden so the
-                    // first OCR session skips WebView2 create cost.
-                    if let Err(e) = commands::window::preload_ocr_region_frame(&app_handle) {
-                        tracing::warn!("[O5] OCR region frame preload failed (non-fatal): {}", e);
+                    // Preload hidden webviews up to the configured budget.
+                    // Priority: 1 = translate-card (most used), 2 = OCR region
+                    // frame, 3 = selection-pop. Each costs a renderer process
+                    // (~80-140MB), so the count is user-configurable (snow-shot
+                    // `hotLoadPageCount` pattern). All three windows also have
+                    // cold-create paths, so skipping a preload only costs a few
+                    // hundred ms on first use — not functionality.
+                    let mut count = hot_load_count;
+                    if count > 0 {
+                        if let Err(e) = overlay::translate_card::preload_translate_card(&app_handle)
+                        {
+                            tracing::warn!(
+                                "[translate-card] preload failed (non-fatal): {}",
+                                e
+                            );
+                        }
+                        count -= 1;
                     }
-                    // Preload the floating translate-card window so the first
-                    // 划词/词典 card skips WebView2 create cost and its FE
-                    // listener is already mounted before any emit.
-                    if let Err(e) = overlay::translate_card::preload_translate_card(&app_handle) {
-                        tracing::warn!(
-                            "[translate-card] preload failed (non-fatal): {}",
-                            e
-                        );
+                    if count > 0 {
+                        // O5: preload the OCR region frame webview hidden so the
+                        // first OCR session skips WebView2 create cost.
+                        if let Err(e) = commands::window::preload_ocr_region_frame(&app_handle) {
+                            tracing::warn!("[O5] OCR region frame preload failed (non-fatal): {}", e);
+                        }
+                        count -= 1;
                     }
-                    // Preload the selection-pop button webview so the first 划词
-                    // pop is instant and already painted (no black-block flash).
-                    if let Err(e) = crate::selection::pop_button::preload_selection_pop(&app_handle)
-                    {
-                        tracing::warn!("[pop] preload failed (non-fatal): {}", e);
+                    if count > 0 {
+                        // Preload the selection-pop button webview so the first 划词
+                        // pop is instant and already painted (no black-block flash).
+                        if let Err(e) = crate::selection::pop_button::preload_selection_pop(
+                            &app_handle,
+                        ) {
+                            tracing::warn!("[pop] preload failed (non-fatal): {}", e);
+                        }
+                    }
+
+                    // Deferred warmup: when enabled, skip the screenshot cache +
+                    // WinRT OCR hot-start here; both stay cold until first use so
+                    // startup stays quiet. First real OCR call pays the cost once.
+                    if defer_warmup {
+                        tracing::info!("[OCR Warmup] deferred to first use (defer_startup_warmup=true)");
+                        return;
                     }
 
                     tracing::info!("[OCR Warmup] Starting screenshot cache warmup...");

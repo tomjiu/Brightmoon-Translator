@@ -134,6 +134,10 @@ const INITIAL_CONFIG: AppConfig = {
     autoPushOnSave: true,
   },
   layoutDetectionEnabled: false,
+  /** Hidden WebView preload budget (0-3, default 1). Matches Rust default. */
+  hotLoadPageCount: 1,
+  /** Defer screenshot-warmup + OCR hot-start until first use. */
+  deferStartupWarmup: true,
 };
 
 interface ConfigState {

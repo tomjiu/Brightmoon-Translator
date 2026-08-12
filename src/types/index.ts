@@ -248,6 +248,13 @@ export interface AppConfig {
   layoutDetectionEnabled?: boolean;
   /** Tier4-6: Run WinRT OCR in a one-shot subprocess so OS reclaims ONNX model memory (default off; ~200ms slower per call). */
   winrtOcrUseSubprocess?: boolean;
+  /** Hidden WebView preload budget at startup (0-3, default 1). Priority:
+   * 1 = translate-card, 2 = +ocr-region-frame, 3 = +selection-pop. Each kept
+   * hidden window holds a renderer process (~80-140MB). */
+  hotLoadPageCount?: number;
+  /** Defer screenshot-warmup + OCR hot-start until first use (quieter startup;
+   * first OCR call pays the capture/model-load cost once). */
+  deferStartupWarmup?: boolean;
 }
 
 export interface CollectionConfig {
