@@ -23,8 +23,10 @@ import { exportForGithub, exportAiCacheForGithub } from '../services/githubExpor
 import {
   downloadEcDict,
   readEcDictInfoSilently,
+  DICT_VARIANTS,
   type EcDictDownloadInfo,
   type EcDictProgress,
+  type DictVariant,
 } from '../services/dictDownload';
 
 function formatSize(bytes: number): string {
@@ -61,7 +63,7 @@ export default function DictOptimization() {
     }
   };
 
-  const handleDownloadDict = async () => {
+  const handleDownloadDict = async (variant: DictVariant) => {
     if (downloading) return;
     setDownloading(true);
     setDlProgress(null);
@@ -70,12 +72,12 @@ export default function DictOptimization() {
       unlisten = await listen<EcDictProgress>('ecdict-download-progress', (e) => {
         setDlProgress(e.payload);
       });
-      const path = await downloadEcDict();
+      const path = await downloadEcDict(variant);
       unlisten();
       unlisten = null;
       setDlInfo({
         present: true,
-        length: dlProgress?.total ?? 0,
+        length: dlProgress?.total ?? variant.sizeBytes,
         path,
       });
       showSuccess('词典下载完成，重启后生效');
@@ -237,30 +239,47 @@ export default function DictOptimization() {
             词典数据下载（云端）
           </h2>
           <p className="text-sm text-text-secondary mb-4">
-            ecdict.db（约 812MB，60 万+ 词条中英词典）因体积过大不随安装包分发，可从
-            GitHub Release 云下载到本机；下载完成后重启应用生效。
+            词典数据库因体积较大不随安装包分发，可从 GitHub Release 云下载到本机
+            （下载过程做 SHA-256 校验，损坏文件自动丢弃）；下载完成后重启应用生效。
           </p>
 
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleDownloadDict}
-              disabled={downloading || (dlInfo?.present ?? false)}
-              className="flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary-hover disabled:bg-bg-tertiary disabled:text-text-secondary rounded-lg transition-colors"
-            >
-              {downloading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <DownloadCloud className="w-4 h-4" />
-              )}
-              {dlInfo?.present ? '词典数据已就绪' : downloading ? '下载中...' : '下载词典数据'}
-            </button>
-            {dlInfo?.present && (
-              <span className="flex items-center gap-1 text-sm text-green-400">
-                <CheckCircle className="w-4 h-4" />
-                已下载 {formatSize(dlInfo.length)}
-              </span>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {DICT_VARIANTS.map((variant) => (
+              <div
+                key={variant.id}
+                className="bg-bg-primary rounded-lg border border-border p-4"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium">{variant.label}</span>
+                  <span className="text-xs text-text-secondary">{variant.sizeHuman}</span>
+                </div>
+                <p className="text-xs text-text-secondary mb-3">{variant.detail}</p>
+                <button
+                  onClick={() => handleDownloadDict(variant)}
+                  disabled={downloading || (dlInfo?.present ?? false)}
+                  className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-primary hover:bg-primary-hover disabled:bg-bg-tertiary disabled:text-text-secondary rounded-lg transition-colors"
+                >
+                  {downloading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <DownloadCloud className="w-4 h-4" />
+                  )}
+                  {dlInfo?.present
+                    ? '已下载'
+                    : downloading
+                      ? '下载中...'
+                      : `下载${variant.label}`}
+                </button>
+              </div>
+            ))}
           </div>
+
+          {(dlInfo?.present ?? false) && (
+            <div className="mt-4 flex items-center gap-1 text-sm text-green-400">
+              <CheckCircle className="w-4 h-4" />
+              已下载 {formatSize(dlInfo?.length ?? 0)}
+            </div>
+          )}
 
           {dlProgress && (
             <div className="mt-4 space-y-1">

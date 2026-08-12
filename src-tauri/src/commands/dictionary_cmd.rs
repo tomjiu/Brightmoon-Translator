@@ -1207,12 +1207,14 @@ pub fn ecdict_download_info() -> EcDictDownloadInfo {
 }
 
 /// Download ecdict.db from the cloud into the per-user config dir, emitting
-/// `ecdict-download-progress` events. Validates the SQLite file and builds the
-/// `frq` index so first lookup after restart is fast.
+/// `ecdict-download-progress` events. Validate the SQLite file (and optionally
+/// an expected SHA-256) before it becomes the active db, then build the `frq`
+/// index so first lookup after restart is fast.
 #[tauri::command]
 pub async fn download_ecdict(
     app: tauri::AppHandle,
     url: Option<String>,
+    expected_sha256: Option<String>,
 ) -> Result<String, String> {
     let url = url.unwrap_or_else(|| ECDICT_DOWNLOAD_URL.to_string());
     let target =
@@ -1263,6 +1265,26 @@ pub async fn download_ecdict(
     }
     file.flush().await.map_err(|e| format!("写入失败: {e}"))?;
     drop(file);
+
+    // SHA-256 integrity check (rejects truncated / corrupted / swapped files).
+    if let Some(expected) = expected_sha256
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+    {
+        use sha2::Digest;
+        let mut hasher = sha2::Sha256::new();
+        let bytes = tokio::fs::read(&tmp)
+            .await
+            .map_err(|e| format!("读取文件失败: {e}"))?;
+        hasher.update(&bytes);
+        let actual = format!("{:x}", hasher.finalize());
+        if actual != expected {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(format!(
+                "下载校验失败: SHA-256 不匹配 (expected {expected}, got {actual})"
+            ));
+        }
+    }
 
     // Validate + index the SQLite db before it becomes the active file.
     let conn_str = format!("sqlite:{}", tmp.display().to_string().replace('\\', "/"));

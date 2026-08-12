@@ -21,7 +21,7 @@
 | Dict-only hotkey (QTranslate D) | **Improved** | Optional `dictionaryLookup` → `trigger_dictionary_lookup` |
 | Overlay light/dark feel | **Improved** | elevated card + shadow tokens light/dark |
 | Multi-engine selection text | **Improved** | `display_text` shared |
-| Manual smoke | **Open** | User acceptance |
+| Manual smoke | **Passed** | User accepted (still polish-worthy) |
 
 **Do not:** rewrite OCR selector/session; do not expand free-hover OCR on terminals.
 
@@ -103,6 +103,8 @@
 
 | Slice | Where |
 |-------|--------|
+| 词典云下载（精简/完整双版本 + SHA-256 校验） | `download_ecdict` + `ecdict-v1` release; `scripts/build-compact-dict.py` |
+| ecdict.db 不随包分发 | `tauri.conf` resources 移除; resolve 用 SQLite magic 跳过 stub |
 | Offline auto_switch fallback | Router appends offline after all strategies fail (chain complete) |
 | Offline chain query + modelDir | `get_offline_chain` cmd + Settings tab pivot/gap + dir input |
 | Multi-engine selection overlay | `TranslateResponse::display_text`; hotkey path + auto_watch |
