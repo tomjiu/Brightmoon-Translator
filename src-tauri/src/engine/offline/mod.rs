@@ -88,11 +88,25 @@ impl OfflineEngine {
     /// Check whether a pair's model files have been downloaded (config.yml
     /// present under `<model_dir>/<from>-<to>/`).
     pub fn is_model_downloaded(&self, source: &str, target: &str) -> bool {
-        let pair = format!("{source}-{target}");
-        let Ok(dir) = self.safe_pair_dir(&pair) else {
+        self.is_pair_downloaded(&format!("{source}-{target}"))
+    }
+
+    /// True when `from -> to` can be serviced right now: a translation chain
+    /// exists and every model pair in it is downloaded. Used to short-circuit
+    /// offline auto-fallback so the router never pays for a model load that is
+    /// guaranteed to fail (missing model or unsupported pair).
+    pub fn can_translate(&self, from: &str, to: &str) -> bool {
+        let Some(chain) = model_catalog::translation_chain(from, to) else {
             return false;
         };
-        dir.join("config.yml").exists()
+        chain.iter().all(|id| self.is_pair_downloaded(id))
+    }
+
+    fn is_pair_downloaded(&self, pair_id: &str) -> bool {
+        match self.safe_pair_dir(pair_id) {
+            Ok(dir) => dir.join("config.yml").exists(),
+            Err(_) => false,
+        }
     }
 
     /// Total size of a downloaded pair's directory.

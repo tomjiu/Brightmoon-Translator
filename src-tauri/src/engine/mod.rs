@@ -49,6 +49,9 @@ struct EngineEntry {
 pub struct Router {
     engines: Vec<Arc<dyn TranslationEngine>>,
     strategy: RoutingStrategy,
+    /// `offline.auto_switch`: after every in-strategy engine fails, try the
+    /// local offline (bergamot) engine as last resort when the pair is ready.
+    offline_fallback: bool,
 }
 
 impl Router {
@@ -263,6 +266,52 @@ impl Router {
         Self {
             engines,
             strategy: config.routing_strategy.clone().unwrap_or_default(),
+            offline_fallback: config.engines.offline.enabled && config.engines.offline.auto_switch,
+        }
+    }
+
+    /// Locate the offline engine when registered (enabled) in this router.
+    fn offline_engine(&self) -> Option<&Arc<dyn TranslationEngine>> {
+        self.engines
+            .iter()
+            .find(|e| e.name().eq_ignore_ascii_case("Offline"))
+    }
+
+    /// Last-resort offline fallback: only runs when `auto_switch` is on, an
+    /// offline engine is enabled, and the language-pair chain is downloaded.
+    /// Errors (disabled / unsupported pair / missing models) short-circuit
+    /// before ever touching the native stack.
+    async fn offline_autofallback(
+        &self,
+        text: &str,
+        from: &str,
+        to: &str,
+    ) -> anyhow::Result<String> {
+        if !self.offline_fallback {
+            anyhow::bail!("offline auto-switch is off");
+        }
+        let engine = self.offline_engine().ok_or_else(|| anyhow::anyhow!("offline engine not enabled"))?;
+        let offline = engine
+            .as_any()
+            .downcast_ref::<offline::OfflineEngine>()
+            .ok_or_else(|| anyhow::anyhow!("offline engine misconfigured"))?;
+        if !offline.can_translate(from, to) {
+            anyhow::bail!("offline models for {from} -> {to} unavailable");
+        }
+        tracing::info!("[Router] auto-switching to offline engine for {from} -> {to}");
+        engine.translate(text, from, to).await
+    }
+
+    /// Wrap a successful offline fallback into a `TranslateResponse`.
+    fn offline_response(translated: String) -> TranslateResponse {
+        TranslateResponse {
+            results: vec![TranslationResult {
+                engine: "Offline".to_string(),
+                text: translated,
+                latency_ms: None,
+            }],
+            detected_language: None,
+            errors: vec![],
         }
     }
 
@@ -436,10 +485,17 @@ impl Router {
                 },
                 Err(e) => {
                     tracing::error!("[Router] Primary engine {} failed: {}", name, e);
+                    let mut errors = vec![format!("{name}: {e}")];
+                    if self.offline_fallback {
+                        match self.offline_autofallback(text, from, to).await {
+                            Ok(translated) => return Self::offline_response(translated),
+                            Err(offline_err) => errors.push(format!("Offline: {offline_err}")),
+                        }
+                    }
                     TranslateResponse {
                         results: vec![],
                         detected_language: None,
-                        errors: vec![format!("{name}: {e}")],
+                        errors,
                     }
                 },
             }
@@ -480,6 +536,12 @@ impl Router {
         }
 
         tracing::error!("[Router] All engines failed");
+        if self.offline_fallback {
+            match self.offline_autofallback(text, from, to).await {
+                Ok(translated) => return Self::offline_response(translated),
+                Err(offline_err) => errors.push(format!("Offline: {offline_err}")),
+            }
+        }
         TranslateResponse {
             results: vec![],
             detected_language: None,
@@ -600,6 +662,13 @@ impl Router {
             }
         }
 
+        if self.offline_fallback {
+            match self.offline_autofallback(text, from, to).await {
+                Ok(translated) => return Self::offline_response(translated),
+                Err(offline_err) => errors.push(format!("Offline: {offline_err}")),
+            }
+        }
+
         TranslateResponse {
             results: vec![],
             detected_language: None,
@@ -664,6 +733,13 @@ impl Router {
                     detected_language: None,
                     errors: vec![],
                 };
+            }
+        }
+
+        if self.offline_fallback {
+            match self.offline_autofallback(&text, &from, &to).await {
+                Ok(translated) => return Self::offline_response(translated),
+                Err(offline_err) => errors.push(format!("Offline: {offline_err}")),
             }
         }
 
@@ -865,6 +941,7 @@ mod tests {
         let router = Router {
             engines: vec![],
             strategy: RoutingStrategy::PrimaryOnly,
+            offline_fallback: false,
         };
 
         let response = router.translate_all("hello", "en", "zh").await;
@@ -910,5 +987,44 @@ mod tests {
             .downcast_ref::<crate::engine::offline::OfflineEngine>()
             .unwrap();
         assert!(eng.model_dir().to_string_lossy().contains("models"));
+    }
+
+    #[test]
+    fn can_translate_false_without_models_or_chain() {
+        let dir = std::env::temp_dir().join("mt-router-test-no-models");
+        let engine = crate::engine::offline::OfflineEngine::new(dir.to_str());
+        assert!(!engine.can_translate("en", "zh"), "no models downloaded yet");
+        assert!(!engine.can_translate("xx", "zz"), "unsupported pair has no chain");
+    }
+
+    #[tokio::test]
+    async fn offline_autofallback_bails_without_downloaded_models() {
+        let dir = std::env::temp_dir().join("mt-router-test-fallback");
+        let mut config = AppConfig::default();
+        config.engines.offline.enabled = true;
+        config.engines.offline.auto_switch = true;
+        config.engines.offline.model_dir = dir.to_string_lossy().to_string();
+        let router = Router::new(&config);
+        let err = router
+            .offline_autofallback("hello", "en", "zh")
+            .await
+            .expect_err("missing models must short-circuit, not touch native stack");
+        assert!(
+            err.to_string().contains("unavailable"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn offline_autofallback_bails_when_auto_switch_off() {
+        let mut config = AppConfig::default();
+        config.engines.offline.enabled = true;
+        config.engines.offline.auto_switch = false;
+        let router = Router::new(&config);
+        let err = router
+            .offline_autofallback("hello", "en", "zh")
+            .await
+            .expect_err("auto_switch off must disable the fallback");
+        assert!(err.to_string().contains("auto-switch is off"));
     }
 }
