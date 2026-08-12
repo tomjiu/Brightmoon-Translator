@@ -461,7 +461,7 @@ pub async fn lookup_word(app: &AppHandle, text: &str) -> Option<DictCard> {
         if let Some(state) = app.try_state::<crate::AppState>() {
             match tokio::time::timeout(
                 Duration::from_millis(1500),
-                crate::commands::dictionary_cmd::lookup_word_multi_source(word.to_string(), state),
+                crate::commands::dictionary_cmd::lookup_word_multi_source(word.to_string(), false, state),
             )
             .await
             {

@@ -248,6 +248,7 @@ function DictionarySearch() {
     try {
       const [data, error] = await safeInvoke<ComprehensiveEntry>('lookup_word_multi_source', {
         word: word.trim(),
+        recordHistory: true,
       });
       if (error || !data) {
         setError(error?.message || '查询失败');

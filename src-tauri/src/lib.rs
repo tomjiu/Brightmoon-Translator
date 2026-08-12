@@ -219,6 +219,17 @@ pub fn run() {
                 {
                     Ok(pool) => {
                         tracing::info!("ECDICT database connected: {}", path.display());
+                        // dict_optimize 的 get_dict_stats 对 frq 做多次 COUNT(*) 区间统计，
+                        // 分发版 ecdict.db 缺少 frq 索引会触发全表扫描（单次查询 ~1.3s）。
+                        // 在启动时补齐索引（幂等）；只读/权限不足时忽略，不影响连接。
+                        if let Err(e) = sqlx::query(
+                            "CREATE INDEX IF NOT EXISTS idx_stardict_frq ON stardict(frq)",
+                        )
+                        .execute(&pool)
+                        .await
+                        {
+                            tracing::warn!("failed to create frq index on stardict: {}", e);
+                        }
                         Some(pool)
                     },
                     Err(e) => {

@@ -75,9 +75,13 @@ pub struct CollinsEntry {
 }
 
 /// 多源聚合查询 — 并行查询所有源，合并最全结果
+///
+/// `record_history` 仅词典页手动查询传 true（写入 dictionary_history）；
+/// 悬浮词典等自动查询传 false，避免混入共享历史。
 #[tauri::command]
 pub async fn lookup_word_multi_source(
     word: String,
+    record_history: bool,
     state: State<'_, crate::AppState>,
 ) -> Result<ComprehensiveEntry, String> {
     let pool = state.ecdict_pool.as_ref();
@@ -272,29 +276,31 @@ pub async fn lookup_word_multi_source(
         });
     }
 
-    // 记录查词历史（非阻塞，失败不影响查询结果）
-    if let Some(p) = vocab_db {
-        let w = word.clone();
-        let pool = p.clone();
-        tokio::spawn(async move {
-            // v2 S2-7: log failures instead of silently swallowing, so that
-            // missing history rows can be diagnosed.
-            if let Err(e) = sqlx::query(
-                r"
+    // 记录查词历史（仅词典页手动查询；非阻塞，失败不影响查询结果）
+    if record_history {
+        if let Some(p) = vocab_db {
+            let w = word.clone();
+            let pool = p.clone();
+            tokio::spawn(async move {
+                // v2 S2-7: log failures instead of silently swallowing, so that
+                // missing history rows can be diagnosed.
+                if let Err(e) = sqlx::query(
+                    r"
                 INSERT INTO dictionary_history (word, lookup_count, first_looked_up, last_looked_up)
                 VALUES (?, 1, strftime('%s', 'now'), strftime('%s', 'now'))
                 ON CONFLICT(word) DO UPDATE SET
                     lookup_count = lookup_count + 1,
                     last_looked_up = strftime('%s', 'now')
                 ",
-            )
-            .bind(&w)
-            .execute(&pool)
-            .await
-            {
-                tracing::warn!("dictionary history write failed for '{}': {}", w, e);
-            }
-        });
+                )
+                .bind(&w)
+                .execute(&pool)
+                .await
+                {
+                    tracing::warn!("dictionary history write failed for '{}': {}", w, e);
+                }
+            });
+        }
     }
 
     Ok(entry)
