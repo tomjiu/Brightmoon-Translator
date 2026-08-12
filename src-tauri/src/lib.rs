@@ -1002,6 +1002,7 @@ pub fn run() {
             commands::ai_cmd::ai_learn_style,
             commands::ai_cmd::ai_multi_round_translate,
             commands::offline_cmd::get_offline_models,
+            commands::offline_cmd::get_offline_chain,
             commands::offline_cmd::download_offline_model,
             commands::offline_cmd::delete_offline_model,
             commands::offline_cmd::toggle_offline_engine,

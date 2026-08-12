@@ -17,7 +17,18 @@
     "tabs": {
       "tm": "翻訳メモリ",
       "metrics": "指標"
-    }
+    },
+    "title": "翻訳履歴",
+    "search": "検索...",
+    "noResults": "一致する結果がありません",
+    "noHistory": "翻訳履歴がありません",
+    "selectAll": "ページ全体を選択",
+    "totalRecords": "全 {count} 件",
+    "deleteSelected": "選択削除 ({count})",
+    "exportCsv": "CSVエクスポート",
+    "clearAll": "すべてクリア",
+    "deleteItem": "この項目を削除",
+    "page": "{current} / {total} ページ、全 {count} 件"
   },
   "translator": {
     "placeholder": "翻訳するテキストを入力...",
@@ -73,23 +84,6 @@
     "collectToWordbook": "単語帳に保存（外部連携あり）",
     "collectedWithExport": "保存済み（外部連携あり）",
     "noResultError": "翻訳結果なし：有効なエンジン、APIキー、ネットワークを確認してください"
-  },
-  "history": {
-    "tabs": {
-      "tm": "翻訳メモリ",
-      "metrics": "指標"
-    },
-    "title": "翻訳履歴",
-    "search": "検索...",
-    "noResults": "一致する結果がありません",
-    "noHistory": "翻訳履歴がありません",
-    "selectAll": "ページ全体を選択",
-    "totalRecords": "全 {count} 件",
-    "deleteSelected": "選択削除 ({count})",
-    "exportCsv": "CSVエクスポート",
-    "clearAll": "すべてクリア",
-    "deleteItem": "この項目を削除",
-    "page": "{current} / {total} ページ、全 {count} 件"
   },
   "settings": {
     "title": "設定",
@@ -380,7 +374,7 @@
       "batchDesc": "BatchManager キューの既定エンジン",
       "batchEngine": "優先エンジン ID（空=既定）",
       "batchEnginePh": "例: google / deepl / youdao",
-      "batchEngineHint": "BatchConfig.engine に対応。有効なエンジン名の一部である必要があります。",
+      "batchEngineHint": "BatchConfig.engine に対応。有効なエンジン名と一致させる必要があります（例: offline、Google、DeepLX）。",
       "defaultLangTitle": "デフォルト言語",
       "defaultLangDesc": "翻訳の既定の原文・訳文言語",
       "sourceLang": "原文言語",
@@ -699,7 +693,18 @@
       "notDownloaded": "未ダウンロード",
       "noPairs": "利用可能なモデルはありません",
       "moveUp": "Move up (higher priority)",
-      "moveDown": "Move down"
+      "moveDown": "Move down",
+      "chainTitle": "言語ペアのチェーン",
+      "chainPending": "ソース・ターゲット言語を選ぶと必要なモデルが分かります。",
+      "chainCheck": "確認",
+      "chainDirect": "単一モデル（直接）",
+      "chainPivot": "英語経由（2モデル）",
+      "chainMissing": "あと {n} モデル不足",
+      "chainNone": "この言語ペアはオフライン翻訳非対応",
+      "modelDirLabel": "モデルディレクトリ（空=デフォルト）",
+      "modelDirPh": "例 C:\\\\models ・ デフォルト %APPDATA%/moontranslator/offline_models",
+      "modelDirHint": "オフラインモデルの保存先。フォーカス離脱で保存。",
+      "autoOfflineHint": "オンラインエンジンが全て失敗した場合、ダウンロード済みオフラインモデルで自動フォールバックします（言語ペア準備済みのときのみ）。"
     },
     "collection": {
       "pageTitle": "外部単語帳",

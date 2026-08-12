@@ -17,7 +17,18 @@
     "tabs": {
       "tm": "翻译记忆",
       "metrics": "指标"
-    }
+    },
+    "title": "翻译历史",
+    "search": "搜索...",
+    "noResults": "没有匹配的结果",
+    "noHistory": "暂无翻译历史",
+    "selectAll": "全选当页",
+    "totalRecords": "共 {count} 条记录",
+    "deleteSelected": "删除选中 ({count})",
+    "exportCsv": "导出CSV",
+    "clearAll": "清空",
+    "deleteItem": "删除此条",
+    "page": "第 {current} / {total} 页，共 {count} 条"
   },
   "translator": {
     "placeholder": "输入要翻译的文本...",
@@ -73,23 +84,6 @@
     "collectToWordbook": "收藏到生词本（含外送）",
     "collectedWithExport": "已收藏（含外送）",
     "noResultError": "翻译无结果：请检查已启用引擎、密钥与网络"
-  },
-  "history": {
-    "tabs": {
-      "tm": "翻译记忆",
-      "metrics": "指标"
-    },
-    "title": "翻译历史",
-    "search": "搜索...",
-    "noResults": "没有匹配的结果",
-    "noHistory": "暂无翻译历史",
-    "selectAll": "全选当页",
-    "totalRecords": "共 {count} 条记录",
-    "deleteSelected": "删除选中 ({count})",
-    "exportCsv": "导出CSV",
-    "clearAll": "清空",
-    "deleteItem": "删除此条",
-    "page": "第 {current} / {total} 页，共 {count} 条"
   },
   "settings": {
     "title": "设置",
@@ -380,7 +374,7 @@
       "batchDesc": "BatchManager 队列默认引擎（文档 translate 仍走主引擎顺序，除非走 batch_submit）",
       "batchEngine": "首选引擎 ID（空=主引擎/批量默认路径）",
       "batchEnginePh": "例如 google / deepl / youdao",
-      "batchEngineHint": "对应后端 BatchConfig.engine；须为已启用引擎名称的一部分。",
+      "batchEngineHint": "对应 BatchConfig.engine，需匹配已启用引擎名，例如 offline、Google、DeepLX。",
       "defaultLangTitle": "默认语言",
       "defaultLangDesc": "设置翻译的默认源语言和目标语言",
       "sourceLang": "源语言",
@@ -711,7 +705,18 @@
       "notDownloaded": "未下载",
       "noPairs": "暂无可用模型",
       "moveUp": "上移（更高优先级）",
-      "moveDown": "下移"
+      "moveDown": "下移",
+      "chainTitle": "语言对链路查询",
+      "chainPending": "选择源/目标语言，查看该对需要哪些模型。",
+      "chainCheck": "查询",
+      "chainDirect": "单一模型（直接对）",
+      "chainPivot": "经英文中转（2 个模型）",
+      "chainMissing": "还缺 {n} 个模型",
+      "chainNone": "该语言对暂不支持离线翻译",
+      "modelDirLabel": "模型目录（留空 = 默认）",
+      "modelDirPh": "如 C:\\\\models · 默认 %APPDATA%/moontranslator/offline_models",
+      "modelDirHint": "离线模型的存放位置，失焦保存。",
+      "autoOfflineHint": "在线引擎全部失败时，自动用已下载的离线模型兜底（仅当该语言对模型就绪）。"
     },
     "collection": {
       "pageTitle": "同步到外部生词本",

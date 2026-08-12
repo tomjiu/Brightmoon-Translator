@@ -17,7 +17,18 @@
     "tabs": {
       "tm": "Translation Memory",
       "metrics": "Metrics"
-    }
+    },
+    "title": "Translation History",
+    "search": "Search...",
+    "noResults": "No matching results",
+    "noHistory": "No translation history",
+    "selectAll": "Select all on page",
+    "totalRecords": "{count} records total",
+    "deleteSelected": "Delete selected ({count})",
+    "exportCsv": "Export CSV",
+    "clearAll": "Clear All",
+    "deleteItem": "Delete this item",
+    "page": "Page {current} / {total}, {count} records"
   },
   "translator": {
     "placeholder": "Enter text to translate...",
@@ -73,23 +84,6 @@
     "collectToWordbook": "Save to wordbook (with export)",
     "collectedWithExport": "Saved (with export)",
     "noResultError": "No translation result: please check enabled engines, API keys and network"
-  },
-  "history": {
-    "tabs": {
-      "tm": "Translation Memory",
-      "metrics": "Metrics"
-    },
-    "title": "Translation History",
-    "search": "Search...",
-    "noResults": "No matching results",
-    "noHistory": "No translation history",
-    "selectAll": "Select all on page",
-    "totalRecords": "{count} records total",
-    "deleteSelected": "Delete selected ({count})",
-    "exportCsv": "Export CSV",
-    "clearAll": "Clear All",
-    "deleteItem": "Delete this item",
-    "page": "Page {current} / {total}, {count} records"
   },
   "settings": {
     "title": "Settings",
@@ -380,7 +374,7 @@
       "batchDesc": "Default engine for BatchManager queue (document translate still uses main engine order unless batch_submit)",
       "batchEngine": "Preferred engine ID (empty = main/batch default path)",
       "batchEnginePh": "e.g. google / deepl / youdao",
-      "batchEngineHint": "Maps to BatchConfig.engine; must match an enabled engine name.",
+      "batchEngineHint": "Maps to BatchConfig.engine; must match an enabled engine name, e.g. \"offline\", \"Google\", \"DeepLX\".",
       "defaultLangTitle": "Default languages",
       "defaultLangDesc": "Default source and target languages",
       "sourceLang": "Source language",
@@ -711,7 +705,18 @@
       "notDownloaded": "Not downloaded",
       "noPairs": "No model pairs available",
       "moveUp": "Move up (higher priority)",
-      "moveDown": "Move down"
+      "moveDown": "Move down",
+      "chainTitle": "Language-pair chain",
+      "chainPending": "Pick source/target to see which models this pair needs.",
+      "chainCheck": "Check",
+      "chainDirect": "Single model (direct)",
+      "chainPivot": "Pivots through English (2 models)",
+      "chainMissing": "Missing {n} model(s)",
+      "chainNone": "No offline models for this pair",
+      "modelDirLabel": "Model directory (empty = default)",
+      "modelDirPh": "e.g. C:\\\\models | default %APPDATA%/moontranslator/offline_models",
+      "modelDirHint": "Where offline models are stored. Saved on blur.",
+      "autoOfflineHint": "When every online engine fails, auto-fall back to downloaded offline models (only when this pair is ready)."
     },
     "collection": {
       "pageTitle": "External wordbooks",

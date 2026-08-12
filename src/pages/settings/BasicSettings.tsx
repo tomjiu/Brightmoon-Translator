@@ -30,8 +30,16 @@ export default function BasicSettings() {
               void saveConfig();
             }}
             placeholder={t('settings.basic.batchEnginePh')}
+            list="batch-engines"
             className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm font-mono"
           />
+          <datalist id="batch-engines">
+            {['offline', 'Google', 'Youdao', 'DeepL', 'DeepLX', 'Baidu', 'Microsoft', 'Caiyun', 'Yandex', 'LLM'].map(
+              (name) => (
+                <option key={name} value={name} />
+              ),
+            )}
+          </datalist>
           <p className="text-xs text-text-secondary mt-1">{t('settings.basic.batchEngineHint')}</p>
         </div>
       </Card>

@@ -374,7 +374,7 @@
       "batchDesc": "BatchManager 대기열 기본 엔진",
       "batchEngine": "선호 엔진 ID (비움=기본)",
       "batchEnginePh": "예: google / deepl / youdao",
-      "batchEngineHint": "BatchConfig.engine에 대응. 활성화된 엔진 이름이어야 합니다.",
+      "batchEngineHint": "BatchConfig.engine にマッピングされます。有効なエンジン名と一致させる必要があります（例: offline、Google、DeepLX）。",
       "defaultLangTitle": "기본 언어",
       "defaultLangDesc": "기본 원문/번역 언어",
       "sourceLang": "원문 언어",
@@ -693,7 +693,18 @@
       "notDownloaded": "미다운로드",
       "noPairs": "사용 가능한 모델이 없습니다",
       "moveUp": "Move up (higher priority)",
-      "moveDown": "Move down"
+      "moveDown": "Move down",
+      "chainTitle": "언어 쌍 체인",
+      "chainPending": "소스/대상 언어를 고르면 필요한 모델이 표시됩니다.",
+      "chainCheck": "확인",
+      "chainDirect": "단일 모델 (직접)",
+      "chainPivot": "영어 경유 (모델 2개)",
+      "chainMissing": "모델 {n}개 부족",
+      "chainNone": "이 언어 쌍은 오프라인 번역 미지원",
+      "modelDirLabel": "모델 디렉터리 (비움=기본값)",
+      "modelDirPh": "예 C:\\\\models · 기본 %APPDATA%/moontranslator/offline_models",
+      "modelDirHint": "오프라인 모델 저장 위치. 포커스 아웃 시 저장.",
+      "autoOfflineHint": "온라인 엔진이 모두 실패하면 다운로드된 오프라인 모델로 자동 폴백합니다 (언어 쌍 준비된 경우만)."
     },
     "collection": {
       "pageTitle": "외부 단어장",

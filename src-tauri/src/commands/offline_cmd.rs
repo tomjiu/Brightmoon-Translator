@@ -17,6 +17,60 @@ pub struct OfflineModelInfo {
     pub sha256: String,
 }
 
+/// One step of a translation chain (direct pair or English pivot leg).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfflineChainPair {
+    pub id: String,
+    pub display_name: String,
+    pub downloaded: bool,
+}
+
+/// Resolved translation chain for a `from`/`to` pair. `direct=true` means a
+/// single model pair; otherwise the pair pivots through English (two legs).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfflineChain {
+    pub from: String,
+    pub to: String,
+    pub direct: bool,
+    pub pairs: Vec<OfflineChainPair>,
+}
+
+/// Resolve the offline model chain for a language pair. Returns `None` when
+/// no chain exists (no direct model and no English pivot). Used by the
+/// settings UI to show exactly which models a pair needs (pivot guidance).
+#[tauri::command]
+pub async fn get_offline_chain(
+    state: State<'_, AppState>,
+    from: String,
+    to: String,
+) -> Result<Option<OfflineChain>, String> {
+    let engine = engine_from_config(&state).await;
+    let Some(chain) =
+        crate::engine::offline::model_catalog::translation_chain(&from, &to)
+    else {
+        return Ok(None);
+    };
+
+    let mut pairs = Vec::with_capacity(chain.len());
+    for id in chain {
+        let spec = crate::engine::offline::model_catalog::model_spec_by_id(&id)
+            .ok_or_else(|| format!("unknown model pair: {id}"))?;
+        pairs.push(OfflineChainPair {
+            id: id.clone(),
+            display_name: spec.display_name.clone(),
+            downloaded: engine.is_model_downloaded(&spec.from, &spec.to),
+        });
+    }
+    Ok(Some(OfflineChain {
+        from,
+        to,
+        direct: pairs.len() == 1,
+        pairs,
+    }))
+}
+
 /// Get the full catalog of downloadable model pairs with download state.
 #[tauri::command]
 pub async fn get_offline_models(

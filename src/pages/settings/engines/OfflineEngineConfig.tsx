@@ -2,10 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { useI18n } from '../../../i18n';
 import type { EngineConfigProps } from './types';
+import { LANGUAGES } from '../../../types';
 import {
   deleteOfflineModel,
   downloadOfflineModel,
   getOfflineModels,
+  getOfflineChain,
+  type OfflineChainInfo,
   type OfflineModelInfo,
 } from '../../../services/offline';
 
@@ -29,6 +32,23 @@ export default function OfflineEngineConfig({
   const [models, setModels] = useState<OfflineModelInfo[]>([]);
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [progress, setProgress] = useState<Record<string, number>>({});
+
+  const [chainFrom, setChainFrom] = useState('en');
+  const [chainTo, setChainTo] = useState('zh');
+  const [chainInfo, setChainInfo] = useState<OfflineChainInfo | null>(null);
+  const [chainLoading, setChainLoading] = useState(false);
+
+  const handleCheckChain = useCallback(async () => {
+    if (!chainFrom || !chainTo || chainFrom === chainTo) return;
+    setChainLoading(true);
+    try {
+      setChainInfo(await getOfflineChain(chainFrom, chainTo));
+    } catch {
+      setChainInfo(null);
+    } finally {
+      setChainLoading(false);
+    }
+  }, [chainFrom, chainTo]);
 
   const refresh = useCallback(async () => {
     try {
@@ -159,7 +179,106 @@ export default function OfflineEngineConfig({
 
       <p className="ui-caption leading-relaxed">{t('settings.enginePage.pivotHint')}</p>
 
-      <label className="flex items-center gap-2">
+      <div className="mt-2 space-y-2 rounded-lg border border-border bg-bg-secondary p-3">
+        <p className="ui-section-title">{t('settings.enginePage.chainTitle')}</p>
+        <p className="ui-caption">{t('settings.enginePage.chainPending')}</p>
+        <div className="flex items-center gap-2">
+          <select
+            value={chainFrom}
+            onChange={(e) => setChainFrom(e.target.value)}
+            className="flex-1 px-2 py-1.5 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+          >
+            <option value="">—</option>
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+          <span className="text-text-secondary text-sm">→</span>
+          <select
+            value={chainTo}
+            onChange={(e) => setChainTo(e.target.value)}
+            className="flex-1 px-2 py-1.5 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+          >
+            <option value="">—</option>
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={chainLoading}
+            onClick={() => void handleCheckChain()}
+            className="px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-fg font-medium disabled:opacity-50"
+          >
+            {t('settings.enginePage.chainCheck')}
+          </button>
+        </div>
+
+        {chainInfo && (
+          <div className="space-y-1.5 pt-1">
+            <p className="ui-caption">
+              {chainInfo.direct
+                ? t('settings.enginePage.chainDirect')
+                : t('settings.enginePage.chainPivot')}
+            </p>
+            {chainInfo.pairs.map((pair) => (
+              <div
+                key={pair.id}
+                className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-sm ${
+                  pair.downloaded
+                    ? 'bg-bg-tertiary text-text-primary'
+                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                }`}
+              >
+                <span className="font-mono">{pair.id}</span>
+                <span className="ui-caption">
+                  {pair.downloaded
+                    ? t('settings.enginePage.downloaded')
+                    : t('settings.enginePage.notDownloaded')}
+                </span>
+              </div>
+            ))}
+            {!chainInfo.direct && chainInfo.pairs.some((p) => !p.downloaded) && (
+              <p className="ui-caption text-amber-700 dark:text-amber-400">
+                {t('settings.enginePage.chainMissing', {
+                  n: chainInfo.pairs.filter((p) => !p.downloaded).length,
+                })}
+              </p>
+            )}
+          </div>
+        )}
+        {chainInfo === null && !chainLoading && (
+          <p className="ui-caption">{t('settings.enginePage.chainNone')}</p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="block text-sm font-medium text-text-primary">
+          {t('settings.enginePage.modelDirLabel')}
+        </label>
+        <input
+          value={offline.modelDir || ''}
+          onChange={(e) => {
+            updateConfig((prev) => ({
+              ...prev,
+              engines: {
+                ...prev.engines,
+                offline: { ...prev.engines.offline, modelDir: e.target.value },
+              },
+            }));
+          }}
+          onBlur={() => void saveConfig()}
+          placeholder={t('settings.enginePage.modelDirPh')}
+          className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm font-mono"
+        />
+        <p className="ui-caption">{t('settings.enginePage.modelDirHint')}</p>
+      </div>
+
+      <label className="flex items-start gap-2">
         <input
           type="checkbox"
           checked={offline.autoSwitch || false}
@@ -176,10 +295,11 @@ export default function OfflineEngineConfig({
             }));
             void saveConfig();
           }}
-          className="rounded"
+          className="rounded mt-0.5"
         />
         <span className="ui-body text-text-secondary">{t('settings.enginePage.autoOffline')}</span>
       </label>
+      <p className="ui-caption leading-relaxed">{t('settings.enginePage.autoOfflineHint')}</p>
     </div>
   );
 }
