@@ -21,3 +21,5 @@ Authoritative mapping of translation engine ids to enable rules (must match Rust
 
 - `useAi` is **UI: hide or label “未接入路由”** — do not implement Youdao AI routing in the engine-settings cleanup plan.
 - Multi-provider `llm.providers`: enabled entries with non-empty key are used by Router (sorted by priority, failover). Top-level keys remain fallback when providers is empty.
+- Offline `auto_switch`: when enabled, Router appends offline fallback **after all strategies fail** (PrimaryOnly / FallbackOnError / CostAware / LatencyFirst), only if model chain is complete.
+- Settings tab shows language-pair chain query (direct / English pivot) + modelDir input + autoSwitch hint.

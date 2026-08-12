@@ -42,6 +42,8 @@ Status is **code-truth as of 2026-08-12** (not marketing). OCR GUI smoke still m
 | Translation cache / TM | ✅ | Cache + TM commands/UI |
 | Unified façade | ⚠️ | Multiple entrypoints — `MODULE_MAP` B |
 | External plugins / marketplace | ❌ removed | First-party engines only |
+| Offline auto_switch fallback | ✅ | All strategies fail → offline (chain complete) |
+| Offline chain query + modelDir | ✅ | Settings tab: pivot chain + gap + dir input |
 
 ### 1.4 Hook
 | Feature | Status | Notes |

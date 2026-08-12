@@ -103,6 +103,8 @@
 
 | Slice | Where |
 |-------|--------|
+| Offline auto_switch fallback | Router appends offline after all strategies fail (chain complete) |
+| Offline chain query + modelDir | `get_offline_chain` cmd + Settings tab pivot/gap + dir input |
 | Multi-engine selection overlay | `TranslateResponse::display_text`; hotkey path + auto_watch |
 | BatchManager → run_batch | `batch.rs` wave process (not per-task run_full) |
 | min_drag_px + hover dict→MT | `mouse_hook::set_min_drag_px`; hover miss falls through |
