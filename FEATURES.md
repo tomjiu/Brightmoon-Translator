@@ -63,6 +63,7 @@ Status is **code-truth as of 2026-08-12** (not marketing). OCR GUI smoke still m
 | AI 学习专用 LLM | ✅ | 大模型页选择器 `learn_llm_provider_id`，与翻译配置隔离 |
 | 翻译提示词 / 润色 / 术语 / 风格 | ✅ | `AiTranslateTools` 位于大模型页，不作用于学习专用模型 |
 | 词典优化加载性能 | ✅ | 启动补建 `idx_stardict_frq`（ECDICT stardict），词频统计毫秒级 |
+| 词典云端下载 | ✅ | `ecdict-v1` release 资产：完整版 812MB / 精简版 106MB；下载走 SHA-256 校验，损坏自动丢弃；`scripts/build-compact-dict.py` 生成精简 |
 
 ---
 
