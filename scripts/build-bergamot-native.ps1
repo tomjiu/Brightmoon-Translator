@@ -82,13 +82,58 @@ class hash_compare {
   Set-Content -Path $hashH -Value $content -NoNewline
 }
 
-# Patch 2: marian CMakeLists — /wd4819 for UTF-8 headers on CP936 code pages
+# Patch 2: marian CMakeLists — /wd4819 for UTF-8 headers on CP936 code pages.
+# NOTE: the file stores /wd flags as "/wd\"4310\"..." (escaped quotes inside a
+# CMake double-quoted string), so the search must include the backslashes.
 $marianCmake = "3rd_party\marian-dev\CMakeLists.txt"
-Guarded-Patch $marianCmake '/wd"4819"' {
+Guarded-Patch $marianCmake '/wd\"4819\"' {
   (Get-Content $marianCmake -Raw).Replace(
-    '"/wd"4310" /wd"4324" /wd"4702" /wd"4100""',
-    '"/wd"4310" /wd"4324" /wd"4702" /wd"4100" /wd"4819""'
+    '"/wd\"4310\" /wd\"4324\" /wd\"4702\" /wd\"4100\""',
+    '"/wd\"4310\" /wd\"4324\" /wd\"4702\" /wd\"4100\" /wd\"4819\""'
   ) | Set-Content $marianCmake -NoNewline
+}
+
+# Patch 2b: marian CMakeLists — force dynamic CRT (/MD) to match the Rust side
+# (Rust links msvcrt by default; static LIBCMT causes LNK4098 + ABI drift).
+Guarded-Patch $marianCmake '/MD /O2' {
+  (Get-Content $marianCmake -Raw).Replace(
+    '/MT /O2',
+    '/MD /O2'
+  ).Replace(
+    '/MTd /Od',
+    '/MDd /Od'
+  ) | Set-Content $marianCmake -NoNewline
+}
+
+# Patch 2c: marian CMakeLists — drop /GL (LTCG). rustc unpacks the .lib into
+# the rlib as individual members; MSVC link.exe cannot resolve /GL intermediate
+# objects pulled out of a rustc rlib (LNK2019). They must be plain COFF.
+Guarded-Patch $marianCmake '/MP /DNDEBUG"' {
+  (Get-Content $marianCmake -Raw).Replace(
+    ' /MP /GL /DNDEBUG"',
+    ' /MP /DNDEBUG"'
+  ).Replace(
+    ' /DEBUG /LTCG:incremental /INCREMENTAL:NO /ignore:4049"',
+    ' /DEBUG /INCREMENTAL:NO /ignore:4049"'
+  ).Replace(
+    'set(CMAKE_STATIC_LINKER_FLAGS      "${CMAKE_STATIC_LINKER_FLAGS} /LTCG:incremental")',
+    'set(CMAKE_STATIC_LINKER_FLAGS      "${CMAKE_STATIC_LINKER_FLAGS}")'
+  ) | Set-Content $marianCmake -NoNewline
+}
+
+# Patch 2d: bergamot-translator CMakeLists — same /GL + /LTCG removal as 2c.
+$btCmake = "CMakeLists.txt"
+Guarded-Patch $btCmake '/MP /DNDEBUG"' {
+  (Get-Content $btCmake -Raw).Replace(
+    ' /MP /GL /DNDEBUG"',
+    ' /MP /DNDEBUG"'
+  ).Replace(
+    ' /DEBUG /LTCG:incremental /INCREMENTAL:NO /ignore:4049"',
+    ' /DEBUG /INCREMENTAL:NO /ignore:4049"'
+  ).Replace(
+    'set(CMAKE_STATIC_LINKER_FLAGS      "${CMAKE_STATIC_LINKER_FLAGS} /LTCG:incremental")',
+    'set(CMAKE_STATIC_LINKER_FLAGS      "${CMAKE_STATIC_LINKER_FLAGS}")'
+  ) | Set-Content $btCmake -NoNewline
 }
 
 # Patch 3: ssplit FindPCRE2.cmake — MSVC emits pcre2-8-static.lib
@@ -133,7 +178,8 @@ if (-not (Test-Path (Join-Path $BuildDir "CMakeCache.txt"))) {
     -DUSE_WASM_COMPATIBLE_SOURCE=ON `
     -DUSE_MKL=OFF `
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
-    -DCMAKE_CXX_FLAGS="/DWIN32 /D_WINDOWS /W3 /GR /EHsc /utf-8"
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL `
+    -DCMAKE_CXX_FLAGS="/DWIN32 /D_WINDOWS /W3 /GR /EHsc /MD /utf-8"
   if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
 }
 & $Cmake --build $BuildDir --config Release --target bergamot-translator
@@ -179,12 +225,12 @@ Guarded-Patch $loggingH '::Logger log = spdlog' {
 
 # ---- 5) Compile + archive the C ABI bridge ----
 # Depends only on the mirrored headers; produces bergamot_bridge.lib.
-$vcvars = "$env:ProgramFiles(x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+$vcvars = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 $bridgeCpp = Join-Path $RepoRoot "src-tauri\native\bergamot_bridge.cpp"
 $bridgeObj = Join-Path $NativeLib "bergamot_bridge.obj"
 $bridgeLib = Join-Path $NativeLib "bergamot_bridge.lib"
 $incRoots = "/I`"$NativeInc`" /I`"$NativeInc\3rd_party\marian-dev\src`" /I`"$NativeInc\3rd_party\marian-dev\src\3rd_party`" /I`"$NativeInc\3rd_party\ssplit-cpp`" /I`"$NativeInc\3rd_party\yaml-cpp`""
-$clCmd = "`"$vcvars`" >nul 2>&1 && cl /nologo /c /std:c++17 /O2 /EHsc /utf-8 /DWIN32 /D_WINDOWS /DUSE_SSE2 /DWASM_COMPATIBLE_SOURCE /DWASM /DENABLE_CACHE_STATS $incRoots /Fo`"$bridgeObj`" `"$bridgeCpp`""
+$clCmd = "`"$vcvars`" >nul 2>&1 && cl /nologo /c /std:c++17 /O2 /EHsc /MD /utf-8 /DWIN32 /D_WINDOWS /DUSE_SSE2 /DWASM_COMPATIBLE_SOURCE /DWASM /DENABLE_CACHE_STATS $incRoots /Fo`"$bridgeObj`" `"$bridgeCpp`""
 cmd /c $clCmd
 if ($LASTEXITCODE -ne 0) { throw "bridge compile failed" }
 cmd /c "`"$vcvars`" >nul 2>&1 && lib /nologo /machine:x64 /out:`"$bridgeLib`" `"$bridgeObj`""
