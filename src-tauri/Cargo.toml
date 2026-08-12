@@ -1,6 +1,6 @@
 [package]
 name = "moontranslator"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 # Uses std::time::Duration::from_mins (stable since 1.86).
 rust-version = "1.86"
