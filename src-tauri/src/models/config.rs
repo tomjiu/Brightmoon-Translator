@@ -775,6 +775,10 @@ impl Default for HookConfig {
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
     pub llm: LlmConfig,
+    /// AI 学习系统（词汇卡 / 出题 / 批量预生成）专用 LLM provider id。
+    /// 取自 `llm.providers`.id；为空时跟随全局（与翻译共用同一配置）。
+    #[serde(default)]
+    pub learn_llm_provider_id: Option<String>,
     pub engines: EnginesConfig,
     pub default_from: String,
     pub default_to: String,
@@ -1124,6 +1128,7 @@ impl Default for AppConfig {
                 model: "deepseek-chat".into(),
                 providers: Vec::new(),
             },
+            learn_llm_provider_id: None,
             engines: EnginesConfig {
                 google: GoogleConfig { enabled: true },
                 baidu: BaiduConfig {

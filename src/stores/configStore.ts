@@ -10,6 +10,7 @@ import type { AppConfig } from '../types';
  */
 const INITIAL_CONFIG: AppConfig = {
   llm: { provider: 'deepseek', apiKey: '', apiKeys: [], baseUrl: '', model: '', providers: [] },
+  learnLlmProviderId: '',
   engines: {
     google: { enabled: false },
     baidu: { enabled: false, appId: '', secret: '' },

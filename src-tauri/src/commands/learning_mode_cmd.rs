@@ -506,7 +506,7 @@ async fn verify_options_with_llm(
 
     // LLM 配置
     let config = state.system.config.lock().await;
-    let provider = crate::skills::llm_provider::provider_from_config(&config.llm);
+    let provider = crate::skills::llm_provider::provider_from_config_for_learning(&config);
     drop(config);
 
     let Some(provider) = provider else {

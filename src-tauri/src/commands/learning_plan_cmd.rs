@@ -427,22 +427,19 @@ async fn start_batch_generation(
     plan_id: String,
     words: Vec<String>,
 ) {
-    // 获取LLM配置
+    // 获取LLM配置（AI 学习系统专用 provider，未配置则跟随全局）
     let config = state.system.config.lock().await;
-    let llm_config = &config.llm;
+    let learn_provider =
+        crate::skills::llm_provider::provider_from_config_for_learning(&config);
+    drop(config);
 
-    let api_key = if !llm_config.api_key.is_empty() {
-        llm_config.api_key.clone()
-    } else if let Some(key) = llm_config.api_keys.first() {
-        key.clone()
-    } else {
+    let Some(learn_provider) = learn_provider else {
         tracing::warn!("未配置 LLM API Key，跳过AI内容批量生成");
         return;
     };
-
-    let base_url = llm_config.base_url.clone();
-    let model = llm_config.model.clone();
-    drop(config);
+    let api_key = learn_provider.api_key().to_string();
+    let base_url = learn_provider.base_url().to_string();
+    let model = learn_provider.model_name();
 
     if base_url.is_empty() {
         tracing::warn!("未配置 LLM Base URL，跳过AI内容批量生成");

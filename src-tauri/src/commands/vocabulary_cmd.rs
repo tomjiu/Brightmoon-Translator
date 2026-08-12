@@ -228,7 +228,7 @@ pub async fn generate_card_content(
     // 从配置获取 LLM 设置
     let config = state.system.config.lock().await;
     let provider =
-        crate::skills::llm_provider::provider_from_config(&config.llm);
+        crate::skills::llm_provider::provider_from_config_for_learning(&config);
     drop(config);
 
     let provider = provider.ok_or("未配置 LLM API Key，请在设置中配置")?;
@@ -586,7 +586,7 @@ pub async fn study_word(
                     // 5. AI 生成内容
                     let config = state.system.config.lock().await;
                     let provider =
-                        crate::skills::llm_provider::provider_from_config(&config.llm);
+                        crate::skills::llm_provider::provider_from_config_for_learning(&config);
                     drop(config);
 
                     tracing::info!(

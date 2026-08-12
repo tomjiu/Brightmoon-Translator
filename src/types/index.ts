@@ -164,6 +164,9 @@ export interface SyncStatus {
 
 export interface AppConfig {
   llm: LlmConfig;
+  /** AI 学习系统（词汇卡/出题/批量预生成）专用 LLM provider id；
+   * 取自 llm.providers[].id，空 = 跟随全局（与翻译共用配置）。 */
+  learnLlmProviderId?: string;
   engines: EnginesConfig;
   defaultFrom: string;
   defaultTo: string;

@@ -143,6 +143,16 @@ impl OpenAiCompatibleProvider {
         self.model.clone()
     }
 
+    /// API Key（learning_plan_cmd 批量生成复用）
+    pub fn api_key(&self) -> &str {
+        &self.api_key
+    }
+
+    /// Base URL
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     /// `DeepSeek`
     pub fn deepseek(api_key: String) -> Self {
         Self::new(
@@ -274,6 +284,53 @@ pub fn provider_from_config(
         llm.base_url.clone(),
         llm.model.clone(),
     ))
+}
+
+/// 按 provider id 从多提供商列表解析 LLM Provider。
+/// `id` 匹配 `llm.providers` 中已启用的条目，取其 api_key/base_url/model，
+/// 单条缺失时回退到 LlmConfig 顶层字段。找不到或未启用时返回 None。
+pub fn provider_from_config_by_id(
+    llm: &crate::models::config::LlmConfig,
+    id: &str,
+) -> Option<OpenAiCompatibleProvider> {
+    let entry = llm
+        .providers
+        .iter()
+        .find(|p| p.id == id && p.enabled && !p.api_key.trim().is_empty())
+        .or_else(|| llm.providers.iter().find(|p| p.id == id))?;
+
+    let api_key = entry.api_key.trim().to_string();
+    if api_key.is_empty() {
+        return None;
+    }
+    let base_url = if entry.base_url.trim().is_empty() {
+        llm.base_url.trim().to_string()
+    } else {
+        entry.base_url.trim().to_string()
+    };
+    let model = if entry.model.trim().is_empty() {
+        llm.model.trim().to_string()
+    } else {
+        entry.model.trim().to_string()
+    };
+    if base_url.is_empty() {
+        return None;
+    }
+    Some(OpenAiCompatibleProvider::new(api_key, base_url, model))
+}
+
+/// 解析 AI 学习系统专用的 LLM Provider：
+/// 优先用 `learn_llm_provider_id`（多提供商列表），未配置时跟随全局。
+pub fn provider_from_config_for_learning(
+    config: &crate::models::config::AppConfig,
+) -> Option<OpenAiCompatibleProvider> {
+    match config.learn_llm_provider_id.as_deref() {
+        Some(id) if !id.is_empty() => {
+            provider_from_config_by_id(&config.llm, id)
+                .or_else(|| provider_from_config(&config.llm))
+        },
+        _ => provider_from_config(&config.llm),
+    }
 }
 
 /// 从 LLM 响应中提取 JSON 字符串。
