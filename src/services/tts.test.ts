@@ -171,4 +171,92 @@ describe('tts service', () => {
       expect(() => stopSpeaking()).not.toThrow();
     });
   });
+
+  describe('speakLocal', () => {
+    const speakLocal = async (text: string, lang: string, voice?: string) => {
+      // Re-import to keep test isolated from module-level state
+      const mod = await import('./tts');
+      return mod.speakLocal(text, lang, voice);
+    };
+
+    it('should reject when speechSynthesis is unavailable', async () => {
+      // jsdom does not provide speechSynthesis by default
+      Object.defineProperty(window, 'speechSynthesis', { value: undefined, configurable: true });
+      await expect(speakLocal('hi', 'en')).rejects.toThrow('speechSynthesis is not available');
+    });
+
+    it('should speak via speechSynthesis and resolve on end', async () => {
+      const mockUtter = {
+        lang: '',
+        voice: undefined,
+        onend: null,
+        onerror: null,
+      };
+      const mockSynth = {
+        cancel: vi.fn(),
+        getVoices: vi.fn().mockReturnValue([
+          { name: 'Google US English', lang: 'en-US', voiceURI: 'x', default: true, localService: true },
+        ]),
+        speak: vi.fn().mockImplementation(function (this: unknown, u: typeof mockUtter) {
+          (u as { onend: (() => void) | null }).onend?.();
+        }),
+      };
+      Object.defineProperty(window, 'speechSynthesis', { value: mockSynth, configurable: true });
+      vi.stubGlobal('SpeechSynthesisUtterance', class {
+        lang = '';
+        voice = undefined;
+        onend: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        constructor(public text: string) {}
+      });
+
+      await expect(speakLocal('hi', 'en')).resolves.toBeUndefined();
+      expect(mockSynth.cancel).toHaveBeenCalled();
+      expect(mockSynth.speak).toHaveBeenCalled();
+
+      vi.unstubAllGlobals();
+      Object.defineProperty(window, 'speechSynthesis', { value: undefined, configurable: true });
+    });
+
+    it('should cancel previous synthesis on stopSpeaking', () => {
+      const mockSynth = { cancel: vi.fn(), getVoices: vi.fn().mockReturnValue([]), speak: vi.fn() };
+      Object.defineProperty(window, 'speechSynthesis', { value: mockSynth, configurable: true });
+      stopSpeaking();
+      expect(mockSynth.cancel).toHaveBeenCalled();
+      Object.defineProperty(window, 'speechSynthesis', { value: undefined, configurable: true });
+    });
+
+    it('should fall back to local speech when the remote backend fails', async () => {
+      vi.mocked(invokeOrThrow).mockRejectedValue(new Error('backend down'));
+
+      const mockUtter = { lang: '', voice: undefined, onend: null, onerror: null };
+      const mockSynth = {
+        cancel: vi.fn(),
+        getVoices: vi.fn().mockReturnValue([]),
+        speak: vi.fn().mockImplementation(function (this: unknown, u: typeof mockUtter) {
+          (u as { onend: (() => void) | null }).onend?.();
+        }),
+      };
+      Object.defineProperty(window, 'speechSynthesis', { value: mockSynth, configurable: true });
+      vi.stubGlobal('SpeechSynthesisUtterance', class {
+        lang = '';
+        voice = undefined;
+        onend: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        constructor(public text: string) {}
+      });
+
+      // Use the re-imported module's speakText so provider defaults to 'edge'
+      // (remote path) and the mocked invoke fails -> should fall back to local.
+      const mod = await import('./tts');
+      await expect(mod.speakText('hi', 'en')).resolves.toBeUndefined();
+
+      expect(mockSynth.speak).toHaveBeenCalled();
+      expect(mockSynth.cancel).toHaveBeenCalled();
+
+      vi.unstubAllGlobals();
+      Object.defineProperty(window, 'speechSynthesis', { value: undefined, configurable: true });
+      vi.mocked(invokeOrThrow).mockResolvedValue(btoa('fake-audio-data'));
+    });
+  });
 });

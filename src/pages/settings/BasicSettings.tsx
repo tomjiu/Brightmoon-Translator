@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import { useConfigStore } from '../../stores/configStore';
 import { useTranslateStore } from '../../stores/translateStore';
 import Card from '../../components/Card';
 import { LANGUAGES } from '../../types';
 import { useI18n } from '../../i18n';
+import { getLocalVoices } from '../../services/tts';
 
 export default function BasicSettings() {
   const { t } = useI18n();
@@ -10,6 +12,17 @@ export default function BasicSettings() {
   const updateConfig = useConfigStore((s) => s.updateConfig);
   const saveConfig = useConfigStore((s) => s.saveConfig);
   const syncClipboardMonitorFromConfig = useTranslateStore((s) => s.syncClipboardMonitorFromConfig);
+  const [localVoices, setLocalVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getLocalVoices().then((voices) => {
+      if (!cancelled) setLocalVoices(voices);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="space-y-5">
@@ -184,6 +197,7 @@ export default function BasicSettings() {
               className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg outline-none"
             >
               <option value="edge">{t('settings.basic.ttsEdge')}</option>
+              <option value="local">{t('settings.basic.ttsLocal')}</option>
               <option value="fish">{t('settings.basic.ttsFish')}</option>
               <option value="openai">{t('settings.basic.ttsOpenai')}</option>
               <option value="youdao">{t('settings.basic.ttsYoudao')}</option>
@@ -204,6 +218,37 @@ export default function BasicSettings() {
                 placeholder="zh-CN-XiaoxiaoNeural"
                 className="w-full px-3 py-2 bg-bg-tertiary border border-border rounded-lg text-sm"
               />
+            </div>
+          )}
+
+          {(config.ttsProvider || 'edge') === 'local' && (
+            <div className="space-y-3">
+              <p className="text-xs text-text-secondary">{t('settings.basic.localHint')}</p>
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-2">
+                  {t('settings.basic.localVoice')}
+                </label>
+                <select
+                  value={config.ttsVoice || ''}
+                  onChange={(e) => {
+                    updateConfig((prev) => ({ ...prev, ttsVoice: e.target.value }));
+                    void saveConfig();
+                  }}
+                  className="w-full px-3 py-2 bg-bg-tertiary text-text-primary border border-border rounded-lg text-sm"
+                >
+                  <option value="">{t('settings.basic.localVoiceAuto')}</option>
+                  {localVoices.map((v) => (
+                    <option key={v.voiceURI} value={v.name}>
+                      {v.name} ({v.lang})
+                    </option>
+                  ))}
+                </select>
+                {localVoices.length === 0 && (
+                  <p className="text-xs text-text-secondary mt-1">
+                    {t('settings.basic.localNoVoices')}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 

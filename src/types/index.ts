@@ -220,7 +220,7 @@ export interface AppConfig {
   furiganaEnabled?: boolean;
   ttsAutoPlay?: boolean;
   ttsVoice?: string;
-  /** edge | openai | youdao | fish */
+  /** edge | local | openai | youdao | fish */
   ttsProvider?: string;
   /** Preferred engine for batch queue when call omits engine (e.g. google) */
   batchPreferredEngine?: string;
