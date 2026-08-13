@@ -405,13 +405,13 @@
     },
     "appearance": {
       "pageTitle": "Appearance",
-      "pageDesc": "Dark / light monochrome themes only",
+      "pageDesc": "Monochrome & lunar themes",
       "themeTitle": "Theme",
       "themeDesc": "Also switchable from the sidebar footer",
-      "dark": "Dark",
-      "darkDesc": "Black canvas, high-contrast controls",
-      "light": "Light",
-      "lightDesc": "Light gray canvas, dark action buttons",
+      "mono": "Monochrome",
+      "monoDesc": "Classic black / white monochrome UI",
+      "dev": "Dev Lunar",
+      "devDesc": "Lunar metal with animated directional light and a violet accent",
       "current": "Current"
     },
     "ocr": {

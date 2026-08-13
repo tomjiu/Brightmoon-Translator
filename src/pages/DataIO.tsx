@@ -190,8 +190,8 @@ export default function DataIO() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-8">
-      <div className="max-w-3xl mx-auto space-y-8">
+    <div className="h-full overflow-y-auto">
+      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
         {/* Header */}
         <div>
           <h1 className="ui-page-title flex items-center gap-2.5">
@@ -228,8 +228,8 @@ export default function DataIO() {
         )}
 
         {/* Export Section */}
-        <div className="space-y-4">
-          <h2 className="ui-section-title flex items-center gap-2">
+        <div className="ui-card ui-card-hover p-5">
+          <h2 className="ui-section-title flex items-center gap-2 mb-4">
             <Download className="w-5 h-5" />
             导出数据
           </h2>
@@ -242,7 +242,7 @@ export default function DataIO() {
             >
               <FileJson className="w-10 h-10 text-primary group-hover:text-primary" />
               <div className="text-center">
-                <div className="font-semibold">JSON 全量导出</div>
+                <div className="ui-section-title">JSON 全量导出</div>
                 <div className="text-xs text-text-secondary mt-1">
                   完整卡牌 + FSRS 状态 + AI 内容
                 </div>
@@ -256,7 +256,7 @@ export default function DataIO() {
             >
               <FileText className="w-10 h-10 text-green-400 group-hover:text-green-300" />
               <div className="text-center">
-                <div className="font-semibold">Anki 导入格式</div>
+                <div className="ui-section-title">Anki 导入格式</div>
                 <div className="text-xs text-text-secondary mt-1">TSV 格式，支持 HTML 释义</div>
               </div>
             </button>
@@ -268,7 +268,7 @@ export default function DataIO() {
             >
               <FileSpreadsheet className="w-10 h-10 text-yellow-400 group-hover:text-yellow-300" />
               <div className="text-center">
-                <div className="font-semibold">CSV 通用格式</div>
+                <div className="ui-section-title">CSV 通用格式</div>
                 <div className="text-xs text-text-secondary mt-1">可在 Excel 中查看和编辑</div>
               </div>
             </button>
@@ -276,8 +276,8 @@ export default function DataIO() {
         </div>
 
         {/* Import Section */}
-        <div className="space-y-4">
-          <h2 className="ui-section-title flex items-center gap-2">
+        <div className="ui-card ui-card-hover p-5">
+          <h2 className="ui-section-title flex items-center gap-2 mb-4">
             <Upload className="w-5 h-5" />
             导入数据
           </h2>
@@ -290,7 +290,7 @@ export default function DataIO() {
             >
               <FileJson className="w-10 h-10 text-primary group-hover:text-primary" />
               <div className="text-center">
-                <div className="font-semibold">导入 JSON 备份</div>
+                <div className="ui-section-title">导入 JSON 备份</div>
                 <div className="text-xs text-text-secondary mt-1">恢复之前导出的完整数据</div>
               </div>
             </button>
@@ -302,7 +302,7 @@ export default function DataIO() {
             >
               <FileSpreadsheet className="w-10 h-10 text-yellow-400 group-hover:text-yellow-300" />
               <div className="text-center">
-                <div className="font-semibold">导入单词列表</div>
+                <div className="ui-section-title">导入单词列表</div>
                 <div className="text-xs text-text-secondary mt-1">
                   支持 CSV / TSV / Quizlet / 扇贝 导出格式
                 </div>
@@ -312,17 +312,17 @@ export default function DataIO() {
         </div>
 
         {/* Auto Backup */}
-        <div className="space-y-4">
-          <h2 className="ui-section-title flex items-center gap-2">
+        <div className="ui-card ui-card-hover p-5">
+          <h2 className="ui-section-title flex items-center gap-2 mb-4">
             <FolderOpen className="w-5 h-5" />
             自动备份
           </h2>
 
-          <div className="bg-bg-secondary rounded-xl border border-border p-6">
+          <div>
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold">手动备份</h3>
-                <p className="text-sm text-text-secondary mt-1">
+                <h3 className="ui-section-title">手动备份</h3>
+                <p className="ui-caption mt-1">
                   选择一个文件夹，导出带时间戳的完整备份文件
                 </p>
               </div>
@@ -338,8 +338,8 @@ export default function DataIO() {
         </div>
 
         {/* Format Guide */}
-        <div className="bg-bg-secondary rounded-xl border border-border p-6">
-          <h3 className="font-semibold mb-3">📋 格式说明</h3>
+        <div className="ui-card ui-card-hover p-5">
+          <h3 className="ui-section-title mb-3">📋 格式说明</h3>
           <div className="space-y-2 text-sm text-text-secondary">
             <p>
               <strong className="text-text-primary">JSON 全量：</strong>

@@ -170,8 +170,8 @@ export default function MetricsDashboard() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="h-full overflow-y-auto">
+      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
         {/* Header */}
         <PageHeader
           title={t('metrics.title')}
@@ -223,7 +223,7 @@ export default function MetricsDashboard() {
 
         {/* Overview Cards */}
         {summary && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-7 gap-3 md:gap-4">
             <StatCard
               icon={<TrendingUp size={18} />}
               label={t('metrics.totalTranslations')}
@@ -260,8 +260,8 @@ export default function MetricsDashboard() {
         {/* Cache Stats Detail */}
         {summary && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-bg-secondary rounded-xl border border-border p-4">
-              <h3 className="text-sm font-medium text-text-secondary mb-3">
+            <div className="ui-card">
+              <h3 className="ui-section-title mb-3">
                 {t('metrics.cacheDetails')}
               </h3>
               <div className="flex items-center gap-4">
@@ -291,8 +291,8 @@ export default function MetricsDashboard() {
 
             {/* OCR Stats */}
             {summary.ocr_stats && (
-              <div className="bg-bg-secondary rounded-xl border border-border p-4">
-                <h3 className="text-sm font-medium text-text-secondary mb-3">
+              <div className="ui-card">
+                <h3 className="ui-section-title mb-3">
                   {t('metrics.ocrStats')}
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -312,8 +312,8 @@ export default function MetricsDashboard() {
 
         {/* Engine Stats Table */}
         {summary && Object.keys(summary.engine_stats).length > 0 && (
-          <div className="bg-bg-secondary rounded-xl border border-border p-4">
-            <h3 className="text-sm font-medium text-text-secondary mb-3">
+          <div className="ui-card">
+            <h3 className="ui-section-title mb-3">
               {t('metrics.engineStats')}
             </h3>
             <div className="overflow-x-auto">
@@ -379,8 +379,8 @@ export default function MetricsDashboard() {
 
         {/* Latency Chart (Bar visualization using hourly data) */}
         {hourlyStats.length > 0 && (
-          <div className="bg-bg-secondary rounded-xl border border-border p-4">
-            <h3 className="text-sm font-medium text-text-secondary mb-3">
+          <div className="ui-card">
+            <h3 className="ui-section-title mb-3">
               {t('metrics.hourlyLatency')}
             </h3>
             <HourlyLatencyChart data={hourlyStats} />
@@ -389,8 +389,8 @@ export default function MetricsDashboard() {
 
         {/* Engine Usage Pie Chart */}
         {summary && Object.keys(summary.engine_stats).length > 0 && (
-          <div className="bg-bg-secondary rounded-xl border border-border p-4">
-            <h3 className="text-sm font-medium text-text-secondary mb-3">
+          <div className="ui-card">
+            <h3 className="ui-section-title mb-3">
               {t('metrics.engineUsage')}
             </h3>
             <EngineUsageChart engineStats={summary.engine_stats} />
@@ -399,10 +399,10 @@ export default function MetricsDashboard() {
 
         {/* Recent Translation History List */}
         {timeline.length > 0 && (
-          <div className="bg-bg-secondary rounded-xl border border-border p-4">
+          <div className="ui-card">
             <div className="flex items-center gap-2 mb-3">
               <History size={16} className="text-text-secondary" />
-              <h3 className="text-sm font-medium text-text-secondary">
+              <h3 className="ui-section-title">
                 {t('metrics.recentHistory') || 'Recent Translations'}
               </h3>
             </div>
@@ -414,8 +414,8 @@ export default function MetricsDashboard() {
         {summary && summary.total_translations === 0 && (
           <div className="text-center py-12 text-text-secondary">
             <BarChart3 size={48} className="mx-auto mb-4 opacity-30" />
-            <p className="text-lg">{t('metrics.noData')}</p>
-            <p className="text-sm mt-1">{t('metrics.noDataHint')}</p>
+            <p className="ui-section-title">{t('metrics.noData')}</p>
+            <p className="ui-caption mt-1">{t('metrics.noDataHint')}</p>
           </div>
         )}
       </div>
@@ -435,7 +435,7 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="bg-bg-secondary rounded-xl border border-border p-4">
+    <div className="ui-card">
       <div className="flex items-center gap-2 mb-2">
         <div className={color}>{icon}</div>
         <span className="text-xs text-text-secondary">{label}</span>

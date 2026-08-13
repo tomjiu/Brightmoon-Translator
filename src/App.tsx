@@ -21,9 +21,10 @@ const OcrRegionFrame = lazy(() => import('./components/OcrRegionFrame'));
 const OcrScreenshotTranslator = lazy(() => import('./components/OcrScreenshotTranslator'));
 const TranslateCard = lazy(() => import('./components/TranslateCard'));
 const SelectionPop = lazy(() => import('./components/SelectionPop'));
+const DevComet = lazy(() => import('./components/DevComet'));
 import TitleBar from './components/TitleBar';
 import { AIGenerationProgress } from './components/vocabulary';
-import { useThemeStore } from './stores/themeStore';
+import { useThemeStore, isDarkTheme } from './stores/themeStore';
 import { useToastStore } from './stores/toastStore';
 import { useConfigStore } from './stores/configStore';
 import { useTranslateStore } from './stores/translateStore';
@@ -469,9 +470,9 @@ function MainApp() {
             <button
               className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:bg-bg-tertiary hover:text-text-primary transition-colors duration-150 ease-out"
               onClick={toggleTheme}
-              title={theme === 'dark' ? t('common.lightMode') : t('common.darkMode')}
+              title={isDarkTheme(theme) ? t('common.lightMode') : t('common.darkMode')}
             >
-              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+              {isDarkTheme(theme) ? <Sun size={18} /> : <Moon size={18} />}
             </button>
           </div>
         </nav>
@@ -504,6 +505,11 @@ function MainApp() {
       </Suspense>
       <AIGenerationProgress />
       <ToastContainer />
+      {(theme === 'dev' || theme === 'dev-light') && (
+        <Suspense fallback={null}>
+          <DevComet />
+        </Suspense>
+      )}
     </div>
   );
 }

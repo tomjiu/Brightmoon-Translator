@@ -150,7 +150,8 @@ export default function FsrsOptimization() {
     bestTime.length > 0 ? bestTime.reduce((a, b) => (a.correctRate > b.correctRate ? a : b)) : null;
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-6">
+    <div className="h-full overflow-y-auto">
+      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
       <PageHeader
         title="FSRS 算法分析"
         description="基于你的学习数据，分析记忆算法效果并提供优化建议"
@@ -185,7 +186,7 @@ export default function FsrsOptimization() {
       {tab === 'overview' && (
         <div className="space-y-6">
           {/* Key Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 md:gap-4">
             <MetricCard
               label="记忆保持率"
               value={`${analysis.retentionRate.toFixed(1)}%`}
@@ -211,10 +212,10 @@ export default function FsrsOptimization() {
           </div>
 
           {/* Optimization Suggestion */}
-          <div className="bg-bg-secondary rounded-lg p-6 border border-border">
+          <div className="ui-card ui-card-hover p-5">
             <div className="flex items-center gap-2 mb-4">
               <Info className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold">优化建议</h3>
+              <h3 className="ui-section-title">优化建议</h3>
             </div>
             <div className="space-y-3 text-sm text-text-secondary">
               {analysis.retentionRate < 70 && (
@@ -256,10 +257,10 @@ export default function FsrsOptimization() {
           </div>
 
           {/* FSRS Parameters */}
-          <div className="bg-bg-secondary rounded-lg p-6 border border-border">
+          <div className="ui-card ui-card-hover p-5">
             <div className="flex items-center gap-2 mb-4">
               <Brain className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold">当前 FSRS-4.5 参数</h3>
+              <h3 className="ui-section-title">当前 FSRS-4.5 参数</h3>
             </div>
             <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
               {analysis.currentParams.map((param, idx) => (
@@ -318,9 +319,9 @@ export default function FsrsOptimization() {
 
       {tab === 'forgetting' && (
         <div className="space-y-6">
-          <div className="bg-bg-secondary rounded-lg p-6 border border-border">
-            <h3 className="font-semibold mb-4">遗忘曲线（理论模型）</h3>
-            <p className="text-sm text-text-secondary mb-6">
+          <div className="ui-card ui-card-hover p-5">
+            <h3 className="ui-section-title mb-4">遗忘曲线（理论模型）</h3>
+            <p className="ui-caption mb-6">
               基于当前平均稳定性 {(analysis.avgStability / 86400).toFixed(1)} 天计算的记忆保持率
             </p>
 
@@ -405,9 +406,9 @@ export default function FsrsOptimization() {
 
       {tab === 'forecast' && (
         <div className="space-y-6">
-          <div className="bg-bg-secondary rounded-lg p-6 border border-border">
-            <h3 className="font-semibold mb-2">未来 30 天复习量预测</h3>
-            <p className="text-sm text-text-secondary mb-6">
+          <div className="ui-card ui-card-hover p-5">
+            <h3 className="ui-section-title mb-2">未来 30 天复习量预测</h3>
+            <p className="ui-caption mb-6">
               基于当前卡牌的 FSRS 状态预测每日待复习量
             </p>
 
@@ -443,14 +444,14 @@ export default function FsrsOptimization() {
               const totalDue = forecast.reduce((s, f) => s + f.dueCount, 0);
               return (
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-bg-secondary rounded-lg p-4 border border-border">
+                  <div className="ui-card p-4">
                     <div className="text-sm text-text-secondary">30天总复习量</div>
                     <div className="ui-stat">{totalDue}</div>
                     <div className="text-xs text-text-secondary">
                       平均每天 {Math.round(totalDue / 30)} 词
                     </div>
                   </div>
-                  <div className="bg-bg-secondary rounded-lg p-4 border border-border">
+                  <div className="ui-card p-4">
                     <div className="text-sm text-text-secondary">峰值日期</div>
                     <div className="ui-stat">{peak.dueCount}</div>
                     <div className="text-xs text-text-secondary">{peak.date}</div>
@@ -463,9 +464,9 @@ export default function FsrsOptimization() {
 
       {tab === 'timing' && (
         <div className="space-y-6">
-          <div className="bg-bg-secondary rounded-lg p-6 border border-border">
-            <h3 className="font-semibold mb-2">各时段学习效果</h3>
-            <p className="text-sm text-text-secondary mb-6">
+          <div className="ui-card ui-card-hover p-5">
+            <h3 className="ui-section-title mb-2">各时段学习效果</h3>
+            <p className="ui-caption mb-6">
               基于历史复习数据统计各时段的正确率，找到你的最佳学习时间
             </p>
 
@@ -510,7 +511,7 @@ export default function FsrsOptimization() {
             <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-green-400" />
-                <span className="font-semibold">建议</span>
+                <span className="ui-section-title">建议</span>
               </div>
               <p className="text-sm text-text-secondary mt-2">
                 你在{' '}
@@ -527,9 +528,9 @@ export default function FsrsOptimization() {
 
       {tab === 'difficulty' && (
         <div className="space-y-6">
-          <div className="bg-bg-secondary rounded-lg p-6 border border-border">
-            <h3 className="font-semibold mb-2">卡牌难度分布</h3>
-            <p className="text-sm text-text-secondary mb-6">
+          <div className="ui-card ui-card-hover p-5">
+            <h3 className="ui-section-title mb-2">卡牌难度分布</h3>
+            <p className="ui-caption mb-6">
               各难度区间的卡牌数量分布（1=最简单，10=最难）
             </p>
 
@@ -564,19 +565,19 @@ export default function FsrsOptimization() {
 
           {/* Summary */}
           <div className="grid grid-cols-3 gap-4">
-            <div className="bg-bg-secondary rounded-lg p-4 border border-border text-center">
+            <div className="ui-card p-4 text-center">
               <div className="ui-stat text-green-400">
                 {difficulty.slice(0, 3).reduce((s, d) => s + d.count, 0)}
               </div>
               <div className="text-xs text-text-secondary">简单 (1-3)</div>
             </div>
-            <div className="bg-bg-secondary rounded-lg p-4 border border-border text-center">
+            <div className="ui-card p-4 text-center">
               <div className="ui-stat text-yellow-400">
                 {difficulty.slice(3, 6).reduce((s, d) => s + d.count, 0)}
               </div>
               <div className="text-xs text-text-secondary">中等 (4-6)</div>
             </div>
-            <div className="bg-bg-secondary rounded-lg p-4 border border-border text-center">
+            <div className="ui-card p-4 text-center">
               <div className="ui-stat text-red-400">
                 {difficulty.slice(6).reduce((s, d) => s + d.count, 0)}
               </div>
@@ -585,6 +586,7 @@ export default function FsrsOptimization() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

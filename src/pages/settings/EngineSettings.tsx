@@ -72,8 +72,11 @@ export default function EngineSettings({ onNavigate }: EngineSettingsProps) {
         seen.add(id);
       }
     }
-    const base = deduped.length > 0 ? deduped : [...DEFAULT_ENGINE_ORDER];
-    const missing = DEFAULT_ENGINE_ORDER.filter((id) => !seen.has(id));
+    const base = deduped.length > 0 ? deduped.slice() : [];
+    // 仅在已有已保存顺序时才补缺失引擎;否则直接返回默认顺序(避免把默认表拼两份,导致每个引擎重复)
+    if (deduped.length === 0) return [...DEFAULT_ENGINE_ORDER];
+    const seenSaved = new Set(deduped);
+    const missing = DEFAULT_ENGINE_ORDER.filter((id) => !seenSaved.has(id));
     return [...base, ...missing];
   }, [config.engineOrder]);
 

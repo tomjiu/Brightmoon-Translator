@@ -114,7 +114,7 @@ export default function DocumentsViewer() {
   if (mode === 'glossary') {
     return (
       <div className="h-full flex flex-col">
-        <div className="ui-chrome px-4 py-2 border-b border-border flex items-center gap-2">
+        <div className="ui-chrome px-4 py-2 border-b border-border flex items-center gap-2 shrink-0">
           <button
             type="button"
             className="text-xs px-2 py-1 rounded border border-border hover:bg-bg-tertiary"
@@ -173,22 +173,24 @@ export default function DocumentsViewer() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6 flex flex-col">
-      <div className="max-w-2xl mx-auto space-y-5 w-full flex-1 flex flex-col justify-center">
+    <div className="h-full overflow-y-auto p-4 md:p-5 lg:p-6 flex flex-col">
+      <div className="max-w-3xl mx-auto space-y-6 w-full">
         <PageHeader
           title="文档翻译"
           description="选择文件后自动识别类型并处理，无需切换多个入口。"
           icon={FileUp}
         />
 
-        <section className="ui-surface p-6 space-y-4">
-          <p className="ui-body text-text-secondary">支持格式</p>
-          <p className="ui-caption">{SUPPORT_HINT}</p>
+        <section className="ui-card ui-card-hover p-5 md:p-6 space-y-4">
+          <div className="space-y-1">
+            <p className="ui-section-title">支持格式</p>
+            <p className="ui-caption leading-relaxed">{SUPPORT_HINT}</p>
+          </div>
           <button
             type="button"
             disabled={picking || !isTauri}
             onClick={() => void openFile()}
-            className="w-full flex flex-col items-center justify-center gap-3 py-8 rounded-xl border border-dashed border-border-strong hover:bg-bg-tertiary transition-colors disabled:opacity-50"
+            className="w-full flex flex-col items-center justify-center gap-2 py-7 rounded-xl border border-dashed border-border-strong hover:bg-bg-tertiary transition-colors disabled:opacity-50"
           >
             {picking ? (
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -196,10 +198,10 @@ export default function DocumentsViewer() {
               <FileUp className="w-8 h-8 text-text-secondary" />
             )}
             <span className="ui-section-title">{picking ? '正在打开…' : '选择文件'}</span>
-            <span className="ui-caption">上传后自动进入对应处理流程</span>
+            <span className="ui-caption leading-relaxed">上传后自动进入对应处理流程</span>
           </button>
           {error && <p className="ui-caption text-red-400">{error}</p>}
-          {!isTauri && <p className="ui-caption">请在桌面客户端中使用文件翻译</p>}
+          {!isTauri && <p className="ui-caption leading-relaxed">请在桌面客户端中使用文件翻译</p>}
         </section>
 
         <button

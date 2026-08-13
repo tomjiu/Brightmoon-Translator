@@ -203,8 +203,8 @@ export default function DictOptimization() {
   const maxCount = Math.max(...freqDistribution.map((d) => d.count), 1);
 
   return (
-    <div className="h-full overflow-y-auto p-8">
-      <div className="max-w-3xl mx-auto space-y-8">
+    <div className="h-full overflow-y-auto">
+      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
         {/* Header */}
         <div>
           <h1 className="ui-page-title flex items-center gap-2.5">
@@ -233,7 +233,7 @@ export default function DictOptimization() {
         )}
 
         {/* Dictionary Cloud Download */}
-        <div className="bg-bg-secondary rounded-xl border border-border p-6">
+        <div className="ui-card ui-card-hover p-5">
           <h2 className="ui-section-title mb-2 flex items-center gap-2">
             <DownloadCloud className="w-4 h-4" />
             词典数据下载（云端）
@@ -310,13 +310,13 @@ export default function DictOptimization() {
         </div>
 
         {/* Current Stats */}
-        <div className="bg-bg-secondary rounded-xl border border-border p-6">
+        <div className="ui-card ui-card-hover p-5">
           <h2 className="ui-section-title mb-4 flex items-center gap-2">
             <HardDrive className="w-4 h-4" />
             当前词典状态
           </h2>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 md:gap-4 mb-6">
             <div className="bg-bg-primary rounded-lg p-4 border border-border">
               <div className="ui-stat">{stats.totalWords.toLocaleString()}</div>
               <div className="text-xs text-text-secondary">总单词数</div>
@@ -339,7 +339,7 @@ export default function DictOptimization() {
 
           {/* Frequency Distribution */}
           <div className="space-y-3">
-            <h3 className="text-sm font-medium text-text-secondary">词频分布</h3>
+            <h3 className="ui-section-title">词频分布</h3>
             {freqDistribution.map((item) => (
               <div key={item.label} className="flex items-center gap-3">
                 <div className="w-32 text-xs text-text-secondary">{item.label}</div>
@@ -358,7 +358,7 @@ export default function DictOptimization() {
         </div>
 
         {/* Export Compressed */}
-        <div className="bg-bg-secondary rounded-xl border border-border p-6">
+        <div className="ui-card ui-card-hover p-5">
           <h2 className="ui-section-title mb-2 flex items-center gap-2">
             <FileJson className="w-5 h-5" />
             压缩导出
@@ -406,7 +406,7 @@ export default function DictOptimization() {
         </div>
 
         {/* Export Shards */}
-        <div className="bg-bg-secondary rounded-xl border border-border p-6">
+        <div className="ui-card ui-card-hover p-5">
           <h2 className="ui-section-title mb-2 flex items-center gap-2">
             <Layers className="w-5 h-5" />
             分片导出
@@ -435,7 +435,7 @@ export default function DictOptimization() {
         </div>
 
         {/* GitHub Export */}
-        <div className="bg-bg-secondary rounded-xl border border-border p-6">
+        <div className="ui-card ui-card-hover p-5">
           <h2 className="ui-section-title mb-2 flex items-center gap-2">
             <Github className="w-5 h-5" />
             GitHub 数据源导出
@@ -482,8 +482,8 @@ export default function DictOptimization() {
         </div>
 
         {/* Info */}
-        <div className="bg-bg-secondary rounded-xl border border-border p-6">
-          <h3 className="font-semibold mb-3">📋 使用说明</h3>
+        <div className="ui-card ui-card-hover p-5">
+          <h3 className="ui-section-title mb-3">📋 使用说明</h3>
           <div className="space-y-2 text-sm text-text-secondary">
             <p>
               <strong className="text-text-primary">压缩导出：</strong>

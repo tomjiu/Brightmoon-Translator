@@ -1,32 +1,39 @@
-import { Moon, Sun } from 'lucide-react';
-import { useThemeStore } from '../../stores/themeStore';
+import { Contrast, MoonStar } from 'lucide-react';
+import { useThemeStore, isDarkTheme, themeFamily } from '../../stores/themeStore';
 import Card from '../../components/Card';
 import { useI18n } from '../../i18n';
 
 export default function AppearanceSettings() {
   const { theme, setTheme } = useThemeStore();
   const { t } = useI18n();
+  const dark = isDarkTheme(theme);
 
   const themes = [
     {
-      id: 'dark' as const,
-      name: t('settings.appearance.dark'),
-      description: t('settings.appearance.darkDesc'),
-      icon: Moon,
+      id: 'mono' as const,
+      name: t('settings.appearance.mono'),
+      description: t('settings.appearance.monoDesc'),
+      icon: Contrast,
       swatch: 'bg-black border-border',
-      bar: 'bg-neutral-900',
-      panel: 'bg-neutral-950',
+      bar: 'bg-white',
+      panel: 'bg-black',
     },
     {
-      id: 'light' as const,
-      name: t('settings.appearance.light'),
-      description: t('settings.appearance.lightDesc'),
-      icon: Sun,
-      swatch: 'bg-white border-border',
-      bar: 'bg-white',
-      panel: 'bg-neutral-100',
+      id: 'dev' as const,
+      name: t('settings.appearance.dev'),
+      description: t('settings.appearance.devDesc'),
+      icon: MoonStar,
+      swatch: 'bg-[#0a0a0c] border-border',
+      bar: 'bg-[#0f0f12]',
+      panel: 'bg-[#16161c]',
     },
   ];
+
+  // Each card selects a FAMILY; the current dark/light shade is kept.
+  const isActive = (id: string) =>
+    id === 'mono' ? themeFamily(theme) === 'mono' : themeFamily(theme) === 'dev';
+  const selectTheme = (id: string) =>
+    setTheme(id === 'mono' ? (dark ? 'dark' : 'light') : (dark ? 'dev' : 'dev-light'));
 
   return (
     <div className="space-y-5">
@@ -42,12 +49,12 @@ export default function AppearanceSettings() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {themes.map((opt) => {
             const Icon = opt.icon;
-            const active = theme === opt.id;
+            const active = isActive(opt.id);
             return (
               <button
                 key={opt.id}
                 type="button"
-                onClick={() => setTheme(opt.id)}
+                onClick={() => selectTheme(opt.id)}
                 className={`text-left rounded-xl border p-4 transition-all duration-150 ease-out ${
                   active
                     ? 'border-primary bg-primary/5 shadow-sm'

@@ -2,7 +2,23 @@ import { create } from 'zustand';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { isTauriRuntime } from '../services/tauriRuntime';
 
-type Theme = 'dark' | 'light';
+type Theme = 'dark' | 'light' | 'dev' | 'dev-light';
+
+/**
+ * Two theme families, each with its own dark/light variant:
+ *   mono  → 'dark' / 'light'                    (黑白)
+ *   dev   → 'dev'  / 'dev-light'                (月球,light 为白色月面)
+ * The sidebar sun/moon button flips the shade INSIDE the current family.
+ */
+export const isDarkTheme = (t: Theme) => t === 'dark' || t === 'dev';
+export const themeFamily = (t: Theme): 'mono' | 'dev' =>
+  t === 'dev' || t === 'dev-light' ? 'dev' : 'mono';
+
+/** Return the theme for a family at the given shade, or at the theme's own shade. */
+const familyTheme = (family: 'mono' | 'dev', dark: boolean) => {
+  if (family === 'dev') return dark ? 'dev' : 'dev-light';
+  return dark ? 'dark' : 'light';
+};
 
 interface ThemeState {
   theme: Theme;
@@ -31,9 +47,9 @@ const getW = () => {
 
 const getInitialTheme = (): Theme => {
   const stored = localStorage.getItem('theme');
-  if (stored === 'light' || stored === 'dark') return stored;
-  // Default to dark theme
-  return 'dark';
+  if (stored === 'light' || stored === 'dark' || stored === 'dev' || stored === 'dev-light') return stored;
+  // Default to the lunar dev theme
+  return 'dev';
 };
 
 export const useThemeStore = create<ThemeState>((set) => ({
@@ -42,7 +58,11 @@ export const useThemeStore = create<ThemeState>((set) => ({
   toggleTheme: () => {
     themeDbg(`toggleTheme called, stack=${new Error().stack?.split('\n').slice(1, 4).join(' <- ') ?? '?'}`);
     set((state) => {
-      const newTheme = state.theme === 'dark' ? 'light' : 'dark';
+      // Sidebar sun/moon toggles the shade INSIDE the current family
+      // (黑白 dark↔light / 月球 dev↔dev-light), never between families.
+      const family = themeFamily(state.theme);
+      const dark = isDarkTheme(state.theme);
+      const newTheme = familyTheme(family, !dark);
       localStorage.setItem('theme', newTheme);
       applyTheme(newTheme, { broadcast: true });
       return { theme: newTheme };
@@ -76,7 +96,8 @@ async function syncOverlayTheme(theme: Theme) {
   themeDbg(`syncOverlayTheme(${theme}) isMain=${await overlayIsOnMain()}`);
   if (!(await overlayIsOnMain())) return;
   const { safeInvoke } = await import('../services/invoke');
-  await safeInvoke('set_overlay_theme', { theme });
+  // The native overlay only knows dark/light; dev / dev-light map by shade.
+  await safeInvoke('set_overlay_theme', { theme: isDarkTheme(theme) ? 'dark' : 'light' });
   themeDbg(`set_overlay_theme invoked with ${theme}`);
 }
 
@@ -103,8 +124,18 @@ function applyTheme(theme: Theme, opts: { broadcast?: boolean } = {}) {
 
 function applyThemeClass(theme: Theme) {
   const root = document.documentElement;
-  root.classList.remove('dark', 'light');
-  root.classList.add(theme);
+  root.classList.remove('dark', 'light', 'dev', 'dev-light');
+  if (theme === 'dev') {
+    // dev is a dark lunar variant: keep `.dark` alive so the shared
+    // `.dark …` status-color mappers in index.css still apply, and toggle
+    // the extra `.dev` class that overrides the token palette.
+    root.classList.add('dark', 'dev');
+  } else if (theme === 'dev-light') {
+    // dev-light is the WHITE lunar variant: same trick on the light side.
+    root.classList.add('light', 'dev-light');
+  } else {
+    root.classList.add(theme);
+  }
   themeDbg(`applyThemeClass(${theme}) in ${getW()}`);
 }
 

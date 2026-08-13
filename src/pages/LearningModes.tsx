@@ -153,9 +153,9 @@ export default function LearningModes() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-8">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-8">
+    <div className="h-full overflow-y-auto">
+      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
+        <div>
           <h1 className="ui-page-title mb-1">学习模式</h1>
           <p className="ui-page-desc">选择练习方式，巩固词汇</p>
         </div>
@@ -166,7 +166,7 @@ export default function LearningModes() {
             <span className="ml-3 text-text-secondary">正在生成题目...</span>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
             {MODES.map((m) => (
               <button
                 key={m.id}
@@ -185,9 +185,9 @@ export default function LearningModes() {
         )}
 
         {/* Tips */}
-        <div className="mt-8 p-4 bg-bg-secondary rounded-lg border border-border">
-          <h3 className="text-sm font-semibold text-text-primary mb-2">💡 学习建议</h3>
-          <ul className="text-xs text-text-secondary space-y-1">
+        <div className="ui-card ui-card-hover p-5">
+          <h3 className="ui-section-title mb-2">💡 学习建议</h3>
+          <ul className="ui-caption space-y-1">
             <li>• 先创建学习计划并学习一些单词，题目会自动生成</li>
             <li>• 选择题适合测试词汇理解能力</li>
             <li>• 拼写题能强化单词拼写记忆</li>

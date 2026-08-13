@@ -20,6 +20,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 
 interface WordBookItem {
   id: string;
@@ -245,8 +246,9 @@ function WordBook() {
   };
 
   return (
-    <div className="h-full flex flex-col p-6">
-      <PageHeader
+    <PageLayout
+      toolbar={
+        <PageHeader
         title={t('wordbook.title')}
         icon={BookMarked}
         actions={
@@ -297,32 +299,37 @@ function WordBook() {
             </button>
           </div>
         }
-      />
+        />
+      }
+      toolbarVariant="header"
+      maxWidth="none"
+      contentClassName="space-y-5"
+    >
 
       {/* Add Word Form */}
       {showAddForm && (
-        <div className="ui-card p-4 mb-4">
-          <div className="flex gap-3">
+        <div className="ui-card ui-card-hover p-5">
+          <div className="flex flex-wrap gap-3">
             <input
               type="text"
               placeholder={t('wordbook.wordPlaceholder')}
               value={newWord}
               onChange={(e) => setNewWord(e.target.value)}
-              className="flex-1 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
+              className="flex-1 min-w-40 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
             />
             <input
               type="text"
               placeholder={t('wordbook.translationPlaceholder')}
               value={newTranslation}
               onChange={(e) => setNewTranslation(e.target.value)}
-              className="flex-1 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
+              className="flex-1 min-w-40 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
             />
             <input
               type="text"
               placeholder={t('wordbook.notePlaceholder')}
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
-              className="flex-1 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
+              className="flex-1 min-w-40 bg-bg-tertiary text-text-primary border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
             />
             <button
               className="bg-primary text-primary-fg rounded-lg px-4 py-2 text-sm hover:bg-primary/80 transition-colors"
@@ -336,9 +343,9 @@ function WordBook() {
       )}
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto space-y-2.5">
+      <div className="ui-card p-4 space-y-2.5">
         {items.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-text-secondary text-sm">
+          <div className="flex items-center justify-center min-h-[200px] text-text-secondary text-sm py-12">
             {debouncedSearch ? t('wordbook.noResults') : t('wordbook.noWords')}
           </div>
         ) : (
@@ -362,8 +369,8 @@ function WordBook() {
             {paginatedItems.map((item) => (
               <div
                 key={item.id}
-                className={`bg-bg-secondary border rounded-xl p-3.5 group relative ${
-                  selectedIds.has(item.id) ? 'border-primary' : 'border-border'
+                className={`ui-card ui-card-hover p-3.5 group relative ${
+                  selectedIds.has(item.id) ? '!border-primary' : ''
                 }`}
               >
                 {/* Checkbox & Delete button */}
@@ -458,7 +465,7 @@ function WordBook() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-4 pb-4">
+        <div className="sticky bottom-0 -mx-4 md:-mx-5 lg:-mx-6 -mb-4 md:-mb-5 lg:-mb-6 flex items-center justify-center gap-2 bg-bg-primary py-2 px-4 md:px-5 lg:px-6 border-t border-border">
           <button
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0}
@@ -478,7 +485,7 @@ function WordBook() {
           </button>
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }
 

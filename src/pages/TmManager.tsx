@@ -233,8 +233,8 @@ function TmManager() {
   const uniqueLangs = [...new Set(stats?.langPairs.flatMap(([a, b]) => [a, b]) ?? [])].sort();
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="max-w-5xl mx-auto">
+    <div className="h-full overflow-y-auto">
+      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
         {/* Header */}
         <PageHeader
           title={t('tm.title')}
@@ -295,17 +295,17 @@ function TmManager() {
 
         {/* Statistics */}
         {stats && (
-          <div className="ui-card p-4 mb-6">
-            <h2 className="text-sm font-semibold text-text-primary mb-3">{t('tm.statistics')}</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="ui-card p-5">
+            <h2 className="ui-section-title mb-3">{t('tm.statistics')}</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 md:gap-4">
               <div>
                 <p className="text-xs text-text-secondary">{t('tm.totalEntries')}</p>
-                <p className="text-lg font-bold text-primary">{stats.total.toLocaleString()}</p>
+                <p className="ui-stat text-primary">{stats.total.toLocaleString()}</p>
               </div>
               {stats.langPairs.slice(0, 3).map(([from, to, count]) => (
                 <div key={`${from}-${to}`}>
                   <p className="text-xs text-text-secondary">{`${from} → ${to}`}</p>
-                  <p className="text-lg font-bold text-text-primary">{count.toLocaleString()}</p>
+                  <p className="ui-stat text-text-primary">{count.toLocaleString()}</p>
                 </div>
               ))}
             </div>
@@ -313,7 +313,7 @@ function TmManager() {
         )}
 
         {/* Search & Filters */}
-        <div className="ui-card p-4 mb-6">
+        <div className="ui-card p-5">
           <div className="flex flex-col md:flex-row gap-3">
             <div className="relative flex-1">
               <Search
@@ -375,30 +375,28 @@ function TmManager() {
           </div>
         </div>
 
-        {/* Results Info & Batch Actions */}
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm text-text-secondary">
-            {t('tm.resultsFound', { count: totalResults })}
-            {totalPages > 1 && ` · ${t('tm.pageInfo', { current: page + 1, total: totalPages })}`}
-          </p>
-          {selected.size > 0 && (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-primary">
-                {t('tm.selected', { count: selected.size })}
-              </span>
-              <button
-                onClick={handleBatchDelete}
-                className="bg-error/10 text-error text-xs px-3 py-1.5 rounded-lg hover:bg-error/20 transition-colors flex items-center gap-1"
-              >
-                <Trash2 size={12} />
-                {t('tm.batchDelete')}
-              </button>
-            </div>
-          )}
-        </div>
-
         {/* Table */}
-        <div className="ui-card overflow-hidden mb-6">
+        <div className="ui-card overflow-hidden">
+          <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-border">
+            <p className="text-sm text-text-secondary">
+              {t('tm.resultsFound', { count: totalResults })}
+              {totalPages > 1 && ` · ${t('tm.pageInfo', { current: page + 1, total: totalPages })}`}
+            </p>
+            {selected.size > 0 && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-primary">
+                  {t('tm.selected', { count: selected.size })}
+                </span>
+                <button
+                  onClick={handleBatchDelete}
+                  className="bg-error/10 text-error text-xs px-3 py-1.5 rounded-lg hover:bg-error/20 transition-colors flex items-center gap-1"
+                >
+                  <Trash2 size={12} />
+                  {t('tm.batchDelete')}
+                </button>
+              </div>
+            )}
+          </div>
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 size={24} className="animate-spin text-primary" />

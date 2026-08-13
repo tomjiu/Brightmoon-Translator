@@ -13,12 +13,12 @@ describe('themeStore', () => {
   });
 
   describe('initial state', () => {
-    it('should default to dark theme when no stored theme', () => {
+    it('should default to dev theme when no stored theme', () => {
       vi.mocked(localStorage.getItem).mockReturnValue(null);
 
       // Need to re-import to get fresh state
       const { theme } = useThemeStore.getState();
-      expect(theme).toBe('dark');
+      expect(theme).toBe('dev');
     });
 
     it('should use stored theme from localStorage', () => {
@@ -57,13 +57,13 @@ describe('themeStore', () => {
 
       setTheme('light');
 
-      expect(document.documentElement.classList.remove).toHaveBeenCalledWith('dark', 'light');
+      expect(document.documentElement.classList.remove).toHaveBeenCalledWith('dark', 'light', 'dev', 'dev-light');
       expect(document.documentElement.classList.add).toHaveBeenCalledWith('light');
     });
   });
 
   describe('toggleTheme', () => {
-    it('should toggle from dark to light', () => {
+    it('should toggle mono family from dark to light', () => {
       useThemeStore.setState({ theme: 'dark' });
 
       useThemeStore.getState().toggleTheme();
@@ -71,12 +71,28 @@ describe('themeStore', () => {
       expect(useThemeStore.getState().theme).toBe('light');
     });
 
-    it('should toggle from light to dark', () => {
+    it('should toggle mono family from light to dark', () => {
       useThemeStore.setState({ theme: 'light' });
 
       useThemeStore.getState().toggleTheme();
 
       expect(useThemeStore.getState().theme).toBe('dark');
+    });
+
+    it('should toggle dev family from dev to dev-light (stay in lunar family)', () => {
+      useThemeStore.setState({ theme: 'dev' });
+
+      useThemeStore.getState().toggleTheme();
+
+      expect(useThemeStore.getState().theme).toBe('dev-light');
+    });
+
+    it('should toggle dev family from dev-light back to dev', () => {
+      useThemeStore.setState({ theme: 'dev-light' });
+
+      useThemeStore.getState().toggleTheme();
+
+      expect(useThemeStore.getState().theme).toBe('dev');
     });
 
     it('should save toggled theme to localStorage', () => {
@@ -87,12 +103,13 @@ describe('themeStore', () => {
       expect(localStorage.setItem).toHaveBeenCalledWith('theme', 'light');
     });
 
-    it('should apply toggled theme class to document', () => {
-      useThemeStore.setState({ theme: 'dark' });
+    it('should apply toggled theme class to document (dev keeps dark+dev)', () => {
+      useThemeStore.setState({ theme: 'dev-light' });
 
       useThemeStore.getState().toggleTheme();
 
-      expect(document.documentElement.classList.add).toHaveBeenCalledWith('light');
+      // dev sets both `dark` (shared status-color mappers) and `dev` (token overrides)
+      expect(document.documentElement.classList.add).toHaveBeenCalledWith('dark', 'dev');
     });
   });
 });

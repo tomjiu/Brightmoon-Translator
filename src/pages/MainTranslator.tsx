@@ -447,29 +447,29 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
       {/* Translation Area */}
       <div className="flex gap-3 flex-1 min-h-0 p-3">
         {/* Source Panel */}
-        <div className="ui-card ui-run-light flex-1 flex flex-col overflow-hidden">
+        <div className="ui-card translator-input-card flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 relative">
             <textarea
               value={sourceText}
               onChange={(e) => handleInput(e.target.value)}
               placeholder={t('translator.placeholder')}
-              className="w-full h-full bg-transparent text-text-primary p-3 text-sm leading-relaxed resize-none outline-none placeholder:text-text-secondary"
+              className="w-full h-full bg-transparent border-0 text-text-primary p-3 text-sm leading-relaxed resize-none outline-none focus:shadow-none focus:border-0 placeholder:text-text-secondary"
               autoFocus
             />
+            <span className="pointer-events-none absolute bottom-1 right-2 text-[10px] text-text-secondary/40 select-none">
+              {sourceText.length} {t('translator.chars')}
+            </span>
             {isListening && interimTranscript && (
               <div className="absolute bottom-2 left-4 right-4 text-xs text-primary bg-primary/10 rounded-lg px-3 py-1.5">
                 {interimTranscript}...
               </div>
             )}
           </div>
-          <div className="flex justify-between items-center px-3 py-1.5 border-t border-border">
+          <div className="flex justify-end items-center px-3 py-1.5">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-text-secondary">
-                {sourceText.length} {t('translator.chars')}
-                {incrementalMode && (
-                  <span className="ml-2 text-accent">{t('translator.incrementalMode')}</span>
-                )}
-              </span>
+              {incrementalMode && (
+                <span className="text-xs text-accent">{t('translator.incrementalMode')}</span>
+              )}
               {speechError && <span className="text-xs text-error">{speechError}</span>}
             </div>
             <div className="flex items-center gap-2">
@@ -525,7 +525,7 @@ function MainTranslator({ onOcrScreenshot }: MainTranslatorProps) {
         </div>
 
         {/* Result Panel */}
-        <div className="ui-card ui-run-light flex-1 flex flex-col overflow-hidden">
+        <div className="ui-card translator-input-card flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             {/* Incremental Entries */}
             {incrementalMode && incrementalEntries.length > 0 && (

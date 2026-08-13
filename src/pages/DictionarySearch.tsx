@@ -28,6 +28,7 @@ import {
   type DictSourceConfig,
 } from '../services/dictionarySource';
 import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 
 interface PhoneticInfo {
   text?: string;
@@ -341,10 +342,10 @@ function DictionarySearch() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-bg-primary">
-      {/* Search Bar */}
-      <div className="p-6 border-b border-border bg-bg-secondary">
-        <div className="max-w-3xl mx-auto">
+    <>
+      <PageLayout
+        toolbar={
+          <div className="max-w-4xl mx-auto">
           <PageHeader
             title="词典查询"
             icon={BookOpen}
@@ -408,6 +409,32 @@ function DictionarySearch() {
                     <X size={18} />
                   </button>
                 )}
+
+                {/* Suggestions anchored to the input (aligns with search box width) */}
+                {showSuggestions && (suggestions.length > 0 || isSuggestionsLoading) && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-bg-secondary border border-border rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
+                    {isSuggestionsLoading ? (
+                      <div className="p-4 text-center">
+                        <Loader2 className="animate-spin inline-block" size={20} />
+                      </div>
+                    ) : (
+                      suggestions.map((item, i) => (
+                        <button
+                          key={item.word}
+                          onClick={() => void handleLookup(item.word)}
+                          className={`w-full px-4 py-2 text-left hover:bg-bg-tertiary ${i === selectedIndex ? 'bg-bg-tertiary' : ''}`}
+                        >
+                          <span className="text-text-primary font-medium">{item.word}</span>
+                          {item.preview && (
+                            <span className="text-xs text-text-tertiary ml-2 truncate max-w-xs inline-block align-bottom">
+                              {item.preview}
+                            </span>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => void handleLookup(searchQuery)}
@@ -417,30 +444,6 @@ function DictionarySearch() {
                 {isLoading ? <Loader2 className="animate-spin" size={20} /> : '查询'}
               </button>
             </div>
-            {showSuggestions && (suggestions.length > 0 || isSuggestionsLoading) && (
-              <div className="absolute top-full left-0 right-16 mt-1 bg-bg-secondary border border-border rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
-                {isSuggestionsLoading ? (
-                  <div className="p-4 text-center">
-                    <Loader2 className="animate-spin inline-block" size={20} />
-                  </div>
-                ) : (
-                  suggestions.map((item, i) => (
-                    <button
-                      key={item.word}
-                      onClick={() => void handleLookup(item.word)}
-                      className={`w-full px-4 py-2 text-left hover:bg-bg-tertiary ${i === selectedIndex ? 'bg-bg-tertiary' : ''}`}
-                    >
-                      <span className="text-text-primary font-medium">{item.word}</span>
-                      {item.preview && (
-                        <span className="text-xs text-text-tertiary ml-2 truncate max-w-xs inline-block align-bottom">
-                          {item.preview}
-                        </span>
-                      )}
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
           </div>
           <p className="text-xs text-text-secondary mt-2">
             💡 ECDICT（中文）+ 有道（音频/例句）+ Oxford（权威）+ GPT4（词根）+ DictionaryAPI.dev
@@ -475,11 +478,10 @@ function DictionarySearch() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Results */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-3xl mx-auto">
+        }
+        toolbarVariant="header"
+      >
+        <div className="space-y-4">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg mb-4">
               {error}
@@ -489,13 +491,13 @@ function DictionarySearch() {
             searchQuery ? (
               <div className="text-center text-text-secondary py-12">
                 <Search size={48} className="mx-auto mb-4 opacity-50" />
-                <p className="text-lg font-medium">按回车查询单词</p>
-                <p className="text-sm mt-2">多源聚合：自动合并多个词典的数据</p>
+                <p className="ui-section-title text-text-primary">按回车查询单词</p>
+                <p className="ui-caption mt-2">多源聚合：自动合并多个词典的数据</p>
               </div>
             ) : (
-              <div className="bg-bg-secondary border border-border rounded-lg overflow-hidden">
-                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-text-primary flex items-center gap-2">
+              <div className="ui-card overflow-hidden">
+                <div className="px-5 pt-4 pb-0 flex items-center justify-between">
+                  <h3 className="ui-section-title text-text-primary flex items-center gap-2">
                     <Database size={14} />
                     核心词库浏览
                   </h3>
@@ -504,7 +506,7 @@ function DictionarySearch() {
                   </span>
                 </div>
                 <CoreVocabularyList
-                  className="h-64"
+                  className="max-h-[50vh]"
                   onSelectWord={(w) => void handleLookup(w)}
                 />
               </div>
@@ -512,12 +514,12 @@ function DictionarySearch() {
           )}
           {result && <ResultCard result={result} onPlayAudio={playAudio} onSpeak={playTts} />}
         </div>
-      </div>
+      </PageLayout>
 
       {/* T6 接线:AI 抽生词建本对话框 */}
       {showExtractDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="ui-card w-full max-w-2xl p-6 animate-fadeIn">
+          <div className="ui-card w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6 animate-fadeIn">
             <div className="flex items-center justify-between mb-4">
               <h3 className="ui-section-title flex items-center gap-2">
                 <Wand2 size={16} />
@@ -587,7 +589,7 @@ function DictionarySearch() {
       {/* T7 接线:词典源管理对话框 */}
       {showSourcesDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="ui-card w-full max-w-lg p-6 animate-fadeIn">
+          <div className="ui-card w-full max-w-lg max-h-[85vh] overflow-y-auto p-6 animate-fadeIn">
             <div className="flex items-center justify-between mb-4">
               <h3 className="ui-section-title flex items-center gap-2">
                 <Settings2 size={16} />
@@ -689,7 +691,7 @@ function DictionarySearch() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -725,10 +727,10 @@ function ResultCard({
 
   return (
     <div className="space-y-4">
-      <div className="bg-bg-secondary border border-border rounded-lg p-6 animate-fadeIn">
+      <div className="ui-card ui-card-hover p-5 animate-fadeIn">
         <div className="flex items-start justify-between mb-3">
           <div>
-            <h2 className="text-xl font-semibold text-text-primary mb-2 tracking-tight">
+            <h2 className="ui-page-title mb-2 tracking-tight">
               {result.word}
             </h2>
             <div className="flex items-center gap-3 flex-wrap">
@@ -801,7 +803,7 @@ function ResultCard({
         {/* 中文释义（ECDICT） */}
         {result.chineseTranslation && (
           <div className="mb-4">
-            <h3 className="text-sm font-semibold text-primary mb-2 flex items-center gap-1.5">
+            <h3 className="ui-section-title text-primary mb-2 flex items-center gap-1.5">
               <Database size={14} /> 中文释义
             </h3>
             <p className="text-text-primary leading-relaxed bg-bg-primary p-3 rounded border border-border">
@@ -813,7 +815,7 @@ function ResultCard({
         {/* 英文释义（ECDICT） */}
         {result.englishDefinitions.length > 0 && (
           <div className="mb-4">
-            <h3 className="text-sm font-semibold text-primary mb-2">英文释义</h3>
+            <h3 className="ui-section-title text-primary mb-2">英文释义</h3>
             <ul className="space-y-1">
               {result.englishDefinitions.map((d, i) => (
                 <li key={i} className="text-sm text-text-primary pl-3 border-l-2 border-border">
@@ -827,8 +829,8 @@ function ResultCard({
 
       {/* Oxford 权威释义 */}
       {result.oxfordDefinition && (
-        <div className="bg-bg-secondary border border-border rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-amber-600 mb-2 flex items-center gap-1.5">
+        <div className="ui-card ui-card-hover p-5">
+          <h3 className="ui-section-title text-amber-600 mb-2 flex items-center gap-1.5">
             <BookOpen size={14} /> Oxford 释义
           </h3>
           <p className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">
@@ -839,8 +841,8 @@ function ResultCard({
 
       {/* 柯林斯词典（权威英英释义 + 双语例句） */}
       {result.collinsEntries.length > 0 && (
-        <div className="bg-bg-secondary border border-border rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-orange-600 mb-3 flex items-center gap-1.5">
+        <div className="ui-card ui-card-hover p-5">
+          <h3 className="ui-section-title text-orange-600 mb-3 flex items-center gap-1.5">
             <BookOpen size={14} /> 柯林斯词典
           </h3>
           <div className="space-y-4">
@@ -871,8 +873,8 @@ function ResultCard({
 
       {/* DictionaryAPI.dev 在线释义 */}
       {result.onlineMeanings.length > 0 && (
-        <div className="bg-bg-secondary border border-border rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-green-600 mb-3 flex items-center gap-1.5">
+        <div className="ui-card ui-card-hover p-5">
+          <h3 className="ui-section-title text-green-600 mb-3 flex items-center gap-1.5">
             <Globe size={14} /> 在线释义（含例句）
           </h3>
           {result.onlineMeanings.map((m, mi) => (
@@ -900,8 +902,8 @@ function ResultCard({
 
       {/* 有道双语例句 */}
       {result.examples.length > 0 && (
-        <div className="bg-bg-secondary border border-border rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-neutral-500 mb-3 flex items-center gap-1.5">
+        <div className="ui-card ui-card-hover p-5">
+          <h3 className="ui-section-title text-neutral-500 mb-3 flex items-center gap-1.5">
             <BookOpen size={14} /> 双语例句
           </h3>
           <div className="space-y-3">
@@ -917,8 +919,8 @@ function ResultCard({
 
       {/* GPT4 词根分析 */}
       {result.gptAnalysis && (
-        <div className="bg-bg-secondary border border-border rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-primary mb-2 flex items-center gap-1.5">
+        <div className="ui-card ui-card-hover p-5">
+          <h3 className="ui-section-title text-primary mb-2 flex items-center gap-1.5">
             <Sparkles size={14} /> AI 词根分析
           </h3>
           <div className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">

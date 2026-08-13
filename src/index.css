@@ -149,6 +149,117 @@
   --ocr-overlay-input-bg: rgba(255, 255, 255, 0.6);
 }
 
+/* ── Dev 月球主题:月球金属 + 定向光 + 紫罗兰强调 ──
+ * 设计原稿(design/ui-preview-dev.html):中性金属打底,紫罗兰是强调色
+ * (focus 环/进度条/链接),受光边 = 白色金属描边,背光 = 陨石坑暗角。
+ * 挂在 `.dark` 之上(html 同时带 dark + dev):颜色仍走 .dark 的映射规则,
+ * 这里只覆写令牌与灯光变量。定向光由 DevComet 组件逐帧更新
+ * (--lx/--ly/--la/--sx/--sy/--ix/--iy),这里提供静态默认值(光源在正上方)。 */
+.dev {
+  --color-primary: #f2f2f4;
+  --color-primary-hover: #ffffff;
+  --color-primary-fg: #0b0b0e;
+  --color-accent: #9aa3ff;
+
+  --color-bg-primary: #050507;
+  --color-bg-secondary: #0c0c10;
+  --color-bg-tertiary: #16161c;
+  --color-bg-chrome: #0a0a0c;
+
+  --color-text-primary: #f2f2f4;
+  --color-text-secondary: #ababb3;
+  --color-border: rgba(255, 255, 255, 0.16);
+  --color-border-strong: rgba(255, 255, 255, 0.30);
+  --color-success: #34d399;
+  --color-warning: #d4a1e6;
+  --color-error: #c96f7f;
+
+  /* RGB triplets for Tailwind opacity modifier (bg-primary/5 etc.) */
+  --color-primary-rgb: 242 242 244;
+  --color-primary-hover-rgb: 255 255 255;
+  --color-primary-fg-rgb: 11 11 14;
+  --color-accent-rgb: 154 163 255;
+  --color-bg-primary-rgb: 5 5 7;
+  --color-bg-secondary-rgb: 12 12 16;
+  --color-bg-tertiary-rgb: 22 22 28;
+  --color-bg-chrome-rgb: 10 10 12;
+  --color-text-primary-rgb: 242 242 244;
+  --color-text-secondary-rgb: 171 171 179;
+  --color-border-rgb: 255 255 255;
+  --color-border-strong-rgb: 255 255 255;
+  --color-success-rgb: 52 211 153;
+  --color-warning-rgb: 212 161 230;
+  --color-error-rgb: 201 111 127;
+
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.12),
+                 0 1px 2px rgba(0, 0, 0, 0.6),
+                 0 10px 28px -10px rgba(0, 0, 0, 0.85);
+  --shadow-card-hover: inset 0 1px 0 rgba(255, 255, 255, 0.18),
+                       0 2px 4px rgba(0, 0, 0, 0.7),
+                       0 18px 36px -10px rgba(0, 0, 0, 0.9);
+  --shadow-elevated: var(--shadow-card);
+  --ring: 0 0 0 2px rgba(154, 163, 255, 0.45);
+  color-scheme: dark;
+
+  /* 定向光的默认方向:光源在上方正中(DevComet 启动前与 reduce-motion 时兜底) */
+  --la: 180deg;
+  --sx: 0px;
+  --sy: 6px;
+  --ix: 0px;
+  --iy: -10px;
+}
+
+/* ── Dev 月球·白色月面变体 ──
+ * 与 .dev 同一套金属/陨石坑/定向光语言,但走浅色底(挂在 .light 之上,
+ * html 同时带 light + dev-light)。受光边换深灰金属描边,紫罗兰强调更深。 */
+.dev-light {
+  --color-primary: #14151a;
+  --color-primary-hover: #000000;
+  --color-primary-fg: #fafafa;
+  --color-accent: #5a63d8;
+
+  --color-bg-primary: #eef0f2;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #eceef0;
+  --color-bg-chrome: #fdfdfd;
+
+  --color-text-primary: #0c0d10;
+  --color-text-secondary: #4c5058;
+  --color-border: rgba(20, 24, 34, 0.14);
+  --color-border-strong: rgba(20, 24, 34, 0.26);
+  --color-success: #16a34a;
+  --color-warning: #9a58b8;
+  --color-error: #b04048;
+
+  --color-primary-rgb: 20 21 26;
+  --color-primary-hover-rgb: 0 0 0;
+  --color-primary-fg-rgb: 250 250 250;
+  --color-accent-rgb: 90 99 216;
+  --color-bg-primary-rgb: 238 240 242;
+  --color-bg-secondary-rgb: 255 255 255;
+  --color-bg-tertiary-rgb: 236 238 240;
+  --color-bg-chrome-rgb: 253 253 253;
+  --color-text-primary-rgb: 12 13 16;
+  --color-text-secondary-rgb: 76 80 88;
+  --color-border-rgb: 20 24 34;
+  --color-border-strong-rgb: 20 24 34;
+
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.9),
+                 0 1px 2px rgba(0, 0, 0, 0.05),
+                 0 10px 28px -10px rgba(20, 24, 34, 0.18);
+  --shadow-card-hover: inset 0 1px 0 #ffffff,
+                       0 2px 4px rgba(0, 0, 0, 0.08),
+                       0 18px 36px -10px rgba(20, 24, 34, 0.26);
+  --ring: 0 0 0 2px rgba(90, 99, 216, 0.30);
+  color-scheme: light;
+
+  --la: 180deg;
+  --sx: 0px;
+  --sy: 6px;
+  --ix: 0px;
+  --iy: -10px;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -330,6 +441,16 @@ textarea:focus-visible {
   border-color: var(--color-primary) !important;
 }
 
+/* MainTranslator source/result input: never show a focus ring —
+   the surrounding ui-card already marks focus; avoids white/purple
+   flash on the textarea edge when clicking in/out. */
+.translator-input-card textarea:focus,
+.translator-input-card textarea:focus-visible {
+  box-shadow: none !important;
+  outline: none !important;
+  border-color: transparent !important;
+}
+
 /* Primary fill always high-contrast */
 .bg-primary {
   color: var(--color-primary-fg);
@@ -394,6 +515,171 @@ textarea:focus-visible {
         rgba(10, 10, 10, 0.02)
       )
       border-box;
+}
+
+/* ── 卡片 = 陨石坑:受光边金属描边 + 表面柔光扩散 + 背光投影 + 坑内暗角。
+ * 光的方位由 DevComet 逐帧写入 --la/--sx/--sy/--ix/--iy,
+ * 受光边随定向光流过时,不只一条细线亮起,而是从边上往整个面扩散出月光。 ── */
+.dev .ui-card {
+  /* 定向光三层(top→bottom):
+   *  ①表面柔光(padding-box,压在实底之上)→ 光从受光边扩散到整个卡片面
+   *  ②实底(padding-box)
+   *  ③受光边亮缘(border-box,只在 1px 边框条露出) */
+  background:
+    linear-gradient(
+        var(--la),
+        rgba(255, 255, 255, 0.17),
+        rgba(255, 255, 255, 0.07) 30%,
+        rgba(255, 255, 255, 0) 58%
+      )
+      padding-box,
+    linear-gradient(var(--color-bg-secondary), var(--color-bg-secondary)) padding-box,
+    linear-gradient(
+        var(--la),
+        rgba(255, 255, 255, 0.95),
+        rgba(255, 255, 255, 0.45) 26%,
+        rgba(255, 255, 255, 0.12) 60%,
+        rgba(255, 255, 255, 0.03)
+      )
+      border-box;
+  border: 1px solid transparent;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset var(--ix) var(--iy) 30px -12px rgba(0, 0, 0, 0.9),
+    calc(var(--sx) * 1.4px) calc(var(--sy) * 1.4px) 26px -10px rgba(0, 0, 0, 0.6),
+    /* 受光侧朝外的柔光晕:光不只是打在线上,而是散到卡片外的夜空里 */
+    calc(var(--sx) * -2.4px) calc(var(--sy) * -2.4px) 46px -14px rgba(255, 255, 255, 0.24),
+    var(--shadow-card);
+}
+.dev .ui-card-hover:hover {
+  background:
+    linear-gradient(
+        var(--la),
+        rgba(255, 255, 255, 0.21),
+        rgba(255, 255, 255, 0.09) 34%,
+        rgba(255, 255, 255, 0) 62%
+      )
+      padding-box,
+    linear-gradient(var(--color-bg-secondary), var(--color-bg-secondary)) padding-box,
+    linear-gradient(
+        var(--la),
+        rgba(255, 255, 255, 1),
+        rgba(255, 255, 255, 0.55) 30%,
+        rgba(255, 255, 255, 0.15) 64%,
+        rgba(255, 255, 255, 0.03)
+      )
+      border-box;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.10),
+    inset var(--ix) var(--iy) 34px -12px rgba(0, 0, 0, 0.95),
+    calc(var(--sx) * 1.4px) calc(var(--sy) * 1.4px) 30px -10px rgba(0, 0, 0, 0.7),
+    calc(var(--sx) * -2.8px) calc(var(--sy) * -2.8px) 50px -10px rgba(255, 255, 255, 0.34),
+    var(--shadow-card-hover);
+}
+.dev .ui-card-hover:focus-within {
+  background:
+    linear-gradient(
+        var(--la),
+        rgba(255, 255, 255, 0.18),
+        rgba(255, 255, 255, 0.08) 30%,
+        rgba(255, 255, 255, 0) 58%
+      )
+      padding-box,
+    linear-gradient(var(--color-bg-secondary), var(--color-bg-secondary)) padding-box,
+    linear-gradient(
+        var(--la),
+        rgba(255, 255, 255, 0.95),
+        rgba(255, 255, 255, 0.45) 26%,
+        rgba(255, 255, 255, 0.12) 60%,
+        rgba(255, 255, 255, 0.03)
+      )
+      border-box;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.10),
+    inset var(--ix) var(--iy) 30px -12px rgba(0, 0, 0, 0.9),
+    calc(var(--sx) * -2.4px) calc(var(--sy) * -2.4px) 46px -14px rgba(255, 255, 255, 0.26),
+    var(--shadow-card);
+  filter: brightness(1.04);
+}
+
+/* Dev 玻璃浮层:边缘跟随定向光 */
+.dev .ui-glass {
+  background:
+    color-mix(in srgb, var(--color-bg-secondary) 82%, transparent) padding-box,
+    linear-gradient(
+        var(--la),
+        rgba(255, 255, 255, 0.55),
+        rgba(255, 255, 255, 0.18) 38%,
+        rgba(255, 255, 255, 0.05) 80%
+      )
+      border-box;
+  border: 1px solid transparent;
+}
+
+/* ── Dev 月球·白色月面:同套金属/陨石坑/定向光,深灰描边可读性强 ── */
+.dev-light .ui-card {
+  background:
+    linear-gradient(
+        var(--la),
+        rgba(20, 24, 34, 0.13),
+        rgba(20, 24, 34, 0.06) 32%,
+        rgba(20, 24, 34, 0) 58%
+      )
+      padding-box,
+    linear-gradient(var(--color-bg-secondary), var(--color-bg-secondary)) padding-box,
+    linear-gradient(
+        var(--la),
+        rgba(20, 24, 34, 0.85),
+        rgba(20, 24, 34, 0.32) 26%,
+        rgba(20, 24, 34, 0.10) 60%,
+        rgba(20, 24, 34, 0.02)
+      )
+      border-box;
+  border: 1px solid transparent;
+  box-shadow:
+    inset 0 0 0 1px rgba(20, 24, 34, 0.06),
+    inset var(--ix) var(--iy) 24px -10px rgba(20, 24, 34, 0.14),
+    calc(var(--sx) * 0.8px) calc(var(--sy) * 0.8px) 22px -8px rgba(20, 24, 34, 0.25),
+    calc(var(--sx) * -1.8px) calc(var(--sy) * -1.8px) 40px -12px rgba(20, 24, 34, 0.12),
+    var(--shadow-card);
+}
+.dev-light .ui-card-hover:hover {
+  background:
+    linear-gradient(
+        var(--la),
+        rgba(20, 24, 34, 0.17),
+        rgba(20, 24, 34, 0.07) 34%,
+        rgba(20, 24, 34, 0) 62%
+      )
+      padding-box,
+    linear-gradient(var(--color-bg-secondary), var(--color-bg-secondary)) padding-box,
+    linear-gradient(
+        var(--la),
+        rgba(20, 24, 34, 0.95),
+        rgba(20, 24, 34, 0.40) 28%,
+        rgba(20, 24, 34, 0.12) 62%,
+        rgba(20, 24, 34, 0.03)
+      )
+      border-box;
+  box-shadow:
+    inset 0 0 0 1px rgba(20, 24, 34, 0.10),
+    inset var(--ix) var(--iy) 28px -10px rgba(20, 24, 34, 0.18),
+    calc(var(--sx) * 0.8px) calc(var(--sy) * 0.8px) 24px -8px rgba(20, 24, 34, 0.30),
+    calc(var(--sx) * -2.2px) calc(var(--sy) * -2.2px) 44px -10px rgba(20, 24, 34, 0.16),
+    var(--shadow-card-hover);
+}
+
+.dev-light .ui-glass {
+  background:
+    color-mix(in srgb, var(--color-bg-secondary) 84%, transparent) padding-box,
+    linear-gradient(
+        var(--la),
+        rgba(20, 24, 34, 0.40),
+        rgba(20, 24, 34, 0.12) 38%,
+        rgba(20, 24, 34, 0.03) 80%
+      )
+      border-box;
+  border: 1px solid transparent;
 }
 
 /* Tailwind 原生 shadow-sm 不再被覆盖(卡片统一走 .ui-card) */
@@ -485,9 +771,7 @@ textarea:focus-visible {
       transparent 100%);
 }
 .ui-run-light:hover::before,
-.ui-run-light:hover::after,
-.ui-run-light:focus-within::before,
-.ui-run-light:focus-within::after {
+.ui-run-light:hover::after {
   opacity: 1;
   animation-play-state: running;
 }
@@ -658,6 +942,7 @@ textarea:focus-visible {
   color: var(--color-success) !important;
 }
 .light .text-yellow-600,
+.light .text-amber-300,
 .light .text-amber-600,
 .light .text-amber-700,
 .light .text-orange-600,
@@ -679,7 +964,8 @@ textarea:focus-visible {
 .light .bg-yellow-50,
 .light .bg-amber-50,
 .light .bg-yellow-500\/10,
-.light .bg-yellow-500\/20 {
+.light .bg-yellow-500\/20,
+.light .bg-amber-400\/15 {
   background-color: color-mix(in srgb, var(--color-warning) 12%, transparent) !important;
 }
 .light .bg-red-50,
@@ -741,3 +1027,4 @@ textarea:focus-visible {
     transform: none !important;
   }
 }
+

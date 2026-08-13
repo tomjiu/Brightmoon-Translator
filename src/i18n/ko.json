@@ -405,13 +405,13 @@
     },
     "appearance": {
       "pageTitle": "외관",
-      "pageDesc": "검정/흰색 두 테마만",
+      "pageDesc": "흑백 / 달 두 테마",
       "themeTitle": "테마",
       "themeDesc": "사이드바 하단에서도 전환 가능",
-      "dark": "다크",
-      "darkDesc": "검은 캔버스, 고대비 컨트롤",
-      "light": "라이트",
-      "lightDesc": "밝은 캔버스, 어두운 버튼",
+      "mono": "흑백",
+      "monoDesc": "클래식한 흑백 단색 UI",
+      "dev": "Dev 달",
+      "devDesc": "달 표면 메탈 질감 + 동적 방향광 + 보라색 포인트",
       "current": "현재"
     },
     "ocr": {

@@ -298,7 +298,7 @@ export default function VocabularyLearning() {
   return (
     <div className="h-full flex">
       {/* Sidebar */}
-      <div className="w-52 border-r border-border bg-bg-secondary flex flex-col">
+      <div className="w-52 shrink-0 border-r border-border bg-bg-secondary flex flex-col">
         <div className="p-4">
           <div className="flex items-center gap-2 mb-4">
             <GraduationCap size={16} className="text-primary" />
@@ -320,7 +320,7 @@ export default function VocabularyLearning() {
           </div>
         </div>
         {viewMode !== 'stats' && (
-          <div className="px-4 pb-4 mt-auto">
+          <div className="px-4 pb-4 mt-auto border-t border-border pt-4">
             <LearningStatsPanel />
           </div>
         )}
@@ -333,7 +333,7 @@ export default function VocabularyLearning() {
 
         {/* ===== 计划列表 ===== */}
         {viewMode === 'plans' && (
-          <div className="p-6 max-w-4xl mx-auto space-y-6">
+          <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
             {plans.length === 0 && (
               <WelcomeGuide
                 onStartLearning={() => setViewMode('plans')}
@@ -344,13 +344,13 @@ export default function VocabularyLearning() {
             )}
 
             {plans.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold text-text-secondary mb-3">我的学习计划</h3>
-                <div className="space-y-2">
+              <div className="ui-card ui-card-hover p-5">
+                <h3 className="ui-section-title mb-3">我的学习计划</h3>
+                <div className="space-y-2.5">
                   {plans.map(({ plan, progress }) => (
                     <div
                       key={plan.id}
-                      className="flex items-center gap-4 p-3 bg-bg-secondary border border-border rounded-lg"
+                      className="flex items-center gap-4 p-3 rounded-lg border border-border bg-bg-primary hover:border-border-strong transition-colors"
                     >
                       <div className="flex-1 min-w-0">
                         <h4 className="text-sm font-medium text-text-primary">{plan.name}</h4>
@@ -385,13 +385,13 @@ export default function VocabularyLearning() {
               </div>
             )}
 
-            <div>
-              <h3 className="text-sm font-semibold text-text-secondary mb-3">创建考试计划</h3>
-              <div className="grid grid-cols-3 gap-2">
+            <div className="ui-card ui-card-hover p-5">
+              <h3 className="ui-section-title mb-3">创建考试计划</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
                 {examWordlists.map((ex) => (
                   <div
                     key={ex.exam}
-                    className="flex items-center gap-3 p-3 bg-bg-secondary border border-border rounded-lg"
+                    className="flex items-center gap-3 p-3 rounded-lg border border-border bg-bg-primary hover:border-border-strong transition-colors"
                   >
                     <span className="text-xl">{ex.icon}</span>
                     <div className="flex-1 min-w-0">
@@ -411,8 +411,8 @@ export default function VocabularyLearning() {
               </div>
             </div>
 
-            <div>
-              <h3 className="text-sm font-semibold text-text-secondary mb-3">导入词表</h3>
+            <div className="ui-card ui-card-hover p-5">
+              <h3 className="ui-section-title mb-3">导入词表</h3>
               {importMode === null ? (
                 <div className="flex gap-2">
                   <button
@@ -429,7 +429,7 @@ export default function VocabularyLearning() {
                   </button>
                 </div>
               ) : (
-                <div className="p-4 bg-bg-secondary border border-border rounded-lg space-y-3">
+                <div className="p-4 bg-bg-primary border border-border rounded-lg space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-medium">
                       {importMode === 'file' ? '从文件导入' : '粘贴文本导入'}
@@ -808,8 +808,8 @@ export default function VocabularyLearning() {
         )}
 
         {viewMode === 'stats' && (
-          <div className="p-6 max-w-2xl">
-            <h1 className="ui-page-title mb-6">学习统计</h1>
+          <div className="w-full p-4 md:p-5 lg:p-6">
+            <h1 className="ui-page-title mb-4">学习统计</h1>
             <LearningStatsPanel />
           </div>
         )}

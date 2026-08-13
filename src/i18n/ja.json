@@ -405,13 +405,13 @@
     },
     "appearance": {
       "pageTitle": "外観",
-      "pageDesc": "黒 / 白の2テーマのみ",
+      "pageDesc": "モノクロ / 月面の2テーマ",
       "themeTitle": "テーマ",
       "themeDesc": "サイドバー下部でも切替可能",
-      "dark": "ダーク",
-      "darkDesc": "黒背景・高コントラスト",
-      "light": "ライト",
-      "lightDesc": "明るい背景・暗い操作ボタン",
+      "mono": "モノクロ",
+      "monoDesc": "クラシックな黒 / 白の単色UI",
+      "dev": "Dev 月面",
+      "devDesc": "月面メタル質感 + 動的な指向光 + 紫のアクセント",
       "current": "使用中"
     },
     "ocr": {

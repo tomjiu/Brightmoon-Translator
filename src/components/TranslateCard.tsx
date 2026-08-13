@@ -389,7 +389,7 @@ export default function TranslateCard() {
   return (
     <div
       ref={setContentEl}
-      className="ui-glass ui-run-light flex flex-col overflow-hidden select-none text-text-primary"
+      className="ui-glass flex flex-col overflow-hidden select-none text-text-primary"
       style={{
         minWidth: 140,
         maxWidth: 620,

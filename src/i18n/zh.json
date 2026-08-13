@@ -405,13 +405,13 @@
     },
     "appearance": {
       "pageTitle": "外观",
-      "pageDesc": "仅黑 / 白两套单色主题",
+      "pageDesc": "黑白 / 月球 两套主题",
       "themeTitle": "主题",
       "themeDesc": "侧栏底部亦可一键切换",
-      "dark": "黑色",
-      "darkDesc": "纯黑画布，高对比反白控件",
-      "light": "白色",
-      "lightDesc": "浅灰画布，黑底操作按钮",
+      "mono": "黑白",
+      "monoDesc": "经典黑 / 白纯色界面",
+      "dev": "Dev 月球",
+      "devDesc": "月球金属 + 动态定向光 + 紫罗兰强调",
       "current": "当前"
     },
     "ocr": {

@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Moon Translator — 月球轨道光影原型</title>
+<style>
+  /* ============================================================
+     Moon Translator · 「月球」光影
+     - 页面 = 月球表面；边框水光跟随鼠标: 光点凝集到边框上离鼠标最近处
+     - 卡片 = 陨石坑：受光边亮起(金属描边) / 背光边外投影 / 坑内暗角
+     - 全部卡片共享全局光 :root CSS 变量 (--lx/--la/--sx/...)
+     - 纯 CSS 变量 + canvas 彗尾 + 单个 rAF，低内存原生
+     ============================================================ */
+  :root {
+    --font: 'Inter', -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --bg-0:#050507; --bg-1:#0a0a0c; --bg-2:#0f0f12; --bg-3:#15151a;
+    --fg-0:#f2f2f4; --fg-1:#ababb3; --fg-2:#6c6c76;
+    --edge-a:rgba(255,255,255,.92); --edge-b:rgba(255,255,255,.42);
+    --edge-c:rgba(255,255,255,.09); --edge-d:rgba(255,255,255,0);
+    --crat-soft: rgba(0,0,0,.72);
+    --accent:#9aa3ff; --accent-2:#cfd2ff;
+    --ok:#34d399; --warn:#d4a1e6; --bad:#c96f7f;
+    --r:14px; --r-sm:9px;
+    --ease: cubic-bezier(.22,.72,.24,1);
+    /* 光点轨道（JS 每帧更新） */
+    --lx:30%; --ly:30%; --la:120deg; --sx:6px; --sy:-8px; --ix:-6px; --iy:8px;
+  }
+  .light {
+    --bg-0:#eef0f2; --bg-1:#ffffff; --bg-2:#f1f2f5; --bg-3:#e2e4e7;
+    --fg-0:#0c0d10; --fg-1:#3c4048; --fg-2:#858a91;
+    --edge-a:rgba(0,0,0,.92); --edge-b:rgba(0,0,0,.28);
+    --edge-c:rgba(0,0,0,.12); --edge-d:rgba(0,0,0,0);
+    --crat-soft: rgba(0,0,0,.16);
+    --accent:#5a63d8; --accent-2:#3f48c0;
+    --warn:#8a58a0; --bad:#b04048;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body{height:100%}
+  body {
+    font-family:var(--font); font-size:14px; color:var(--fg-0);
+    overflow:hidden; position:relative;
+    background-color: var(--bg-0);
+    background-image:
+      radial-gradient(circle at 18% 22%, rgba(255,255,255,.030) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 63% 9%,  rgba(255,255,255,.026) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 42% 71%, rgba(255,255,255,.024) 0 1.4px, transparent 2px),
+      radial-gradient(circle at 84% 47%, rgba(255,255,255,.028) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 8%  83%, rgba(255,255,255,.026) 0 1.4px, transparent 2px),
+      radial-gradient(circle at 55% 55%, rgba(255,255,255,.030) 0 1.8px, transparent 2.6px),
+      radial-gradient(circle at 31% 36%, rgba(255,255,255,.022) 0 1.2px, transparent 1.8px),
+      radial-gradient(circle at 76% 78%, rgba(0,0,0,.4) 0 2px, transparent 2.8px),
+      radial-gradient(circle at 12% 58%, rgba(0,0,0,.5) 0 3px, transparent 4px);
+  }
+  .light body { background-image:
+      radial-gradient(circle at 22% 18%, rgba(28,32,40,.07) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 60% 82%, rgba(28,32,40,.06) 0 1.4px, transparent 2px),
+      radial-gradient(circle at 80% 28%, rgba(28,32,40,.05) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 38% 56%, rgba(28,32,40,.05) 0 1.2px, transparent 1.8px),
+      radial-gradient(circle at 12% 74%, rgba(28,32,40,.065) 0 1.4px, transparent 2px); }
+  .light .moon-body {
+    background:
+      radial-gradient(60% 45% at 30% 12%, rgba(255,255,255,.85), transparent 62%),
+      radial-gradient(120% 120% at 82% 94%, rgba(18,22,30,.045), transparent 62%);
+  }
+  body::before, body::after { /* 避开 full-width 覆盖 */
+  }
+  /* 月球本体：极淡全局球面渐变 + 随机月海 */
+  .moon-body {
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      radial-gradient(46% 34% at 22% 14%, rgba(255,255,255,.022), transparent 60%),
+      radial-gradient(120% 120% at 82% 92%, rgba(0,0,0,.6), transparent 62%),
+      radial-gradient(30% 22% at 68% 54%, rgba(255,255,255,.014), transparent 60%);
+  }
+  /* 轨道光斑：跟随 --lx/--ly */
+  .lightpool {
+    position:fixed; inset:0; pointer-events:none; z-index:1;
+    background: radial-gradient(42% 30% at var(--lx) var(--ly), rgba(255,255,255,.05), rgba(255,255,255,.012) 55%, transparent 78%);
+    mix-blend-mode:screen; color-scheme: dark;
+  }
+  .light .lightpool {
+    background: radial-gradient(42% 30% at var(--lx) var(--ly), rgba(86,92,124,.07), rgba(86,92,124,.02) 55%, transparent 78%);
+  }
+
+  .app { position:relative; z-index:2; display:grid; grid-template-columns:216px 1fr; height:100vh; }
+
+  /* ================= 陨石坑卡片 ================= */
+  .metal {
+    position:relative; border-radius:var(--r); overflow:hidden;
+    background:
+      linear-gradient(var(--la), rgba(255,255,255,.10), rgba(255,255,255,.03) 26%, transparent 52%),
+      linear-gradient(calc(var(--la) + 180deg), rgba(0,0,0,.30), rgba(0,0,0,.10) 30%, transparent 56%),
+      linear-gradient(180deg, var(--bg-1), var(--bg-2) 60%, var(--bg-1));
+    /* 外投影(背光)+ 坑内暗角(受光内壁) */
+    box-shadow:
+      calc(var(--sx) * 1px) calc(var(--sy) * 1px) 22px -8px rgba(0,0,0,.68),
+      inset var(--ix) var(--iy) 26px -10px var(--crat-soft),
+      inset 0 1px 0 var(--edge-c);
+    transition: transform .25s var(--ease);
+  }
+  .light .metal {
+    background:
+      linear-gradient(var(--la), #ffffff, rgba(255,255,255,0) 32%, transparent 52%),
+      linear-gradient(calc(var(--la) + 180deg), rgba(0,0,0,.11), rgba(0,0,0,.035) 32%, transparent 56%),
+      linear-gradient(180deg,#ffffff,#f5f5f7);
+    box-shadow:
+      calc(var(--sx) * 1px) calc(var(--sy) * 1px) 26px -10px rgba(0,0,0,.20),
+      inset var(--ix) var(--iy) 28px -10px rgba(0,0,0,.08),
+      inset 0 1px 0 #ffffff;
+  }
+  /* 有机错落：轻微旋转/位移，打破规整棋盘 */
+  .tilt-l { transform: rotate(-.45deg); }
+  .tilt-r { transform: rotate(.4deg); }
+  .drop-1 { margin-top: 8px; }
+  .drop-2 { margin-bottom: 8px; }
+  /* 陨石坑口：受光边亮金属描边，角度跟随全局光 */
+  .metal::before {
+    content:''; position:absolute; inset:0; border-radius:inherit; padding:1px;
+    background: linear-gradient(var(--la),
+      var(--edge-a) 0%, var(--edge-b) 26%, var(--edge-c) 58%, var(--edge-d) 88%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude;
+    pointer-events:none;
+  }
+  .metal:hover { transform: translateY(-2px); }
+  .metal:hover::before {
+    background: linear-gradient(var(--la), var(--edge-a) 8%, var(--edge-b) 40%, var(--edge-c) 68%, var(--edge-d));
+  }
+
+  /* ================= 按钮/表单 ================= */
+  .btn {
+    position:relative; display:inline-flex; align-items:center; gap:7px;
+    height:36px; padding:0 16px; border-radius:var(--r-sm);
+    font-size:13px; font-weight:600; color:var(--fg-0); background:none; border:none;
+    cursor:pointer; user-select:none; position:relative;
+    /* 凹陷按钮: 明显暗于卡片表面, 顶受光/底背光 */
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.045), transparent 42%),
+      linear-gradient(180deg, var(--bg-0), #0b0b0e 55%, #101014);
+    box-shadow:
+      calc(var(--sx) * .9px) calc(var(--sy) * .9px) 14px -6px rgba(0,0,0,.6),
+      inset 0 1px 0 rgba(255,255,255,.09),
+      inset 0 -8px 14px -10px rgba(0,0,0,.85),
+      inset 0 0 0 1px rgba(255,255,255,.05);
+    transition: transform .18s var(--ease), box-shadow .18s var(--ease);
+  }
+  .metal::before, .btn::before, .field::before, .row::before {
+    content:''; position:absolute; inset:0; border-radius:inherit; padding:1px;
+    background: linear-gradient(var(--la), var(--edge-a), var(--edge-b) 44%, var(--edge-d) 88%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:active { transform: translateY(0) scale(.985); }
+  .btn svg { width:15px; height:15px; }
+  .btn-primary { color:#0a0a0b; background: linear-gradient(180deg,#ffffff,#e6e6ec 72%,#c9c9d4); }
+  .light .btn {
+    color:#0c0d10;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.9), transparent 45%),
+      linear-gradient(180deg,#f2f3f5,#e7e9ec 55%,#eceef0);
+    box-shadow:
+      calc(var(--sx) * .9px) calc(var(--sy) * .9px) 12px -6px rgba(0,0,0,.16),
+      inset 0 1px 0 #fff,
+      inset 0 0 0 1px rgba(0,0,0,.12);
+  }
+  .light .btn:hover { transform: translateY(-1px); }
+  .light .btn:active { transform: translateY(0) scale(.985); }
+  .light .btn-primary { color:#fff; background: linear-gradient(180deg,#2a2d34,#0c0d10 70%); box-shadow: calc(var(--sx) * .9px) calc(var(--sy) * .9px) 12px -6px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.15); }
+  .btn-ghost { background:transparent; box-shadow: inset 0 0 0 1px var(--edge-b); color:var(--fg-1); }
+  .btn-ghost:hover { background: var(--bg-3); box-shadow: inset 0 0 0 1px var(--edge-a); color:var(--fg-0); }
+
+  .field {
+    position:relative; height:36px; width:100%; border-radius:var(--r-sm);
+    background: linear-gradient(180deg, rgba(0,0,0,.30), rgba(0,0,0,.16)), var(--bg-1);
+    color:var(--fg-0); padding:0 12px; font-size:13px; font-family:var(--font);
+    outline:none; border:1px solid var(--edge-c);
+    box-shadow: inset var(--ix) var(--iy) 18px -8px var(--crat-soft);
+    transition: box-shadow .2s var(--ease), border-color .2s var(--ease);
+  }
+  textarea.field { height:92px; padding:12px; resize:none; line-height:1.6; }
+  .field:focus { border-color: rgba(154,163,255,.55); box-shadow: inset 0 0 0 2px rgba(154,163,255,.28), inset var(--ix) var(--iy) 18px -8px var(--crat-soft); }
+  .light .field {
+    background:#fff;
+    border-color: rgba(0,0,0,.18);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,.04);
+  }
+  .light .field:focus { border-color:#0c0d10; box-shadow: inset 0 0 0 2px rgba(12,13,16,.14); }
+
+  .switch { width:38px; height:22px; border-radius:999px; background:var(--bg-3); position:relative; cursor:pointer; box-shadow: inset 0 1px 2px rgba(0,0,0,.5); transition: background .2s var(--ease); }
+  .switch::after { content:''; width:16px; height:16px; border-radius:50%; position:absolute; top:3px; left:3px; background:var(--fg-1); transition:left .2s var(--ease), background .2s; box-shadow:0 1px 3px rgba(0,0,0,.5); }
+  .switch.on { background:var(--accent); }
+  .switch.on::after { left:19px; background:#fff; }
+
+  .chip { display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 9px; border-radius:999px; font-size:11px; font-weight:600; color:var(--fg-1); background:var(--bg-2); box-shadow: inset 0 0 0 1px var(--edge-c); }
+  .chip.online{ color:#7de7b7 } .chip.offline{ color:#a8adff } .chip.warn{ color:var(--warn) }
+  .light .chip.online{ color:#1c7a58 } .light .chip.offline{ color:#4a52c0 }
+
+  .light .switch { background:#dcdee2; box-shadow: inset 0 1px 2px rgba(0,0,0,.16); }
+  .light .switch::after { background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.30); }
+
+  .bar { height:5px; border-radius:999px; background:var(--bg-3); overflow:hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,.4); }
+  .bar>div { height:100%; border-radius:999px; background:linear-gradient(90deg,var(--accent),var(--accent-2)); box-shadow:0 0 8px rgba(154,163,255,.6); }
+
+  /* ================= 布局与局部 ================= */
+  .side {
+    padding:14px 12px; display:flex; flex-direction:column; gap:2px;
+    border-right:1px solid var(--edge-c);
+    background: linear-gradient(180deg, var(--bg-0), var(--bg-1));
+  }
+  .brand { display:flex; align-items:center; gap:9px; padding:6px 10px 16px; }
+  .brand .logo {
+    width:26px; height:26px; border-radius:50%;
+    background: radial-gradient(circle at 32% 28%, #fff 8%, #cfcfd6 48%, #68686f 100%);
+    box-shadow:
+      calc(var(--sx)*.8px) calc(var(--sy)*.8px) 10px -3px rgba(0,0,0,.6),
+      inset 0 1px 0 rgba(255,255,255,.9);
+    display:grid; place-items:center; color:#202026; font-weight:900; font-size:12.5px;
+  }
+  .brand b{ font-size:13px; letter-spacing:.02em } .brand small{ display:block; color:var(--fg-2); font-size:10.5px }
+
+  .nav-item { display:flex; align-items:center; gap:10px; height:34px; padding:0 10px; border-radius:var(--r-sm); color:var(--fg-1); font-size:13px; cursor:pointer; position:relative; transition:color .15s, background .15s; }
+  .nav-item svg{ width:16px;height:16px;opacity:.85 }
+  .nav-item:hover{ color:var(--fg-0); background:var(--bg-3); }
+  .nav-item.active{ color:var(--fg-0); background:linear-gradient(180deg,var(--bg-3),var(--bg-2)); }
+  .nav-item.active::before { content:''; position:absolute; inset:0; border-radius:inherit; padding:1px;
+    background: linear-gradient(var(--la), var(--edge-a), var(--edge-b) 45%, var(--edge-d) 90%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; }
+  .nav-sep { height:1px; margin:8px 8px; background:var(--edge-c) }
+
+  .main { overflow:auto; padding:22px 24px 40px; display:flex; flex-direction:column; gap:16px; }
+  .main::-webkit-scrollbar{ width:10px } .main::-webkit-scrollbar-thumb{ background:var(--bg-3); border-radius:999px; border:3px solid transparent; background-clip:content-box }
+
+  .page-head{ display:flex; justify-content:space-between; align-items:center }
+  .page-head h1{ font-size:17px; font-weight:700 } .page-head p{ color:var(--fg-2); font-size:12px; margin-top:2px }
+
+  .grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px }
+  .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:16px }
+  .stat{ padding:16px 18px } .stat .k{ color:var(--fg-2); font-size:11px; margin-bottom:8px; letter-spacing:.04em }
+  .stat .v{ font-size:24px; font-weight:750; font-variant-numeric:tabular-nums }
+  .stat .d{ margin-top:6px; font-size:11px; color:var(--accent) }
+  .panel{ padding:18px }
+
+  .result-area{ min-height:120px; border-radius:calc(var(--r) - 2px); background:var(--bg-0); padding:14px; font-size:14px; line-height:1.75; box-shadow: inset 0 1px 0 var(--edge-c), inset var(--ix) var(--iy) 30px -12px var(--crat-soft); }
+
+  .row{ position:relative; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 14px; border-radius:var(--r-sm); margin-bottom:10px; background:var(--bg-1); box-shadow: inset 0 0 0 1px var(--edge-c), inset var(--ix) var(--iy) 16px -8px var(--crat-soft); transition:background .15s, transform .15s; }
+  .row:hover{ background:var(--bg-2); transform:translateX(2px) }
+  .row .w{ font-weight:650 } .row .m{ color:var(--fg-2); font-size:12px; margin-top:2px }
+  .light .row{ background:#f7f8f9; }
+  .light .row:hover{ background:#eff1f3; }
+  .light .brand .logo { background: radial-gradient(circle at 32% 28%, #ffffff 8%, #dfe1e4 48%, #9ba0a8 100%); color:#111318; box-shadow: calc(var(--sx)*.8px) calc(var(--sy)*.8px) 10px -3px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.9); }
+
+  .dict-card{ display:flex; gap:14px; padding:16px }
+  .dict-card .word{ font-size:18px; font-weight:750 } .dict-card .ph{ color:var(--accent); font-size:12.5px; margin-top:3px }
+  .dict-card .body{ color:var(--fg-1); font-size:13px; line-height:1.8; margin-top:10px }
+
+  .rise{ animation:rise .5s var(--ease) both } .rise-1{ animation-delay:.03s } .rise-2{ animation-delay:.07s } .rise-3{ animation-delay:.11s } .rise-4{ animation-delay:.15s } .rise-5{ animation-delay:.19s }
+  @keyframes rise { from{ opacity:0; transform:translateY(10px) } to{ opacity:1; transform:none } }
+
+  /* 边框彗光: 主页面最外沿旋转光点(canvas 绘制，位于最上层) */
+  .comet {
+    position:fixed; inset:0; z-index:6; pointer-events:none;
+  }
+
+  .ctrl {
+    position:fixed; right:16px; bottom:14px; z-index:7; display:flex; gap:8px; align-items:center;
+  }
+  .ctrl button{
+    height:28px; padding:0 12px; border-radius:8px; font-size:11.5px; color:var(--fg-1);
+    background:var(--bg-2); border:1px solid var(--edge-c); cursor:pointer;
+  }
+  .ctrl button.on{ color:#fff; border-color:rgba(154,163,255,.6); }
+
+  /* ===== 悬浮词典: 自环绕改色(不依赖鼠标, 缓慢自转) ===== */
+  .dict-float {
+    position:fixed; right:34px; top:118px; width:314px; z-index:4;
+  }
+  .self-lit { --ga:100deg; --h:252; --fl-la:180deg; }
+  /* 环绕彩环: 亮色小段绕卡一周, 色相慢漂 */
+  .self-lit::before {
+    content:''; position:absolute; inset:-3px; border-radius:16px; padding:3px; pointer-events:none;
+    background: conic-gradient(from var(--ga),
+      hsl(var(--h),85%,64%) 0deg, hsl(var(--h),85%,64%) 13deg, transparent 40deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude;
+  }
+  .df-arrow {
+    position:absolute; left:22px; bottom:-6px; width:12px; height:12px; transform:rotate(45deg);
+    background:var(--bg-2); z-index:-1;
+  }
+  .df-core {
+    position:relative; border-radius:14px; overflow:hidden; padding:15px 16px;
+    background:
+      linear-gradient(var(--fl-la), hsla(var(--h),80%,62%,.20), transparent 30%),
+      linear-gradient(calc(var(--fl-la) + 180deg), rgba(0,0,0,.28), transparent 42%),
+      linear-gradient(180deg, var(--bg-1), var(--bg-2));
+    box-shadow:
+      calc(var(--sx) * 1px) calc(var(--sy) * 1px) 24px -10px rgba(0,0,0,.6),
+      inset 0 1px 0 var(--edge-c),
+      inset var(--ix) var(--iy) 20px -10px var(--crat-soft);
+  }
+  .light .df-core {
+    background:
+      linear-gradient(var(--fl-la), hsla(var(--h),80%,55%,.15), transparent 30%),
+      linear-gradient(calc(var(--fl-la) + 180deg), rgba(0,0,0,.08), transparent 42%),
+      linear-gradient(180deg,#ffffff,#f5f5f7);
+    box-shadow:
+      calc(var(--sx)*1px) calc(var(--sy)*1px) 22px -10px rgba(0,0,0,.22),
+      inset 0 1px 0 #fff;
+  }
+  .dict-float .btn::before {
+    background: linear-gradient(var(--fl-la), var(--edge-a), var(--edge-b) 44%, var(--edge-d) 88%);
+  }
+  .df-word{ font-size:17px; font-weight:750 } .df-ph{ color:var(--fg-2); font-size:12px; font-weight:500 }
+  .df-body{ color:var(--fg-1); font-size:13px; line-height:1.7; margin-top:8px }
+  .df-ex{ color:var(--fg-2); font-size:12px; line-height:1.6; margin-top:6px }
+</style>
+</head>
+<body>
+  <div class="moon-body"></div>
+  <div class="lightpool"></div>
+
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo">M</div>
+        <div><b>Moon Translator</b><small>v0.3.1 · 月球光影原型</small></div>
+      </div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>翻译</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>Hook</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>词典</div>
+      <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>AI 学习</div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>历史</div>
+      <div class="nav-sep"></div>
+      <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>设置</div>
+      <div style="flex:1"></div>
+      <div class="row" style="margin:0">
+        <span style="font-size:12px;color:var(--fg-1)">浅色主题</span>
+        <div class="switch" id="themeSwitch"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="page-head rise">
+        <div>
+          <h1>AI 学习</h1>
+          <p>边框水光 · 随鼠标凝集 · 陨石坑卡片受光边 = 金属描边</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>搜索</button>
+          <button class="btn btn-primary">开始学习</button>
+        </div>
+      </div>
+
+      <div class="grid rise rise-1">
+        <div class="stat metal"><div class="k">今日学习</div><div class="v">42</div><div class="d">▲ 18 与昨天</div></div>
+        <div class="stat metal tilt-r drop-1"><div class="k">掌握词数</div><div class="v">3,208</div><div class="d">89.4% 覆盖率</div></div>
+        <div class="stat metal"><div class="k">待复习</div><div class="v" style="color:var(--warn)">157</div><div class="d">12 已逾期</div></div>
+        <div class="stat metal tilt-l drop-2"><div class="k">连续打卡</div><div class="v">23 <small style="font-size:13px;color:var(--fg-2)">天</small></div><div class="d" style="color:var(--accent)">▲ 周目标达成</div></div>
+      </div>
+
+      <div class="panel metal rise rise-2">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="display:flex;gap:6px">
+            <span class="chip online">● 在线</span>
+            <span class="chip offline">↔ 英→中</span>
+            <span class="chip">LLM</span>
+          </div>
+          <div class="switch on"></div>
+        </div>
+        <div class="grid-2" style="gap:12px">
+          <textarea class="field" placeholder="输入要翻译的文本…">The future is already here — it's just not evenly distributed.</textarea>
+          <div class="result-area"><b>未来已经到来，只是尚未在这片土地上均匀分布。</b></div>
+        </div>
+      </div>
+
+      <!-- 悬浮词典: 自环绕改色, 缓慢自转, 不受鼠标影响 -->
+      <div class="dict-float self-lit" id="dictFloat">
+        <div class="df-arrow"></div>
+        <div class="df-core">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+            <span class="df-word">serendipity</span>
+            <span class="df-ph">/ˌserənˈdɪpəti/</span>
+          </div>
+          <p class="df-body">n. 意外发现珍奇事物的本领；机缘巧合。</p>
+          <p class="df-ex">▶ We stumbled on the café by pure serendipity.</p>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn" style="height:28px;padding:0 12px;font-size:12px">朗读</button>
+            <button class="btn btn-primary" style="height:28px;padding:0 12px;font-size:12px">添加生词</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="dict-card metal rise rise-3">
+        <div style="flex:1">
+          <div style="display:flex;align-items:baseline;gap:10px"><span class="word">serendipity</span><span class="ph">/ˌserənˈdɪpəti/</span></div>
+          <p class="body">n. 意外发现珍奇事物的本领；机缘巧合。<br><span style="color:var(--fg-2)">▶ We stumbled on the café by pure serendipity.</span></p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end"><span class="chip online">✚ 已收藏</span><span class="chip">frq · 2,238</span></div>
+      </div>
+
+      <div class="grid-2 rise rise-4">
+        <div class="panel metal">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b style="font-size:13.5px">今日词表</b><button class="btn btn-ghost" style="height:28px;padding:0 10px;font-size:12px">全部 →</button></div>
+          <div class="row"><div><div class="w">vernacular</div><div class="m">方言；本土的</div></div><span class="chip warn">待复习</span></div>
+          <div class="row"><div><div class="w">ephemeral</div><div class="m">短暂的；朝生暮死的</div></div><span class="chip">已掌握</span></div>
+          <div class="row"><div><div class="w">quintessential</div><div class="m">精髓的；典型的</div></div><span class="chip online">✓ 已学</span></div>
+        </div>
+        <div class="panel metal">
+          <div style="margin-bottom:12px"><b style="font-size:13.5px">返回曲线</b></div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end;height:86px;margin-bottom:14px">
+            <div style="height:22%;border-radius:6px;background:var(--bg-3)"></div>
+            <div style="height:38%;border-radius:6px;background:var(--bg-3)"></div>
+            <div style="height:55%;border-radius:6px;background:linear-gradient(180deg,var(--accent),var(--accent-2))"></div>
+            <div style="height:48%;border-radius:6px;background:var(--bg-3)"></div>
+            <div style="height:78%;border-radius:6px;background:linear-gradient(180deg,var(--accent),var(--accent-2))"></div>
+            <div style="height:62%;border-radius:6px;background:var(--bg-3)"></div>
+            <div style="height:90%;border-radius:6px;background:linear-gradient(180deg,var(--accent),var(--accent-2));box-shadow:0 0 10px rgba(154,163,255,.5)"></div>
+          </div>
+          <div class="bar"><div style="width:76%"></div></div>
+          <div style="display:flex;justify-content:space-between;margin-top:10px"><span class="chip offline">FSRS · 权重已训练</span><button class="btn" style="height:28px;padding:0 12px;font-size:12px">开始复习</button></div>
+        </div>
+      </div>
+
+      <div class="panel metal rise rise-5">
+        <b style="font-size:13.5px;display:block;margin-bottom:12px">表单控件</b>
+        <div class="grid-2" style="gap:12px;align-items:center">
+          <input class="field" placeholder="API Key" />
+          <div style="display:flex;align-items:center;gap:14px">
+            <span style="font-size:12px;color:var(--fg-1)">离线兜底</span><div class="switch on"></div>
+            <span style="font-size:12px;color:var(--fg-1)">自动学习</span><div class="switch"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 3 3 10.5l6.5 2L21 3zm0 0L12.5 21 12.5 12.5l8.5-9.5z"/></svg>保存配置</button>
+          <button class="btn">测试连接</button>
+          <button class="btn btn-ghost">取消</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 边框彗光 -->
+  <canvas class="comet" id="comet"></canvas>
+
+  <div class="ctrl">
+    <button id="cometBtn">边框光</button>
+    <button id="pauseBtn">暂停光</button>
+  </div>
+
+  <script>
+    (function () {
+      const root = document.documentElement;
+      const cv = document.getElementById('comet');
+      const ctx = cv.getContext('2d');
+      const pauseBtn = document.getElementById('pauseBtn');
+      const cometBtn = document.getElementById('cometBtn');
+      const dtf = document.getElementById('dictFloat');
+      const cx = 50, cy = 46;                     // 光照方向基准点(视口中心)
+      let paused = false, show = true, s = 0, last = performance.now();
+      let W = 0, H = 0, path = [], cum = [], L = 1;
+      let tx = 0, ty = 0, targetA = 0;         // 鼠标位置 → 边框上最近点(光凝集的靶)
+      let ga = 100;                        // 悬浮词典环绕相位
+
+      /* 构建圆角矩形外边框路径(采样折线) */
+      function buildPath() {
+        W = window.innerWidth; H = window.innerHeight;
+        const DPR = window.devicePixelRatio || 1;
+        cv.width = W * DPR; cv.height = H * DPR;
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        const m = 3, cr = Math.max(6, Math.min(30, Math.min(W, H) * 0.06));
+        const x0 = m, y0 = m, x1 = W - m, y1 = H - m;
+        const c1 = [x0 + cr, y0 + cr], c2 = [x1 - cr, y0 + cr], c3 = [x1 - cr, y1 - cr], c4 = [x0 + cr, y1 - cr];
+        const straights = [
+          [[x0 + cr, y0], [x1 - cr, y0]],
+          [[x1, y0 + cr], [x1, y1 - cr]],
+          [[x1 - cr, y1], [x0 + cr, y1]],
+          [[x0, y1 - cr], [x0, y0 + cr]],
+        ];
+        const arcs = [
+          [c1[0], c1[1], Math.PI, Math.PI * 1.5],
+          [c2[0], c2[1], Math.PI * 1.5, Math.PI * 2],
+          [c3[0], c3[1], 0, Math.PI / 2],
+          [c4[0], c4[1], Math.PI / 2, Math.PI],
+        ];
+        const step = 2.2; path = [];
+        for (let i = 0; i < 4; i++) {
+          const a = straights[i][0], b = straights[i][1];
+          const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+          for (let j = 0; j < n; j++) path.push([a[0] + (b[0] - a[0]) * j / n, a[1] + (b[1] - a[1]) * j / n]);
+          const q = arcs[(i + 1) % 4];            // 直线段后接对应的圆角
+          const n2 = Math.max(1, Math.ceil((q[3] - q[2]) * cr / step));
+          for (let j = 0; j < n2; j++) { const ang = q[2] + (q[3] - q[2]) * j / n2; path.push([q[0] + Math.cos(ang) * cr, q[1] + Math.sin(ang) * cr]); }
+        }
+        cum = [0]; let acc = 0;
+        for (let i = 1; i < path.length; i++) { acc += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]); cum.push(acc); }
+        L = acc || 1;
+      }
+      /* 弧长 s → 路径上的点 */
+      function pointAt(s0) {
+        const s = ((s0 % L) + L) % L;
+        let lo = 0, hi = cum.length - 1;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < s) lo = mid + 1; else hi = mid; }
+        const i = Math.max(0, Math.min(path.length - 2, lo - 1));
+        const seg = s - cum[i], dx = path[i + 1][0] - path[i][0], dy = path[i + 1][1] - path[i][1];
+        const gl = Math.hypot(dx, dy) || 1, f = Math.min(1, seg / gl);
+        return { x: path[i][0] + dx * f, y: path[i][1] + dy * f };
+      }
+
+      /* 鼠标 → 边框上最近的弧长位置 */
+      function nearestArc(x, y) {
+        let best = 1e18, bi = 0;
+        for (let i = 0; i < path.length; i++) {
+          const dx = path[i][0] - x, dy = path[i][1] - y;
+          const d = dx * dx + dy * dy;
+          if (d < best) { best = d; bi = i; }
+        }
+        return cum[bi];
+      }
+      /* 环形上的最短带符号距离 b → a */
+      const shortestDelta = (a, b) => ((a - b) % L + L * 1.5) % L - L * 0.5;
+
+      function tick(now) {
+        const dt = Math.min((now - last) / 1000, 0.05); last = now;
+        if (!paused && W && H) {
+          s += dt * 26;                              // 缓慢环流: 水一直在流
+          s += shortestDelta(targetA, s) * (1 - Math.exp(-dt * 2.4)); // 水流缓动向鼠标
+          s = ((s % L) + L) % L;
+        }
+        const p = pointAt(s);
+        const lx = p.x / W * 100 || 50, ly = p.y / H * 100 || 46;
+        const la = 90 + Math.atan2(cy - ly, cx - lx) * 180 / Math.PI;
+        const sx = (cx - lx) * 0.2, sy = (cy - ly) * 0.18;
+        root.style.setProperty('--lx', lx + '%');
+        root.style.setProperty('--ly', ly + '%');
+        root.style.setProperty('--la', la + 'deg');
+        root.style.setProperty('--sx', sx.toFixed(2));
+        root.style.setProperty('--sy', sy.toFixed(2));
+        root.style.setProperty('--ix', (-sx * 1.6).toFixed(2));
+        root.style.setProperty('--iy', (-sy * 1.6).toFixed(2));
+        /* 悬浮词典: 自环绕改色(独立于鼠标与暂停, 缓慢) */
+        ga = (ga + dt * 26) % 360;                              // ≈13.8s/圈
+        const ha = ga * Math.PI / 180;
+        const flLa = 90 + Math.atan2(Math.cos(ha), -Math.sin(ha)) * 180 / Math.PI;
+        if (dtf) {
+          dtf.style.setProperty('--ga', ga.toFixed(1) + 'deg');
+          dtf.style.setProperty('--h', (252 + 46 * Math.sin(ga * 0.04)).toFixed(0));
+          dtf.style.setProperty('--fl-la', flLa.toFixed(1) + 'deg');
+        }
+        draw(p);
+        requestAnimationFrame(tick);
+      }
+      function draw(p) {
+        ctx.clearRect(0, 0, W, H);
+        if (!show || !path.length) return;
+        const dark = !root.classList.contains('light');
+        const lineR = dark ? '255,255,255' : '28,32,40';
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+        /* 亮度 = 纯距离衰减, 在光点处连续(去掉任何方向偏置, 无节点) */
+        const M = Math.max(260, Math.round(L / 9)), LAM = L * 0.40, LEV = 60;
+        const pt = new Array(M), al = new Float32Array(M);
+        for (let m = 0; m < M; m++) {
+          const arcPos = m / M * L;
+          pt[m] = pointAt(arcPos);
+          let dB = ((s - arcPos) % L + L) % L, dF = L - dB;
+          al[m] = 0.025 + 0.975 * Math.exp(-Math.pow(Math.min(dB, dF) / LAM, 1.4));
+        }
+        const passes = [[6.5, 0.30], [1.9, 1]];
+        for (let pi = 0; pi < passes.length; pi++) {
+          const wd = passes[pi][0], wg = passes[pi][1];
+          let run = -1, start = -1;
+          const flush = (end) => {
+            if (run < 0) return;
+            ctx.beginPath();
+            ctx.moveTo(pt[start % M].x, pt[start % M].y);
+            for (let j = start + 1; j <= end; j++) ctx.lineTo(pt[j % M].x, pt[j % M].y);
+            ctx.strokeStyle = 'rgba(' + lineR + ',' + (run / LEV).toFixed(3) + ')';
+            ctx.lineWidth = wd;
+            ctx.stroke();
+          };
+          for (let m = 0; m <= M; m++) {
+            const lv = Math.max(0, Math.min(LEV, Math.round(al[m % M] * wg * LEV)));
+            if (lv !== run) { flush(m); run = lv; start = m; }
+          }
+          flush(M);
+        }
+
+        /* 头部: 柔光晕 + 小实心光点 */
+        const gg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 11);
+        gg.addColorStop(0, dark ? 'rgba(255,255,255,.55)' : 'rgba(70,80,110,.4)');
+        gg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.beginPath(); ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
+        ctx.fillStyle = gg; ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2.8, 0, Math.PI * 2);
+        ctx.fillStyle = dark ? '#ffffff' : '#22252e';
+        ctx.fill();
+      }
+
+      window.addEventListener('resize', buildPath);
+      buildPath();
+      tx = W / 2; ty = H / 2; targetA = nearestArc(tx, ty);
+      window.addEventListener('mousemove', function (e) {
+        tx = e.clientX; ty = e.clientY;
+        targetA = nearestArc(tx, ty);
+      });
+
+      document.getElementById('themeSwitch').addEventListener('click', function () {
+        this.classList.toggle('on');
+        root.classList.toggle('light');
+      });
+      pauseBtn.addEventListener('click', function () {
+        paused = !paused;
+        this.textContent = paused ? '继续光' : '暂停光';
+        this.classList.toggle('on', paused);
+      });
+      cometBtn.addEventListener('click', function () {
+        show = !show;
+        this.classList.toggle('on', show);
+      });
+      requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+</html>

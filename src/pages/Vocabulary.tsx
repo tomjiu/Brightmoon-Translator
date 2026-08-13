@@ -13,7 +13,7 @@ const DictOptimization = lazy(() => import('./DictOptimization'));
 
 function LazyFallback() {
   return (
-    <div className="flex items-center justify-center h-32 text-text-secondary">
+    <div className="flex items-center justify-center h-full text-text-secondary">
       <Loader2 size={18} className="animate-spin mr-2" />
       Loading...
     </div>
