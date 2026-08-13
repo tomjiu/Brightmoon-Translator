@@ -3,7 +3,7 @@ import { invokeOrThrow } from '../services/invoke';
 import { Plus, Trash2, Book, Download, Upload, FileText, FileSpreadsheet } from 'lucide-react';
 import { useToastStore } from '../stores/toastStore';
 import { useI18n } from '../i18n';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 
 interface GlossaryEntry {
   source: string;
@@ -214,11 +214,10 @@ function Glossary() {
   }, [addToast]);
 
   return (
-    <div className="flex flex-col h-full p-6">
-      <PageHeader
-        title={t('glossary.title') || '术语表管理'}
-        icon={Book}
-        actions={
+    <PageLayout
+      title={t('glossary.title') || '术语表管理'}
+      icon={Book}
+      actions={
           <div className="flex gap-2">
             <button
               onClick={handleImportTmx}
@@ -266,7 +265,7 @@ function Glossary() {
             </button>
           </div>
         }
-      />
+      >
 
       {/* Add Entry Form */}
       <div className="ui-card p-4 mb-6">
@@ -318,7 +317,7 @@ function Glossary() {
       </div>
 
       {/* Glossary Entries */}
-      <div className="flex-1 overflow-y-auto">
+      <div>
         {Object.keys(entries).length === 0 ? (
           <div className="flex items-center justify-center h-full text-text-secondary">
             {t('glossary.noEntries') || '暂无术语条目'}
@@ -367,7 +366,7 @@ function Glossary() {
           ))
         )}
       </div>
-    </div>
+    </PageLayout>
   );
 }
 

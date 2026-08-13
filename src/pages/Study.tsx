@@ -33,39 +33,20 @@ function Study() {
   const [activeTab, setActiveTab] = useState<StudyTab>('learning');
   const { t } = useI18n();
 
-  const tabs: Array<{ id: StudyTab; icon: typeof GraduationCap; labelKey: string }> = [
-    { id: 'learning', icon: GraduationCap, labelKey: 'vocabulary.tabs.learning' },
-    { id: 'review', icon: RefreshCw, labelKey: 'vocabulary.tabs.review' },
-    { id: 'modes', icon: Zap, labelKey: 'vocabulary.tabs.modes' },
-    { id: 'statistics', icon: BarChart3, labelKey: 'vocabulary.tabs.statistics' },
-    { id: 'fsrs', icon: Brain, labelKey: 'vocabulary.tabs.fsrs' },
-    { id: 'data', icon: Database, labelKey: 'vocabulary.tabs.data' },
+  const tabs = [
+    { id: 'learning', icon: GraduationCap, label: t('vocabulary.tabs.learning') },
+    { id: 'review', icon: RefreshCw, label: t('vocabulary.tabs.review') },
+    { id: 'modes', icon: Zap, label: t('vocabulary.tabs.modes') },
+    { id: 'statistics', icon: BarChart3, label: t('vocabulary.tabs.statistics') },
+    { id: 'fsrs', icon: Brain, label: t('vocabulary.tabs.fsrs') },
+    { id: 'data', icon: Database, label: t('vocabulary.tabs.data') },
   ];
 
   return (
     <PageLayout
-      toolbar={
-        <div className="relative">
-          <div className="flex items-center gap-1 overflow-x-auto">
-            {tabs.map(({ id, icon: Icon, labelKey }) => (
-              <button
-                key={id}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
-                  activeTab === id
-                    ? 'bg-primary text-primary-fg'
-                    : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-                }`}
-                onClick={() => setActiveTab(id)}
-              >
-                <Icon size={14} />
-                {t(labelKey)}
-              </button>
-            ))}
-          </div>
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-bg-chrome to-transparent" />
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-bg-chrome to-transparent" />
-        </div>
-      }
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={(id) => setActiveTab(id as StudyTab)}
       scrollable={false}
     >
       <Suspense fallback={<LazyFallback />}>

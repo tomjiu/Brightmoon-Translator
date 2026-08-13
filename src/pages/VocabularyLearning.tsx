@@ -9,7 +9,6 @@ import {
   Plus,
   Trash2,
   Play,
-  GraduationCap,
   BarChart3,
   FileText,
   Clipboard,
@@ -297,14 +296,10 @@ export default function VocabularyLearning() {
 
   return (
     <div className="h-full flex">
-      {/* Sidebar */}
-      <div className="w-52 shrink-0 border-r border-border bg-bg-secondary flex flex-col">
-        <div className="p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <GraduationCap size={16} className="text-primary" />
-            <h2 className="text-sm font-semibold text-text-primary">词汇学习</h2>
-          </div>
-          <div className="space-y-1">
+      {/* Sidebar — 与设置页 Sidebar 同一规格：w-56 / chrome 底 / p-3 / space-y-0.5 */}
+      <div className="w-56 shrink-0 border-r border-border bg-bg-chrome flex flex-col">
+        <div className="p-3">
+          <div className="space-y-0.5">
             <NavBtn
               active={viewMode === 'plans'}
               onClick={() => setViewMode('plans')}
@@ -320,7 +315,7 @@ export default function VocabularyLearning() {
           </div>
         </div>
         {viewMode !== 'stats' && (
-          <div className="px-4 pb-4 mt-auto border-t border-border pt-4">
+          <div className="px-3 pb-3 mt-auto border-t border-border pt-3">
             <LearningStatsPanel />
           </div>
         )}
@@ -634,7 +629,7 @@ export default function VocabularyLearning() {
                   <div className="space-y-4 animate-fadeIn">
                     {/* 中文释义 */}
                     {wordDetail?.chineseTranslation && (
-                      <div className="p-4 bg-bg-secondary border border-border rounded-lg">
+                      <div className="ui-card p-4">
                         <h3 className="text-xs font-semibold text-primary mb-2">中文释义</h3>
                         <p className="text-text-primary leading-relaxed">
                           {wordDetail.chineseTranslation}
@@ -644,7 +639,7 @@ export default function VocabularyLearning() {
 
                     {/* 柯林斯释义（权威英英 + 双语例句） */}
                     {wordDetail?.collinsEntries && wordDetail.collinsEntries.length > 0 && (
-                      <div className="p-4 bg-bg-secondary border border-border rounded-lg">
+                      <div className="ui-card p-4">
                         <h3 className="text-xs font-semibold text-orange-600 mb-2">
                           📖 柯林斯词典
                         </h3>
@@ -679,7 +674,7 @@ export default function VocabularyLearning() {
                     {wordDetail?.englishDefinitions &&
                       wordDetail.englishDefinitions.length > 0 &&
                       !wordDetail.collinsEntries.length && (
-                        <div className="p-4 bg-bg-secondary border border-border rounded-lg">
+                        <div className="ui-card p-4">
                           <h3 className="text-xs font-semibold text-primary mb-2">英文释义</h3>
                           <ul className="space-y-0.5">
                             {wordDetail.englishDefinitions.slice(0, 5).map((d, i) => (
@@ -693,7 +688,7 @@ export default function VocabularyLearning() {
 
                     {/* 有道例句 */}
                     {wordDetail?.examples && wordDetail.examples.length > 0 && (
-                      <div className="p-4 bg-bg-secondary border border-border rounded-lg">
+                      <div className="ui-card p-4">
                         <h3 className="text-xs font-semibold text-neutral-500 mb-2">📝 双语例句</h3>
                         <div className="space-y-2">
                           {wordDetail.examples.slice(0, 3).map((ex, i) => (
@@ -708,7 +703,7 @@ export default function VocabularyLearning() {
 
                     {/* DictionaryAPI.dev 释义 */}
                     {wordDetail?.onlineMeanings && wordDetail.onlineMeanings.length > 0 && (
-                      <div className="p-4 bg-bg-secondary border border-border rounded-lg">
+                      <div className="ui-card p-4">
                         <h3 className="text-xs font-semibold text-green-600 mb-2">🌐 在线释义</h3>
                         {wordDetail.onlineMeanings.map((m, i) => (
                           <div key={i} className="mb-2 last:mb-0">
@@ -831,10 +826,15 @@ function NavBtn({
 }) {
   return (
     <button
-      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${active ? 'bg-primary text-primary-fg' : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'}`}
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors duration-150 ease-out ${
+        active
+          ? 'bg-primary text-primary-fg shadow-sm'
+          : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+      }`}
       onClick={onClick}
     >
-      {icon} {label}
+      <span className="shrink-0 opacity-90">{icon}</span>
+      <span className="text-[13px] font-medium tracking-tight">{label}</span>
     </button>
   );
 }

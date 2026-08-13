@@ -71,7 +71,7 @@ export function WelcomeGuide({ onStartLearning, onStartReview }: WelcomeGuidePro
       <div className="flex gap-4 w-full">
         <button
           onClick={onStartLearning}
-          className="flex-1 flex flex-col items-center gap-3 p-6 bg-bg-secondary rounded-xl border border-border hover:border-primary/50 transition-all"
+          className="ui-card ui-card-hover flex-1 flex flex-col items-center gap-3 p-6"
         >
           <BookOpen className="w-8 h-8 text-primary" />
           <span className="font-semibold">创建学习计划</span>
@@ -80,7 +80,7 @@ export function WelcomeGuide({ onStartLearning, onStartReview }: WelcomeGuidePro
 
         <button
           onClick={onStartReview}
-          className="flex-1 flex flex-col items-center gap-3 p-6 bg-bg-secondary rounded-xl border border-border hover:border-primary/50 transition-all"
+          className="ui-card ui-card-hover flex-1 flex flex-col items-center gap-3 p-6"
         >
           <Target className="w-8 h-8 text-green-400" />
           <span className="font-semibold">查询单词</span>

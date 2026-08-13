@@ -19,7 +19,9 @@ export default function PageHeader({
   className = '',
 }: PageHeaderProps) {
   return (
-    <div className={`flex items-center justify-between gap-3 mb-5 ${className}`.trim()}>
+    // items-start（非 items-center）：各页 actions 高度不一（26~36px），
+    // 居中对齐会让标题文字随 actions 高度上下漂移；顶对齐保证标题 y 坐标全局一致。
+    <div className={`flex items-start justify-between gap-3 mb-5 ${className}`.trim()}>
       <div className="min-w-0 flex items-center gap-2.5">
         {icon && <Icon icon={icon} size="lg" className="text-primary" />}
         <div className="min-w-0">

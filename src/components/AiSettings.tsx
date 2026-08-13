@@ -202,7 +202,7 @@ export default function AiSettings({ onNavigate }: AiSettingsProps) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-bg-secondary p-3 space-y-2">
+      <div className="ui-card p-3 space-y-2">
         <p className="text-xs text-text-secondary leading-relaxed">
           密钥与模型只在本页编辑。要让大模型参与主页对比 / OCR
           回退，请在「翻译引擎」把「大模型翻译」排进优先级并保证已配置。
@@ -495,7 +495,7 @@ export default function AiSettings({ onNavigate }: AiSettingsProps) {
       </div>
 
       {/* ==================== AI 翻译工具（提示词/润色/术语/风格） ==================== */}
-      <div className="rounded-xl border border-border bg-bg-secondary p-3 space-y-2">
+      <div className="ui-card p-3 space-y-2">
         <p className="text-xs text-text-secondary leading-relaxed">
           以下工具为 LLM 翻译（提示词 / 润色 / 术语 / 风格）专用，作用于「翻译引擎」里的大模型翻译，不影响 AI
           学习专用模型（词汇卡 / 出题 / 批量预生成）。

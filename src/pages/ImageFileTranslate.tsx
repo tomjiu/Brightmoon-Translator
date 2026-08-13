@@ -4,7 +4,7 @@ import { useI18n } from '../i18n';
 import { isTauriRuntime } from '../services/tauriRuntime';
 import { takePendingDocPath } from '../services/docHandoff';
 import { Image, Languages, Loader2 } from 'lucide-react';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 
 interface ImageTranslationResult {
   outputPath?: string;
@@ -101,11 +101,12 @@ function ImageFileTranslate() {
   };
 
   return (
-    <div className="h-full flex flex-col p-6">
-      <PageHeader
-        title={t('documents.image') || '图片文件翻译'}
-        icon={Image}
-        actions={
+    <PageLayout
+      title={t('documents.image') || '图片文件翻译'}
+      icon={Image}
+      scrollable={false}
+      contentClassName="p-6 flex flex-col"
+      actions={
           <div className="flex items-center gap-2 flex-wrap">
             <select
               value={fromLang}
@@ -153,7 +154,7 @@ function ImageFileTranslate() {
             </button>
           </div>
         }
-      />
+      >
       {fileName && <p className="text-sm text-text-secondary mb-2">{fileName}</p>}
       {resultPath && (
         <p className="text-sm text-primary mb-2 truncate" title={resultPath}>
@@ -170,7 +171,7 @@ function ImageFileTranslate() {
           </div>
         ))}
       </div>
-    </div>
+    </PageLayout>
   );
 }
 

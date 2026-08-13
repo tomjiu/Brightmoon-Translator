@@ -11,7 +11,7 @@ import {
   Wand2,
   RotateCcw,
 } from 'lucide-react';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 import {
   getFsrsAnalysis,
   getForgettingCurve,
@@ -150,14 +150,12 @@ export default function FsrsOptimization() {
     bestTime.length > 0 ? bestTime.reduce((a, b) => (a.correctRate > b.correctRate ? a : b)) : null;
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
-      <PageHeader
-        title="FSRS 算法分析"
-        description="基于你的学习数据，分析记忆算法效果并提供优化建议"
-        icon={Brain}
-      />
-
+    <PageLayout
+      chrome="none"
+      title="FSRS 算法分析"
+      description="分析学习数据，评估算法效果，提供优化建议"
+      icon={Brain}
+    >
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border pb-2">
         {[
@@ -586,8 +584,7 @@ export default function FsrsOptimization() {
           </div>
         </div>
       )}
-      </div>
-    </div>
+    </PageLayout>
   );
 }
 

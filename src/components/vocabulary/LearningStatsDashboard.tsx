@@ -13,6 +13,7 @@ import {
   Heart,
   Star,
 } from 'lucide-react';
+import PageLayout from '../PageLayout';
 import { WordDetailModal } from './WordDetailModal';
 import {
   getLearningStatistics,
@@ -161,44 +162,43 @@ export const LearningStatsDashboard: FC = () => {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-6">
-      {/* Header with Actions */}
-      <div className="flex items-center justify-between">
-        <h2 className="ui-page-title flex items-center gap-2">
-          <BarChart3 className="w-5 h-5" />
-          学习统计
-        </h2>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={loadStatistics}
-            disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 bg-bg-tertiary hover:bg-bg-tertiary disabled:bg-bg-secondary disabled:text-text-secondary rounded-lg transition-colors"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            刷新
-          </button>
-          <div className="relative group">
-            <button className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover rounded-lg transition-colors">
-              <Download className="w-4 h-4" />
-              导出
+    <PageLayout
+      chrome="none"
+      title="学习统计"
+      icon={BarChart3}
+      actions={
+          <>
+            <button
+              onClick={loadStatistics}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-2 bg-bg-tertiary hover:bg-bg-tertiary disabled:bg-bg-secondary disabled:text-text-secondary rounded-lg transition-colors"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              刷新
             </button>
-            <div className="absolute right-0 mt-2 w-40 bg-bg-secondary rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
-              <button
-                onClick={exportCSV}
-                className="w-full px-4 py-2 text-left hover:bg-bg-tertiary rounded-t-lg transition-colors"
-              >
-                导出 CSV
+            <div className="relative group">
+              <button className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-primary-fg rounded-lg transition-colors">
+                <Download className="w-4 h-4" />
+                导出
               </button>
-              <button
-                onClick={exportStatistics}
-                className="w-full px-4 py-2 text-left hover:bg-bg-tertiary rounded-b-lg transition-colors"
-              >
-                导出 JSON
-              </button>
+              <div className="absolute right-0 mt-2 w-40 bg-bg-secondary rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                <button
+                  onClick={exportCSV}
+                  className="w-full px-4 py-2 text-left hover:bg-bg-tertiary rounded-t-lg transition-colors"
+                >
+                  导出 CSV
+                </button>
+                <button
+                  onClick={exportStatistics}
+                  className="w-full px-4 py-2 text-left hover:bg-bg-tertiary rounded-b-lg transition-colors"
+                >
+                  导出 JSON
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      >
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -362,7 +362,7 @@ export const LearningStatsDashboard: FC = () => {
       {selectedWord && (
         <WordDetailModal word={selectedWord} onClose={() => setSelectedWord(null)} />
       )}
-    </div>
+    </PageLayout>
   );
 };
 

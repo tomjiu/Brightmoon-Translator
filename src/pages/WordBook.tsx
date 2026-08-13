@@ -19,7 +19,6 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import PageHeader from '../components/PageHeader';
 import PageLayout from '../components/PageLayout';
 
 interface WordBookItem {
@@ -247,11 +246,10 @@ function WordBook() {
 
   return (
     <PageLayout
-      toolbar={
-        <PageHeader
-        title={t('wordbook.title')}
-        icon={BookMarked}
-        actions={
+      chrome="none"
+      title={t('wordbook.title')}
+      icon={BookMarked}
+      actions={
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search
@@ -299,12 +297,7 @@ function WordBook() {
             </button>
           </div>
         }
-        />
-      }
-      toolbarVariant="header"
-      maxWidth="none"
-      contentClassName="space-y-5"
-    >
+        >
 
       {/* Add Word Form */}
       {showAddForm && (

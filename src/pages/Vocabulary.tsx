@@ -1,11 +1,7 @@
 import { useState, lazy, Suspense } from 'react';
-import {
-  Search,
-  BookMarked,
-  HardDrive,
-  Loader2,
-} from 'lucide-react';
+import { Search, BookMarked, HardDrive, Loader2 } from 'lucide-react';
 import { useI18n } from '../i18n';
+import PageLayout from '../components/PageLayout';
 
 const DictionarySearch = lazy(() => import('./DictionarySearch'));
 const WordBook = lazy(() => import('./WordBook'));
@@ -26,39 +22,25 @@ function Vocabulary() {
   const [activeTab, setActiveTab] = useState<DictionaryTab>('dictionary');
   const { t } = useI18n();
 
-  const tabs: Array<{ id: DictionaryTab; icon: typeof Search; labelKey: string }> = [
-    { id: 'dictionary', icon: Search, labelKey: 'vocabulary.tabs.dictionary' },
-    { id: 'wordbook', icon: BookMarked, labelKey: 'vocabulary.tabs.wordbook' },
-    { id: 'dictopt', icon: HardDrive, labelKey: 'vocabulary.tabs.dictopt' },
+  const tabs = [
+    { id: 'dictionary', icon: Search, label: t('vocabulary.tabs.dictionary') },
+    { id: 'wordbook', icon: BookMarked, label: t('vocabulary.tabs.wordbook') },
+    { id: 'dictopt', icon: HardDrive, label: t('vocabulary.tabs.dictopt') },
   ];
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="ui-chrome flex items-center gap-1 px-4 py-2 border-b border-border overflow-x-auto">
-        {tabs.map(({ id, icon: Icon, labelKey }) => (
-          <button
-            key={id}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
-              activeTab === id
-                ? 'bg-primary text-primary-fg'
-                : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-            }`}
-            onClick={() => setActiveTab(id)}
-          >
-            <Icon size={14} />
-            {t(labelKey)}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex-1 overflow-hidden">
-        <Suspense fallback={<LazyFallback />}>
-          {activeTab === 'dictionary' && <DictionarySearch />}
-          {activeTab === 'wordbook' && <WordBook />}
-          {activeTab === 'dictopt' && <DictOptimization />}
-        </Suspense>
-      </div>
-    </div>
+    <PageLayout
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={(id) => setActiveTab(id as DictionaryTab)}
+      scrollable={false}
+    >
+      <Suspense fallback={<LazyFallback />}>
+        {activeTab === 'dictionary' && <DictionarySearch />}
+        {activeTab === 'wordbook' && <WordBook />}
+        {activeTab === 'dictopt' && <DictOptimization />}
+      </Suspense>
+    </PageLayout>
   );
 }
 

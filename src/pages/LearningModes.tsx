@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Brain, Keyboard, FileText, Layers, Loader2 } from 'lucide-react';
+import { Brain, Keyboard, FileText, Layers, Loader2, GraduationCap } from 'lucide-react';
+import PageLayout from '../components/PageLayout';
 import { ChoiceQuiz } from '../components/vocabulary/modes/ChoiceQuiz';
 import { SpellingQuiz } from '../components/vocabulary/modes/SpellingQuiz';
 import { ClozeQuiz } from '../components/vocabulary/modes/ClozeQuiz';
@@ -153,13 +154,12 @@ export default function LearningModes() {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
-        <div>
-          <h1 className="ui-page-title mb-1">学习模式</h1>
-          <p className="ui-page-desc">选择练习方式，巩固词汇</p>
-        </div>
-
+    <PageLayout
+      chrome="none"
+      title="学习模式"
+      description="选择练习方式，巩固词汇"
+      icon={GraduationCap}
+    >
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -195,7 +195,6 @@ export default function LearningModes() {
             <li>• 快速复习模式适合批量复习已有单词</li>
           </ul>
         </div>
-      </div>
-    </div>
+    </PageLayout>
   );
 }

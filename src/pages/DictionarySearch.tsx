@@ -343,13 +343,14 @@ function DictionarySearch() {
 
   return (
     <>
-      <PageLayout
-        toolbar={
-          <div className="max-w-4xl mx-auto">
+    <PageLayout
+      toolbarVariant="header"
+      scrollable={false}
+      toolbar={
+      <div className="w-full">
           <PageHeader
             title="词典查询"
             icon={BookOpen}
-            className="mb-4"
             actions={
               <div className="flex items-center gap-2">
                 <span className="ui-caption px-2 py-1 bg-bg-tertiary border border-border rounded flex items-center gap-1">
@@ -446,7 +447,7 @@ function DictionarySearch() {
             </div>
           </div>
           <p className="text-xs text-text-secondary mt-2">
-            💡 ECDICT（中文）+ 有道（音频/例句）+ Oxford（权威）+ GPT4（词根）+ DictionaryAPI.dev
+            ECDICT（中文）+ 有道（音频/例句）+ Oxford（权威）+ GPT4（词根）+ DictionaryAPI.dev
           </p>
           {/* 搜索历史 */}
           {history.length > 0 && (
@@ -477,11 +478,10 @@ function DictionarySearch() {
               </button>
             </div>
           )}
-        </div>
-        }
-        toolbarVariant="header"
-      >
-        <div className="space-y-4">
+          </div>
+      }
+    >
+        <div className="w-full space-y-4">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg mb-4">
               {error}
@@ -513,8 +513,8 @@ function DictionarySearch() {
             )
           )}
           {result && <ResultCard result={result} onPlayAudio={playAudio} onSpeak={playTts} />}
-        </div>
-      </PageLayout>
+          </div>
+    </PageLayout>
 
       {/* T6 接线:AI 抽生词建本对话框 */}
       {showExtractDialog && (

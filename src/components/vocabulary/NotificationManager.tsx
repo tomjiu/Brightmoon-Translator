@@ -7,7 +7,7 @@ import {
   sendDesktopNotification,
   type NotificationSettings,
 } from '../../services/notification';
-import PageHeader from '../PageHeader';
+import PageLayout from '../PageLayout';
 import Switch from '../Switch';
 
 const DEFAULTS: NotificationSettings = {
@@ -77,12 +77,12 @@ export const NotificationManager: FC = () => {
   };
 
   return (
-    <div className="space-y-5 animate-fadeIn">
-      <PageHeader
-        title="学习提醒"
-        description="到点提醒复习，不打扰翻译主流程。默认关闭。"
-        icon={Bell}
-        actions={
+    <PageLayout
+      chrome="none"
+      title="学习提醒"
+      description="到点提醒复习，不打扰翻译主流程。默认关闭。"
+      icon={Bell}
+      actions={
           <button
             type="button"
             onClick={() => void testNotification()}
@@ -91,7 +91,7 @@ export const NotificationManager: FC = () => {
             测试通知
           </button>
         }
-      />
+    >
 
       {testMsg && <p className="ui-caption">{testMsg}</p>}
 
@@ -174,6 +174,6 @@ export const NotificationManager: FC = () => {
           />
         </div>
       </section>
-    </div>
+    </PageLayout>
   );
 };

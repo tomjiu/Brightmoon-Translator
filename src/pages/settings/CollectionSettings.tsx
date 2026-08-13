@@ -77,7 +77,7 @@ export default function CollectionSettings() {
         <p className="ui-page-desc">{t('settings.collection.pageDesc')}</p>
       </div>
 
-      <section className="bg-bg-secondary border border-border rounded-lg p-4 space-y-3">
+      <section className="ui-card ui-card-hover p-5 space-y-3">
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input
             type="checkbox"
@@ -90,7 +90,7 @@ export default function CollectionSettings() {
       </section>
 
       {/* Eudic */}
-      <section className="bg-bg-secondary border border-border rounded-lg p-4 space-y-3">
+      <section className="ui-card ui-card-hover p-5 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BookMarked size={16} />
@@ -161,7 +161,7 @@ export default function CollectionSettings() {
       </section>
 
       {/* Anki */}
-      <section className="bg-bg-secondary border border-border rounded-lg p-4 space-y-3">
+      <section className="ui-card ui-card-hover p-5 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-medium text-sm">{t('settings.collection.ankiTitle')}</h2>
           <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -235,7 +235,7 @@ export default function CollectionSettings() {
       </section>
 
       {/* Shanbay */}
-      <section className="bg-bg-secondary border border-border rounded-lg p-4 space-y-3">
+      <section className="ui-card ui-card-hover p-5 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-medium text-sm">{t('settings.collection.shanbayTitle')}</h2>
           <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -289,7 +289,7 @@ export default function CollectionSettings() {
       </section>
 
       {/* Youdao wordbook */}
-      <section className="bg-bg-secondary border border-border rounded-lg p-4 space-y-3">
+      <section className="ui-card ui-card-hover p-5 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-medium text-sm">{t('settings.collection.youdaoTitle')}</h2>
           <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -368,7 +368,7 @@ export default function CollectionSettings() {
       </section>
 
       {/* Maimemo */}
-      <section className="bg-bg-secondary border border-border rounded-lg p-4 space-y-3">
+      <section className="ui-card ui-card-hover p-5 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-medium text-sm">{t('settings.collection.maimemoTitle')}</h2>
           <label className="flex items-center gap-2 text-xs cursor-pointer">

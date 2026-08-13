@@ -14,7 +14,7 @@ import {
   Clock,
   History,
 } from 'lucide-react';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 import Icon from '../components/Icon';
 
 interface EngineStats {
@@ -170,14 +170,11 @@ export default function MetricsDashboard() {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
-        {/* Header */}
-        <PageHeader
-          title={t('metrics.title')}
-          icon={BarChart3}
-          className="mb-0"
-          actions={
+    <PageLayout
+      chrome="none"
+      title={t('metrics.title')}
+      icon={BarChart3}
+      actions={
             <div className="flex items-center gap-2">
               <select
                 value={hours}
@@ -219,7 +216,7 @@ export default function MetricsDashboard() {
               </button>
             </div>
           }
-        />
+        >
 
         {/* Overview Cards */}
         {summary && (
@@ -418,8 +415,7 @@ export default function MetricsDashboard() {
             <p className="ui-caption mt-1">{t('metrics.noDataHint')}</p>
           </div>
         )}
-      </div>
-    </div>
+    </PageLayout>
   );
 }
 

@@ -115,7 +115,9 @@ export default function SettingsLayout() {
         groups={groups}
       />
       <div className="flex-1 overflow-y-auto bg-bg-primary">
-        <div className="max-w-3xl mx-auto p-6 animate-fadeIn">{renderContent()}</div>
+        <div className="settings-content w-full p-4 md:p-5 lg:p-6 animate-fadeIn">
+          {renderContent()}
+        </div>
       </div>
     </div>
   );

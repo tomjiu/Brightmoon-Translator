@@ -28,6 +28,7 @@ import {
   type EcDictProgress,
   type DictVariant,
 } from '../services/dictDownload';
+import PageLayout from '../components/PageLayout';
 
 function formatSize(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
@@ -203,16 +204,12 @@ export default function DictOptimization() {
   const maxCount = Math.max(...freqDistribution.map((d) => d.count), 1);
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
-        {/* Header */}
-        <div>
-          <h1 className="ui-page-title flex items-center gap-2.5">
-            <Database className="w-5 h-5 shrink-0" />
-            词典优化
-          </h1>
-          <p className="ui-page-desc">压缩和分片词典数据，减小体积、便于备份与迁移</p>
-        </div>
+    <PageLayout
+      chrome="none"
+      title="词典优化"
+      description="压缩和分片词典数据，减小体积、便于备份与迁移"
+      icon={Database}
+    >
 
         {/* Result Toast */}
         {result && (
@@ -499,7 +496,6 @@ export default function DictOptimization() {
             </p>
           </div>
         </div>
-      </div>
-    </div>
+    </PageLayout>
   );
 }

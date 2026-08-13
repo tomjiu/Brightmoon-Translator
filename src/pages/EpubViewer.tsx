@@ -4,7 +4,7 @@ import { useI18n } from '../i18n';
 import { isTauriRuntime } from '../services/tauriRuntime';
 import { takePendingDocPath } from '../services/docHandoff';
 import { BookOpen, Languages, Download, ChevronLeft, ChevronRight } from 'lucide-react';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 
 interface EpubChapter {
   chapterNumber: number;
@@ -200,12 +200,12 @@ ${body}</body></html>`;
   );
 
   return (
-    <div className="h-full flex flex-col p-6">
-      {/* Header */}
-      <PageHeader
-        title={t('epub.title')}
-        icon={BookOpen}
-        actions={
+    <PageLayout
+      title={t('epub.title')}
+      icon={BookOpen}
+      scrollable={false}
+      contentClassName="p-6 flex flex-col"
+      actions={
           <div className="flex items-center gap-3">
             <select
               value={fromLang}
@@ -286,7 +286,7 @@ ${body}</body></html>`;
             )}
           </div>
         }
-      />
+      >
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
@@ -380,7 +380,7 @@ ${body}</body></html>`;
           </div>
         ) : null}
       </div>
-    </div>
+    </PageLayout>
   );
 }
 

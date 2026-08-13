@@ -358,6 +358,14 @@ body {
   flex-shrink: 0;
 }
 
+/* 设置页：页面标题与卡片内文字左边线对齐。
+ * 卡片（ui-card）内容左边线 = 1px border + p-5 (20px) = 21px，
+ * 裸标题原本在 0px，视觉上比卡片文字"凸出"一截。 */
+.settings-content .ui-page-title,
+.settings-content .ui-page-desc {
+  padding-left: 21px;
+}
+
 /* Scrollbar — token-aligned */
 ::-webkit-scrollbar {
   width: 6px;
@@ -463,6 +471,13 @@ textarea:focus-visible {
 .ui-chrome {
   background-color: var(--color-bg-chrome);
   border-color: var(--color-border);
+}
+
+/* 页面栏（tab 栏 / 空占位栏）统一高度：py-2 + 按钮 28px + border 1px = 45px。
+ * 有 tab 的页面（历史/词典/学习）栏内放 tab；无 tab 的页面（hook/文档翻译）
+ * 渲染等高空栏占位——保证所有页面标题的 y 坐标完全一致。 */
+.ui-page-bar {
+  min-height: 45px;
 }
 
 /* Soft surface elevation */

@@ -12,7 +12,7 @@ import {
   ScanLine,
   Loader2,
 } from 'lucide-react';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 import { takePendingDocPath } from '../services/docHandoff';
 
 interface PdfPage {
@@ -288,13 +288,12 @@ ${body}</body></html>`;
   const hasOcrText = pdfDoc?.pages.some((p) => p.text.trim().length > 0) ?? false;
 
   return (
-    <div className="h-full flex flex-col p-6">
-      {/* Header */}
-      <PageHeader
-        title={t('pdf.title')}
-        icon={FileText}
-        className="mb-5"
-        actions={
+    <PageLayout
+      title={t('pdf.title')}
+      icon={FileText}
+      scrollable={false}
+      contentClassName="p-6 flex flex-col"
+      actions={
           <div className="flex items-center gap-3">
             <select
               value={fromLang}
@@ -393,7 +392,7 @@ ${body}</body></html>`;
             )}
           </div>
         }
-      />
+      >
 
       {/* Content */}
       <div className="flex-1 overflow-hidden min-h-0">
@@ -556,7 +555,7 @@ ${body}</body></html>`;
           </div>
         ) : null}
       </div>
-    </div>
+    </PageLayout>
   );
 }
 

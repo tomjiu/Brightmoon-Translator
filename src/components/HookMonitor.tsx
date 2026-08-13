@@ -10,6 +10,7 @@ import {
   positionBelowText,
   positionAtWindowBottom,
 } from '../services/overlayPosition';
+import PageLayout from './PageLayout';
 import ProcessPicker from './ProcessPicker';
 import {
   Zap,
@@ -106,7 +107,7 @@ const HookResultItem = memo(function HookResultItem({
   browserLocale,
 }: HookResultItemProps) {
   return (
-    <div className="bg-bg-secondary border border-border rounded-lg p-3 group hover:border-primary/30 transition-colors">
+    <div className="ui-card ui-card-hover p-3 group">
       {/* Header: window + engine + time */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5 min-w-0">
@@ -563,15 +564,12 @@ function HookMonitor() {
   );
 
   return (
-    <div className="flex flex-col h-full gap-3 p-4">
-      {/* Header & Controls */}
-      <div className="ui-card p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Zap size={18} className="text-primary" />
-            <h3 className="text-sm font-semibold text-text-primary">{t('hook.title')}</h3>
-          </div>
-          <div className="flex items-center gap-2">
+    <PageLayout
+      title={t('hook.title')}
+      description={t('hook.description')}
+      icon={Zap}
+      actions={
+          <>
             {isRunning && (
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
@@ -581,11 +579,12 @@ function HookMonitor() {
             <span className="text-xs text-text-secondary bg-bg-tertiary px-2 py-0.5 rounded-full">
               {results.length} {t('hook.items')}
             </span>
-          </div>
-        </div>
+          </>
+        }
+    >
 
-        <p className="text-xs text-text-secondary mb-3">{t('hook.description')}</p>
-
+      {/* Controls */}
+      <div className="ui-card p-5">
         {/* Source Toggles */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <span className="text-xs text-text-secondary mr-1">{t('hook.sources')}:</span>
@@ -940,7 +939,7 @@ function HookMonitor() {
         onClose={() => setShowProcessPicker(false)}
         onSelect={(pid) => setHcodePid(pid.toString())}
       />
-    </div>
+    </PageLayout>
   );
 }
 

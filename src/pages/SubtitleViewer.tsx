@@ -12,7 +12,7 @@ import {
   Subtitles,
   Loader2,
 } from 'lucide-react';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 import { takePendingDocPath } from '../services/docHandoff';
 
 interface SubtitleEntry {
@@ -186,12 +186,12 @@ function SubtitleViewer() {
   );
 
   return (
-    <div className="h-full flex flex-col p-6">
-      {/* Header */}
-      <PageHeader
-        title={t('subtitle.title')}
-        icon={Subtitles}
-        actions={
+    <PageLayout
+      title={t('subtitle.title')}
+      icon={Subtitles}
+      scrollable={false}
+      contentClassName="p-6 flex flex-col"
+      actions={
           <div className="flex items-center gap-3">
             <select
               value={fromLang}
@@ -259,7 +259,7 @@ function SubtitleViewer() {
             )}
           </div>
         }
-      />
+      >
 
       {/* Progress Bar */}
       {translating && progress && (
@@ -376,7 +376,7 @@ function SubtitleViewer() {
           </div>
         ) : null}
       </div>
-    </div>
+    </PageLayout>
   );
 }
 

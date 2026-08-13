@@ -4,7 +4,7 @@ import { invokeOrThrow } from '../services/invoke';
 import { useI18n } from '../i18n';
 import { isTauriRuntime } from '../services/tauriRuntime';
 import { FileText, Languages, Download, Loader2 } from 'lucide-react';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 import { takePendingDocPath } from '../services/docHandoff';
 
 type OfficeKind = 'docx' | 'excel' | 'pptx';
@@ -275,11 +275,12 @@ function OfficeViewer({ kind }: { kind: OfficeKind }) {
   const lines = renderLines(kind, doc, preview);
 
   return (
-    <div className="h-full flex flex-col p-6">
-      <PageHeader
-        title={meta.label}
-        icon={FileText}
-        actions={
+    <PageLayout
+      title={meta.label}
+      icon={FileText}
+      scrollable={false}
+      contentClassName="p-6 flex flex-col"
+      actions={
           <div className="flex items-center gap-2 flex-wrap">
             <select
               value={fromLang}
@@ -335,7 +336,7 @@ function OfficeViewer({ kind }: { kind: OfficeKind }) {
             </button>
           </div>
         }
-      />
+      >
 
       {fileName && (
         <p className="text-sm text-text-secondary mb-2 truncate" title={filePath || undefined}>
@@ -371,7 +372,7 @@ function OfficeViewer({ kind }: { kind: OfficeKind }) {
           </div>
         ))}
       </div>
-    </div>
+    </PageLayout>
   );
 }
 

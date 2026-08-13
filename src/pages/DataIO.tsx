@@ -22,6 +22,7 @@ import {
   writeFileContent,
   type ImportResult,
 } from '../services/dataIO';
+import PageLayout from '../components/PageLayout';
 
 export default function DataIO() {
   const [loading, setLoading] = useState(false);
@@ -190,17 +191,12 @@ export default function DataIO() {
   };
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
-        {/* Header */}
-        <div>
-          <h1 className="ui-page-title flex items-center gap-2.5">
-            <Database className="w-5 h-5 shrink-0" />
-            数据管理
-          </h1>
-          <p className="ui-page-desc">导入导出学习数据，支持 JSON、CSV、Anki 等格式</p>
-        </div>
-
+    <PageLayout
+      chrome="none"
+      title="数据管理"
+      description="导入导出学习数据，支持 JSON、CSV、Anki 等格式"
+      icon={Database}
+    >
         {/* Result Toast */}
         {result && (
           <div
@@ -238,7 +234,7 @@ export default function DataIO() {
             <button
               onClick={handleExportJson}
               disabled={loading}
-              className="flex flex-col items-center gap-3 p-6 bg-bg-secondary rounded-xl border border-border hover:border-primary/50 hover:scale-[1.02] transition-all group"
+              className="ui-card ui-card-hover flex flex-col items-center gap-3 p-6 group"
             >
               <FileJson className="w-10 h-10 text-primary group-hover:text-primary" />
               <div className="text-center">
@@ -252,7 +248,7 @@ export default function DataIO() {
             <button
               onClick={handleExportAnki}
               disabled={loading}
-              className="flex flex-col items-center gap-3 p-6 bg-bg-secondary rounded-xl border border-border hover:border-primary/50 hover:scale-[1.02] transition-all group"
+              className="ui-card ui-card-hover flex flex-col items-center gap-3 p-6 group"
             >
               <FileText className="w-10 h-10 text-green-400 group-hover:text-green-300" />
               <div className="text-center">
@@ -264,7 +260,7 @@ export default function DataIO() {
             <button
               onClick={handleExportCsv}
               disabled={loading}
-              className="flex flex-col items-center gap-3 p-6 bg-bg-secondary rounded-xl border border-border hover:border-primary/50 hover:scale-[1.02] transition-all group"
+              className="ui-card ui-card-hover flex flex-col items-center gap-3 p-6 group"
             >
               <FileSpreadsheet className="w-10 h-10 text-yellow-400 group-hover:text-yellow-300" />
               <div className="text-center">
@@ -286,7 +282,7 @@ export default function DataIO() {
             <button
               onClick={handleImportJson}
               disabled={loading}
-              className="flex flex-col items-center gap-3 p-6 bg-bg-secondary rounded-xl border border-border hover:border-primary/50 hover:scale-[1.02] transition-all group"
+              className="ui-card ui-card-hover flex flex-col items-center gap-3 p-6 group"
             >
               <FileJson className="w-10 h-10 text-primary group-hover:text-primary" />
               <div className="text-center">
@@ -298,7 +294,7 @@ export default function DataIO() {
             <button
               onClick={handleImportCsv}
               disabled={loading}
-              className="flex flex-col items-center gap-3 p-6 bg-bg-secondary rounded-xl border border-border hover:border-primary/50 hover:scale-[1.02] transition-all group"
+              className="ui-card ui-card-hover flex flex-col items-center gap-3 p-6 group"
             >
               <FileSpreadsheet className="w-10 h-10 text-yellow-400 group-hover:text-yellow-300" />
               <div className="text-center">
@@ -359,7 +355,6 @@ export default function DataIO() {
             </p>
           </div>
         </div>
-      </div>
-    </div>
+    </PageLayout>
   );
 }

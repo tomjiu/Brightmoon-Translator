@@ -21,31 +21,16 @@ function History() {
   const [activeTab, setActiveTab] = useState<HistoryTab>('tm');
   const { t } = useI18n();
 
-  const tabs: Array<{ id: HistoryTab; icon: typeof Database; labelKey: string }> = [
-    { id: 'tm', icon: Database, labelKey: 'history.tabs.tm' },
-    { id: 'metrics', icon: BarChart3, labelKey: 'history.tabs.metrics' },
+  const tabs = [
+    { id: 'tm', icon: Database, label: t('history.tabs.tm') },
+    { id: 'metrics', icon: BarChart3, label: t('history.tabs.metrics') },
   ];
 
   return (
     <PageLayout
-      toolbar={
-        <div className="flex items-center gap-1 overflow-x-auto">
-          {tabs.map(({ id, icon: Icon, labelKey }) => (
-            <button
-              key={id}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
-                activeTab === id
-                  ? 'bg-primary text-primary-fg'
-                  : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
-              }`}
-              onClick={() => setActiveTab(id)}
-            >
-              <Icon size={14} />
-              {t(labelKey)}
-            </button>
-          ))}
-        </div>
-      }
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={(id) => setActiveTab(id as HistoryTab)}
       scrollable={false}
     >
       <Suspense fallback={<LazyFallback />}>

@@ -34,7 +34,7 @@ export default function EngineCard({
   const Icon = name.includes('LLM') || name.includes('大模型') ? Bot : Languages;
 
   return (
-    <div className="p-3.5 border border-border rounded-xl bg-bg-secondary">
+    <div className="ui-card ui-card-hover p-3.5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 flex-1 min-w-0">
           <div className="w-9 h-9 rounded-lg bg-bg-tertiary border border-border flex items-center justify-center shrink-0 text-text-secondary">

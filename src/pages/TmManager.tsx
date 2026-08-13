@@ -16,7 +16,7 @@ import {
   Loader2,
   Check,
 } from 'lucide-react';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 import Icon from '../components/Icon';
 
 // ── Types ───────────────────────────────────────────────────────────────────────
@@ -233,13 +233,11 @@ function TmManager() {
   const uniqueLangs = [...new Set(stats?.langPairs.flatMap(([a, b]) => [a, b]) ?? [])].sort();
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="w-full p-4 md:p-5 lg:p-6 space-y-5">
-        {/* Header */}
-        <PageHeader
-          title={t('tm.title')}
-          icon={Database}
-          actions={
+    <PageLayout
+      chrome="none"
+      title={t('tm.title')}
+      icon={Database}
+      actions={
             <div className="flex gap-2 flex-wrap">
               <button
                 onClick={handleExportJson}
@@ -291,7 +289,7 @@ function TmManager() {
               </button>
             </div>
           }
-        />
+        >
 
         {/* Statistics */}
         {stats && (
@@ -510,8 +508,7 @@ function TmManager() {
             </button>
           </div>
         )}
-      </div>
-    </div>
+    </PageLayout>
   );
 }
 

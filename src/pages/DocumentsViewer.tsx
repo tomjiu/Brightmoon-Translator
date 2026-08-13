@@ -3,7 +3,7 @@ import { FileUp, Loader2, Book } from 'lucide-react';
 import { isTauriRuntime } from '../services/tauriRuntime';
 import { setPendingDocPath } from '../services/docHandoff';
 import { useI18n } from '../i18n';
-import PageHeader from '../components/PageHeader';
+import PageLayout from '../components/PageLayout';
 // S3-12: viewer subpages lazy-loaded so opening DocumentsViewer doesn't pull
 // in PdfViewer/EpubViewer/OfficeViewer/etc. until the user picks a file type.
 // Each viewer pulls in heavy deps (pdfium, epub.js, mammoth, xlsx) that are
@@ -173,15 +173,12 @@ export default function DocumentsViewer() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-4 md:p-5 lg:p-6 flex flex-col">
-      <div className="max-w-3xl mx-auto space-y-6 w-full">
-        <PageHeader
-          title="文档翻译"
-          description="选择文件后自动识别类型并处理，无需切换多个入口。"
-          icon={FileUp}
-        />
-
-        <section className="ui-card ui-card-hover p-5 md:p-6 space-y-4">
+    <PageLayout
+      title="文档翻译"
+      description="选择文件后自动识别类型并处理，无需切换多个入口。"
+      icon={FileUp}
+    >
+      <section className="ui-card ui-card-hover p-5 md:p-6 space-y-4">
           <div className="space-y-1">
             <p className="ui-section-title">支持格式</p>
             <p className="ui-caption leading-relaxed">{SUPPORT_HINT}</p>
@@ -212,7 +209,6 @@ export default function DocumentsViewer() {
           <Book size={14} />
           管理术语表
         </button>
-      </div>
-    </div>
+    </PageLayout>
   );
 }
