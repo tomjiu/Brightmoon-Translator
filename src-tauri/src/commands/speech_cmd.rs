@@ -5,12 +5,13 @@ use tauri::State;
 /// Start speech recognition with the specified language
 #[tauri::command]
 pub async fn start_speech_recognition(
+    app: tauri::AppHandle,
     lang: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let speech_state = state.speech_state.clone();
 
-    speech::start_recognition(speech_state, &lang)
+    speech::start_recognition(app, speech_state, &lang)
         .await
         .map_err(|e| format!("Failed to start speech recognition: {e}"))?;
 

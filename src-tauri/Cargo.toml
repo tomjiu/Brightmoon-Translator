@@ -117,6 +117,7 @@ features = [
     "Graphics_Imaging",
     "Foundation_Collections",
     "Media_Ocr",
+    "Media_SpeechRecognition",
     "Storage",
     "Storage_Streams",
     "Data_Pdf",

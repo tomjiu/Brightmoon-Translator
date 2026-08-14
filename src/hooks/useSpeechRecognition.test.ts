@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { useSpeechRecognition } from './useSpeechRecognition';
 
 interface MockSpeechRecognitionInstance {
@@ -411,6 +413,178 @@ describe('useSpeechRecognition', () => {
       unmount();
 
       expect(mockRecognition.abort).toHaveBeenCalled();
+    });
+  });
+});
+
+describe('useSpeechRecognition native (Tauri) path', () => {
+  const invokeMock = invoke as ReturnType<typeof vi.fn>;
+  const listenMock = listen as ReturnType<typeof vi.fn>;
+  let registeredListeners: Map<string, (event: { payload: unknown }) => void>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Simulate the Tauri runtime probe used by isTauriRuntime().
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+
+    registeredListeners = new Map();
+    listenMock.mockImplementation((event: string, cb: (event: { payload: unknown }) => void) => {
+      registeredListeners.set(event, cb);
+      return Promise.resolve(() => registeredListeners.delete(event));
+    });
+    invokeMock.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+  });
+
+  const emitEvent = (name: string, payload: unknown) => {
+    const cb = registeredListeners.get(name);
+    if (cb) cb({ payload });
+  };
+
+  it('should report native support when running under Tauri', () => {
+    const { result } = renderHook(() => useSpeechRecognition());
+    expect(result.current.isSupported).toBe(true);
+  });
+
+  it('should invoke start_speech_recognition with mapped locale', async () => {
+    const { result } = renderHook(() => useSpeechRecognition());
+
+    await act(async () => {
+      result.current.startListening('zh');
+      await vi.waitFor(() => {
+        expect(invokeMock).toHaveBeenCalledWith('start_speech_recognition', {
+          lang: 'zh-CN',
+        });
+      });
+    });
+  });
+
+  it('should accumulate final results from native events', async () => {
+    const { result } = renderHook(() => useSpeechRecognition());
+
+    await act(async () => {
+      result.current.startListening('en');
+    });
+
+    await vi.waitFor(() => {
+      expect(registeredListeners.has('speech-recognition-result')).toBe(true);
+    });
+
+    await act(async () => {
+      emitEvent('speech-recognition-start', {});
+      emitEvent('speech-recognition-result', {
+        text: 'Hello',
+        confidence: 0.95,
+        isFinal: true,
+      });
+      emitEvent('speech-recognition-result', {
+        text: 'World',
+        confidence: 0.9,
+        isFinal: true,
+      });
+    });
+
+    expect(result.current.consumeTranscript()).toBe('HelloWorld');
+  });
+
+  it('should expose interim transcript from native non-final results', async () => {
+    const { result } = renderHook(() => useSpeechRecognition());
+
+    await act(async () => {
+      result.current.startListening('en');
+    });
+
+    await vi.waitFor(() => {
+      expect(registeredListeners.has('speech-recognition-result')).toBe(true);
+    });
+
+    await act(async () => {
+      emitEvent('speech-recognition-result', {
+        text: 'hel',
+        confidence: 0.8,
+        isFinal: false,
+      });
+    });
+
+    expect(result.current.interimTranscript).toBe('hel');
+  });
+
+  it('should flip isListening on start/stop events', async () => {
+    const { result } = renderHook(() => useSpeechRecognition());
+
+    await act(async () => {
+      result.current.startListening('en');
+    });
+
+    await vi.waitFor(() => {
+      expect(registeredListeners.has('speech-recognition-start')).toBe(true);
+    });
+
+    await act(async () => {
+      emitEvent('speech-recognition-start', {});
+    });
+    expect(result.current.isListening).toBe(true);
+
+    await act(async () => {
+      emitEvent('speech-recognition-stop', {});
+    });
+    expect(result.current.isListening).toBe(false);
+  });
+
+  it('should invoke stop_speech_recognition on stopListening', async () => {
+    const { result } = renderHook(() => useSpeechRecognition());
+
+    await act(async () => {
+      result.current.startListening('en');
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      result.current.stopListening();
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('stop_speech_recognition', undefined);
+    });
+  });
+
+  it('should show micDenied error on access-related native errors', async () => {
+    const { result } = renderHook(() => useSpeechRecognition());
+
+    await act(async () => {
+      result.current.startListening('en');
+    });
+
+    await vi.waitFor(() => {
+      expect(registeredListeners.has('speech-recognition-error')).toBe(true);
+    });
+
+    await act(async () => {
+      emitEvent('speech-recognition-error', { error: 'E_ACCESSDENIED' });
+    });
+
+    expect(result.current.error).toBe('麦克风访问被拒绝，请允许麦克风权限');
+  });
+
+  it('should keep isListening false when native start invoke rejects', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('Failed to start speech recognition: access denied'));
+
+    const { result } = renderHook(() => useSpeechRecognition());
+
+    await act(async () => {
+      result.current.startListening('en');
+      await vi.waitFor(() => {
+        expect(result.current.isListening).toBe(false);
+      });
+    });
+
+    await vi.waitFor(() => {
+      expect(result.current.error).not.toBeNull();
     });
   });
 });

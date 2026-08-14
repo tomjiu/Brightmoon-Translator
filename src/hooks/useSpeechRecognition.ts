@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useI18n } from '../i18n';
+import { listen } from '@tauri-apps/api/event';
+import { isTauriRuntime } from '../services/tauriRuntime';
 
 interface SpeechRecognitionHook {
   isListening: boolean;
@@ -70,16 +72,29 @@ interface SpeechRecognitionInstance {
 
 declare global {
   interface Window {
-    SpeechRecognition: new () => SpeechRecognitionInstance;
-    webkitSpeechRecognition: new () => SpeechRecognitionInstance;
+    SpeechRecognition?: new () => SpeechRecognitionInstance;
+    webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
   }
 }
 
 // Check support once
-const getSpeechRecognitionAPI = () => {
+const getSpeechRecognitionAPI = (): (new () => SpeechRecognitionInstance) | null => {
   if (typeof window === 'undefined') return null;
-  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
 };
+
+// Native (Tauri) recognition events
+interface NativeResultPayload {
+  text: string;
+  confidence: number;
+  isFinal: boolean;
+}
+
+interface NativeStatusPayload {
+  isListening: boolean;
+  language: string;
+  error?: string | null;
+}
 
 export function useSpeechRecognition(): SpeechRecognitionHook {
   const [isListening, setIsListening] = useState(false);
@@ -92,7 +107,8 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
   const isListeningRef = useRef(false);
   const langRef = useRef('en-US');
 
-  const isSupported = !!getSpeechRecognitionAPI();
+  const isTauri = isTauriRuntime();
+  const isSupported = !!getSpeechRecognitionAPI() || isTauri;
 
   // Cleanup on unmount
   useEffect(() => {
@@ -103,6 +119,98 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         recognitionRef.current = null;
       }
     };
+  }, []);
+
+  // Native event listeners
+  useEffect(() => {
+    if (!isTauri) return;
+
+    const unlisteners: Array<() => void> = [];
+
+    const setup = async () => {
+      const t = useI18n.getState().t;
+      unlisteners.push(
+        await listen<NativeResultPayload>('speech-recognition-result', (event) => {
+          const payload = event.payload;
+          const text = payload.text || '';
+          if (!text.trim()) return;
+          if (payload.isFinal) {
+            accumulatedTranscriptRef.current += text;
+            setInterimTranscript('');
+          } else {
+            setInterimTranscript(text);
+          }
+        }),
+      );
+
+      unlisteners.push(
+        await listen('speech-recognition-start', () => {
+          setIsListening(true);
+          isListeningRef.current = true;
+        }),
+      );
+
+      unlisteners.push(
+        await listen('speech-recognition-stop', () => {
+          setIsListening(false);
+          isListeningRef.current = false;
+          setInterimTranscript('');
+        }),
+      );
+
+      unlisteners.push(
+        await listen<NativeStatusPayload>('speech-recognition-error', (event) => {
+          const msg = event.payload.error ?? '';
+          if (msg.includes('access') || msg.includes('denied') || msg.includes('E_ACCESSDENIED')) {
+            setError(t('speech.micDenied'));
+          } else if (msg.includes('NoMatch')) {
+            // No speech detected, keep listening
+          } else {
+            setError(t('speech.error', { error: msg }));
+          }
+          setIsListening(false);
+          isListeningRef.current = false;
+        }),
+      );
+    };
+
+    void setup();
+    return () => {
+      for (const fn of unlisteners) fn();
+    };
+  }, [isTauri]);
+
+  const startNativeRecognition = useCallback(async (lang: string) => {
+    const { invokeOrThrow } = await import('../services/invoke');
+    setError(null);
+    setInterimTranscript('');
+    accumulatedTranscriptRef.current = '';
+    langRef.current = LANG_TO_BCP47[lang] || LANG_TO_BCP47.en;
+
+    // Optimistically show listening; native start event will confirm.
+    isListeningRef.current = true;
+    setIsListening(true);
+
+    try {
+      await invokeOrThrow('start_speech_recognition', { lang: langRef.current });
+    } catch (err) {
+      isListeningRef.current = false;
+      setIsListening(false);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(
+        message.includes('denied') || message.includes('access')
+          ? useI18n.getState().t('speech.micDenied')
+          : useI18n.getState().t('speech.startFailed'),
+      );
+    }
+  }, []);
+
+  const stopNativeRecognition = useCallback(async () => {
+    isListeningRef.current = false;
+    setIsListening(false);
+    setInterimTranscript('');
+    const { invokeOrDefault } = await import('../services/invoke');
+    await invokeOrDefault('stop_speech_recognition', undefined, undefined);
   }, []);
 
   const createAndStartRecognition = useCallback(() => {
@@ -194,6 +302,11 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
       langRef.current = LANG_TO_BCP47[lang] || LANG_TO_BCP47.en;
       isListeningRef.current = true;
 
+      if (isTauri) {
+        void startNativeRecognition(lang);
+        return;
+      }
+
       const recognition = createAndStartRecognition();
       if (recognition) {
         recognitionRef.current = recognition;
@@ -201,7 +314,7 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
         isListeningRef.current = false;
       }
     },
-    [createAndStartRecognition],
+    [createAndStartRecognition, isTauri, startNativeRecognition],
   );
 
   const stopListening = useCallback(() => {
@@ -210,9 +323,12 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
       recognitionRef.current.abort();
       recognitionRef.current = null;
     }
+    if (isTauri) {
+      void stopNativeRecognition();
+    }
     setIsListening(false);
     setInterimTranscript('');
-  }, []);
+  }, [isTauri, stopNativeRecognition]);
 
   /** Consume and return accumulated final transcript, then reset */
   const consumeTranscript = useCallback(() => {
