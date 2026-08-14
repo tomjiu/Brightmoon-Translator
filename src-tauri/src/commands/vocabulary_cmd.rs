@@ -283,6 +283,135 @@ pub async fn generate_card_content(
     Ok(ai_content)
 }
 
+/// 掌握度等级(与学习方法论 weak/medium/strong 对应)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MasteryResult { Pass, Fail }
+
+const MASTERY_WEAK: f64 = 0.0;
+const MASTERY_MEDIUM: f64 = 1.0;
+const MASTERY_STRONG: f64 = 2.0;
+
+/// 按结果更新掌握度画像(存在 user_profile, field='mastery')
+/// 规则: Fail → weak; 无画像 Pass → medium; weak Pass → medium;
+///       medium Pass 且最近 2 次 quiz 全对 → strong
+async fn update_mastery(pool: &sqlx::SqlitePool, card_id: &str, result: MasteryResult) -> Result<(), String> {
+    let now = chrono::Utc::now().timestamp();
+    let current: Option<f64> = sqlx::query_scalar(
+        "SELECT rating FROM user_profile WHERE card_id = ? AND field = 'mastery'",
+    )
+    .bind(card_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let next = match (current, result) {
+        (_, MasteryResult::Fail) => MASTERY_WEAK,
+        (None, MasteryResult::Pass) => MASTERY_MEDIUM,
+        (Some(MASTERY_WEAK), MasteryResult::Pass) => MASTERY_MEDIUM,
+        (Some(MASTERY_MEDIUM), MasteryResult::Pass) => {
+            // 最近 2 次 quiz 全对 → 升 strong;否则保持 medium
+            let last_two = sqlx::query(
+                "SELECT user_answer, correct_answer FROM quiz_errors WHERE card_id = ? ORDER BY created_at DESC LIMIT 2",
+            )
+            .bind(card_id)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+            if last_two.len() == 2 && last_two.iter().all(|r| {
+                let ua: String = r.try_get("user_answer").unwrap_or_default();
+                let ca: String = r.try_get("correct_answer").unwrap_or_default();
+                ua == ca
+            }) {
+                MASTERY_STRONG
+            } else {
+                MASTERY_MEDIUM
+            }
+        }
+        (Some(level), MasteryResult::Pass) => level,
+    };
+
+    sqlx::query(
+        r"
+        INSERT INTO user_profile (card_id, field, rating, created_at, updated_at)
+        VALUES (?, 'mastery', ?, ?, ?)
+        ON CONFLICT (card_id, field) DO UPDATE SET
+            rating = excluded.rating,
+            updated_at = excluded.updated_at
+        ",
+    )
+    .bind(card_id)
+    .bind(next)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 读取某卡的掌握度画像(0/1/2, None=未记录)
+async fn load_mastery_level(pool: &sqlx::SqlitePool, card_id: &str) -> Result<Option<u8>, String> {
+    let rating: Option<f64> = sqlx::query_scalar(
+        "SELECT rating FROM user_profile WHERE card_id = ? AND field = 'mastery'",
+    )
+    .bind(card_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rating.map(|r| r as u8))
+}
+
+/// 读取词典结果缓存(72 小时内有效,命中则跳过联网查询与 AI 生成)
+async fn read_dictionary_cache(
+    pool: &sqlx::SqlitePool,
+    word: &str,
+) -> Result<Option<StudyWordData>, String> {
+    let row: Option<(String, i64)> = sqlx::query_as(
+        "SELECT data, cached_at FROM dictionary_cache WHERE word = ?",
+    )
+    .bind(word)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let Some((data, cached_at)) = row else {
+        return Ok(None);
+    };
+    let now = chrono::Utc::now().timestamp();
+    if now - cached_at > 72 * 3600 {
+        return Ok(None);
+    }
+    serde_json::from_str::<StudyWordData>(&data)
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
+/// 写入词典结果缓存(供 study_word 复用,避免重复联网与重复 AI 调用)
+async fn write_dictionary_cache(
+    pool: &sqlx::SqlitePool,
+    word: &str,
+    data: &StudyWordData,
+) -> Result<(), String> {
+    let now = chrono::Utc::now().timestamp();
+    let json = serde_json::to_string(data).map_err(|e| e.to_string())?;
+    sqlx::query(
+        r"
+        INSERT INTO dictionary_cache (word, data, cached_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT (word) DO UPDATE SET
+            data = excluded.data,
+            cached_at = excluded.cached_at
+        ",
+    )
+    .bind(word)
+    .bind(json)
+    .bind(now)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// 提交复习结果
 #[tauri::command]
 pub async fn submit_review(
@@ -324,6 +453,13 @@ pub async fn submit_review(
             .await
             .map_err(|e| format!("更新快照失败: {e}"))?;
     }
+
+    // 掌握度画像更新: Again/Hard → Fail, Good/Easy → Pass
+    let mastery_result = match rating {
+        Rating::Again | Rating::Hard => MasteryResult::Fail,
+        Rating::Good | Rating::Easy => MasteryResult::Pass,
+    };
+    let _ = update_mastery(store.pool(), &card_id, mastery_result).await;
 
     Ok(())
 }
@@ -410,6 +546,7 @@ pub struct StudyWordData {
     pub ai_content: Option<crate::domain::AiContent>,
     pub image_url: Option<String>,
     pub sources: Vec<String>,
+    pub mastery_level: Option<u8>,
 }
 
 /// 学习一个单词：查词典 + 创建卡牌 + 生成 AI 内容
@@ -427,6 +564,19 @@ pub async fn study_word(
 
     let ecdict_pool = state.ecdict_pool.as_ref();
     let event_store = state.event_store.as_ref();
+
+    // 0. 命中本地缓存则直接返回(72h 内,避免重复联网与重复 AI 调用)
+    if let Some(store) = event_store {
+        if let Ok(Some(mut cached)) = read_dictionary_cache(store.pool(), &word).await {
+            // 掌握度是动态值,不随缓存固化,实时读取
+            cached.mastery_level = if let Some(cid) = cached.card_id.clone() {
+                load_mastery_level(store.pool(), &cid).await.ok().flatten()
+            } else {
+                None
+            };
+            return Ok(cached);
+        }
+    }
 
     // 1. 查词典（多源聚合）
     let dict = MultiSourceDictionary::new();
@@ -498,6 +648,7 @@ pub async fn study_word(
         ai_content: None,
         image_url,
         sources: Vec::new(),
+        mastery_level: None,
     };
 
     // ECDICT
@@ -655,6 +806,20 @@ pub async fn study_word(
                     tracing::warn!("Failed to create card for '{}': {}", word, e);
                 },
             }
+        }
+    }
+
+    // 附加掌握度画像(有卡牌时)
+    if let Some(cid) = data.card_id.clone() {
+        if let Some(store) = event_store {
+            data.mastery_level = load_mastery_level(store.pool(), &cid).await.ok().flatten();
+        }
+    }
+
+    // 写词典缓存(仅联网获取到数据时,避免缓存失败的空结果)
+    if let Some(store) = event_store {
+        if !data.sources.is_empty() {
+            let _ = write_dictionary_cache(store.pool(), &word, &data).await;
         }
     }
 
@@ -878,70 +1043,60 @@ struct YoudaoSimple {
     collins_entries: Vec<crate::commands::dictionary_cmd::CollinsEntry>,
 }
 
-/// 搜索单词相关的图片（Unsplash → Pexels fallback）
+/// 搜索单词相关的图片(Wikimedia Commons → 确定性 known 映射兜底)
 async fn fetch_word_image(word: &str) -> Option<String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()
         .ok()?;
 
-    // 1. 尝试 Unsplash Source（免费，无需 API Key）
-    let unsplash_url = format!(
-        "https://source.unsplash.com/800x500/?{}",
-        urlencoding::encode(word)
+    // 1. 优先: 确定性 known 映射(31 个常见单词,真实相关)
+    let known_id = word_to_photo_id(word);
+    if known_id != GENERIC_PHOTO_PLACEHOLDER {
+        let direct = format!(
+            "https://images.unsplash.com/photo-{}?w=800&h=500&fit=crop&auto=format",
+            known_id
+        );
+        if let Ok(r) = client.head(&direct).send().await {
+            if r.status().is_success() {
+                return Some(direct);
+            }
+        }
+    }
+
+    // 2. Wikimedia Commons 免费图片搜索(无需 key,返回与单词相关的真实图片)
+    let search = format!("{} vocabulary", word);
+    let api = format!(
+        "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={}&gsrlimit=3&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=600&format=json",
+        urlencoding::encode(&search)
     );
     let resp = client
-        .get(&unsplash_url)
-        .header("User-Agent", "Mozilla/5.0")
+        .get(&api)
+        .header("User-Agent", "MoonTranslator/0.3 (vocabulary app)")
         .send()
-        .await;
-
-    if let Ok(r) = resp {
-        if r.status().is_success() || r.status().is_redirection() {
-            // Unsplash source returns a redirect to the actual image
-            let final_url = r.url().to_string();
-            if final_url.contains("images.unsplash.com") {
-                return Some(final_url);
-            }
-            // If it redirected, the final URL is the image
-            if let Some(location) = r.headers().get("location") {
-                if let Ok(loc) = location.to_str() {
-                    return Some(loc.to_string());
+        .await
+        .ok()?;
+    if resp.status().is_success() {
+        if let Ok(v) = resp.json::<serde_json::Value>().await {
+            if let Some(pages) = v["query"]["pages"].as_object() {
+                for page in pages.values() {
+                    if let Some(thumb) = page["imageinfo"].as_array().and_then(|a| a.first())
+                        .and_then(|i| i["thumburl"].as_str())
+                    {
+                        return Some(thumb.to_string());
+                    }
                 }
             }
         }
     }
 
-    // 2. Fallback: 用 Pexels 免费搜索（需要 API key，跳过）
-    let _pexels_url = format!(
-        "https://api.pexels.com/v1/search?query={}&per_page=1&size=small",
-        urlencoding::encode(word)
-    );
-    // Pexels 需要 API key，跳过
-
-    // 3. Fallback: 直接构造 Unsplash 图片 URL（基于关键词哈希）
-    // 使用 Unsplash 的直接图片 URL 模式
-    let direct_url = format!(
-        "https://images.unsplash.com/photo-{}?w=800&h=500&fit=crop&auto=format",
-        word_to_photo_id(word)
-    );
-
-    // 验证 URL 可访问
-    if let Ok(r) = client.head(&direct_url).send().await {
-        if r.status().is_success() {
-            return Some(direct_url);
-        }
-    }
-
-    // 4. 最终 fallback: Picsum（随机高质量图片）
-    Some(format!("https://picsum.photos/seed/{word}/800/500"))
+    None // 不可用时前端隐藏图片,不显示错位图
 }
+
+const GENERIC_PHOTO_PLACEHOLDER: &str = "__none__";
 
 /// 将单词映射到 Unsplash photo ID（确定性，同一单词总是同一张图）
 fn word_to_photo_id(word: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
     // 常见单词映射到高质量图片
     let known: &[(&str, &str)] = &[
         ("abandon", "1504280392369-61ec28e4e076"),
@@ -983,26 +1138,8 @@ fn word_to_photo_id(word: &str) -> String {
         }
     }
 
-    // 未匹配的单词用哈希生成一个确定性 ID
-    let mut hasher = DefaultHasher::new();
-    word.hash(&mut hasher);
-    let hash = hasher.finish();
-
-    // 使用一组高质量的通用图片 ID
-    let generic_photos = [
-        "1506905925346-21bda4d32df4",
-        "1470071459604-3b5ec3a7fe05",
-        "1464822759023-fed622ff2c3b",
-        "1448375240586-882707db888b",
-        "1477959858617-67f85cf4f1df",
-        "1501139083538-0139583c060f",
-        "1512820790803-83ca734da794",
-        "1518837695005-2083093ee35b",
-        "1507003211169-0a1dd7228f2d",
-        "1419242902214-272b3f66ee7a",
-    ];
-    let idx = (hash as usize) % generic_photos.len();
-    generic_photos[idx].to_string()
+    // 未匹配: 交给 Wikimedia Commons 搜索,无需哈希兜底
+    GENERIC_PHOTO_PLACEHOLDER.to_string()
 }
 
 /// 划词文本 AI 抽生词建本结果
@@ -1127,4 +1264,114 @@ pub async fn extract_words_and_study(
         studied,
         skipped_existing,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::SqlitePool;
+
+    /// 建内存库基础表(与 event_store.rs schema 保持一致的精简版)
+    async fn base_pool() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE cards (
+                id TEXT PRIMARY KEY,
+                word TEXT NOT NULL,
+                current_version INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+        ).execute(&pool).await.unwrap();
+        sqlx::query(
+            "CREATE TABLE user_profile (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id TEXT NOT NULL,
+                field TEXT NOT NULL,
+                rating REAL DEFAULT 0,
+                feedback TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                UNIQUE(card_id, field)
+            )",
+        ).execute(&pool).await.unwrap();
+        sqlx::query(
+            "CREATE TABLE quiz_errors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id TEXT NOT NULL,
+                quiz_type TEXT NOT NULL,
+                user_answer TEXT,
+                correct_answer TEXT,
+                created_at INTEGER NOT NULL
+            )",
+        ).execute(&pool).await.unwrap();
+        sqlx::query(
+            "CREATE TABLE dictionary_cache (
+                word TEXT PRIMARY KEY,
+                payload TEXT,
+                created_at INTEGER
+            )",
+        ).execute(&pool).await.unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn update_mastery_promotes_on_repeated_success() {
+        let pool = base_pool().await;
+        sqlx::query("INSERT INTO cards (id, word, current_version, created_at, updated_at) VALUES ('c1', 'hello', 1, 0, 0)")
+            .execute(&pool).await.unwrap();
+
+        update_mastery(&pool, "c1", MasteryResult::Pass).await.unwrap();
+        update_mastery(&pool, "c1", MasteryResult::Pass).await.unwrap();
+
+        let level: f64 = sqlx::query_scalar("SELECT rating FROM user_profile WHERE card_id = 'c1' AND field = 'mastery'")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(level, 1.0, "两次通过应从 weak(0) 升到 medium(1)");
+    }
+
+    #[tokio::test]
+    async fn update_mastery_fail_downgrades_to_weak() {
+        let pool = base_pool().await;
+        sqlx::query("INSERT INTO cards (id, word, current_version, created_at, updated_at) VALUES ('c1', 'hello', 1, 0, 0)")
+            .execute(&pool).await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO user_profile (card_id, field, rating, created_at, updated_at) VALUES ('c1', 'mastery', 1, ?, ?)")
+            .bind(now).bind(now).execute(&pool).await.unwrap();
+
+        update_mastery(&pool, "c1", MasteryResult::Fail).await.unwrap();
+
+        let level: f64 = sqlx::query_scalar("SELECT rating FROM user_profile WHERE card_id = 'c1' AND field = 'mastery'")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(level, 0.0, "Fail 应降到 weak(0)");
+    }
+
+    #[tokio::test]
+    async fn update_mastery_two_consecutive_passes_upgrade_to_strong() {
+        let pool = base_pool().await;
+        sqlx::query("INSERT INTO cards (id, word, current_version, created_at, updated_at) VALUES ('c1', 'hello', 1, 0, 0)")
+            .execute(&pool).await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO user_profile (card_id, field, rating, created_at, updated_at) VALUES ('c1', 'mastery', 1, ?, ?)")
+            .bind(now).bind(now).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO quiz_errors (card_id, quiz_type, user_answer, correct_answer, created_at) VALUES ('c1', 'choice', 'apple', 'apple', ?), ('c1', 'choice', 'apple', 'apple', ?)")
+            .bind(now).bind(now + 1).execute(&pool).await.unwrap();
+
+        update_mastery(&pool, "c1", MasteryResult::Pass).await.unwrap();
+
+        let level: f64 = sqlx::query_scalar("SELECT rating FROM user_profile WHERE card_id = 'c1' AND field = 'mastery'")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(level, 2.0, "连续两次答对应升级到 strong(2)");
+    }
+
+    #[tokio::test]
+    async fn fetch_word_image_returns_relevant_image() {
+        let url = fetch_word_image("apple").await;
+        assert!(url.is_some(), "apple 应能获取到相关图片");
+        if let Some(u) = url {
+            assert!(
+                u.contains("wikimedia.org") || u.contains("unsplash.com"),
+                "图片应来自 Wikimedia/Unsplash: {u}"
+            );
+        }
+    }
 }

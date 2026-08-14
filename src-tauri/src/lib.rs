@@ -1159,7 +1159,6 @@ fn start_api_server(app: &tauri::App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     fn tmp_file(name: &str, content: &[u8]) -> std::path::PathBuf {
         let p = std::env::temp_dir().join(format!(

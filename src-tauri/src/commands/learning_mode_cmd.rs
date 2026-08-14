@@ -573,8 +573,9 @@ async fn get_quiz_words(
         sqlx::query(
             "SELECT c.word, c.ai_content FROM plan_words pw
              JOIN cards c ON c.word = pw.word
+             LEFT JOIN user_profile up ON up.card_id = c.id AND up.field = 'mastery'
              WHERE pw.plan_id = ? AND pw.learned = 1
-             ORDER BY RANDOM() LIMIT ?",
+             ORDER BY CASE COALESCE(up.rating, 1) WHEN 0 THEN 0 ELSE 1 END, RANDOM() LIMIT ?",
         )
         .bind(&pid)
         .bind(count)
@@ -584,9 +585,10 @@ async fn get_quiz_words(
     } else {
         // 从所有卡牌中取
         sqlx::query(
-            "SELECT word, ai_content FROM cards
-             WHERE ai_content IS NOT NULL
-             ORDER BY RANDOM() LIMIT ?",
+            "SELECT c.word, c.ai_content FROM cards c
+             LEFT JOIN user_profile up ON up.card_id = c.id AND up.field = 'mastery'
+             WHERE c.ai_content IS NOT NULL
+             ORDER BY CASE COALESCE(up.rating, 1) WHEN 0 THEN 0 ELSE 1 END, RANDOM() LIMIT ?",
         )
         .bind(count)
         .fetch_all(pool)

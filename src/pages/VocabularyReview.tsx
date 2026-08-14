@@ -40,6 +40,7 @@ interface WordDetailData {
   ukAudioUrl?: string;
   aiContent?: AiContent;
   imageUrl?: string;
+  masteryLevel?: number;
   sources: string[];
 }
 
@@ -76,6 +77,13 @@ export default function VocabularyReview() {
   const [aiSuggestion, setAiSuggestion] = useState<OptimizeResult | null>(null);
 
   const { startSession, endSession } = useVocabularyStore();
+
+  // 自适应讲解深度: 掌握度越高手动展开的辅助内容越少
+  // 0=weak(全量讲解), 1=medium(标准), 2=strong(只留核心释义+例句)
+  const detailLevel =
+    wordDetail?.masteryLevel === 0 ? 'full'
+    : wordDetail?.masteryLevel === 2 ? 'lite'
+    : 'standard';
 
   // 加载待复习卡牌
   const loadDueCards = useCallback(async () => {
@@ -474,6 +482,23 @@ export default function VocabularyReview() {
                 <span className="text-text-tertiary">阶段:</span>
                 <span className="ml-1 font-semibold text-primary">{currentCard.phase}</span>
               </div>
+              {wordDetail?.masteryLevel !== undefined && (
+                <div>
+                  <span className="text-text-tertiary">掌握度:</span>
+                  <span
+                    className={[
+                      'ml-1 px-1.5 py-0.5 rounded text-xs font-semibold',
+                      wordDetail.masteryLevel === 0 && 'bg-red-500/15 text-red-400',
+                      wordDetail.masteryLevel === 1 && 'bg-yellow-500/15 text-yellow-400',
+                      wordDetail.masteryLevel === 2 && 'bg-green-500/15 text-green-400',
+                    ].join(' ')}
+                  >
+                    {wordDetail.masteryLevel === 0 && '⚡ 需攻克'}
+                    {wordDetail.masteryLevel === 1 && '· 学习中'}
+                    {wordDetail.masteryLevel === 2 && '✓ 已掌握'}
+                  </span>
+                </div>
+              )}
             </div>
             {!showAnswer && wordDetail?.imageUrl && (
               <span className="text-text-tertiary">🖼️ 图片记忆</span>
@@ -597,7 +622,9 @@ export default function VocabularyReview() {
                     <span>📖</span> 柯林斯词典
                   </h3>
                   <div className="space-y-3">
-                    {wordDetail.collinsEntries.slice(0, 3).map((entry, i) => (
+                    {wordDetail.collinsEntries
+                      .slice(0, detailLevel === 'lite' ? 1 : 3)
+                      .map((entry, i) => (
                       <div key={i}>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs px-2 py-0.5 bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-400 rounded font-mono">
@@ -642,7 +669,7 @@ export default function VocabularyReview() {
               {/* AI内容 */}
               {wordDetail.aiContent && (
                 <>
-                  {wordDetail.aiContent.etymology && (
+                  {detailLevel !== 'lite' && wordDetail.aiContent.etymology && (
                     <div className="p-4 bg-gradient-to-br from-bg-tertiary to-bg-tertiary dark:from-bg-tertiary dark:to-bg-tertiary border border-border dark:border-border rounded-xl">
                       <h3 className="text-xs font-semibold text-primary dark:text-primary mb-2 flex items-center gap-1">
                         <span>🔤</span> 词源分析
@@ -653,7 +680,9 @@ export default function VocabularyReview() {
                     </div>
                   )}
 
-                  {wordDetail.aiContent.mnemonics && wordDetail.aiContent.mnemonics.length > 0 && (
+                  {detailLevel !== 'lite' &&
+                    wordDetail.aiContent.mnemonics &&
+                    wordDetail.aiContent.mnemonics.length > 0 && (
                     <div className="p-4 bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 border border-amber-200 dark:border-amber-800 rounded-xl">
                       <h3 className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2 flex items-center gap-1">
                         <span>💡</span> 助记法
@@ -689,7 +718,9 @@ export default function VocabularyReview() {
                     <span>📝</span> 双语例句
                   </h3>
                   <div className="space-y-2">
-                    {wordDetail.examples.slice(0, 3).map((ex, i) => (
+                    {wordDetail.examples
+                      .slice(0, detailLevel === 'lite' ? 1 : 3)
+                      .map((ex, i) => (
                       <div key={i} className="pl-3 border-l-2 border-border dark:border-border">
                         <p className="text-sm text-text-primary">{ex.en}</p>
                         <p className="text-xs text-text-secondary mt-0.5">{ex.zh}</p>

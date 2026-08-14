@@ -289,6 +289,19 @@ impl EventStore {
         .execute(&self.pool)
         .await?;
 
+        // T7: 词典结果本地缓存(复习页提速)
+        sqlx::query(
+            r"
+            CREATE TABLE IF NOT EXISTS dictionary_cache (
+                word TEXT PRIMARY KEY,
+                data TEXT NOT NULL,
+                cached_at INTEGER NOT NULL
+            )
+            ",
+        )
+        .execute(&self.pool)
+        .await?;
+
         // T11: 应用设置表（FSRS 优化参数等 KV）
         sqlx::query(
             r"
