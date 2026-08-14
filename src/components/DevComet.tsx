@@ -275,8 +275,11 @@ export default function DevComet() {
       canvas.style.height = H + 'px';
       gl.viewport(0, 0, canvas.width, canvas.height);
 
-      margin = 4;
-      radius = Math.max(6, Math.min(30, Math.min(W, H) * 0.06));
+      // 光带中心距窗口边缘 3px:让光在边缘内外两侧都可见,
+      // 而不被 canvas 边界裁剪成只剩内侧半条。
+      margin = 3;
+      // 微圆角:贴合窗口边缘但不过度尖锐;仅角落 6px。
+      radius = 6;
 
       const [nx, ny] = nearestPointOnBorder(W / 2, H / 2, margin, margin, W - margin, H - margin, radius);
       lightX = nx;

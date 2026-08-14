@@ -257,7 +257,7 @@ export default function MetricsDashboard() {
         {/* Cache Stats Detail */}
         {summary && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="ui-card">
+            <div className="ui-card p-5">
               <h3 className="ui-section-title mb-3">
                 {t('metrics.cacheDetails')}
               </h3>
@@ -288,7 +288,7 @@ export default function MetricsDashboard() {
 
             {/* OCR Stats */}
             {summary.ocr_stats && (
-              <div className="ui-card">
+              <div className="ui-card p-5">
                 <h3 className="ui-section-title mb-3">
                   {t('metrics.ocrStats')}
                 </h3>
@@ -307,35 +307,35 @@ export default function MetricsDashboard() {
           </div>
         )}
 
-        {/* Engine Stats Table */}
+        {/* Engine Stats Table + Usage */}
         {summary && Object.keys(summary.engine_stats).length > 0 && (
-          <div className="ui-card">
+          <div className="ui-card p-5">
             <h3 className="ui-section-title mb-3">
               {t('metrics.engineStats')}
             </h3>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left py-2 px-3 text-text-secondary font-medium">
+                    <th className="text-left py-1.5 px-2 text-text-secondary font-medium">
                       {t('metrics.engine')}
                     </th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">
+                    <th className="text-right py-1.5 px-2 text-text-secondary font-medium">
                       {t('metrics.count')}
                     </th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">
+                    <th className="text-right py-1.5 px-2 text-text-secondary font-medium">
                       {t('metrics.avgLatency')}
                     </th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">P50</th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">P95</th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">P99</th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">
+                    <th className="text-right py-1.5 px-2 text-text-secondary font-medium">P50</th>
+                    <th className="text-right py-1.5 px-2 text-text-secondary font-medium">P95</th>
+                    <th className="text-right py-1.5 px-2 text-text-secondary font-medium">P99</th>
+                    <th className="text-right py-1.5 px-2 text-text-secondary font-medium">
                       {t('metrics.min')}
                     </th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">
+                    <th className="text-right py-1.5 px-2 text-text-secondary font-medium">
                       {t('metrics.max')}
                     </th>
-                    <th className="text-right py-2 px-3 text-text-secondary font-medium">
+                    <th className="text-right py-1.5 px-2 text-text-secondary font-medium">
                       {t('metrics.failures')}
                     </th>
                   </tr>
@@ -343,7 +343,7 @@ export default function MetricsDashboard() {
                 <tbody>
                   {Object.entries(summary.engine_stats).map(([name, stats]) => (
                     <tr key={name} className="border-b border-border/50 hover:bg-bg-tertiary/50">
-                      <td className="py-2 px-3">
+                      <td className="py-1.5 px-2">
                         <div className="flex items-center gap-2">
                           <div
                             className="w-2.5 h-2.5 rounded-full"
@@ -352,14 +352,14 @@ export default function MetricsDashboard() {
                           <span className="text-text-primary font-medium">{name}</span>
                         </div>
                       </td>
-                      <td className="text-right py-2 px-3 text-text-primary">{stats.count}</td>
-                      <td className="text-right py-2 px-3 text-text-primary">{stats.avg_ms}ms</td>
-                      <td className="text-right py-2 px-3 text-text-primary">{stats.p50_ms}ms</td>
-                      <td className="text-right py-2 px-3 text-text-primary">{stats.p95_ms}ms</td>
-                      <td className="text-right py-2 px-3 text-text-primary">{stats.p99_ms}ms</td>
-                      <td className="text-right py-2 px-3 text-success">{stats.min_ms}ms</td>
-                      <td className="text-right py-2 px-3 text-warning">{stats.max_ms}ms</td>
-                      <td className="text-right py-2 px-3">
+                      <td className="text-right py-1.5 px-2 text-text-primary">{stats.count}</td>
+                      <td className="text-right py-1.5 px-2 text-text-primary">{stats.avg_ms}ms</td>
+                      <td className="text-right py-1.5 px-2 text-text-primary">{stats.p50_ms}ms</td>
+                      <td className="text-right py-1.5 px-2 text-text-primary">{stats.p95_ms}ms</td>
+                      <td className="text-right py-1.5 px-2 text-text-primary">{stats.p99_ms}ms</td>
+                      <td className="text-right py-1.5 px-2 text-success">{stats.min_ms}ms</td>
+                      <td className="text-right py-1.5 px-2 text-warning">{stats.max_ms}ms</td>
+                      <td className="text-right py-1.5 px-2">
                         {stats.failures > 0 ? (
                           <span className="text-error">{stats.failures}</span>
                         ) : (
@@ -371,12 +371,19 @@ export default function MetricsDashboard() {
                 </tbody>
               </table>
             </div>
+
+            <div className="mt-5 border-t border-border pt-4">
+              <h3 className="ui-section-title mb-3">
+                {t('metrics.engineUsage')}
+              </h3>
+              <EngineUsageChart engineStats={summary.engine_stats} />
+            </div>
           </div>
         )}
 
         {/* Latency Chart (Bar visualization using hourly data) */}
         {hourlyStats.length > 0 && (
-          <div className="ui-card">
+          <div className="ui-card p-5">
             <h3 className="ui-section-title mb-3">
               {t('metrics.hourlyLatency')}
             </h3>
@@ -384,19 +391,9 @@ export default function MetricsDashboard() {
           </div>
         )}
 
-        {/* Engine Usage Pie Chart */}
-        {summary && Object.keys(summary.engine_stats).length > 0 && (
-          <div className="ui-card">
-            <h3 className="ui-section-title mb-3">
-              {t('metrics.engineUsage')}
-            </h3>
-            <EngineUsageChart engineStats={summary.engine_stats} />
-          </div>
-        )}
-
         {/* Recent Translation History List */}
         {timeline.length > 0 && (
-          <div className="ui-card">
+          <div className="ui-card p-5">
             <div className="flex items-center gap-2 mb-3">
               <History size={16} className="text-text-secondary" />
               <h3 className="ui-section-title">
@@ -431,7 +428,7 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="ui-card">
+    <div className="ui-card p-5">
       <div className="flex items-center gap-2 mb-2">
         <div className={color}>{icon}</div>
         <span className="text-xs text-text-secondary">{label}</span>
@@ -544,19 +541,19 @@ function TranslationHistoryList({ data }: { data: MetricsTimeline[] }) {
 
   return (
     <div className="max-h-80 overflow-y-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-xs">
         <thead className="sticky top-0 bg-bg-secondary">
           <tr className="border-b border-border">
-            <th className="text-left py-2 px-3 text-text-secondary font-medium">
+            <th className="text-left py-1.5 px-2 text-text-secondary font-medium">
               {t('metrics.time') || 'Time'}
             </th>
-            <th className="text-left py-2 px-3 text-text-secondary font-medium">
+            <th className="text-left py-1.5 px-2 text-text-secondary font-medium">
               {t('metrics.engine')}
             </th>
-            <th className="text-right py-2 px-3 text-text-secondary font-medium">
+            <th className="text-right py-1.5 px-2 text-text-secondary font-medium">
               {t('metrics.latency') || 'Latency'}
             </th>
-            <th className="text-center py-2 px-3 text-text-secondary font-medium">
+            <th className="text-center py-1.5 px-2 text-text-secondary font-medium">
               {t('metrics.status') || 'Status'}
             </th>
           </tr>
@@ -567,8 +564,8 @@ function TranslationHistoryList({ data }: { data: MetricsTimeline[] }) {
               key={`${entry.timestamp}-${index}`}
               className="border-b border-border/30 hover:bg-bg-tertiary/50 transition-colors"
             >
-              <td className="py-2 px-3 text-text-secondary">{formatTime(entry.timestamp)}</td>
-              <td className="py-2 px-3">
+              <td className="py-1.5 px-2 text-text-secondary">{formatTime(entry.timestamp)}</td>
+              <td className="py-1.5 px-2">
                 <div className="flex items-center gap-2">
                   <div
                     className="w-2 h-2 rounded-full"
@@ -577,8 +574,8 @@ function TranslationHistoryList({ data }: { data: MetricsTimeline[] }) {
                   <span className="text-text-primary">{entry.engine}</span>
                 </div>
               </td>
-              <td className="text-right py-2 px-3 text-text-primary">{entry.latency_ms}ms</td>
-              <td className="text-center py-2 px-3">
+              <td className="text-right py-1.5 px-2 text-text-primary">{entry.latency_ms}ms</td>
+              <td className="text-center py-1.5 px-2">
                 {entry.success ? (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-success/20 text-success">
                     OK

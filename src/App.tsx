@@ -64,6 +64,12 @@ const windowMode = new URLSearchParams(window.location.search).get('window');
 const regionIdParam = new URLSearchParams(window.location.search).get('regionId');
 
 function App() {
+  const { theme } = useThemeStore();
+  const comet = (theme === 'dev' || theme === 'dev-light') && (
+    <Suspense fallback={null}>
+      <DevComet />
+    </Suspense>
+  );
   if (windowMode === 'ocr-screenshot') {
     return (
       <Suspense fallback={null}>
@@ -86,15 +92,17 @@ function App() {
     return (
       <Suspense fallback={null}>
         <TranslateCard />
+        {comet}
       </Suspense>
     );
   }
   if (windowMode === 'selection-pop') {
     // Floating 划词 pop button (Rust selection::pop_button). Static 32×32 chip;
-    // Rust Win32 mouse hook handles clicks.
+    // Rust Win32 mouse hook handles clicks. Responsive light trails the cursor.
     return (
       <Suspense fallback={null}>
         <SelectionPop />
+        {comet}
       </Suspense>
     );
   }
