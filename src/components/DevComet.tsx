@@ -100,7 +100,7 @@ export default function DevComet() {
       if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
         const log = gl.getShaderInfoLog(sh);
         gl.deleteShader(sh);
-        throw new Error('Shader compile error: ' + log);
+        throw new Error(`Shader compile error: ${log}`);
       }
       return sh;
     };
@@ -112,7 +112,7 @@ export default function DevComet() {
     gl.attachShader(prog, fs);
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-      throw new Error('Program link error: ' + gl.getProgramInfoLog(prog));
+      throw new Error(`Program link error: ${gl.getProgramInfoLog(prog)}`);
     }
     gl.useProgram(prog);
 
@@ -271,8 +271,8 @@ export default function DevComet() {
       dpr = window.devicePixelRatio || 1;
       canvas.width = W * dpr;
       canvas.height = H * dpr;
-      canvas.style.width = W + 'px';
-      canvas.style.height = H + 'px';
+      canvas.style.width = `${W}px`;
+      canvas.style.height = `${H}px`;
       gl.viewport(0, 0, canvas.width, canvas.height);
 
       // 光带中心距窗口边缘 3px:让光在边缘内外两侧都可见,
